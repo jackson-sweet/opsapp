@@ -74,7 +74,7 @@ struct TimeOffRequestSheet: View {
                     VStack(alignment: .leading, spacing: 0) {
                         // Amber info banner
                         HStack(spacing: 10) {
-                            Image(systemName: "clock.badge.questionmark")
+                            Image("ops.help")
                                 .foregroundColor(Color(red: 196/255, green: 168/255, blue: 104/255))
                             Text("Request will be sent to your admin for approval.")
                                 .font(OPSStyle.Typography.smallCaption)

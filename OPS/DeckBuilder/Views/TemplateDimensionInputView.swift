@@ -139,7 +139,7 @@ struct TemplateDimensionInputView: View {
             Button {
                 dismiss()
             } label: {
-                Image(systemName: "chevron.left")
+                Image("ops.chevron-left")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(.white)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -498,7 +498,7 @@ struct TemplateDimensionInputView: View {
     private var validationBanner: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             HStack(spacing: 6) {
-                Image(systemName: "exclamationmark.triangle.fill")
+                Image("ops.warning")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.rose)
                 Text("CHECK DIMENSIONS")
@@ -551,7 +551,7 @@ struct TemplateDimensionInputView: View {
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
 
             // Mic icon
-            Image(systemName: "mic.fill")
+            Image("ops.voice-input")
                 .font(.system(size: 28))
                 .foregroundColor(OPSStyle.Colors.warningStatus)
                 .symbolEffect(.pulse, isActive: voiceInput.isListening)

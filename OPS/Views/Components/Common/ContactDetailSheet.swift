@@ -177,7 +177,7 @@ struct ContactActionRow: View {
                 
                 Spacer()
                 
-                Image(systemName: "chevron.right")
+                Image("ops.chevron-right")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

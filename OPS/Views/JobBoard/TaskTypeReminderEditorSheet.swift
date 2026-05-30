@@ -61,7 +61,7 @@ struct TaskTypeReminderListSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack {
-                Image(systemName: "bell.badge")
+                Image("ops.notification-bell")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Text("REMINDERS")
@@ -183,7 +183,7 @@ struct TaskTypeReminderListSection: View {
                         Label("Delete", image: OPSStyle.Icons.trash)
                     }
                 } label: {
-                    Image(systemName: "ellipsis")
+                    Image("ops.overflow")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)

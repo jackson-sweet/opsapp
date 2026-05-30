@@ -56,7 +56,7 @@ struct TaskSelectorBar: View {
                 HStack {
                     // Left indicator (previous task)
                     if canSwipeLeft {
-                        Image(systemName: "chevron.left")
+                        Image("ops.chevron-left")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .opacity(swipeOffset > 20 ? min(swipeOffset / 60, 1.0) : 0)
@@ -66,7 +66,7 @@ struct TaskSelectorBar: View {
 
                     // Right indicator (next task)
                     if canSwipeRight {
-                        Image(systemName: "chevron.right")
+                        Image("ops.chevron-right")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .opacity(swipeOffset < -20 ? min(abs(swipeOffset) / 60, 1.0) : 0)
@@ -136,12 +136,12 @@ struct TaskSelectorBar: View {
                     }
 
                     // Dropdown chevron
-                    Image(systemName: "chevron.down")
+                    Image("ops.chevron-down")
                         .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 } else {
                     // No task selected state
-                    Image(systemName: "line.3.horizontal")
+                    Image("ops.menu")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -157,7 +157,7 @@ struct TaskSelectorBar: View {
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
 
-                    Image(systemName: "chevron.down")
+                    Image("ops.chevron-down")
                         .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
@@ -199,7 +199,7 @@ struct TaskSelectorBar: View {
                             Spacer()
 
                             if selectedTask == nil {
-                                Image(systemName: "checkmark")
+                                Image("ops.checkmark")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
@@ -242,7 +242,7 @@ struct TaskSelectorBar: View {
 
                                 // Selection indicator
                                 if selectedTask?.id == task.id {
-                                    Image(systemName: "checkmark")
+                                    Image("ops.checkmark")
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 }

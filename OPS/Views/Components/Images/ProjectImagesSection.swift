@@ -58,7 +58,7 @@ struct ProjectImagesSection: View {
                     .padding()
                 
                 Button(action: { selectedImageURL = nil }) {
-                    Image(systemName: "xmark.circle.fill")
+                    Image("ops.close")
                         .font(.system(size: OPSStyle.Layout.IconSize.xl))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(20)
@@ -95,7 +95,7 @@ struct ProjectImagesSection: View {
     // Message about unsynced images
     private var unsyncedImagesMessage: some View {
         HStack {
-            Image(systemName: "icloud.slash")
+            Image("ops.offline")
                 .foregroundColor(OPSStyle.Colors.errorStatus)
             
             Text("Some images are not synced. They will be uploaded when network is available.")

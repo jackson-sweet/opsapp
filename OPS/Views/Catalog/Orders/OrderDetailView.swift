@@ -212,7 +212,7 @@ struct OrderDetailView: View {
                         expectedDeliveryField = nil
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
+                        Image("ops.close")
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                     .accessibilityLabel("Clear expected delivery")
@@ -326,14 +326,18 @@ struct OrderDetailView: View {
                     }
                 } else if canEdit {
                     Menu {
-                        Button("Edit", systemImage: "pencil") {
+                        Button {
                             startEditing(item)
+                        } label: {
+                            Label("Edit", image: "ops.edit")
                         }
-                        Button("Remove", systemImage: "trash", role: .destructive) {
+                        Button(role: .destructive) {
                             removeItem(item)
+                        } label: {
+                            Label("Remove", image: "ops.delete")
                         }
                     } label: {
-                        Image(systemName: "ellipsis")
+                        Image("ops.overflow")
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                             .frame(

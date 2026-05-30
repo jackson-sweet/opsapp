@@ -74,7 +74,7 @@ struct ExpenseCategorySettingsView: View {
             ForEach(viewModel.categories) { category in
                 HStack(spacing: OPSStyle.Layout.spacing3) {
                     // Drag handle
-                    Image(systemName: "line.3.horizontal")
+                    Image("ops.menu")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -85,7 +85,7 @@ struct ExpenseCategorySettingsView: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .frame(width: OPSStyle.Layout.IconSize.lg)
                     } else {
-                        Image(systemName: "tag.fill")
+                        Image("ops.task-type")
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                             .frame(width: OPSStyle.Layout.IconSize.lg)
@@ -144,7 +144,7 @@ struct ExpenseCategorySettingsView: View {
         Button {
             showAddCategory = true
         } label: {
-            Image(systemName: "plus")
+            Image("ops.add")
                 .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .medium))
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(width: OPSStyle.Layout.touchTargetLarge, height: OPSStyle.Layout.touchTargetLarge)

@@ -71,7 +71,7 @@ struct RouteDirectionsView: View {
             // Always show next direction first
             if let firstDirection = directions.first {
                 HStack {
-                    Image(systemName: "arrow.up")
+                    Image("ops.arrow-up")
                         .font(.system(size: OPSStyle.Layout.IconSize.lg))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: 40)
@@ -144,7 +144,7 @@ struct RouteDirectionsView: View {
                     }
                 }) {
                     HStack {
-                        Image(systemName: "chevron.up")
+                        Image("ops.chevron-up")
                         Text("Hide Directions")
                     }
                     .font(OPSStyle.Typography.cardSubtitle)
@@ -162,7 +162,7 @@ struct RouteDirectionsView: View {
                     )
                 }) {
                     HStack {
-                        Image(systemName: "xmark")
+                        Image("ops.close")
                         Text("Stop Navigation")
                     }
                     .font(OPSStyle.Typography.cardSubtitle)

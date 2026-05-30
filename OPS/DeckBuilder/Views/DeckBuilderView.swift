@@ -510,7 +510,7 @@ struct DeckBuilderView: View {
         .overlay(alignment: .top) {
             if let error = viewModel.saveError {
                 HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
+                    Image("ops.warning")
                         .foregroundColor(OPSStyle.Colors.warningStatus)
                     Text(error)
                         .font(OPSStyle.Typography.bodyBold)
@@ -601,7 +601,7 @@ struct DeckBuilderView: View {
     @ViewBuilder
     private func liveDimensionPill(label: String) -> some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: "ruler")
+            Image("ops.measure")
                 .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
             Text(label)
@@ -693,7 +693,7 @@ struct DeckBuilderView: View {
                 viewModel.showingSettings = true
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
-                Image(systemName: "gearshape")
+                Image("ops.nav-settings")
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -718,7 +718,7 @@ struct DeckBuilderView: View {
                 Button {
                     commitTitleEdit()
                 } label: {
-                    Image(systemName: "checkmark")
+                    Image("ops.checkmark")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 28, height: OPSStyle.Layout.touchTargetMin)
@@ -739,7 +739,7 @@ struct DeckBuilderView: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                     if canEditTitle {
-                        Image(systemName: "pencil")
+                        Image("ops.edit")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.6))
                     }
@@ -761,7 +761,7 @@ struct DeckBuilderView: View {
     private var editCluster2D: some View {
         HStack(spacing: 0) {
             Button { viewModel.undo() } label: {
-                Image(systemName: "arrow.uturn.backward")
+                Image("ops.undo")
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                     .foregroundColor(viewModel.canUndo ? Color.white : OPSStyle.Colors.tertiaryText)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -773,7 +773,7 @@ struct DeckBuilderView: View {
                 .overlay(OPSStyle.Colors.cardBorder.opacity(0.4))
 
             Button { viewModel.redo() } label: {
-                Image(systemName: "arrow.uturn.forward")
+                Image("ops.redo")
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                     .foregroundColor(viewModel.canRedo ? Color.white : OPSStyle.Colors.tertiaryText)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -792,25 +792,25 @@ struct DeckBuilderView: View {
                         showingTemplatePicker = true
                     }
                 } label: {
-                    Label("From Template", systemImage: "square.grid.2x2")
+                    Label("From Template", image: "ops.view-grid")
                 }
                 Button { showingSketchCapture = true } label: {
-                    Label("Scan Paper Sketch", systemImage: "doc.text.viewfinder")
+                    Label("Scan Paper Sketch", image: "ops.invoice")
                 }
                 Button { showingARPerimeter = true } label: {
-                    Label("Walk Perimeter (AR)", systemImage: "camera.viewfinder")
+                    Label("Walk Perimeter (AR)", image: "ops.scan")
                 }
                 Divider()
                 if viewModel.isLaserConnected {
-                    Label("Laser Connected", systemImage: "antenna.radiowaves.left.and.right")
+                    Label("Laser Connected", image: "ops.laser-meter")
                 } else {
                     Button(action: {}) {
-                        Label("Connect Laser Meter", systemImage: "antenna.radiowaves.left.and.right")
+                        Label("Connect Laser Meter", image: "ops.laser-meter")
                     }
                     .disabled(true)
                 }
             } label: {
-                Image(systemName: "plus.circle")
+                Image("ops.add-circle")
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -881,7 +881,7 @@ struct DeckBuilderView: View {
                 .lineLimit(1)
             if let perimeter = viewModel.totalPerimeter {
                 Label(DimensionEngine.format(perimeter, system: viewModel.drawingData.config.measurementSystem),
-                      systemImage: "ruler")
+                      image: "ops.measure")
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineLimit(1)

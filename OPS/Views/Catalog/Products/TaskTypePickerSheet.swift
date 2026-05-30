@@ -96,7 +96,7 @@ struct TaskTypePickerSheet: View {
 
     private var searchField: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: "magnifyingglass")
+            Image("ops.search")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             TextField("Search", text: $searchQuery)
@@ -109,7 +109,7 @@ struct TaskTypePickerSheet: View {
                     searchQuery = ""
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
+                    Image("ops.close")
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 }
@@ -134,7 +134,7 @@ struct TaskTypePickerSheet: View {
             showingCreateSheet = true
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: "plus.circle.fill")
+                Image("ops.add-circle")
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 Text("// + NEW TASK TYPE")
@@ -178,7 +178,7 @@ struct TaskTypePickerSheet: View {
                     .lineLimit(1)
                 Spacer()
                 if isSelected {
-                    Image(systemName: "checkmark")
+                    Image("ops.checkmark")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }

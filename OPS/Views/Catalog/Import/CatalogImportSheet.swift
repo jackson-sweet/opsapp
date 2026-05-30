@@ -226,7 +226,7 @@ struct CatalogImportSheet: View {
                         }
                     }
                 if s != Step.allCases.last {
-                    Image(systemName: "chevron.right")
+                    Image("ops.chevron-right")
                         .font(.caption2)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
@@ -266,7 +266,7 @@ struct CatalogImportSheet: View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
 
-            Image(systemName: "square.and.arrow.down")
+            Image("ops.download")
                 .font(.system(size: 56, weight: .light))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -441,7 +441,7 @@ struct CatalogImportSheet: View {
                                 ? OPSStyle.Colors.tertiaryText
                                 : OPSStyle.Colors.primaryText
                         )
-                    Image(systemName: "chevron.down")
+                    Image("ops.chevron-down")
                         .font(.caption2)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
@@ -645,7 +645,7 @@ struct CatalogImportSheet: View {
                     .font(OPSStyle.Typography.panelTitle)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             } else if applySucceeded {
-                Image(systemName: "checkmark.seal")
+                Image("ops.deal-won")
                     .font(.system(size: 56, weight: .light))
                     .foregroundColor(OPSStyle.Colors.successStatus)
                 Text("// IMPORTED")
@@ -662,7 +662,7 @@ struct CatalogImportSheet: View {
                 .buttonStyle(PrimaryStepButton(disabled: false))
                 .padding(.top, OPSStyle.Layout.spacing3)
             } else if let err = applyError {
-                Image(systemName: "exclamationmark.triangle")
+                Image("ops.warning")
                     .font(.system(size: 48, weight: .light))
                     .foregroundColor(OPSStyle.Colors.errorStatus)
                 Text("// IMPORT FAILED")

@@ -117,7 +117,7 @@ struct ProjectPinCard: View {
                             .font(OPSStyle.Typography.miniLabel)
                             .tracking(0.3)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        Image(systemName: "chevron.up")
+                        Image("ops.chevron-up")
                             .font(.system(size: 8, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Spacer()
@@ -416,7 +416,7 @@ struct ProjectPinCard: View {
             .fill(Color.white.opacity(0.05))
             .frame(width: 80, height: 80)
             .overlay(
-                Image(systemName: "photo")
+                Image("ops.photo")
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             )
     }

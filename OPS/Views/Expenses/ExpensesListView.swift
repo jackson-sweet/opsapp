@@ -208,7 +208,7 @@ struct ExpensesListView: View {
             Spacer()
 
             Button(action: { showExpenseSettings = true }) {
-                Image(systemName: "gearshape")
+                Image("ops.nav-settings")
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
@@ -555,7 +555,7 @@ struct ExpensesListView: View {
 
     private var emptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
-            Image(systemName: "doc.text.magnifyingglass")
+            Image("ops.nav-set-audit")
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Text("NO BATCHES TO REVIEW")

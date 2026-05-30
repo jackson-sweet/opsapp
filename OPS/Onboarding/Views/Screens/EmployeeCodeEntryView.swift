@@ -44,7 +44,7 @@ struct EmployeeCodeEntryView: View {
                     Button {
                         back()
                     } label: {
-                        Image(systemName: "chevron.left")
+                        Image("ops.chevron-left")
                             .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: 44, height: 44)
@@ -104,7 +104,7 @@ struct EmployeeCodeEntryView: View {
                                 Text("JOIN CREW")
                                     .font(OPSStyle.Typography.bodyBold)
                                 Spacer()
-                                Image(systemName: "arrow.right")
+                                Image("ops.arrow-right")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             }
                         }

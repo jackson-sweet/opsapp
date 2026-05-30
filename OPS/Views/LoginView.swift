@@ -46,7 +46,7 @@ struct LoginView: View {
                     if let onBack = onBack {
                         Button(action: onBack) {
                             HStack(spacing: 4) {
-                                Image(systemName: "chevron.left")
+                                Image("ops.chevron-left")
                                     .font(OPSStyle.Typography.caption.weight(.semibold))
                                 Text("Back")
                                     .font(OPSStyle.Typography.button)
@@ -125,7 +125,7 @@ struct LoginView: View {
                             !isLoggingIn ?
                             HStack {
                                 Spacer()
-                                Image(systemName: "arrow.right")
+                                Image("ops.arrow-right")
                                     .foregroundColor(OPSStyle.Colors.invertedText)
                                     .font(OPSStyle.Typography.caption.weight(.semibold))
                                     .padding(.trailing, 20)

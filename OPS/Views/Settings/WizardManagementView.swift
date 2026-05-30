@@ -134,7 +134,7 @@ struct WizardManagementView: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                     HStack(spacing: 4) {
-                        Image(systemName: "lock.fill")
+                        Image("ops.locked")
                             .font(.system(size: 10))
                         Text(locked)
                             .font(OPSStyle.Typography.smallCaption)
@@ -198,7 +198,7 @@ struct WizardManagementView: View {
             switch state.status {
             case .completed:
                 HStack(spacing: 4) {
-                    Image(systemName: "checkmark.circle.fill")
+                    Image("ops.success")
                         .font(.system(size: 12))
                         .foregroundColor(OPSStyle.Colors.successStatus)
                     Text("Completed")

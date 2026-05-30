@@ -199,7 +199,7 @@ struct CompanyConfirmationScreen: View {
                                 Text("JOIN CREW")
                                     .font(OPSStyle.Typography.bodyBold)
                                 Spacer()
-                                Image(systemName: "arrow.right")
+                                Image("ops.arrow-right")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             }
                         }

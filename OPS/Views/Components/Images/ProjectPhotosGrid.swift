@@ -79,7 +79,7 @@ struct ProjectPhotosGrid: View {
                                             if longPressingPhotoIndex == index {
                                                 OPSStyle.Colors.modalOverlay
 
-                                                Image(systemName: "trash")
+                                                Image("ops.delete")
                                                     .font(.system(size: OPSStyle.Layout.IconSize.xl))
                                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                             }
@@ -296,7 +296,7 @@ struct PhotoThumbnail: View {
             } else if isLoading {
                 ProgressView()
             } else {
-                Image(systemName: "photo")
+                Image("ops.photo")
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
@@ -436,7 +436,7 @@ struct PhotoSyncFailBadge: View {
                 .fill(OPSStyle.Colors.errorStatus)
                 .frame(width: 22, height: 22)
 
-            Image(systemName: "icloud.slash")
+            Image("ops.offline")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }
@@ -491,7 +491,7 @@ struct BasicPhotoViewer: View {
                 HStack {
                     Spacer()
                     Button(action: onDismiss) {
-                        Image(systemName: "xmark.circle.fill")
+                        Image("ops.close")
                             .font(.system(size: OPSStyle.Layout.IconSize.xl))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .padding(20)
@@ -505,7 +505,7 @@ struct BasicPhotoViewer: View {
                         Spacer()
                         Button(action: { showingAnnotation = true }) {
                             HStack(spacing: OPSStyle.Layout.spacing1) {
-                                Image(systemName: "pencil.tip")
+                                Image("ops.draw-pen")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 Text("ANNOTATE")
                                     .font(OPSStyle.Typography.captionBold)

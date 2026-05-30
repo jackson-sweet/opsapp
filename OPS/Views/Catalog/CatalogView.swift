@@ -175,35 +175,35 @@ struct CatalogView: View {
                 if showStockSection {
                     Section("STOCK") {
                         Button { showSnapshots = true } label: {
-                            Label("Snapshots", systemImage: "clock.arrow.circlepath")
+                            Label("Snapshots", image: "ops.in-progress")
                         }
                         if showStockManageRows {
-                            Button { showCategoriesManage = true } label: { Label("Categories", systemImage: "folder") }
-                            Button { showTagsManage = true }       label: { Label("Tags", systemImage: "tag") }
-                            Button { showUnitsManage = true }      label: { Label("Units", systemImage: "ruler") }
-                            Button { showThresholdsManage = true } label: { Label("Thresholds", systemImage: "exclamationmark.triangle") }
+                            Button { showCategoriesManage = true } label: { Label("Categories", image: "ops.project") }
+                            Button { showTagsManage = true }       label: { Label("Tags", image: "ops.task-type") }
+                            Button { showUnitsManage = true }      label: { Label("Units", image: "ops.measure") }
+                            Button { showThresholdsManage = true } label: { Label("Thresholds", image: "ops.warning") }
                         }
                     }
                 }
                 if showOrdersSection {
                     Section("ORDERS") {
-                        Button { showOrders = true } label: { Label("Orders", systemImage: "shippingbox") }
+                        Button { showOrders = true } label: { Label("Orders", image: "ops.inventory-item") }
                     }
                 }
                 if showSetupSection {
                     Section("SETUP") {
                         if canManage {
-                            Button { showDefaultsManage = true } label: { Label("Defaults", systemImage: "gearshape") }
+                            Button { showDefaultsManage = true } label: { Label("Defaults", image: "ops.nav-settings") }
                         }
                         if permissionStore.can("catalog.import") {
                             Button { showImport = true } label: {
-                                Label("Import…", systemImage: "square.and.arrow.down")
+                                Label("Import…", image: "ops.download")
                             }
                         }
                     }
                 }
             } label: {
-                Image(systemName: "ellipsis")
+                Image("ops.overflow")
                     .font(.title3)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)

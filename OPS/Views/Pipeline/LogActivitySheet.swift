@@ -248,7 +248,7 @@ struct LogActivitySheet: View {
                             Circle()
                                 .fill(OPSStyle.Colors.successStatus.opacity(0.2))
                                 .frame(width: 36, height: 36)
-                            Image(systemName: "checkmark")
+                            Image("ops.checkmark")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(OPSStyle.Colors.successStatus)
                         }
@@ -266,7 +266,7 @@ struct LogActivitySheet: View {
                             Circle()
                                 .fill(OPSStyle.Colors.warningStatus.opacity(0.2))
                                 .frame(width: 36, height: 36)
-                            Image(systemName: "plus")
+                            Image("ops.add")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
                         }
@@ -280,7 +280,7 @@ struct LogActivitySheet: View {
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
                         }
                     } else {
-                        Image(systemName: "person.crop.circle.badge.questionmark")
+                        Image("ops.contact")
                             .font(.system(size: 20))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -291,7 +291,7 @@ struct LogActivitySheet: View {
 
                     Spacer()
 
-                    Image(systemName: "chevron.right")
+                    Image("ops.chevron-right")
                         .font(.system(size: 14))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
@@ -341,7 +341,7 @@ struct LogActivitySheet: View {
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                             Spacer()
-                            Image(systemName: "chevron.right")
+                            Image("ops.chevron-right")
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }

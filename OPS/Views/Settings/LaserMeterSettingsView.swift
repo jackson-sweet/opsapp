@@ -70,7 +70,7 @@ struct LaserMeterSettingsView: View {
             Button {
                 dismiss()
             } label: {
-                Image(systemName: "xmark")
+                Image("ops.close")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(.white)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -98,7 +98,7 @@ struct LaserMeterSettingsView: View {
     private var bluetoothOffBanner: some View {
         VStack(spacing: 12) {
             HStack(spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
+                Image("ops.warning")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
 
@@ -190,7 +190,7 @@ struct LaserMeterSettingsView: View {
                         .padding(.leading, 62)
 
                     HStack(spacing: 14) {
-                        Image(systemName: "ruler")
+                        Image("ops.measure")
                             .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .frame(width: 32, alignment: .center)
@@ -215,7 +215,7 @@ struct LaserMeterSettingsView: View {
                     showForgetConfirmation = true
                 } label: {
                     HStack(spacing: 14) {
-                        Image(systemName: "trash")
+                        Image("ops.delete")
                             .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                             .frame(width: 32, alignment: .center)
@@ -301,7 +301,7 @@ struct LaserMeterSettingsView: View {
                     HStack {
                         Spacer()
                         VStack(spacing: 8) {
-                            Image(systemName: "antenna.radiowaves.left.and.right")
+                            Image("ops.laser-meter")
                                 .font(.system(size: 28, weight: .light))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -393,7 +393,7 @@ struct LaserMeterSettingsView: View {
     private var idleSection: some View {
         VStack(spacing: 16) {
             VStack(spacing: 8) {
-                Image(systemName: "antenna.radiowaves.left.and.right")
+                Image("ops.laser-meter")
                     .font(.system(size: 36, weight: .light))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 

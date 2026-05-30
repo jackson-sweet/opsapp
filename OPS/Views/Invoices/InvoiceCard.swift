@@ -27,7 +27,7 @@ struct InvoiceCard: View {
             // Swipe-right reveal — record payment
             if canSwipeRight {
                 HStack {
-                    Label("PAYMENT", systemImage: "dollarsign.circle.fill")
+                    Label("PAYMENT", image: "ops.expense")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.invertedText)
                         .padding(.leading, OPSStyle.Layout.spacing3)
@@ -43,7 +43,7 @@ struct InvoiceCard: View {
             if !invoice.status.isTerminal {
                 HStack {
                     Spacer()
-                    Label("VOID", systemImage: "xmark.circle.fill")
+                    Label("VOID", image: "ops.close")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(.trailing, OPSStyle.Layout.spacing3)
@@ -133,18 +133,18 @@ struct InvoiceCard: View {
         .contextMenu {
             if invoice.status.needsPayment {
                 Button(action: onSwipeRight) {
-                    Label("Record Payment", systemImage: "dollarsign.circle")
+                    Label("Record Payment", image: "ops.expense")
                 }
             }
 
             if !invoice.status.isTerminal {
                 Button(action: onSwipeLeft) {
-                    Label("Void Invoice", systemImage: "xmark.circle")
+                    Label("Void Invoice", image: "ops.close")
                 }
 
                 if invoice.status.needsPayment, let writeOff = onWriteOff {
                     Button(role: .destructive, action: writeOff) {
-                        Label("Bad Debt", systemImage: "exclamationmark.triangle")
+                        Label("Bad Debt", image: "ops.warning")
                     }
                 }
             }

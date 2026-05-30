@@ -365,7 +365,7 @@ struct TaskTypeSheet: View {
                 requestDelete(taskType)
             }) {
                 HStack(spacing: 10) {
-                    Image(systemName: "trash")
+                    Image("ops.delete")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     Text("DELETE TYPE")
                         .font(OPSStyle.Typography.bodyBold)
@@ -592,7 +592,7 @@ struct TaskTypeSheet: View {
 
                 Button(action: { showingDependencyPicker = true }) {
                     HStack(spacing: 6) {
-                        Image(systemName: "plus.circle.fill")
+                        Image("ops.add-circle")
                         Text("Add Dependency")
                     }
                     .font(OPSStyle.Typography.caption)
@@ -640,7 +640,7 @@ struct TaskTypeSheet: View {
                         showingAttachProductSheet = true
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "link.badge.plus")
+                            Image("ops.link")
                             Text("ATTACH EXISTING")
                         }
                         .font(OPSStyle.Typography.captionBold)
@@ -659,7 +659,7 @@ struct TaskTypeSheet: View {
                         showingNewLinkedProductSheet = true
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "plus.circle.fill")
+                            Image("ops.add-circle")
                             Text("NEW PRODUCT")
                         }
                         .font(OPSStyle.Typography.captionBold)
@@ -760,7 +760,7 @@ struct TaskTypeSheet: View {
                     showingNewSubTaskSheet = true
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "plus.circle.fill")
+                        Image("ops.add-circle")
                         Text("ADD SUB-TASK")
                     }
                     .font(OPSStyle.Typography.captionBold)
@@ -803,7 +803,7 @@ struct TaskTypeSheet: View {
                     }
                 }
                 Spacer()
-                Image(systemName: "pencil")
+                Image("ops.edit")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
@@ -970,7 +970,7 @@ struct TaskTypeSheet: View {
                     // dependency carries pair behavior beyond pure scheduling.
                     if dep.autoCreate && !isEditing {
                         HStack(spacing: 6) {
-                            Image(systemName: "sparkles")
+                            Image("ops.ai")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             Text("AUTO-CREATED FROM \(depName.uppercased())")
                                 .font(OPSStyle.Typography.smallCaption)
@@ -1856,7 +1856,7 @@ struct ColorOption: View {
                         Circle()
                             .fill(OPSStyle.Colors.background.opacity(0.82))
                             .frame(width: 18, height: 18)
-                        Image(systemName: "checkmark")
+                        Image("ops.checkmark")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }

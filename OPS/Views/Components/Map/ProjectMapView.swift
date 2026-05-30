@@ -133,7 +133,7 @@ struct ProjectMapView: View {
                                     .fill(OPSStyle.Colors.cardBackground.opacity(0.8))
                                     .frame(width: 44, height: 44)
                                 
-                                Image(systemName: "location.fill")
+                                Image("ops.job-site")
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                             }

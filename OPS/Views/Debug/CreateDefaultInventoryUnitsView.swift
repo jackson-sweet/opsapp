@@ -42,7 +42,7 @@ struct CreateDefaultInventoryUnitsView: View {
             VStack(spacing: 24) {
                 // Header
                 VStack(spacing: 8) {
-                    Image(systemName: "shippingbox.fill")
+                    Image("ops.inventory-item")
                         .font(.system(size: 48))
                         .foregroundColor(Color.teal)
 
@@ -241,7 +241,7 @@ struct UnitChip: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
 
             if isDefault {
-                Image(systemName: "checkmark.seal.fill")
+                Image("ops.deal-won")
                     .font(.system(size: 10))
                     .foregroundColor(Color.teal)
             }

@@ -65,7 +65,7 @@ struct ColumnMappingView: View {
 
     private var infoBanner: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: "info.circle")
+            Image("ops.info")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -129,7 +129,7 @@ struct ColumnMappingView: View {
                             Text(field.rawValue)
                             Spacer()
                             if mapping.wrappedValue.field == field {
-                                Image(systemName: "checkmark")
+                                Image("ops.checkmark")
                             }
                         }
                     }
@@ -142,7 +142,7 @@ struct ColumnMappingView: View {
 
                     Spacer()
 
-                    Image(systemName: "chevron.up.chevron.down")
+                    Image("ops.sort")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
@@ -176,7 +176,7 @@ struct ColumnMappingView: View {
     private var bulkTagsSection: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: 6) {
-                Image(systemName: "tag.fill")
+                Image("ops.task-type")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Text("[ APPLY TAGS TO ALL ITEMS ]")
@@ -289,7 +289,7 @@ struct ColumnMappingView: View {
                 Text(name)
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                Image(systemName: "xmark")
+                Image("ops.close")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundColor(OPSStyle.Colors.primaryText.opacity(0.7))
             }
@@ -308,7 +308,7 @@ struct ColumnMappingView: View {
             bulkTagNames.insert(tag.name)
         }) {
             HStack(spacing: 5) {
-                Image(systemName: "plus")
+                Image("ops.add")
                     .font(.system(size: 9, weight: .bold))
                 Text(tag.name)
                     .font(OPSStyle.Typography.smallCaption)
@@ -352,7 +352,7 @@ struct ColumnMappingView: View {
             }) {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     Text("CONTINUE")
-                    Image(systemName: "arrow.right")
+                    Image("ops.arrow-right")
                 }
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(hasNameMapping ? .black : OPSStyle.Colors.tertiaryText)

@@ -106,7 +106,7 @@ struct WelcomeView: View {
                             .overlay(
                                 HStack {
                                     Spacer()
-                                    Image(systemName: "arrow.right")
+                                    Image("ops.arrow-right")
                                         .foregroundColor(OPSStyle.Colors.invertedText)
                                         .font(OPSStyle.Typography.caption.weight(.semibold))
                                         .padding(.trailing, 20)

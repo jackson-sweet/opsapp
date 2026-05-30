@@ -117,7 +117,7 @@ struct LinkedProductsAttachSheet: View {
 
     private var searchField: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: "magnifyingglass")
+            Image("ops.search")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             TextField("Search products", text: $searchQuery)
@@ -129,7 +129,7 @@ struct LinkedProductsAttachSheet: View {
                     searchQuery = ""
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
+                    Image("ops.close")
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 }

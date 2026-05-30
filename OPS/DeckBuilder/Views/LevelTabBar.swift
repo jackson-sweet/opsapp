@@ -22,7 +22,7 @@ struct LevelTabBar: View {
                         viewModel.showingLevelConnectionSheet = true
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "arrow.up.arrow.down")
+                            Image("ops.sort")
                                 .font(OPSStyle.Typography.smallCaption)
                             Text("Connect")
                                 .font(OPSStyle.Typography.caption)
@@ -112,7 +112,7 @@ struct LevelTabBar: View {
                 renameText = level.name
                 renamingIndex = index
             } label: {
-                Label("Rename", systemImage: "pencil")
+                Label("Rename", image: "ops.edit")
             }
 
             Button(role: .destructive) {
@@ -121,7 +121,7 @@ struct LevelTabBar: View {
                     showDeleteError = true
                 }
             } label: {
-                Label("Delete Level", systemImage: "trash")
+                Label("Delete Level", image: "ops.delete")
             }
         }
     }

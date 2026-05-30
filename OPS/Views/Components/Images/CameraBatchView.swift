@@ -158,7 +158,7 @@ struct CameraBatchView: View {
                     Circle()
                         .fill(Color.black.opacity(0.55))
                         .frame(width: 56, height: 56)
-                    Image(systemName: "photo.on.rectangle")
+                    Image("ops.photo")
                         .font(.system(size: OPSStyle.Layout.IconSize.lg))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
@@ -390,7 +390,7 @@ private struct CapturedStackReview: View {
                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                     images.remove(at: index)
                                 }) {
-                                    Image(systemName: "xmark.circle.fill")
+                                    Image("ops.close")
                                         .font(.system(size: 22))
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                         .background(

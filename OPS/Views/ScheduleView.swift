@@ -437,7 +437,7 @@ struct ScheduleView: View {
 
                         Spacer()
 
-                        Image(systemName: "arrow.right")
+                        Image("ops.arrow-right")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.buttonText)
                     }
@@ -501,7 +501,7 @@ struct ScheduleView: View {
                 mirrorBannerDismissCount += 1
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
-                Image(systemName: "xmark")
+                Image("ops.close")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }

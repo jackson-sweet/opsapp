@@ -263,7 +263,7 @@ struct SearchBar: View {
     var body: some View {
         HStack(spacing: 12) {
             HStack {
-                Image(systemName: "magnifyingglass")
+                Image("ops.search")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.text3)
 
@@ -281,7 +281,7 @@ struct SearchBar: View {
                         searchText = ""
                         onSearch?()
                     }) {
-                        Image(systemName: "xmark.circle.fill")
+                        Image("ops.close")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.text3)
                     }

@@ -263,7 +263,7 @@ struct ImportConfigView: View {
         Button(action: onContinue) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 Text("CONTINUE")
-                Image(systemName: "arrow.right")
+                Image("ops.arrow-right")
             }
             .font(OPSStyle.Typography.captionBold)
             .foregroundColor(OPSStyle.Colors.invertedText)

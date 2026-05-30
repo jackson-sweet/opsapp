@@ -613,7 +613,7 @@ struct AllPhotosGalleryView: View {
                 ZStack(alignment: .bottomTrailing) {
                     OPSStyle.Colors.cardBackgroundDark
 
-                    Image(systemName: "icloud.and.arrow.down")
+                    Image("ops.download")
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .padding(6)
@@ -622,7 +622,7 @@ struct AllPhotosGalleryView: View {
 
             // Pinned indicator — bottom-leading, only in normal mode
             if isPinned && !isSelectMode {
-                Image(systemName: "pin.fill")
+                Image("ops.pin")
                     .font(.system(size: 9))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .padding(4)
@@ -640,7 +640,7 @@ struct AllPhotosGalleryView: View {
                             .fill(OPSStyle.Colors.primaryAccent)
                             .frame(width: 22, height: 22)
 
-                        Image(systemName: "checkmark")
+                        Image("ops.checkmark")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     } else {
@@ -749,7 +749,7 @@ struct AllPhotosGalleryView: View {
         HStack(spacing: OPSStyle.Layout.spacing3) {
             Button(action: shareSelectedPhotos) {
                 VStack(spacing: 4) {
-                    Image(systemName: "square.and.arrow.up")
+                    Image("ops.share")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                     Text("Share")
                         .font(OPSStyle.Typography.smallCaption)
@@ -762,7 +762,7 @@ struct AllPhotosGalleryView: View {
 
             Button(action: keepSelectedDownloaded) {
                 VStack(spacing: 4) {
-                    Image(systemName: "pin.fill")
+                    Image("ops.pin")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                     Text("Keep Downloaded")
                         .font(OPSStyle.Typography.smallCaption)
@@ -775,7 +775,7 @@ struct AllPhotosGalleryView: View {
 
             Button(action: saveSelectedToDevice) {
                 VStack(spacing: 4) {
-                    Image(systemName: "arrow.down.to.line")
+                    Image("ops.download")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                     Text("Save to Device")
                         .font(OPSStyle.Typography.smallCaption)
@@ -800,7 +800,7 @@ struct AllPhotosGalleryView: View {
     private var emptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
-            Image(systemName: "photo.on.rectangle.angled")
+            Image("ops.photo")
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Text("NO PHOTOS YET")
@@ -820,7 +820,7 @@ struct AllPhotosGalleryView: View {
     /// term back to them and exposes a Clear action in the same tap target.
     private var inlineNoResultsCard: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: "photo.on.rectangle.angled")
+            Image("ops.photo")
                 .font(.system(size: OPSStyle.Layout.IconSize.xl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 

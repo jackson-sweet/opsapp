@@ -59,7 +59,7 @@ struct MiniMapView: View {
                                         .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                                         .scaleEffect(0.9)
                                 } else {
-                                    Image(systemName: "mappin.slash.circle")
+                                    Image("ops.address")
                                         .font(.system(size: OPSStyle.Layout.IconSize.xl))
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
                                 }
@@ -85,7 +85,7 @@ struct MiniMapView: View {
                     OPSStyle.Colors.cardBackgroundDark
                         .overlay(
                             VStack(spacing: 8) {
-                                Image(systemName: "map.slash")
+                                Image("ops.nav-map")
                                     .font(.system(size: OPSStyle.Layout.IconSize.xl))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -107,7 +107,7 @@ struct MiniMapView: View {
                     Spacer()
                     HStack {
                         Spacer()
-                        Image(systemName: "arrow.up.forward.app.fill")
+                        Image("ops.external-link")
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .padding(8)

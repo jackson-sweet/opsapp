@@ -38,7 +38,7 @@ struct EmergencyContactScreen: View {
                 Button {
                     manager.goBack()
                 } label: {
-                    Image(systemName: "chevron.left")
+                    Image("ops.chevron-left")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: 44, height: 44)

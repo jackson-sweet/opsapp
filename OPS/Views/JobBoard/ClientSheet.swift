@@ -152,7 +152,7 @@ struct ClientSheet: View {
                                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                             showingContactPicker = true
                                         }) {
-                                            Image(systemName: "person.crop.circle.badge.plus")
+                                            Image("ops.invite-member")
                                                 .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .regular))
                                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                                                 .frame(width: 44, height: 44)
@@ -334,7 +334,7 @@ struct ClientSheet: View {
                         // IMPORT FROM CONTACTS BUTTON (at bottom) - available in both create and edit modes
                         Button(action: { showingContactPicker = true }) {
                             HStack {
-                                Image(systemName: "person.crop.circle")
+                                Image("ops.team-member")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -489,7 +489,7 @@ struct ClientSheet: View {
                             .fill(OPSStyle.Colors.cardBackgroundDark)
                             .frame(width: 80, height: 80)
                             .overlay(
-                                Image(systemName: "building.2")
+                                Image("ops.company")
                                     .font(.system(size: OPSStyle.Layout.IconSize.xl))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             )
@@ -902,7 +902,7 @@ struct ClientSheet: View {
 
                     // Address
                     HStack(spacing: 4) {
-                        Image(systemName: "mappin.circle")
+                        Image("ops.site-visit")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Text(address.isEmpty ? "NO ADDRESS" : address.components(separatedBy: ",").first ?? address)
@@ -939,7 +939,7 @@ struct ClientSheet: View {
                             .fill(OPSStyle.Colors.cardBackgroundDark)
                             .frame(width: 56, height: 56)
                             .overlay(
-                                Image(systemName: "building.2")
+                                Image("ops.company")
                                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             )
@@ -966,7 +966,7 @@ struct DuplicateWarning: View {
     
     var body: some View {
         HStack {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image("ops.warning")
                 .foregroundColor(.orange)
                 .font(.system(size: OPSStyle.Layout.IconSize.md))
             

@@ -389,7 +389,7 @@ struct UniversalSearchSheet: View {
 
     private var searchBar: some View {
         HStack(spacing: 12) {
-            Image(systemName: "magnifyingglass")
+            Image("ops.search")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -401,7 +401,7 @@ struct UniversalSearchSheet: View {
 
             if !query.isEmpty {
                 Button(action: { query = "" }) {
-                    Image(systemName: "xmark.circle.fill")
+                    Image("ops.close")
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
             }
@@ -774,7 +774,7 @@ struct UniversalSearchSheet: View {
     private var emptyQueryState: some View {
         VStack(spacing: 32) {
             VStack(spacing: 12) {
-                Image(systemName: "magnifyingglass")
+                Image("ops.search")
                     .font(.system(size: OPSStyle.Layout.IconSize.xxl, weight: .light))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Text("Search projects, tasks, clients, and more")
@@ -793,7 +793,7 @@ struct UniversalSearchSheet: View {
     private var noResultsState: some View {
         VStack(spacing: 24) {
             VStack(spacing: 12) {
-                Image(systemName: "magnifyingglass")
+                Image("ops.search")
                     .font(.system(size: OPSStyle.Layout.IconSize.xl, weight: .light))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Text("No results for \"\(query)\"")
@@ -1007,7 +1007,7 @@ struct UniversalSearchSheet: View {
 
                 Button(action: revertCompletion) {
                     HStack(spacing: 4) {
-                        Image(systemName: "arrow.uturn.backward")
+                        Image("ops.undo")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                         Text("UNDO")
                             .font(OPSStyle.Typography.captionBold)
@@ -1170,7 +1170,7 @@ private struct SearchResultRow: View {
             }
 
             // Chevron
-            Image(systemName: "chevron.right")
+            Image("ops.chevron-right")
                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .padding(.leading, 2)

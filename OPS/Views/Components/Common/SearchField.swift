@@ -127,7 +127,7 @@ struct SearchField<Item: Identifiable & Hashable>: View {
             // Clear button
             if !searchText.isEmpty {
                 Button(action: clearSelection) {
-                    Image(systemName: "xmark.circle.fill")
+                    Image("ops.close")
                         .font(.system(size: OPSStyle.Layout.SearchField.clearButtonSize))
                         .foregroundColor(OPSStyle.Layout.SearchField.clearButtonColor)
                 }

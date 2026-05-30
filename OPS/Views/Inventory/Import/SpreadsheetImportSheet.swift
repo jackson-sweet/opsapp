@@ -176,7 +176,7 @@ struct SpreadsheetImportSheet: View {
         VStack(spacing: OPSStyle.Layout.spacing4) {
             Spacer()
 
-            Image(systemName: "doc.text")
+            Image("ops.document")
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl, weight: .thin))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -192,7 +192,7 @@ struct SpreadsheetImportSheet: View {
 
             Button(action: { isShowingFilePicker = true }) {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
-                    Image(systemName: "folder")
+                    Image("ops.project")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     Text("SELECT FILE")
                 }

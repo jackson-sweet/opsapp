@@ -154,7 +154,7 @@ struct OPSMapContainer: View {
                 Text("EXIT PROJECT")
                     .font(OPSStyle.Typography.smallButton)
                     .foregroundColor(OPSStyle.Colors.cardBackground)
-                Image(systemName: "xmark")
+                Image("ops.close")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(OPSStyle.Colors.cardBackground)
             }

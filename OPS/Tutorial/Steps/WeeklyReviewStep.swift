@@ -87,7 +87,7 @@ struct WeeklyReviewStep: View {
             // Swipe instruction
             HStack(spacing: 0) {
                 HStack(spacing: 6) {
-                    Image(systemName: "arrow.left")
+                    Image("ops.arrow-left")
                         .font(.system(size: 11, weight: .medium))
                     Text("SKIP")
                         .font(.smallCaption)
@@ -108,7 +108,7 @@ struct WeeklyReviewStep: View {
                     Text("COMPLETE")
                         .font(.smallCaption)
                         .tracking(1.2)
-                    Image(systemName: "arrow.right")
+                    Image("ops.arrow-right")
                         .font(.system(size: 11, weight: .medium))
                 }
                 .foregroundStyle(OPSStyle.Colors.successStatus.opacity(0.7))
@@ -126,7 +126,7 @@ struct WeeklyReviewStep: View {
                 .stroke(OPSStyle.Colors.successStatus.opacity(0.2), lineWidth: 1.5)
                 .frame(width: 64, height: 64)
                 .overlay(
-                    Image(systemName: "checkmark")
+                    Image("ops.checkmark")
                         .font(.system(size: 22, weight: .medium))
                         .foregroundStyle(OPSStyle.Colors.successStatus)
                 )
@@ -283,7 +283,7 @@ private struct TutorialReviewSwipeCard: View {
                 // Project + Client
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
-                        Image(systemName: "folder.fill")
+                        Image("ops.project")
                             .font(.system(size: 11))
                         Text(card.project)
                             .font(.caption)
@@ -291,7 +291,7 @@ private struct TutorialReviewSwipeCard: View {
                     .foregroundStyle(OPSStyle.Colors.secondaryText)
 
                     HStack(spacing: 6) {
-                        Image(systemName: "person.circle.fill")
+                        Image("ops.team-member")
                             .font(.system(size: 11))
                         Text(card.client)
                             .font(.caption)

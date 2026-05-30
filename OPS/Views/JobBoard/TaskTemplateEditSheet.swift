@@ -179,7 +179,7 @@ struct TaskTemplateEditSheet: View {
             showDeleteConfirmation = true
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: "trash")
+                Image("ops.delete")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 Text("DELETE SUB-TASK")
                     .font(OPSStyle.Typography.bodyBold)

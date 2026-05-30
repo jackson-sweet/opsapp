@@ -58,7 +58,7 @@ struct EstimateDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showOverflowMenu = true } label: {
-                    Image(systemName: "ellipsis")
+                    Image("ops.overflow")
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
             }

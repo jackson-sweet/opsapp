@@ -232,7 +232,7 @@ struct LeadsTabView: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 activeSheet = .add
             } label: {
-                Image(systemName: "plus")
+                Image("ops.add")
                     .font(.system(size: 18, weight: .regular))
                     .foregroundColor(OPSStyle.Colors.text2)
                     .frame(width: 44, height: 44)

@@ -74,7 +74,7 @@ struct ProductKindPickerSheet: View {
                         .multilineTextAlignment(.leading)
                 }
                 Spacer()
-                Image(systemName: "chevron.right")
+                Image("ops.chevron-right")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

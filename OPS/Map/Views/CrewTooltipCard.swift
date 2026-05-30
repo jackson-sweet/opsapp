@@ -39,7 +39,7 @@ struct CrewTooltipCard: View {
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .lineLimit(1)
                         Spacer(minLength: 4)
-                        Image(systemName: "chevron.right")
+                        Image("ops.chevron-right")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
@@ -81,7 +81,7 @@ struct CrewTooltipCard: View {
                 // CALL button
                 Button(action: onCall) {
                     HStack(spacing: 6) {
-                        Image(systemName: "phone.fill")
+                        Image("ops.call")
                             .font(.system(size: 13))
                         Text("CALL")
                             .font(OPSStyle.Typography.caption)
@@ -100,7 +100,7 @@ struct CrewTooltipCard: View {
                 // MESSAGE button
                 Button(action: onMessage) {
                     HStack(spacing: 6) {
-                        Image(systemName: "message.fill")
+                        Image("ops.message")
                             .font(.system(size: 13))
                         Text("MESSAGE")
                             .font(OPSStyle.Typography.caption)

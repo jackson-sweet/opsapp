@@ -183,7 +183,7 @@ struct NewLinkedProductSheet: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
                     if selectedUnitId == unit.id {
-                        Label(unit.display, systemImage: "checkmark")
+                        Label(unit.display, image: "ops.checkmark")
                     } else {
                         Text(unit.display)
                     }
@@ -196,7 +196,7 @@ struct NewLinkedProductSheet: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
                 Spacer()
-                Image(systemName: "chevron.down")
+                Image("ops.chevron-down")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

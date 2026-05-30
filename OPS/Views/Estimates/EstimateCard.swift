@@ -57,7 +57,7 @@ struct EstimateCard: View {
             // Swipe-left reveal (void)
             HStack {
                 Spacer()
-                Label("VOID", systemImage: "xmark.circle.fill")
+                Label("VOID", image: "ops.close")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.trailing, OPSStyle.Layout.spacing3)

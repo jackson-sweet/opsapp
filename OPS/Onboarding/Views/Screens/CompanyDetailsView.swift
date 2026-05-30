@@ -54,7 +54,7 @@ struct CompanyDetailsView: View {
                         }
                     }) {
                         HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
+                            Image("ops.chevron-left")
                                 .font(OPSStyle.Typography.button)
                             Text("Back")
                                 .font(OPSStyle.Typography.button)
@@ -199,7 +199,7 @@ struct IndustryPhaseView: View {
                         
                         Spacer()
                         
-                        Image(systemName: "chevron.down")
+                        Image("ops.chevron-down")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -274,7 +274,7 @@ struct SizePhaseView: View {
                             Spacer()
                             
                             if selectedSize == size {
-                                Image(systemName: "checkmark.circle.fill")
+                                Image("ops.success")
                                     .font(OPSStyle.Typography.subtitle)
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             } else {
@@ -357,7 +357,7 @@ struct AgePhaseView: View {
                             Spacer()
                             
                             if selectedAge == age {
-                                Image(systemName: "checkmark.circle.fill")
+                                Image("ops.success")
                                     .font(OPSStyle.Typography.subtitle)
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             } else {
@@ -435,7 +435,7 @@ struct IndustryPickerView: View {
             VStack(spacing: 0) {
                 // Search Bar
                 HStack {
-                    Image(systemName: "magnifyingglass")
+                    Image("ops.search")
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     
                     TextField("Search industries...", text: $searchText)
@@ -465,7 +465,7 @@ struct IndustryPickerView: View {
                         Spacer()
                         
                         if selectedIndustry == industry {
-                            Image(systemName: "checkmark")
+                            Image("ops.checkmark")
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 .font(OPSStyle.Typography.bodyBold)
                         }

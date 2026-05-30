@@ -106,7 +106,7 @@ struct SeatManagementView: View {
                 }
             }) {
                 HStack {
-                    Image(systemName: "info.circle")
+                    Image("ops.info")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.warningStatus)
 
@@ -172,7 +172,7 @@ struct SeatManagementView: View {
             showPlanSelection = true
         }) {
             HStack(spacing: 6) {
-                Image(systemName: "plus.circle")
+                Image("ops.add-circle")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
                 Text("GET MORE SEATS")
@@ -227,7 +227,7 @@ struct SeatManagementView: View {
             // Status message
             if availableSeats <= 0 {
                 HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
+                    Image("ops.warning")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.warningStatus)
 
@@ -285,7 +285,7 @@ struct SeatManagementView: View {
         VStack(spacing: 16) {
             // Warning message - no background
             HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
+                Image("ops.warning")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
 

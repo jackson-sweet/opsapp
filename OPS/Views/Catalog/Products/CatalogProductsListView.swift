@@ -122,7 +122,7 @@ struct CatalogProductsListView: View {
 
     private var searchBar: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: "magnifyingglass")
+            Image("ops.search")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             TextField("Search products…", text: $searchText)
@@ -132,7 +132,7 @@ struct CatalogProductsListView: View {
                 .textInputAutocapitalization(.never)
             if !searchText.isEmpty {
                 Button { searchText = "" } label: {
-                    Image(systemName: "xmark.circle.fill")
+                    Image("ops.close")
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
             }

@@ -47,7 +47,7 @@ struct TaskBioSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: onDismiss) {
-                        Image(systemName: "xmark")
+                        Image("ops.close")
                             .font(.system(size: 16, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
@@ -90,7 +90,7 @@ struct TaskBioSheet: View {
                 .frame(height: 200)
                 .overlay(
                     VStack(spacing: 8) {
-                        Image(systemName: "photo.on.rectangle")
+                        Image("ops.photo")
                             .font(.system(size: 32))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Text("NO PHOTOS")

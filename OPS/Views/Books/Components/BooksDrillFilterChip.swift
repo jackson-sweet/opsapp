@@ -23,7 +23,7 @@ struct BooksDrillFilterChip: View {
                     .tracking(1.4)  // 0.14em at 10pt
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .textCase(.uppercase)
-                Image(systemName: "xmark")
+                Image("ops.close")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(OPSStyle.Colors.textMute)
                     .accessibilityHidden(true)

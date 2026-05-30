@@ -336,7 +336,7 @@ struct ProjectSearchSheet: View {
                             selectedSchedulingTypes.removeAll()
                         }) {
                             HStack {
-                                Image(systemName: "xmark.circle.fill")
+                                Image("ops.close")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 
                                 Text("CLEAR ALL FILTERS")
@@ -370,7 +370,7 @@ struct ProjectSearchSheet: View {
     private var taskSearchToggleSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: "checklist")
+                Image("ops.task")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 
@@ -398,7 +398,7 @@ struct ProjectSearchSheet: View {
                                 .fill(OPSStyle.Colors.primaryAccent)
                                 .frame(width: 14, height: 14)
                             
-                            Image(systemName: "checkmark")
+                            Image("ops.checkmark")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .bold))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
@@ -459,7 +459,7 @@ struct ProjectSearchSheet: View {
                             Text(status.displayName)
                             Spacer()
                             if selectedStatus == status {
-                                Image(systemName: "checkmark")
+                                Image("ops.checkmark")
                             }
                         }
                     }
@@ -478,7 +478,7 @@ struct ProjectSearchSheet: View {
                     
                     Spacer()
                     
-                    Image(systemName: "chevron.down")
+                    Image("ops.chevron-down")
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
@@ -498,7 +498,7 @@ struct ProjectSearchSheet: View {
     private var taskTypeFilterSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: "hammer.fill")
+                Image("ops.trade-general")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 
@@ -526,14 +526,14 @@ struct ProjectSearchSheet: View {
                             Text(taskType.display)
                             Spacer()
                             if selectedTaskTypeId == taskType.id {
-                                Image(systemName: "checkmark")
+                                Image("ops.checkmark")
                             }
                         }
                     }
                 }
             } label: {
                 HStack {
-                    Image(systemName: "hammer")
+                    Image("ops.trade-general")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     
@@ -544,7 +544,7 @@ struct ProjectSearchSheet: View {
                     
                     Spacer()
                     
-                    Image(systemName: "chevron.down")
+                    Image("ops.chevron-down")
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
@@ -593,14 +593,14 @@ struct ProjectSearchSheet: View {
                             Text(member.fullName)
                             Spacer()
                             if selectedTeamMemberId == member.id {
-                                Image(systemName: "checkmark")
+                                Image("ops.checkmark")
                             }
                         }
                     }
                 }
             } label: {
                 HStack {
-                    Image(systemName: "person.fill")
+                    Image("ops.client")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     
@@ -611,7 +611,7 @@ struct ProjectSearchSheet: View {
                     
                     Spacer()
                     
-                    Image(systemName: "chevron.down")
+                    Image("ops.chevron-down")
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }

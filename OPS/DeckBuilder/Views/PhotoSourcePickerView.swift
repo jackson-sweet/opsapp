@@ -100,7 +100,7 @@ struct PhotoSourcePickerView: View {
 
                 Spacer()
 
-                Image(systemName: "chevron.right")
+                Image("ops.chevron-right")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }

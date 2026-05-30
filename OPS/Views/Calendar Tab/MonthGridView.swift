@@ -548,7 +548,7 @@ struct MonthGridView: View {
                                 Text("JUMP TO")
                                     .font(OPSStyle.Typography.microLabel)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                                Image(systemName: "calendar.badge.clock")
+                                Image("ops.schedule-confirmed")
                                     .font(.system(size: 12, weight: .medium))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
@@ -1302,22 +1302,22 @@ struct EventBar: View {
                     Button {
                         push(1)
                     } label: {
-                        Label("Push 1 day", systemImage: "arrow.right")
+                        Label("Push 1 day", image: "ops.arrow-right")
                     }
                     Button {
                         push(3)
                     } label: {
-                        Label("Push 3 days", systemImage: "arrow.right.to.line")
+                        Label("Push 3 days", image: "ops.arrow-right")
                     }
                     Button {
                         push(7)
                     } label: {
-                        Label("Push 1 week", systemImage: "calendar.badge.plus")
+                        Label("Push 1 week", image: "ops.new-event")
                     }
                     Button {
                         push(-1)
                     } label: {
-                        Label("Pull back 1 day", systemImage: "arrow.left")
+                        Label("Pull back 1 day", image: "ops.arrow-left")
                     }
                     Divider()
                 }
@@ -1325,14 +1325,14 @@ struct EventBar: View {
                     Button {
                         openReschedule()
                     } label: {
-                        Label("Pick new date…", systemImage: "calendar")
+                        Label("Pick new date…", image: "ops.date")
                     }
                 }
                 if let openDayDetails = onOpenDayDetails {
                     Button {
                         openDayDetails()
                     } label: {
-                        Label("View details", systemImage: "info.circle")
+                        Label("View details", image: "ops.info")
                     }
                 }
             }

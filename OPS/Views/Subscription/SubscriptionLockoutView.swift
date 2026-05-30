@@ -94,7 +94,7 @@ struct SubscriptionLockoutView: View {
             
             Spacer()
             
-            Image(systemName: "lock.fill")
+            Image("ops.locked")
                 .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
@@ -143,7 +143,7 @@ struct SubscriptionLockoutView: View {
                         }
                     }) {
                         HStack(spacing: 8) {
-                            Image(systemName: "person.2.badge.gearshape")
+                            Image("ops.crew")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text("MANAGE TEAM SEATS")
                                 .font(OPSStyle.Typography.captionBold)
@@ -184,7 +184,7 @@ struct SubscriptionLockoutView: View {
                         showPlanSelection = true
                     }) {
                         HStack(spacing: 8) {
-                            Image(systemName: "creditcard")
+                            Image("ops.nav-set-billing")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text(primaryButtonText.uppercased())
                                 .font(OPSStyle.Typography.captionBold)
@@ -214,7 +214,7 @@ struct SubscriptionLockoutView: View {
                                     fillColor: refreshError || refreshResultNegative ? OPSStyle.Colors.errorStatus : (refreshComplete ? OPSStyle.Colors.successStatus : OPSStyle.Colors.tertiaryText)
                                 )
                             } else {
-                                Image(systemName: "arrow.clockwise")
+                                Image("ops.refresh")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             }
                             Text(buttonText)
@@ -240,7 +240,7 @@ struct SubscriptionLockoutView: View {
                     // state so admins know why they're still locked out.
                     if let reason = refreshFailureReason {
                         HStack(spacing: 6) {
-                            Image(systemName: "exclamationmark.triangle.fill")
+                            Image("ops.warning")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.errorStatus)
                             Text(reason.uppercased())
@@ -316,7 +316,7 @@ struct SubscriptionLockoutView: View {
                                 }
                             }) {
                                 HStack(spacing: 6) {
-                                    Image(systemName: "phone.fill")
+                                    Image("ops.call")
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     Text("CALL")
                                         .font(OPSStyle.Typography.captionBold)
@@ -336,7 +336,7 @@ struct SubscriptionLockoutView: View {
                                 }
                             }) {
                                 HStack(spacing: 6) {
-                                    Image(systemName: "envelope.fill")
+                                    Image("ops.email")
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     Text("EMAIL")
                                         .font(OPSStyle.Typography.captionBold)
@@ -371,7 +371,7 @@ struct SubscriptionLockoutView: View {
                             fillColor: nonAdminRefreshButtonColor
                         )
                     } else {
-                        Image(systemName: "arrow.clockwise")
+                        Image("ops.refresh")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     }
                     Text(nonAdminRefreshButtonText)
@@ -396,7 +396,7 @@ struct SubscriptionLockoutView: View {
             // check failed (no seat, subscription expired, etc).
             if let reason = refreshFailureReason {
                 HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
+                    Image("ops.warning")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                     Text(reason.uppercased())
@@ -564,7 +564,7 @@ struct SubscriptionLockoutView: View {
                     }
                 }) {
                     HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
+                        Image("ops.chevron-left")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         Text("BACK")
                             .font(OPSStyle.Typography.captionBold)
@@ -603,7 +603,7 @@ struct SubscriptionLockoutView: View {
             // Error message if any
             if let error = seatActionError {
                 HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
+                    Image("ops.warning")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                     Text(error.uppercased())
@@ -723,7 +723,7 @@ struct SubscriptionLockoutView: View {
                 showRemoveConfirmation = true
             }) {
                 HStack(spacing: 4) {
-                    Image(systemName: "person.fill.xmark")
+                    Image("ops.remove-member")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     Text("REVOKE")
                         .font(OPSStyle.Typography.smallCaption)
@@ -786,7 +786,7 @@ struct SubscriptionLockoutView: View {
                 }
             }) {
                 HStack(spacing: 4) {
-                    Image(systemName: "arrow.up.circle")
+                    Image("ops.upload")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     Text("GRANT")
                         .font(OPSStyle.Typography.smallCaption)
@@ -891,7 +891,7 @@ struct SubscriptionLockoutView: View {
                 dataController.logout()
             }) {
                 HStack(spacing: 6) {
-                    Image(systemName: "arrow.backward.square.fill")
+                    Image("ops.arrow-left")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     Text("SIGN OUT")
                         .font(OPSStyle.Typography.captionBold)  // Smaller, tactical font

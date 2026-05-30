@@ -148,7 +148,7 @@ struct UserTypeOption: View {
                 Spacer()
                 
                 // Selection indicator
-                Image(systemName: "rectangle.portrait.and.arrow.forward")
+                Image("ops.external-link")
                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
                     .foregroundColor(isSelected ? (isLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.invertedText) : primaryTextColor)
             }

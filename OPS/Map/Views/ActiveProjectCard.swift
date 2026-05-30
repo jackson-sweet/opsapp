@@ -22,7 +22,7 @@ struct ActiveProjectCard: View {
             // Icon block — matches NavigationManeuverCard's maneuver icon
             // so the transition between routing and non-routing states
             // feels like one card swapping content, not two different UIs.
-            Image(systemName: "mappin.and.ellipse")
+            Image("ops.address")
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundColor(.white)
                 .frame(width: 44, height: 44)

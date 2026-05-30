@@ -126,7 +126,7 @@ struct EstimatesListView: View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
             // Search field
             HStack {
-                Image(systemName: "magnifyingglass")
+                Image("ops.search")
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 TextField("Search estimates...", text: $searchText)
                     .font(OPSStyle.Typography.body)
@@ -136,7 +136,7 @@ struct EstimatesListView: View {
                     }
                 if !searchText.isEmpty {
                     Button { searchText = ""; viewModel.searchText = "" } label: {
-                        Image(systemName: "xmark.circle.fill")
+                        Image("ops.close")
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                 }
@@ -220,7 +220,7 @@ struct EstimatesListView: View {
         Button {
             showNewEstimateSheet = true
         } label: {
-            Image(systemName: "plus")
+            Image("ops.add")
                 .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .medium))
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(width: OPSStyle.Layout.touchTargetLarge, height: OPSStyle.Layout.touchTargetLarge)

@@ -66,7 +66,7 @@ struct ErrorMessageView: View {
     var body: some View {
         if !message.isEmpty {
             HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "exclamationmark.triangle.fill")
+                Image("ops.warning")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(Color("StatusError"))
                 
@@ -98,7 +98,7 @@ struct StandardNavigationHeader: View {
             if showBack {
                 Button(action: onBack) {
                     HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
+                        Image("ops.chevron-left")
                             .font(OPSStyle.Typography.caption)
                         Text("Back")
                             .font(OPSStyle.Typography.bodyBold)
@@ -275,7 +275,7 @@ struct OnboardingNavigationButtons: View {
                         Spacer()
                         
                         if !isLoading && !isPrimaryDisabled {
-                            Image(systemName: "arrow.right")
+                            Image("ops.arrow-right")
                                 .font(OPSStyle.Typography.captionBold)
                                 .padding(.trailing, 20)
                         }
@@ -302,7 +302,7 @@ struct OnboardingNavigationButtons: View {
                 Button(action: secondaryAction) {
                     HStack(spacing: 4) {
                         if secondaryText.lowercased() == "back" {
-                            Image(systemName: "chevron.left")
+                            Image("ops.chevron-left")
                                 .font(OPSStyle.Typography.captionBold)
                         }
                         
@@ -311,7 +311,7 @@ struct OnboardingNavigationButtons: View {
                         
                         if secondaryText.lowercased() != "back" {
                             Spacer()
-                            Image(systemName: "arrow.right")
+                            Image("ops.arrow-right")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(isLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                         }

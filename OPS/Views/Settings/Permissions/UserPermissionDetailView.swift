@@ -76,7 +76,7 @@ struct UserPermissionDetailView: View {
                             if let mgr = wizardStateManager, mgr.isActive,
                                mgr.activeWizard?.wizardId == "permissions_roles" {
                                 HStack(spacing: 10) {
-                                    Image(systemName: "info.circle.fill")
+                                    Image("ops.info")
                                         .font(.system(size: 14))
                                         .foregroundColor(OPSStyle.Colors.wizardAccent)
                                     Text("Assign a role below, or scroll down for per-person permission overrides.")
@@ -159,7 +159,7 @@ struct UserPermissionDetailView: View {
     private var roleSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: "person.badge.key")
+                Image("ops.role")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Text("ROLE")
@@ -171,7 +171,7 @@ struct UserPermissionDetailView: View {
             if isCompanyCreator {
                 // Creator lock — cannot change the account holder's role
                 HStack(spacing: 12) {
-                    Image(systemName: "lock.fill")
+                    Image("ops.locked")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -239,7 +239,7 @@ struct UserPermissionDetailView: View {
                 // Edit roles link
                 Button(action: { showRoleListSheet = true }) {
                     HStack(spacing: 6) {
-                        Image(systemName: "pencil.and.list.clipboard")
+                        Image("ops.edit")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         Text("Edit & manage roles")
                             .font(OPSStyle.Typography.caption)
@@ -283,7 +283,7 @@ struct UserPermissionDetailView: View {
     private var overridesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: "slider.horizontal.3")
+                Image("ops.adjust")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Text("PERMISSION OVERRIDES")

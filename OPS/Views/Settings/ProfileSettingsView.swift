@@ -103,7 +103,7 @@ struct ProfileSettingsView: View {
                                         // Home Address or Role
                                         if let address = user.homeAddress, !address.isEmpty {
                                             HStack(spacing: 4) {
-                                                Image(systemName: "mappin.circle")
+                                                Image("ops.site-visit")
                                                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                                                 Text(address.components(separatedBy: ",").first ?? address)
@@ -113,7 +113,7 @@ struct ProfileSettingsView: View {
                                             }
                                         } else {
                                             HStack(spacing: 4) {
-                                                Image(systemName: "person.badge.shield.checkmark")
+                                                Image("ops.shield-verified")
                                                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                                                 Text(user.role.displayName)

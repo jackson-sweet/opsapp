@@ -217,14 +217,14 @@ struct ImportPreviewView: View {
 
                         // Issue indicator with color
                         if hasIssue {
-                            Image(systemName: "exclamationmark.triangle.fill")
+                            Image("ops.warning")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
                         }
 
                         // Duplicate indicator with color
                         if isDupe {
-                            Image(systemName: "doc.on.doc.fill")
+                            Image("ops.copy")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.errorStatus)
                         }
@@ -243,7 +243,7 @@ struct ImportPreviewView: View {
 
                 // Edit button
                 Button(action: { startEditing(item) }) {
-                    Image(systemName: "pencil")
+                    Image("ops.edit")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .frame(width: 32, height: 32)
@@ -279,7 +279,7 @@ struct ImportPreviewView: View {
                 // Selection tools button
                 Button(action: { showingSelectionTools = true }) {
                     HStack(spacing: OPSStyle.Layout.spacing2) {
-                        Image(systemName: "checklist")
+                        Image("ops.task")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text("SELECTION TOOLS")
                             .font(OPSStyle.Typography.captionBold)
@@ -287,7 +287,7 @@ struct ImportPreviewView: View {
                         Text("\(selectedItemIds.count) selected")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        Image(systemName: "chevron.up")
+                        Image("ops.chevron-up")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
@@ -338,7 +338,7 @@ struct ImportPreviewView: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 Text(filter.displayText)
                     .font(OPSStyle.Typography.smallCaption)
-                Image(systemName: "xmark")
+                Image("ops.close")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
             }
             .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -473,7 +473,7 @@ struct ImportPreviewView: View {
 
                 Spacer()
 
-                Image(systemName: "chevron.right")
+                Image("ops.chevron-right")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -647,7 +647,7 @@ struct ImportPreviewView: View {
                                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
                                         Button(action: { removeEditTag(tag) }) {
-                                            Image(systemName: "xmark")
+                                            Image("ops.close")
                                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                         }
@@ -679,7 +679,7 @@ struct ImportPreviewView: View {
                                 .onSubmit { addEditTag() }
 
                             Button(action: addEditTag) {
-                                Image(systemName: "plus")
+                                Image("ops.add")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                                     .foregroundColor(editNewTag.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent)
                                     .frame(width: 36, height: 36)
@@ -798,7 +798,7 @@ struct ImportPreviewView: View {
                 renameTagText = tag
                 renamingTag = tag
             }) {
-                Image(systemName: "pencil")
+                Image("ops.edit")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(width: 32, height: 32)
@@ -813,7 +813,7 @@ struct ImportPreviewView: View {
 
             // Delete
             Button(action: { deleteTagGlobally(tag) }) {
-                Image(systemName: "trash")
+                Image("ops.delete")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.errorStatus.opacity(0.7))
                     .frame(width: 32, height: 32)

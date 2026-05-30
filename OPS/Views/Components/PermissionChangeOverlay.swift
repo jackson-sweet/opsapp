@@ -95,7 +95,7 @@ struct PermissionChangeOverlay: View {
                             }
                         }) {
                             HStack(spacing: 6) {
-                                Image(systemName: "envelope.fill")
+                                Image("ops.email")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 Text("EMAIL")
                                     .font(OPSStyle.Typography.captionBold)
@@ -119,7 +119,7 @@ struct PermissionChangeOverlay: View {
                             }
                         }) {
                             HStack(spacing: 6) {
-                                Image(systemName: "phone.fill")
+                                Image("ops.call")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 Text("CALL")
                                     .font(OPSStyle.Typography.captionBold)

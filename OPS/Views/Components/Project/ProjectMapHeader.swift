@@ -62,7 +62,7 @@ struct ProjectMapHeader: View {
                     .frame(height: Self.mapHeight)
                     .overlay(
                         VStack(spacing: 8) {
-                            Image(systemName: "map")
+                            Image("ops.nav-map")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text("No location set")

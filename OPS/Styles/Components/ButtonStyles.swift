@@ -150,7 +150,7 @@ struct ButtonStyles_Previews: PreviewProvider {
 
             Button { } label: {
                 HStack {
-                    Image(systemName: "checkmark.circle")
+                    Image("ops.checkmark")
                     Text("Primary")
                 }
             }
@@ -158,7 +158,7 @@ struct ButtonStyles_Previews: PreviewProvider {
 
             Button { } label: {
                 HStack {
-                    Image(systemName: "xmark.circle")
+                    Image("ops.close")
                     Text("Disabled Primary")
                 }
             }
@@ -167,7 +167,7 @@ struct ButtonStyles_Previews: PreviewProvider {
 
             Button { } label: {
                 HStack {
-                    Image(systemName: "info.circle")
+                    Image("ops.info")
                     Text("Secondary")
                 }
             }
@@ -175,23 +175,23 @@ struct ButtonStyles_Previews: PreviewProvider {
 
             Button { } label: {
                 HStack {
-                    Image(systemName: "trash")
+                    Image("ops.delete")
                     Text("Destructive")
                 }
             }
             .opsDestructiveButtonStyle()
 
             HStack(spacing: 16) {
-                Button { } label: { Image(systemName: "plus") }
+                Button { } label: { Image("ops.add") }
                     .opsIconButtonStyle()
 
-                Button { } label: { Image(systemName: "pencil") }
+                Button { } label: { Image("ops.edit") }
                     .opsIconButtonStyle(foregroundColor: OPSStyle.Colors.opsAccent)
 
-                Button { } label: { Image(systemName: "trash") }
+                Button { } label: { Image("ops.delete") }
                     .opsIconButtonStyle(foregroundColor: OPSStyle.Colors.rose)
 
-                Button { } label: { Image(systemName: "star.fill") }
+                Button { } label: { Image("ops.favorite") }
                     .opsIconButtonStyle(foregroundColor: OPSStyle.Colors.tan)
             }
         }

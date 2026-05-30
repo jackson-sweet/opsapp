@@ -68,7 +68,7 @@ struct CompanyCodeDisplay: View {
             HStack(spacing: 8) {
                 Group {
                     if copied {
-                        Image(systemName: "checkmark")
+                        Image("ops.checkmark")
                     } else {
                         Image(OPSStyle.Icons.copy)
                     }

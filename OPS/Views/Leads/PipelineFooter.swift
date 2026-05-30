@@ -125,7 +125,7 @@ struct PipelineFooter: View {
                     .monospacedDigit()
             }
 
-            Image(systemName: "chevron.right")
+            Image("ops.chevron-right")
                 .font(.system(size: 12, weight: .regular))
                 .foregroundColor(OPSStyle.Colors.textMute)
         }

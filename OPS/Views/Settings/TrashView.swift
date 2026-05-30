@@ -243,7 +243,7 @@ struct TrashView: View {
                             .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                             .scaleEffect(0.8)
                     } else {
-                        Image(systemName: "arrow.uturn.backward")
+                        Image("ops.undo")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     }
                     Text("RESTORE")
@@ -276,7 +276,7 @@ struct TrashView: View {
     private var emptyState: some View {
         VStack(spacing: 16) {
             Spacer()
-            Image(systemName: "trash")
+            Image("ops.delete")
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Text("TRASH IS EMPTY")

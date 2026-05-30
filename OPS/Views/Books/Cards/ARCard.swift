@@ -217,7 +217,7 @@ struct ARCard: View {
                         .tracking(1.9)  // 0.20em at 9.5pt
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Spacer(minLength: 4)
-                    Image(systemName: "arrow.right")
+                    Image("ops.arrow-right")
                         .font(.system(size: 9, weight: .regular))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .accessibilityHidden(true)

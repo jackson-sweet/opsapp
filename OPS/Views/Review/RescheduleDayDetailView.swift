@@ -93,7 +93,7 @@ struct RescheduleDayDetailView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     onClose()
                 } label: {
-                    Image(systemName: "arrow.down.right.and.arrow.up.left")
+                    Image("ops.collapse")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -296,7 +296,7 @@ struct RescheduleDayDetailView: View {
                 onConfirm(destinationStart, destinationEnd)
             } label: {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
-                    Image(systemName: "calendar.badge.checkmark")
+                    Image("ops.schedule-confirmed")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     Text("MOVE TO THIS DAY")
                         .font(OPSStyle.Typography.captionBold)

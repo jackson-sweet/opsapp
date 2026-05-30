@@ -109,7 +109,7 @@ private struct ThresholdRow: View {
                             .foregroundColor(OPSStyle.Colors.errorText)
                     }
                 }
-                Image(systemName: "chevron.right")
+                Image("ops.chevron-right")
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
             }

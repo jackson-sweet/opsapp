@@ -137,7 +137,7 @@ struct TaskDetailPopupSheet: View {
             onComplete(task)
         }) {
             HStack(spacing: 8) {
-                Image(systemName: "checkmark.circle.fill")
+                Image("ops.success")
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                 Text("MARK COMPLETE")
                     .font(OPSStyle.Typography.captionBold)
@@ -163,7 +163,7 @@ struct TaskDetailPopupSheet: View {
             showReopenAlert = true
         }) {
             HStack(spacing: 8) {
-                Image(systemName: "arrow.uturn.backward.circle.fill")
+                Image("ops.undo")
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                 Text("REOPEN TASK")
                     .font(OPSStyle.Typography.captionBold)
@@ -220,7 +220,7 @@ struct TaskDetailPopupSheet: View {
             onScheduleTap?(task)
         }) {
             HStack(spacing: 12) {
-                Image(systemName: "calendar")
+                Image("ops.date")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(width: 20, alignment: .center)
@@ -273,7 +273,7 @@ struct TaskDetailPopupSheet: View {
             }
         }) {
             HStack(spacing: 12) {
-                Image(systemName: "person.2")
+                Image("ops.sub-client")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(width: 20, alignment: .center)
@@ -325,7 +325,7 @@ struct TaskDetailPopupSheet: View {
 
                 Group {
                     if showTeamPicker {
-                        Image(systemName: "chevron.down")
+                        Image("ops.chevron-down")
                     } else {
                         Image(OPSStyle.Icons.chevronRight)
                     }

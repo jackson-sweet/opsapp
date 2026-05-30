@@ -250,7 +250,7 @@ struct WizardDetailView: View {
         let isCompleted = wizardState?.status == .completed || index < currentStep
 
         if isCompleted {
-            Image(systemName: "checkmark.circle.fill")
+            Image("ops.success")
                 .font(.system(size: 18))
                 .foregroundColor(OPSStyle.Colors.successStatus)
                 .frame(width: 28, alignment: .center)

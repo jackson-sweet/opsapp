@@ -27,7 +27,7 @@ struct LoginScreen: View {
                 Button {
                     manager.goToScreen(.welcome)
                 } label: {
-                    Image(systemName: "chevron.left")
+                    Image("ops.chevron-left")
                         .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: 44, height: 44)
@@ -130,7 +130,7 @@ struct LoginScreen: View {
 
                             Spacer()
 
-                            Image(systemName: "arrow.right")
+                            Image("ops.arrow-right")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         }
                         .padding(.horizontal, 20)

@@ -141,7 +141,7 @@ struct JobBoardMyTasksView: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Spacer()
-            Image(systemName: "checkmark.circle")
+            Image("ops.checkmark")
                 .font(.system(size: 36))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             Text(emptyMessage)

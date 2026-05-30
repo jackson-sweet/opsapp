@@ -50,7 +50,7 @@ struct CompanyCodeInputView: View {
                         viewModel.moveToPreviousStep()
                     }) {
                         HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
+                            Image("ops.chevron-left")
                                 .font(OPSStyle.Typography.caption.weight(.semibold))
                             Text("Back")
                                 .font(OPSStyle.Typography.button)
@@ -87,7 +87,7 @@ struct CompanyCodeInputView: View {
                 if showWelcomePhase {
                     // Welcome phase after successful join
                     VStack(spacing: 16) {
-                        Image(systemName: "checkmark.circle")
+                        Image("ops.checkmark")
                             .font(OPSStyle.Typography.displayXL)
                             .foregroundColor(OPSStyle.Colors.successStatus)
 

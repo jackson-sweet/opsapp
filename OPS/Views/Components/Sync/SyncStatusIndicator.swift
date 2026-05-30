@@ -14,7 +14,7 @@ struct SyncStatusIndicator: View {
     var body: some View {
         if dataController.hasPendingSyncs && !dataController.isConnected {
             HStack(spacing: 8) {
-                Image(systemName: "arrow.triangle.2.circlepath")
+                Image("ops.refresh")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
 
@@ -77,7 +77,7 @@ struct SyncRestoredAlert: View {
                 HStack(spacing: 12) {
                     // Status icon with indicator
                     ZStack(alignment: .topTrailing) {
-                        Image(systemName: "wifi")
+                        Image("ops.online")
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.successStatus)
                             .frame(width: 32, height: 32)
@@ -126,7 +126,7 @@ struct SyncRestoredAlert: View {
                         }
                         autoDismissTimer?.invalidate()
                     }) {
-                        Image(systemName: "xmark")
+                        Image("ops.close")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                             .frame(width: 24, height: 24)

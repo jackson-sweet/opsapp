@@ -201,7 +201,7 @@ struct VariantDetailView: View {
                 Button {
                     adjustQuantity(by: 1)
                 } label: {
-                    Image(systemName: "plus")
+                    Image("ops.add")
                         .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: 56, height: 56)
@@ -450,7 +450,7 @@ struct VariantDetailView: View {
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                             Spacer()
-                            Image(systemName: "chevron.right")
+                            Image("ops.chevron-right")
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }

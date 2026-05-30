@@ -97,7 +97,7 @@ struct CompanyDetailsScreen: View {
 
                                 Spacer()
 
-                                Image(systemName: "chevron.down")
+                                Image("ops.chevron-down")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
@@ -290,7 +290,7 @@ struct IndustryPickerSheet: View {
             VStack(spacing: 0) {
                 // Search bar
                 HStack {
-                    Image(systemName: "magnifyingglass")
+                    Image("ops.search")
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                     TextField("Search trades...", text: $searchText)
@@ -375,7 +375,7 @@ private struct IndustryRow: View {
                 Spacer()
 
                 if isSelected {
-                    Image(systemName: "checkmark")
+                    Image("ops.checkmark")
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
             }

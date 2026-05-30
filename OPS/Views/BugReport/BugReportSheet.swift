@@ -107,7 +107,7 @@ struct BugReportSheet: View {
 
                 Spacer()
 
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                Image("ops.expand")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -206,7 +206,7 @@ struct BugReportSheet: View {
 
     private func errorBanner(_ message: String) -> some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image("ops.warning")
                 .foregroundColor(OPSStyle.Colors.errorStatus)
             Text(message)
                 .font(OPSStyle.Typography.caption)
@@ -229,7 +229,7 @@ struct BugReportSheet: View {
                     ProgressView()
                         .tint(OPSStyle.Colors.buttonText)
                 } else {
-                    Image(systemName: "paperplane.fill")
+                    Image("ops.send")
                     Text("Submit Report")
                 }
             }

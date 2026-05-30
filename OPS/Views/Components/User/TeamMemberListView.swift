@@ -114,7 +114,7 @@ struct TeamMemberRowV1: View {
                     }
                 } label: {
                     // NOTE: phone.circle.fill does not have a semantic icon - using legacy
-                    Image(systemName: "phone.circle.fill")
+                    Image("ops.call")
                         .font(.system(size: OPSStyle.Layout.IconSize.lg))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
@@ -166,7 +166,7 @@ struct TeamMemberRowV2: View {
                         }
                     } label: {
                         // NOTE: envelope.circle.fill does not have a semantic icon - using legacy
-                        Image(systemName: "envelope.circle.fill")
+                        Image("ops.email")
                             .font(.system(size: OPSStyle.Layout.IconSize.lg))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
@@ -181,7 +181,7 @@ struct TeamMemberRowV2: View {
                         }
                     } label: {
                         // NOTE: phone.circle.fill does not have a semantic icon - using legacy
-                        Image(systemName: "phone.circle.fill")
+                        Image("ops.call")
                             .font(.system(size: OPSStyle.Layout.IconSize.lg))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }

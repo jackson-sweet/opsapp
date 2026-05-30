@@ -215,7 +215,7 @@ private struct StageListNavBar: View {
         HStack {
             Button(action: onBack) {
                 HStack(spacing: 6) {
-                    Image(systemName: "chevron.left")
+                    Image("ops.chevron-left")
                         .font(.system(size: 16, weight: .regular))
                     Text("LEADS")
                         .font(.custom("JetBrainsMono-Regular", size: 10))

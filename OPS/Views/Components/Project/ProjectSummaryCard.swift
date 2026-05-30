@@ -72,7 +72,7 @@ struct ProjectSummaryCard: View {
                     span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
                 ))) {
                     Annotation("", coordinate: coordinate) {
-                        Image(systemName: "mappin.and.ellipse")
+                        Image("ops.address")
                             .font(.system(size: OPSStyle.Layout.IconSize.xl))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
@@ -84,7 +84,7 @@ struct ProjectSummaryCard: View {
                 OPSStyle.Colors.cardBackground
                     .overlay(
                         HStack(spacing: 8) {
-                            Image(systemName: "map.slash")
+                            Image("ops.nav-map")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -118,7 +118,7 @@ struct ProjectSummaryCard: View {
         HStack(spacing: 12) {
             // Address with map pin icon
             HStack(spacing: 4) {
-                Image(systemName: "mappin.circle")
+                Image("ops.site-visit")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -132,7 +132,7 @@ struct ProjectSummaryCard: View {
 
             // Distance in minutes
             HStack(spacing: 4) {
-                Image(systemName: "car.fill")
+                Image("ops.expense-vehicle")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 

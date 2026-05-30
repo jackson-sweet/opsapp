@@ -57,7 +57,7 @@ struct TaskTypesDebugView: View {
                 } else if taskTypes.isEmpty {
                     Spacer()
                     VStack(spacing: 16) {
-                        Image(systemName: "square.grid.2x2")
+                        Image("ops.view-grid")
                             .font(.system(size: 50))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Text("No Task Types")

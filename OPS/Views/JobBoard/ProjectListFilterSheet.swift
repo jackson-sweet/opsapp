@@ -269,7 +269,7 @@ struct ProjectListFilterSheet: View {
 
                     Spacer()
 
-                    Image(systemName: "chevron.down")
+                    Image("ops.chevron-down")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .rotationEffect(.degrees(isExpanded.wrappedValue ? 0 : -90))

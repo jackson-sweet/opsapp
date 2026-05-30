@@ -286,7 +286,7 @@ struct ExpenseBatchDetailView: View {
                     // Status line
                     if isFlagged {
                         HStack(spacing: 4) {
-                            Image(systemName: "flag.fill")
+                            Image("ops.flagged")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             Text("FLAGGED")
                                 .font(OPSStyle.Typography.smallCaption)
@@ -401,7 +401,7 @@ struct ExpenseBatchDetailView: View {
             .fill(OPSStyle.Colors.background)
             .frame(width: 60, height: 80)
             .overlay(
-                Image(systemName: "photo")
+                Image("ops.photo")
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             )

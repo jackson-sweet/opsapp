@@ -97,7 +97,7 @@ struct EstimateApprovedStep: View {
     private var approvalCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                Image(systemName: "checkmark.circle.fill")
+                Image("ops.success")
                     .font(.system(size: 22))
                     .foregroundStyle(OPSStyle.Colors.successStatus)
 
@@ -138,7 +138,7 @@ struct EstimateApprovedStep: View {
 
                         // Arrow for labor items → becomes task
                         if item.type == .labor {
-                            Image(systemName: "arrow.right")
+                            Image("ops.arrow-right")
                                 .font(.system(size: 9))
                                 .foregroundStyle(OPSStyle.Colors.primaryAccent.opacity(0.5))
                         }
@@ -199,7 +199,7 @@ struct EstimateApprovedStep: View {
                         .fill(crewColor(for: task).opacity(0.2))
                         .frame(width: 24, height: 24)
                         .overlay(
-                            Image(systemName: "person.fill")
+                            Image("ops.client")
                                 .font(.system(size: 11))
                                 .foregroundStyle(crewColor(for: task))
                         )

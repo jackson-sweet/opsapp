@@ -131,7 +131,7 @@ struct AssignMemberRoleSheet: View {
     private var seatBanner: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: "exclamationmark.triangle.fill")
+                Image("ops.warning")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
                 Text("UNSEATED")
@@ -150,7 +150,7 @@ struct AssignMemberRoleSheet: View {
                 HStack(spacing: 4) {
                     Text("Manage seats on web")
                         .font(OPSStyle.Typography.smallCaption.weight(.semibold))
-                    Image(systemName: "arrow.right")
+                    Image("ops.arrow-right")
                         .font(.system(size: 10, weight: .semibold))
                 }
                 .foregroundColor(OPSStyle.Colors.warningStatus)

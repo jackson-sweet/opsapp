@@ -47,7 +47,7 @@ struct TopMoversSection: View {
 
     private var sectionHeader: some View {
         HStack(spacing: 6) {
-            Image(systemName: "flame")
+            Image("ops.hot")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -117,7 +117,7 @@ struct TopMoversSection: View {
 
     private var emptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: "flame.slash")
+            Image("ops.cold")
                 .font(.system(size: OPSStyle.Layout.IconSize.lg))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 

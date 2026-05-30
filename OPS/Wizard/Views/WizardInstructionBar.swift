@@ -36,7 +36,7 @@ struct WizardInstructionBar: View {
                 VStack(spacing: 6) {
                     HStack(alignment: .top) {
                         HStack(spacing: 8) {
-                            Image(systemName: "arrow.uturn.backward.circle.fill")
+                            Image("ops.undo")
                                 .font(.system(size: 14))
                                 .foregroundColor(OPSStyle.Colors.wizardAccent)
                             Text("TAP TO RETURN TO GUIDE")
@@ -150,7 +150,7 @@ struct WizardInstructionBar: View {
                             stateManager.exitWizard()
                         } label: {
                             HStack(spacing: 6) {
-                                Image(systemName: "xmark")
+                                Image("ops.close")
                                     .font(.system(size: 10, weight: .bold))
                                 Text("EXIT")
                                     .font(OPSStyle.Typography.captionBold)

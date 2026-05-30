@@ -142,7 +142,7 @@ struct TaskLineItem: View {
                         #endif
                         onDelete()
                     }) {
-                        Image(systemName: "trash")
+                        Image("ops.delete")
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .padding(.trailing, 16)

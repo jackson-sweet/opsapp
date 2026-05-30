@@ -205,7 +205,7 @@ struct RecipeManageSheet: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             editingMaterial = material
         } label: {
-            Image(systemName: "pencil")
+            Image("ops.edit")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .frame(width: OPSStyle.Layout.touchTargetMin,
@@ -221,7 +221,7 @@ struct RecipeManageSheet: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             pendingDelete = material
         } label: {
-            Image(systemName: "trash")
+            Image("ops.delete")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.brick)
                 .frame(width: OPSStyle.Layout.touchTargetMin,
@@ -240,7 +240,7 @@ struct RecipeManageSheet: View {
             showingAddSheet = true
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: "plus")
+                Image("ops.add")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 Text("ADD MATERIAL")
                     .font(OPSStyle.Typography.buttonLabel)

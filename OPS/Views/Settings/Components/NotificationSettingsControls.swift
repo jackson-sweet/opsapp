@@ -261,7 +261,7 @@ struct TemporaryMuteControl: View {
                     // Show when notifications will resume
                     if let endTime = muteEndTime {
                         HStack {
-                            Image(systemName: "bell.slash.fill")
+                            Image("ops.notification-muted")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
 

@@ -83,7 +83,7 @@ struct InventoryWizardFlow: View {
                         coordinator.goBack()
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
+                            Image("ops.chevron-left")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             Text("BACK")
                                 .font(OPSStyle.Typography.captionBold)
@@ -144,7 +144,7 @@ struct InventoryWizardFlow: View {
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
                                 }
                                 Spacer()
-                                Image(systemName: "checkmark")
+                                Image("ops.checkmark")
                                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                     .foregroundColor(OPSStyle.Colors.successStatus)
                             }
@@ -162,7 +162,7 @@ struct InventoryWizardFlow: View {
                             showingAddSheet = true
                         } label: {
                             HStack(spacing: 8) {
-                                Image(systemName: "plus.circle.fill")
+                                Image("ops.add-circle")
                                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                                 Text("ADD ITEM")
                                     .font(OPSStyle.Typography.bodyBold)
@@ -207,7 +207,7 @@ struct InventoryWizardFlow: View {
                         coordinator.goBack()
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
+                            Image("ops.chevron-left")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             Text("BACK")
                                 .font(OPSStyle.Typography.captionBold)
@@ -235,7 +235,7 @@ struct InventoryWizardFlow: View {
                 // Import prompt — left-aligned, icon inline with title
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                     HStack(spacing: 12) {
-                        Image(systemName: "square.and.arrow.down")
+                        Image("ops.download")
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.wizardAccent)
 

@@ -188,7 +188,7 @@ struct MyExpensesView: View {
             showSubmitSelectionSheet = true
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: "paperplane.fill")
+                Image("ops.send")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 Text("SUBMIT EXPENSES")
                     .font(OPSStyle.Typography.captionBold)
@@ -453,7 +453,7 @@ struct MyExpensesView: View {
                     submitExpensesForReview()
                 } label: {
                     HStack(spacing: OPSStyle.Layout.spacing2) {
-                        Image(systemName: "paperplane.fill")
+                        Image("ops.send")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text("SUBMIT \(selectedExpenseIdsForSubmit.count) EXPENSE\(selectedExpenseIdsForSubmit.count == 1 ? "" : "S")")
                             .font(OPSStyle.Typography.bodyBold)

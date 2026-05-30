@@ -35,27 +35,27 @@ struct TaskTestView: View {
     private var testActionsSection: some View {
         VStack(spacing: 12) {
             Button(action: createTestData) {
-                Label("Create Test Data", systemImage: "plus.circle.fill")
+                Label("Create Test Data", image: "ops.add-circle")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
 
             Button(action: testTaskStatusPropagation) {
-                Label("Test Status Propagation", systemImage: "arrow.triangle.2.circlepath")
+                Label("Test Status Propagation", image: "ops.refresh")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
             .disabled(testProject == nil)
 
             Button(action: testTaskDateAssignment) {
-                Label("Assign Task Dates", systemImage: "calendar")
+                Label("Assign Task Dates", image: "ops.date")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
             .disabled(testTasks.isEmpty)
 
             Button(action: cleanupTestData) {
-                Label("Cleanup Test Data", systemImage: "trash")
+                Label("Cleanup Test Data", image: "ops.delete")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
@@ -71,14 +71,14 @@ struct TaskTestView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
            
             Button(action: testTaskTypeSync) {
-                Label("Test TaskType Sync", systemImage: "arrow.triangle.2.circlepath")
+                Label("Test TaskType Sync", image: "ops.refresh")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .disabled(isSyncing)
 
             Button(action: testTaskSync) {
-                Label("Test Task Sync", systemImage: "arrow.triangle.2.circlepath")
+                Label("Test Task Sync", image: "ops.refresh")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)

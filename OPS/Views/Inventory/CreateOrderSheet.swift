@@ -91,7 +91,7 @@ struct CreateOrderSheet: View {
         let totalUnits = included.reduce(0.0) { $0 + (orderQty[$1.id] ?? defaultOrderQty(for: $1)) }
         return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: "cart.fill")
+                Image("ops.order")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 Text("ORDER SUMMARY")
@@ -126,7 +126,7 @@ struct CreateOrderSheet: View {
     private var emptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
             Spacer()
-            Image(systemName: "checkmark.seal")
+            Image("ops.deal-won")
                 .font(.system(size: 32))
                 .foregroundColor(OPSStyle.Colors.successStatus)
             Text("All items above threshold")
@@ -209,7 +209,7 @@ struct CreateOrderSheet: View {
                     orderQty[item.id] = qty + 1
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
-                    Image(systemName: "plus")
+                    Image("ops.add")
                         .font(.system(size: 14, weight: .bold))
                         .frame(width: 28, height: 28)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -237,7 +237,7 @@ struct CreateOrderSheet: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 didShareOrCopy = true
             } label: {
-                Label("Copy", systemImage: "doc.on.doc")
+                Label("Copy", image: "ops.copy")
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.vertical, 14)
@@ -252,7 +252,7 @@ struct CreateOrderSheet: View {
             .buttonStyle(.plain)
 
             ShareLink(item: orderText, subject: Text("Stock Order")) {
-                Label("Share", systemImage: "square.and.arrow.up")
+                Label("Share", image: "ops.share")
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.vertical, 14)

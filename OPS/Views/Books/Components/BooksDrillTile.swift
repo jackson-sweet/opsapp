@@ -53,7 +53,7 @@ struct BooksDrillTile: View {
                     .dynamicTypeSize(...DynamicTypeSize.accessibility2)  // § 8.4 — tile label clamped
                 Spacer(minLength: 4)
                 if onTap != nil {
-                    Image(systemName: "arrow.right")
+                    Image("ops.arrow-right")
                         .font(.system(size: 9, weight: .regular))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .accessibilityHidden(true)

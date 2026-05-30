@@ -37,7 +37,7 @@ struct RefreshIndicator: View {
                                 }
                         } else {
                             // Success checkmark
-                            Image(systemName: "checkmark")
+                            Image("ops.checkmark")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xl))
                                 .foregroundColor(OPSStyle.Colors.successStatus)
                                 .transition(.scale.combined(with: .opacity))

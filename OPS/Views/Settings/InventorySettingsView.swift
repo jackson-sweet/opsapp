@@ -172,7 +172,7 @@ struct InventorySettingsView: View {
                 // View Snapshots row
                 Button(action: { showingSnapshots = true }) {
                     HStack {
-                        Image(systemName: "folder")
+                        Image("ops.project")
                             .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .frame(width: 24)
@@ -199,7 +199,7 @@ struct InventorySettingsView: View {
 
                 // Frequency picker row
                 HStack {
-                    Image(systemName: "clock")
+                    Image("ops.clock")
                         .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .frame(width: 24)
@@ -231,7 +231,7 @@ struct InventorySettingsView: View {
                 // Last snapshot info
                 if let lastDate = SnapshotSettings.load().lastSnapshotDate {
                     HStack {
-                        Image(systemName: "checkmark.circle")
+                        Image("ops.checkmark")
                             .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.successStatus)
                             .frame(width: 24)
@@ -305,7 +305,7 @@ struct InventorySettingsView: View {
             VStack(spacing: 0) {
                 Button(action: { showingImportSheet = true }) {
                     HStack {
-                        Image(systemName: "square.and.arrow.down")
+                        Image("ops.download")
                             .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .frame(width: 24)
@@ -498,7 +498,7 @@ struct InventorySettingsView: View {
                 if companyTags.isEmpty {
                     // Empty state
                     VStack(spacing: OPSStyle.Layout.spacing2) {
-                        Image(systemName: "tag")
+                        Image("ops.task-type")
                             .font(.system(size: OPSStyle.Layout.IconSize.lg))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 

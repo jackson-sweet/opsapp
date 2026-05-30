@@ -17,7 +17,7 @@ struct AccessDeniedSheet: View {
         VStack(spacing: OPSStyle.Layout.spacing4) {
             Spacer()
 
-            Image(systemName: "lock.shield.fill")
+            Image("ops.nav-set-security")
                 .font(.system(size: 64, weight: .medium))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 

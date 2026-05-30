@@ -73,7 +73,7 @@ struct UserInfoView: View {
                         }
                     }) {
                         HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
+                            Image("ops.chevron-left")
                                 .font(OPSStyle.Typography.caption.weight(.semibold))
                             Text("Back")
                                 .font(OPSStyle.Typography.button)

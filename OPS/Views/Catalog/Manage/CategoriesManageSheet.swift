@@ -66,7 +66,7 @@ struct CategoriesManageSheet: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showAddSheet = true } label: {
-                        Image(systemName: "plus")
+                        Image("ops.add")
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                     }
@@ -120,7 +120,7 @@ private struct CategoryRow: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
             Spacer()
             Button { onEdit(category) } label: {
-                Image(systemName: "pencil")
+                Image("ops.edit")
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
             }

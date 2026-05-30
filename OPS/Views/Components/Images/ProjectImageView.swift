@@ -60,7 +60,7 @@ struct ProjectImageView: View {
                             Spacer()
                             
                             // Unsynced indicator
-                            Image(systemName: "cloud.slash.fill")
+                            Image("ops.offline")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .padding(4)
@@ -78,7 +78,7 @@ struct ProjectImageView: View {
                     .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
             } else if loadFailed {
                 // Failed state
-                Image(systemName: "exclamationmark.triangle")
+                Image("ops.warning")
                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }

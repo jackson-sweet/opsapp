@@ -80,7 +80,7 @@ private struct StageRow: View {
                         .foregroundColor(OPSStyle.Colors.textMute)
                         .textCase(.uppercase)
 
-                    Image(systemName: "arrow.right")
+                    Image("ops.arrow-right")
                         .font(.system(size: 10, weight: .regular))
                         .foregroundColor(OPSStyle.Colors.textMute)
                 }

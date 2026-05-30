@@ -43,7 +43,7 @@ struct ProjectBioSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: onDismiss) {
-                        Image(systemName: "xmark")
+                        Image("ops.close")
                             .font(.system(size: 16, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
@@ -86,7 +86,7 @@ struct ProjectBioSheet: View {
                 .frame(height: 220)
                 .overlay(
                     VStack(spacing: 8) {
-                        Image(systemName: "photo.on.rectangle")
+                        Image("ops.photo")
                             .font(.system(size: 32))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Text("NO PHOTOS")
@@ -122,7 +122,7 @@ struct ProjectBioSheet: View {
 
             if let address = project.address, !address.isEmpty {
                 HStack(spacing: 4) {
-                    Image(systemName: "mappin")
+                    Image("ops.site-visit")
                         .font(.system(size: 12))
                     Text(address)
                         .font(OPSStyle.Typography.caption)

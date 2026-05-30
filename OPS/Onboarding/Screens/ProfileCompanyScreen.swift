@@ -264,7 +264,7 @@ struct ProfileCompanyScreen: View {
 
                     Spacer()
 
-                    Image(systemName: "chevron.down")
+                    Image("ops.chevron-down")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
@@ -317,7 +317,7 @@ struct ProfileCompanyScreen: View {
         ) {
             VStack(spacing: 32) {
                 // Success icon
-                Image(systemName: "checkmark.circle.fill")
+                Image("ops.success")
                     .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                     .foregroundColor(OPSStyle.Colors.successStatus)
 

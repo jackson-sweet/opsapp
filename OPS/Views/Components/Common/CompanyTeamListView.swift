@@ -35,7 +35,7 @@ struct CompanyTeamListView: View {
                             await dataController.triggerTeamMembersSync(companyId: company.id)
                         }
                     } label: {
-                        Label("Load Team Members", systemImage: "arrow.clockwise")
+                        Label("Load Team Members", image: "ops.refresh")
                             .font(OPSStyle.Typography.smallButton)
                     }
                     .padding(.vertical, 8)
@@ -85,7 +85,7 @@ struct CompanyTeamMemberRow: View {
                         openEmail(email)
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "envelope")
+                            Image("ops.email")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             Text(email)
                                 .font(OPSStyle.Typography.caption)
@@ -102,7 +102,7 @@ struct CompanyTeamMemberRow: View {
                 Button {
                     callPhone(phone)
                 } label: {
-                    Image(systemName: "phone.circle.fill")
+                    Image("ops.call")
                         .font(.system(size: OPSStyle.Layout.IconSize.lg))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }

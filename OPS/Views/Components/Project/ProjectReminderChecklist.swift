@@ -44,7 +44,7 @@ struct ProjectReminderChecklist: View {
         } else {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                 HStack(spacing: 6) {
-                    Image(systemName: "bell.badge")
+                    Image("ops.notification-bell")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Text("REMINDERS")
@@ -181,7 +181,7 @@ private struct ReminderRow: View {
                     if reminder.isAcknowledged {
                         Image(OPSStyle.Icons.checkmarkCircleFill)
                     } else {
-                        Image(systemName: "circle")
+                        Image("ops.incomplete")
                     }
                 }
                     .font(.system(size: 22, weight: .regular))

@@ -32,7 +32,7 @@ struct CategoryPickerField: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
                     if selectedCategoryId == category.id {
-                        Label(category.name, systemImage: "checkmark")
+                        Label(category.name, image: "ops.checkmark")
                     } else {
                         Text(category.name)
                     }
@@ -44,7 +44,7 @@ struct CategoryPickerField: View {
                     onCreateRequested()
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
-                    Label("New category…", systemImage: "plus")
+                    Label("New category…", image: "ops.add")
                 }
             }
         } label: {
@@ -67,7 +67,7 @@ struct CategoryPickerField: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .lineLimit(1)
             Spacer()
-            Image(systemName: "chevron.down")
+            Image("ops.chevron-down")
                 .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }

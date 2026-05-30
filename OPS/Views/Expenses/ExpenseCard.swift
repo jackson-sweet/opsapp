@@ -82,7 +82,7 @@ struct ExpenseCard: View {
             // Swipe-right reveal (SUBMIT)
             if canSwipeRight {
                 HStack {
-                    Label("SUBMIT", systemImage: "paperplane.fill")
+                    Label("SUBMIT", image: "ops.send")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.invertedText)
                         .padding(.leading, OPSStyle.Layout.spacing3)
@@ -97,7 +97,7 @@ struct ExpenseCard: View {
             // Swipe-left reveal (DELETE)
             HStack {
                 Spacer()
-                Label("DELETE", systemImage: "trash.fill")
+                Label("DELETE", image: "ops.delete")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.trailing, OPSStyle.Layout.spacing3)
@@ -196,7 +196,7 @@ struct ExpenseCard: View {
                         HStack {
                             Spacer()
                             HStack(spacing: 4) {
-                                Image(systemName: "paperplane.fill")
+                                Image("ops.send")
                                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 Text("SUBMITTED")
                                     .font(OPSStyle.Typography.microLabel)

@@ -98,7 +98,7 @@ struct ThumbnailPickerField: View {
             photoLibrary: .shared()
         ) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: "plus")
+                Image("ops.add")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Text("// + ADD THUMBNAIL")

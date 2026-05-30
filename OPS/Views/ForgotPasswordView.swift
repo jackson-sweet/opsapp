@@ -32,7 +32,7 @@ struct ForgotPasswordView: View {
                     Button {
                         dismiss()
                     } label: {
-                        Image(systemName: "xmark")
+                        Image("ops.close")
                             .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .frame(width: 44, height: 44)
@@ -104,7 +104,7 @@ struct ForgotPasswordView: View {
             // Error message
             if let error = errorMessage {
                 HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "exclamationmark.circle.fill")
+                    Image("ops.error")
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                         .font(OPSStyle.Typography.caption)
 
@@ -130,7 +130,7 @@ struct ForgotPasswordView: View {
 
                         Spacer()
 
-                        Image(systemName: "arrow.right")
+                        Image("ops.arrow-right")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     }
                     .padding(.horizontal, 20)
@@ -156,7 +156,7 @@ struct ForgotPasswordView: View {
             Spacer()
 
             VStack(spacing: 24) {
-                Image(systemName: "checkmark.circle.fill")
+                Image("ops.success")
                     .font(.system(size: 56))
                     .foregroundColor(OPSStyle.Colors.successStatus)
 
@@ -185,7 +185,7 @@ struct ForgotPasswordView: View {
 
                     Spacer()
 
-                    Image(systemName: "checkmark")
+                    Image("ops.checkmark")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 }
                 .padding(.horizontal, 20)

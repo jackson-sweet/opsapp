@@ -96,7 +96,7 @@ struct ARPerimeterView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             VStack(spacing: 20) {
-                Image(systemName: "arkit")
+                Image("ops.ar-scan")
                     .font(.system(size: 48))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Text(message)
@@ -152,7 +152,7 @@ struct ARPerimeterView: View {
                 showingDoneConfirmation = true
             }
         } label: {
-            Image(systemName: "xmark")
+            Image("ops.close")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundColor(.white)
                 .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
@@ -367,7 +367,7 @@ struct ARPerimeterView: View {
                         viewModel.undoLastVertex()
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } label: {
-                        Image(systemName: "arrow.uturn.backward")
+                        Image("ops.undo")
                             .font(.system(size: 16, weight: .medium))
                             .foregroundColor(.white)
                             .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
@@ -435,7 +435,7 @@ struct ARPerimeterView: View {
         return Button {
             viewModel.undoLastVertex()
         } label: {
-            Image(systemName: "arrow.uturn.backward")
+            Image("ops.undo")
                 .font(.system(size: 18, weight: .medium))
                 .foregroundColor(.white)
                 .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
@@ -473,7 +473,7 @@ struct ARPerimeterView: View {
                 viewModel.popoverVertexIndex = nil
             } label: {
                 HStack {
-                    Image(systemName: "trash")
+                    Image("ops.delete")
                     Text("Delete")
                 }
                 .font(.system(size: 16, weight: .medium))

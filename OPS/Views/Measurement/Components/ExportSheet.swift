@@ -98,7 +98,7 @@ public struct ExportSheet: View {
                     .tracking(1)
                     .foregroundColor(OPSStyle.Colors.text)
                 Spacer()
-                Image(systemName: "chevron.right")
+                Image("ops.chevron-right")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(OPSStyle.Colors.text3)
             }

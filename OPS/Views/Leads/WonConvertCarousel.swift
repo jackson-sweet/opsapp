@@ -159,7 +159,7 @@ struct WonConvertCard: View {
     }
 
     private var wonBadge: some View {
-        Image(systemName: "checkmark")
+        Image("ops.checkmark")
             .font(.system(size: 16, weight: .regular))
             .foregroundColor(OPSStyle.Colors.oliveTextM)
             .frame(width: 36, height: 36)

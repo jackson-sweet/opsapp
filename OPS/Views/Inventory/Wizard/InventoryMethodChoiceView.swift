@@ -24,7 +24,7 @@ struct InventoryMethodChoiceView: View {
             VStack(alignment: .leading, spacing: 0) {
                 // Icon + Title
                 HStack(spacing: 12) {
-                    Image(systemName: "shippingbox.fill")
+                    Image("ops.inventory-item")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.wizardAccent)
 
@@ -47,7 +47,7 @@ struct InventoryMethodChoiceView: View {
                     onManual()
                 } label: {
                     HStack {
-                        Image(systemName: "plus.circle.fill")
+                        Image("ops.add-circle")
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.invertedText)
 
@@ -57,7 +57,7 @@ struct InventoryMethodChoiceView: View {
 
                         Spacer()
 
-                        Image(systemName: "arrow.right")
+                        Image("ops.arrow-right")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.invertedText)
                     }
@@ -74,7 +74,7 @@ struct InventoryMethodChoiceView: View {
                     onImport()
                 } label: {
                     HStack {
-                        Image(systemName: "doc.text.fill")
+                        Image("ops.document")
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -84,7 +84,7 @@ struct InventoryMethodChoiceView: View {
 
                         Spacer()
 
-                        Image(systemName: "arrow.right")
+                        Image("ops.arrow-right")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }

@@ -39,7 +39,7 @@ struct BooksPTRIndicator: View {
                 .frame(width: 16, height: 16)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         } else {
-            Image(systemName: "circle.dotted")
+            Image("ops.loading")
                 .font(.system(size: 16, weight: .regular))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }

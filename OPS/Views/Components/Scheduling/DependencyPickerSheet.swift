@@ -46,7 +46,7 @@ struct DependencyPickerSheet: View {
 
                                     Spacer()
 
-                                    Image(systemName: "plus.circle.fill")
+                                    Image("ops.add-circle")
                                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 }

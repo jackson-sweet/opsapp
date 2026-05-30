@@ -65,7 +65,7 @@ struct FullScreenReceiptViewer: View {
 
     private var errorState: some View {
         VStack(spacing: OPSStyle.Layout.spacing2_5) {
-            Image(systemName: "exclamationmark.triangle")
+            Image("ops.warning")
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.warningStatus)
 

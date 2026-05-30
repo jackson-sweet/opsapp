@@ -46,7 +46,7 @@ struct StickyActionBar: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onMarkLost()
         } label: {
-            Image(systemName: "xmark")
+            Image("ops.close")
                 .font(.system(size: 16, weight: .regular))
                 .foregroundColor(OPSStyle.Colors.roseTextM)
                 .frame(width: 52, height: 48)
@@ -85,7 +85,7 @@ struct StickyActionBar: View {
             onEdit()
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: "pencil")
+                Image("ops.edit")
                     .font(.system(size: 14, weight: .regular))
                 Text("EDIT")
                     .font(.custom("CakeMono-Light", size: 13.5))
@@ -117,7 +117,7 @@ struct StickyActionBar: View {
                     .font(.custom("CakeMono-Light", size: 13.5))
                     .kerning(0.27)
                     .textCase(.uppercase)
-                Image(systemName: "arrow.right")
+                Image("ops.arrow-right")
                     .font(.system(size: 14, weight: .regular))
             }
             .foregroundColor(OPSStyle.Colors.invertedText)

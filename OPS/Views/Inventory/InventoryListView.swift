@@ -304,7 +304,7 @@ struct InventoryTagBadge: View {
 
             if showRemoveButton {
                 Button(action: { onRemove?() }) {
-                    Image(systemName: "xmark")
+                    Image("ops.close")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
@@ -371,7 +371,7 @@ struct InventoryPendingTagBadge: View {
                     .font(size == .button ? OPSStyle.Typography.bodyBold : OPSStyle.Typography.captionBold)
                 Text(tag.uppercased())
                     .font(size.font)
-                Image(systemName: "xmark")
+                Image("ops.close")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
             }
             .foregroundColor(OPSStyle.Inventory.TagBadge.textColor)

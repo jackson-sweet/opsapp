@@ -129,7 +129,7 @@ struct LandingView: View {
                                 .overlay(
                                     HStack {
                                         Spacer()
-                                        Image(systemName: "arrow.right")
+                                        Image("ops.arrow-right")
                                             .foregroundColor(OPSStyle.Colors.invertedText)
                                             .font(OPSStyle.Typography.caption.weight(.semibold))
                                             .padding(.trailing, 20)
@@ -158,7 +158,7 @@ struct LandingView: View {
                                     .font(OPSStyle.Typography.button)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
 
-                                Image(systemName: "arrow.right")
+                                Image("ops.arrow-right")
                                     .font(OPSStyle.Typography.caption.weight(.medium))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
@@ -189,7 +189,7 @@ struct LandingView: View {
                             }
                         }) {
                             HStack(spacing: 4) {
-                                Image(systemName: "chevron.left")
+                                Image("ops.chevron-left")
                                     .font(OPSStyle.Typography.caption.weight(.semibold))
                                 Text("Back")
                                     .font(OPSStyle.Typography.button)
@@ -267,7 +267,7 @@ struct LandingView: View {
                                 !isLoggingIn ?
                                 HStack {
                                     Spacer()
-                                    Image(systemName: "arrow.right")
+                                    Image("ops.arrow-right")
                                         .foregroundColor(OPSStyle.Colors.invertedText)
                                         .font(OPSStyle.Typography.caption.weight(.semibold))
                                         .padding(.trailing, 20)
@@ -658,7 +658,7 @@ struct LoginSuccessView: View {
                             .frame(width: 56, height: 56)
                             .scaleEffect(showCheckmark ? 1 : 0.8)
 
-                        Image(systemName: "checkmark")
+                        Image("ops.checkmark")
                             .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .scaleEffect(showCheckmark ? 1 : 0)
@@ -687,7 +687,7 @@ struct LoginSuccessView: View {
                     }
 
                     HStack(spacing: 6) {
-                        Image(systemName: "person.fill")
+                        Image("ops.client")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 

@@ -178,7 +178,7 @@ struct DataActorBenchmarkView: View {
             if running {
                 ProgressView().tint(OPSStyle.Colors.primaryAccent)
             } else {
-                Image(systemName: "chevron.right")
+                Image("ops.chevron-right")
                     .font(.system(size: 12))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }

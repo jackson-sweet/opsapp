@@ -497,7 +497,7 @@ struct ExpenseFormSheet: View {
                         Text(selectedCurrency)
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                        Image(systemName: "chevron.right")
+                        Image("ops.chevron-right")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
@@ -560,7 +560,7 @@ struct ExpenseFormSheet: View {
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.placeholderText)
                         }
-                        Image(systemName: "chevron.right")
+                        Image("ops.chevron-right")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
@@ -579,7 +579,7 @@ struct ExpenseFormSheet: View {
                         Text(paymentMethod.displayName)
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                        Image(systemName: "chevron.right")
+                        Image("ops.chevron-right")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
@@ -1254,7 +1254,7 @@ private struct ExpenseProjectPickerSheet: View {
                 VStack(spacing: 0) {
                     // Search bar
                     HStack(spacing: OPSStyle.Layout.spacing2) {
-                        Image(systemName: "magnifyingglass")
+                        Image("ops.search")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         TextField("", text: $searchText)
@@ -1305,7 +1305,7 @@ private struct ExpenseProjectPickerSheet: View {
 
                                         Spacer()
 
-                                        Image(systemName: "chevron.right")
+                                        Image("ops.chevron-right")
                                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     }
@@ -1612,7 +1612,7 @@ private struct ExpenseCurrencyPickerSheet: View {
 
                 VStack(spacing: 0) {
                     HStack(spacing: OPSStyle.Layout.spacing2) {
-                        Image(systemName: "magnifyingglass")
+                        Image("ops.search")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         TextField("", text: $searchText)

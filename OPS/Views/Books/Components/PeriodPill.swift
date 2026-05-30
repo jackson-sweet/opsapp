@@ -23,7 +23,7 @@ struct PeriodPill: View {
                         Text(period.pillLabel)
                         if selected == period {
                             Spacer()
-                            Image(systemName: "checkmark")
+                            Image("ops.checkmark")
                         }
                     }
                 }
@@ -33,7 +33,7 @@ struct PeriodPill: View {
                 Text(selected.pillLabel)
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                Image(systemName: "chevron.down")
+                Image("ops.chevron-down")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }

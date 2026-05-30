@@ -142,7 +142,7 @@ struct TeamRoleAssignmentSheet: View {
     private var emptyView: some View {
         VStack(spacing: 16) {
             // NOTE: person.3.sequence.fill does not have a semantic icon - using legacy
-            Image(systemName: "person.3.sequence.fill")
+            Image("ops.crew")
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 

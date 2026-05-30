@@ -96,7 +96,7 @@ struct ExpenseSettingsView: View {
     private var categoriesLink: some View {
         NavigationLink(destination: ExpenseCategorySettingsView(viewModel: viewModel).environmentObject(dataController)) {
             HStack(spacing: OPSStyle.Layout.spacing3) {
-                Image(systemName: "tag.fill")
+                Image("ops.task-type")
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(width: OPSStyle.Layout.IconSize.lg)
@@ -147,7 +147,7 @@ struct ExpenseSettingsView: View {
                         HStack {
                             Text(freq.displayName)
                             if reviewFrequency == freq {
-                                Image(systemName: "checkmark")
+                                Image("ops.checkmark")
                             }
                         }
                     }

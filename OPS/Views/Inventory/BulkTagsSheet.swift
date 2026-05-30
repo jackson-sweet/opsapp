@@ -166,7 +166,7 @@ struct BulkTagsSheet: View {
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
-                    Image(systemName: "plus")
+                    Image("ops.add")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -181,7 +181,7 @@ struct BulkTagsSheet: View {
 
                     if !newTagText.isEmpty {
                         Button(action: { newTagText = "" }) {
-                            Image(systemName: "xmark.circle.fill")
+                            Image("ops.close")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }

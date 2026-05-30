@@ -117,7 +117,7 @@ struct StockItemPicker: View {
 
     private var searchField: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: "magnifyingglass")
+            Image("ops.search")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             TextField("Search stock items", text: $searchQuery)
@@ -129,7 +129,7 @@ struct StockItemPicker: View {
                     searchQuery = ""
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
+                    Image("ops.close")
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 }
@@ -156,7 +156,7 @@ struct StockItemPicker: View {
                     ProgressView()
                         .tint(OPSStyle.Colors.primaryAccent)
                 } else {
-                    Image(systemName: "plus.circle.fill")
+                    Image("ops.add-circle")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
@@ -194,7 +194,7 @@ struct StockItemPicker: View {
             dismiss()
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: "shippingbox")
+                Image("ops.inventory-item")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Text(family.name)
@@ -203,7 +203,7 @@ struct StockItemPicker: View {
                     .lineLimit(1)
                 Spacer()
                 if isSelected {
-                    Image(systemName: "checkmark")
+                    Image("ops.checkmark")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }

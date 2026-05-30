@@ -534,7 +534,7 @@ struct PhotoCommentViewer: View {
             }
         }) {
             HStack {
-                Image(systemName: "bubble.left.fill")
+                Image("ops.activity-log")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Text("\(viewModel.comments.count) COMMENT\(viewModel.comments.count == 1 ? "" : "S")")
@@ -980,13 +980,13 @@ struct PhotoCommentRow: View {
                 if isOwn && !isEditing {
                     Menu {
                         Button(action: onEdit) {
-                            Label("Edit", systemImage: "pencil")
+                            Label("Edit", image: "ops.edit")
                         }
                         Button(role: .destructive, action: { showDeleteConfirmation = true }) {
-                            Label("Delete", systemImage: "trash")
+                            Label("Delete", image: "ops.delete")
                         }
                     } label: {
-                        Image(systemName: "ellipsis")
+                        Image("ops.overflow")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)

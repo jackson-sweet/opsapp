@@ -90,7 +90,7 @@ struct WelcomeScreen: View {
 
                             Spacer()
 
-                            Image(systemName: "arrow.right")
+                            Image("ops.arrow-right")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         }
                         .foregroundColor(OPSStyle.Colors.invertedText)
@@ -111,7 +111,7 @@ struct WelcomeScreen: View {
 
                             Spacer()
 
-                            Image(systemName: "arrow.right")
+                            Image("ops.arrow-right")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         }
                         .foregroundColor(OPSStyle.Colors.primaryText)

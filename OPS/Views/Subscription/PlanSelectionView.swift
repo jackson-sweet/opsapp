@@ -207,7 +207,7 @@ struct PlanSelectionView: View {
                                     .frame(width: 56, height: 56)
                                 
                                 // Inner checkmark
-                                Image(systemName: "checkmark")
+                                Image("ops.checkmark")
                                     .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .semibold))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
@@ -253,7 +253,7 @@ struct PlanSelectionView: View {
                             VStack(spacing: 20) {
                                 // Warning indicator
                                 HStack(spacing: 8) {
-                                    Image(systemName: "exclamationmark.triangle")
+                                    Image("ops.warning")
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.warningStatus)
                                     
@@ -275,7 +275,7 @@ struct PlanSelectionView: View {
                                         Text("CONTINUE")
                                             .font(OPSStyle.Typography.captionBold)
                                         
-                                        Image(systemName: "arrow.right")
+                                        Image("ops.arrow-right")
                                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                                     }
                                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -533,7 +533,7 @@ struct PlanSelectionView: View {
                                     .frame(width: 80, height: 40)
                             } else if validatedPromoCode != nil {
                                 HStack {
-                                    Image(systemName: "xmark")
+                                    Image("ops.close")
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                                     Text("CLEAR")
                                         .font(OPSStyle.Typography.captionBold)
@@ -570,7 +570,7 @@ struct PlanSelectionView: View {
                     // Success or error message
                     if let error = promoValidationError {
                         HStack {
-                            Image(systemName: "exclamationmark.triangle.fill")
+                            Image("ops.warning")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text(error)
                                 .font(OPSStyle.Typography.caption)
@@ -578,7 +578,7 @@ struct PlanSelectionView: View {
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                     } else if let discount = promoDiscount, validatedPromoCode != nil {
                         HStack {
-                            Image(systemName: "checkmark.circle.fill")
+                            Image("ops.success")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text("\(discount)% discount will be applied at checkout")
                                 .font(OPSStyle.Typography.caption)
@@ -603,7 +603,7 @@ struct PlanSelectionView: View {
                         .progressViewStyle(CircularProgressViewStyle(tint: .black))
                         .scaleEffect(0.8)
                 } else {
-                    Image(systemName: "lock.fill")
+                    Image("ops.locked")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 }
 
@@ -1303,7 +1303,7 @@ struct PlanSelectionView: View {
 extension PlanSelectionView {
     private var planRecommendation: some View {
         HStack {
-            Image(systemName: "sparkles")
+            Image("ops.ai")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.warningStatus)
 
@@ -1333,7 +1333,7 @@ extension PlanSelectionView {
                 }
             }) {
                 HStack {
-                    Image(systemName: "questionmark.circle")
+                    Image("ops.help")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.warningStatus)
 
@@ -1354,7 +1354,7 @@ extension PlanSelectionView {
                     // Starter plan (maxSeats: 3)
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Image(systemName: "person")
+                            Image("ops.client")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text("STARTER (1-\(SubscriptionPlan.starter.maxSeats) EMPLOYEES)")
@@ -1372,7 +1372,7 @@ extension PlanSelectionView {
                     // Team plan (maxSeats: 5)
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Image(systemName: "person.2")
+                            Image("ops.sub-client")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text("TEAM (\(SubscriptionPlan.starter.maxSeats + 1)-\(SubscriptionPlan.team.maxSeats) EMPLOYEES)")
@@ -1390,7 +1390,7 @@ extension PlanSelectionView {
                     // Business plan (maxSeats: 10)
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Image(systemName: "person.3")
+                            Image("ops.crew")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text("BUSINESS (\(SubscriptionPlan.team.maxSeats + 1)-\(SubscriptionPlan.business.maxSeats) EMPLOYEES)")
@@ -1458,7 +1458,7 @@ struct PlanCard: View {
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                             
                             if isRecommended && !isCurrentPlan {
-                                Image(systemName: "sparkles")
+                                Image("ops.ai")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.warningStatus)
                             }
@@ -1514,7 +1514,7 @@ struct FeatureRow: View {
     
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "checkmark")
+            Image("ops.checkmark")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             

@@ -28,7 +28,7 @@ struct ZoomablePhotoView: View {
                 ProgressView()
                     .tint(OPSStyle.Colors.secondaryText)
             } else {
-                Image(systemName: "photo")
+                Image("ops.photo")
                     .font(.system(size: OPSStyle.Layout.IconSize.xl))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

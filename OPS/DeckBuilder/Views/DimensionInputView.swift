@@ -119,7 +119,7 @@ struct DimensionInputView: View {
                         viewModel.autoFillDimensionsFromScale()
                         dismiss()
                     } label: {
-                        Label("Auto-fill from scale", systemImage: "wand.and.stars")
+                        Label("Auto-fill from scale", image: "ops.magic-generate")
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .frame(maxWidth: .infinity)

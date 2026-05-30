@@ -259,7 +259,7 @@ struct CalendarSchedulerSheet: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             // Arrow
-            Image(systemName: "arrow.right")
+            Image("ops.arrow-right")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(hasSelectedDates ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                 .padding(.horizontal, 12)
@@ -642,7 +642,7 @@ struct CalendarSchedulerSheet: View {
     private var monthNavigationView: some View {
         HStack {
             Button(action: previousMonth) {
-                Image(systemName: "chevron.left")
+                Image("ops.chevron-left")
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
             }
@@ -656,7 +656,7 @@ struct CalendarSchedulerSheet: View {
             Spacer()
 
             Button(action: nextMonth) {
-                Image(systemName: "chevron.right")
+                Image("ops.chevron-right")
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
             }

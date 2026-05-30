@@ -123,7 +123,7 @@ struct NotificationListView: View {
 
     private var pushDisabledBanner: some View {
         HStack(spacing: 12) {
-            Image(systemName: "bell.slash.fill")
+            Image("ops.notification-muted")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.warningStatus)
 
@@ -165,7 +165,7 @@ struct NotificationListView: View {
 
     private var emptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
-            Image(systemName: "bell.slash")
+            Image("ops.notification-muted")
                 .font(OPSStyle.Typography.largeTitle)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -601,7 +601,7 @@ struct NotificationListView: View {
                             handleNotificationTap(notification)
                         }) {
                             HStack(spacing: OPSStyle.Layout.spacing1) {
-                                Image(systemName: "arrow.right.circle")
+                                Image("ops.arrow-right")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 Text(actionLabel)
                                     .font(OPSStyle.Typography.captionBold)

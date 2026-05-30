@@ -65,7 +65,7 @@ struct CertificationsSettingsView: View {
                         Button(action: {
                             dismiss()
                         }) {
-                            Image(systemName: "arrow.left")
+                            Image("ops.arrow-left")
                                 .font(.system(size: OPSStyle.Layout.IconSize.md))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
@@ -135,7 +135,7 @@ struct CertificationsSettingsView: View {
                 Button(action: {
                     showAddCertification = true
                 }) {
-                    Image(systemName: "plus.circle.fill")
+                    Image("ops.add-circle")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
@@ -145,7 +145,7 @@ struct CertificationsSettingsView: View {
             if certifications.isEmpty {
                 // Empty state
                 VStack {
-                    Image(systemName: "certificate")
+                    Image("ops.certification")
                         .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                         .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
                         .padding(.bottom, 8)
@@ -188,7 +188,7 @@ struct CertificationsSettingsView: View {
                 Button(action: {
                     showAddTraining = true
                 }) {
-                    Image(systemName: "plus.circle.fill")
+                    Image("ops.add-circle")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
@@ -198,7 +198,7 @@ struct CertificationsSettingsView: View {
             if trainings.isEmpty {
                 // Empty state
                 VStack {
-                    Image(systemName: "book.fill")
+                    Image("ops.learning")
                         .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                         .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
                         .padding(.bottom, 8)
@@ -290,7 +290,7 @@ struct CertificationsSettingsView: View {
                     // Action to view document
                 }) {
                     HStack {
-                        Image(systemName: "doc.fill")
+                        Image("ops.document")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         
                         Text("View Certificate")
@@ -353,7 +353,7 @@ struct CertificationsSettingsView: View {
                     // Action to view document
                 }) {
                     HStack {
-                        Image(systemName: "doc.fill")
+                        Image("ops.document")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         
                         Text("View Certificate")

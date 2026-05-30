@@ -126,7 +126,7 @@ struct SharePhotoToProjectSheet: View {
                     matching: .images
                 ) {
                     HStack {
-                        Image(systemName: "plus.circle")
+                        Image("ops.add-circle")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text("Add more photos")
                             .font(OPSStyle.Typography.captionBold)
@@ -148,7 +148,7 @@ struct SharePhotoToProjectSheet: View {
             matching: .images
         ) {
             VStack(spacing: 12) {
-                Image(systemName: "photo.on.rectangle.angled")
+                Image("ops.photo")
                     .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 Text("Select from Photos")
@@ -188,7 +188,7 @@ struct SharePhotoToProjectSheet: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         loadedImages.remove(at: index)
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
+                        Image("ops.close")
                             .font(.system(size: 20))
                             .foregroundColor(.white)
                             .background(Color.black.opacity(0.6).clipShape(Circle()))
@@ -208,7 +208,7 @@ struct SharePhotoToProjectSheet: View {
 
             // Search
             HStack {
-                Image(systemName: "magnifyingglass")
+                Image("ops.search")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -220,7 +220,7 @@ struct SharePhotoToProjectSheet: View {
                     Button {
                         projectSearchText = ""
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
+                        Image("ops.close")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
@@ -276,11 +276,11 @@ struct SharePhotoToProjectSheet: View {
                 Spacer()
 
                 if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
+                    Image("ops.success")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 } else {
-                    Image(systemName: "circle")
+                    Image("ops.incomplete")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }

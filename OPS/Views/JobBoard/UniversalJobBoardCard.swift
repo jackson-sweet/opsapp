@@ -284,7 +284,7 @@ struct UniversalJobBoardCard: View {
                 // Tutorial mode: Wrong swipe direction hint
                 if showingWrongSwipeHint {
                     HStack(spacing: 8) {
-                        Image(systemName: "arrow.right")
+                        Image("ops.arrow-right")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                         Text("SWIPE RIGHT")
                             .font(OPSStyle.Typography.captionBold)
@@ -1430,7 +1430,7 @@ struct UniversalJobBoardCard: View {
                                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                         }
 
-                                        Image(systemName: "chevron.right")
+                                        Image("ops.chevron-right")
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     }
                                     .padding()

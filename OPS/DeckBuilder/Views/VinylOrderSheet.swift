@@ -212,7 +212,7 @@ struct VinylOrderSheet: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: OPSStyle.Layout.spacing3) {
-            Image(systemName: "shippingbox.fill")
+            Image("ops.inventory-item")
                 .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -251,7 +251,7 @@ struct VinylOrderSheet: View {
 
     private func banner(text: String, color: Color) -> some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image("ops.warning")
                 .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
             Text(text)
                 .font(OPSStyle.Typography.captionBold)
@@ -680,7 +680,7 @@ struct VinylOrderSheet: View {
             Button {
                 handleTextAction()
             } label: {
-                Label(MFMessageComposeViewController.canSendText() ? "TEXT CUTS" : "COPY CUTS", systemImage: "message.fill")
+                Label(MFMessageComposeViewController.canSendText() ? "TEXT CUTS" : "COPY CUTS", image: "ops.message")
                     .font(OPSStyle.Typography.buttonLabel)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(maxWidth: .infinity)
@@ -703,7 +703,7 @@ struct VinylOrderSheet: View {
                         ProgressView()
                             .tint(OPSStyle.Colors.background)
                     } else {
-                        Image(systemName: "checkmark.seal.fill")
+                        Image("ops.deal-won")
                     }
                     Text("CREATE ORDER + NOTE")
                 }

@@ -93,7 +93,7 @@ struct UserTypeSelectionContent: View {
                     Button {
                         config.backAction?()
                     } label: {
-                        Image(systemName: "chevron.left")
+                        Image("ops.chevron-left")
                             .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: 44, height: 44)
@@ -291,7 +291,7 @@ struct UserTypeSelectionContent: View {
                     Spacer()
 
                     // Arrow icon
-                    Image(systemName: "arrow.right")
+                    Image("ops.arrow-right")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.invertedText)
                         .opacity(showButtonArrow ? 1 : 0)

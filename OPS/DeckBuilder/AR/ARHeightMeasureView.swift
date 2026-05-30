@@ -78,7 +78,7 @@ struct ARHeightMeasureView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             VStack(spacing: 20) {
-                Image(systemName: "arkit")
+                Image("ops.ar-scan")
                     .font(.system(size: 48))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -122,7 +122,7 @@ struct ARHeightMeasureView: View {
             Button {
                 dismiss()
             } label: {
-                Image(systemName: "xmark")
+                Image("ops.close")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(.white)
                     .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
@@ -180,7 +180,7 @@ struct ARHeightMeasureView: View {
             }
 
             // Crosshair
-            Image(systemName: "plus")
+            Image("ops.add")
                 .font(.system(size: 24, weight: .medium))
                 .foregroundColor(.white)
                 .shadow(color: .black.opacity(0.5), radius: 2)

@@ -262,7 +262,7 @@ struct SettingsView: View {
 
                                 Button(action: { activeDestination = .laserMeter }) {
                                     HStack(spacing: 14) {
-                                        Image(systemName: "antenna.radiowaves.left.and.right")
+                                        Image("ops.laser-meter")
                                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                                             .foregroundColor(OPSStyle.Colors.secondaryText)
                                             .frame(width: 28, alignment: .center)
@@ -1045,7 +1045,7 @@ struct SettingsView: View {
     private var logOutButton: some View {
         Button(action: { showLogoutConfirmation = true }) {
             HStack {
-                Image(systemName: "rectangle.portrait.and.arrow.right")
+                Image("ops.sign-out")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.errorStatus)
 

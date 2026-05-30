@@ -83,7 +83,7 @@ struct WizardTestingView: View {
                 stateManager.resetAllStates()
             } label: {
                 HStack {
-                    Image(systemName: "arrow.counterclockwise")
+                    Image("ops.reset")
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                     Text("Reset All Wizard States")
                         .font(OPSStyle.Typography.body)

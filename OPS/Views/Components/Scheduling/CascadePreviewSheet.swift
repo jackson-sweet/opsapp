@@ -65,7 +65,7 @@ struct CascadePreviewSheet: View {
                     if !cascadeChanges.isEmpty {
                         // Cascade divider
                         HStack(spacing: 8) {
-                            Image(systemName: "arrow.turn.down.right")
+                            Image("ops.arrow-right")
                                 .font(.system(size: 12))
                             Text("Dependent tasks")
                                 .font(OPSStyle.Typography.smallCaption)
@@ -156,7 +156,7 @@ struct CascadePreviewSheet: View {
                         Text(dateFormatter.string(from: old))
                             .strikethrough()
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        Image(systemName: "arrow.right")
+                        Image("ops.arrow-right")
                             .font(.system(size: 10))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }

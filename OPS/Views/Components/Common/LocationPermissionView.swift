@@ -21,7 +21,7 @@ struct LocationPermissionView: View {
             
             VStack(spacing: 24) {
                 // Icon
-                Image(systemName: "location.fill")
+                Image("ops.job-site")
                     .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .padding()

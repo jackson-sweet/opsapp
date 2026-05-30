@@ -29,7 +29,7 @@ struct CompanyContactView: View {
                         onboardingViewModel.moveToPreviousStep()
                     }) {
                         HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
+                            Image("ops.chevron-left")
                                 .font(OPSStyle.Typography.button)
                             Text("Back")
                                 .font(OPSStyle.Typography.button)
@@ -83,7 +83,7 @@ struct CompanyContactView: View {
                             validateEmail()
                         }) {
                             HStack {
-                                Image(systemName: "envelope")
+                                Image("ops.email")
                                     .font(OPSStyle.Typography.caption)
                                 Spacer()
                                 Text("USE MY EMAIL")
@@ -107,7 +107,7 @@ struct CompanyContactView: View {
                             validatePhone()
                         }) {
                             HStack {
-                                Image(systemName: "phone")
+                                Image("ops.call")
                                     .font(OPSStyle.Typography.caption)
                                 Spacer()
                                 Text("USE MY PHONE")

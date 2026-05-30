@@ -69,12 +69,12 @@ public struct DimensionBadgeOverlay: View {
             // achieved by stacking the icon at offsets in 4 directions).
             ForEach(haloOffsets.indices, id: \.self) { index in
                 let offset = haloOffsets[index]
-                Image(systemName: "ruler")
+                Image("ops.measure")
                     .font(.system(size: iconPointSize, weight: .semibold))
                     .foregroundColor(.black)
                     .offset(x: offset.x, y: offset.y)
             }
-            Image(systemName: "ruler")
+            Image("ops.measure")
                 .font(.system(size: iconPointSize, weight: .semibold))
                 .foregroundColor(.white)
         }

@@ -277,7 +277,7 @@ struct LevelConnectionSheet: View {
     private func elevationInputSection(levelName: String, levelIndex: Int) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
+                Image("ops.warning")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
                 Text("Set elevation for \(levelName)")

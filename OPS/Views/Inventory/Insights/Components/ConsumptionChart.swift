@@ -49,7 +49,7 @@ struct ConsumptionChart: View {
 
     private var sectionHeader: some View {
         HStack(spacing: 8) {
-            Image(systemName: "chart.xyaxis.line")
+            Image("ops.trending-up")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -334,7 +334,7 @@ struct ConsumptionChart: View {
 
     private var emptyState: some View {
         VStack(spacing: 12) {
-            Image(systemName: "chart.xyaxis.line")
+            Image("ops.trending-up")
                 .font(.system(size: OPSStyle.Layout.IconSize.xl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 

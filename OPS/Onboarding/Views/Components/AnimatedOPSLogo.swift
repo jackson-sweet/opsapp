@@ -36,7 +36,7 @@ struct AnimatedOPSLogo: View {
                         .font(OPSStyle.Typography.title)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                     
-                    Image(systemName: "arrow.right")
+                    Image("ops.arrow-right")
                         .font(OPSStyle.Typography.title)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }

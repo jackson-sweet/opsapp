@@ -323,7 +323,7 @@ struct AddProductMaterialSheet: View {
             action()
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: "plus")
+                Image("ops.add")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                 Text(label)
                     .font(OPSStyle.Typography.metadata)
@@ -360,7 +360,7 @@ struct AddProductMaterialSheet: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } label: {
                         if selectedFamilyId == family.id {
-                            Label(family.name, systemImage: "checkmark")
+                            Label(family.name, image: "ops.checkmark")
                         } else {
                             Text(family.name)
                         }
@@ -384,7 +384,7 @@ struct AddProductMaterialSheet: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } label: {
                         if selectedVariantId == variant.id {
-                            Label(variantLabel(variant), systemImage: "checkmark")
+                            Label(variantLabel(variant), image: "ops.checkmark")
                         } else {
                             Text(variantLabel(variant))
                         }
@@ -490,7 +490,7 @@ struct AddProductMaterialSheet: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .lineLimit(1)
             Spacer()
-            Image(systemName: "chevron.down")
+            Image("ops.chevron-down")
                 .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }

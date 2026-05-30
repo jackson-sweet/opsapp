@@ -178,3 +178,14 @@ final class TaskType: Identifiable {
         ]
     }
 }
+
+// MARK: - Hashable
+extension TaskType: Hashable {
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
+    static func == (lhs: TaskType, rhs: TaskType) -> Bool {
+        lhs.id == rhs.id
+    }
+}

@@ -7,6 +7,7 @@
 
 import SwiftUI
 import MapKit
+import SwiftData
 
 struct HomeView: View {
     
@@ -15,6 +16,7 @@ struct HomeView: View {
 
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.tutorialMode) private var tutorialMode
     @StateObject private var inProgressManager = InProgressManager.shared
     @EnvironmentObject private var locationManager: LocationManager
@@ -26,6 +28,7 @@ struct HomeView: View {
     @State private var todaysScheduledTasks: [ProjectTask] = []
     @State private var todaysProjects: [Project] = [] // Keep for carousel display
     @State private var allProjects: [Project] = [] // All projects for map "All" filter
+    @State private var billableRollup: HomeBillableThisWeekRollup = .empty
     @State private var selectedEventIndex = 0
     @State private var showStartConfirmation = false
     @State private var isLoading = true
@@ -52,11 +55,13 @@ struct HomeView: View {
             showFullDirectionsView: $showFullDirectionsView,
             isLoading: isLoading,
             showLocationPermissionView: $showLocationPermissionView,
+            billableRollup: billableRollup,
             appState: appState,
             inProgressManager: inProgressManager,
             startProject: startProject,
             stopProject: stopProject,
-            getActiveProject: getActiveProject
+            getActiveProject: getActiveProject,
+            openBillableItem: openBillableItem
         )
         .trackScreen("Home")
         .environmentObject(locationManager)
@@ -291,11 +296,22 @@ struct HomeView: View {
                     everyProject.append(project)
                 }
             }
+            let billableRollup = computeBillableRollup(projects: everyProject)
 
             await MainActor.run {
                 self.todaysScheduledTasks = scheduledTasks
                 self.todaysProjects = uniqueProjects
                 self.allProjects = everyProject
+                self.billableRollup = billableRollup
+                HomeBillableThisWeekNotificationDispatcher.dispatchIfNeeded(
+                    rollup: billableRollup,
+                    userId: dataController.currentUser?.id,
+                    companyId: dataController.currentUser?.companyId,
+                    permissionCanViewFinances: !tutorialMode && permissionStore.can("finances.view"),
+                    onNotificationCreated: {
+                        appState.refreshUnreadCount()
+                    }
+                )
 
                 // Setup active task if needed
                 if let activeProjectID = appState.activeProjectID,
@@ -305,6 +321,41 @@ struct HomeView: View {
 
                 self.isLoading = false
             }
+        }
+    }
+
+    private func computeBillableRollup(projects: [Project]) -> HomeBillableThisWeekRollup {
+        guard let context = dataController.modelContext else { return .empty }
+        let companyId = dataController.currentUser?.companyId
+
+        let invoices = ((try? context.fetch(FetchDescriptor<Invoice>())) ?? [])
+            .filter { invoice in
+                guard let companyId else { return true }
+                return invoice.companyId == companyId
+            }
+        let estimates = ((try? context.fetch(FetchDescriptor<Estimate>())) ?? [])
+            .filter { estimate in
+                guard let companyId else { return true }
+                return estimate.companyId == companyId
+            }
+
+        return HomeBillableThisWeekRollupEngine.compute(
+            projects: projects,
+            invoices: invoices,
+            estimates: estimates,
+            today: Date()
+        )
+    }
+
+    private func openBillableItem(_ item: HomeBillableProjectCandidate) {
+        if let invoiceId = item.invoiceId {
+            appState.viewInvoiceDetailsById(invoiceId)
+        } else if let estimateId = item.estimateId {
+            appState.viewEstimateDetailsById(estimateId)
+        } else if let project = allProjects.first(where: { $0.id == item.projectId }) {
+            appState.viewProjectDetails(project)
+        } else {
+            appState.viewProjectDetailsById(item.projectId)
         }
     }
     

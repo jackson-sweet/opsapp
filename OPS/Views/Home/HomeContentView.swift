@@ -23,6 +23,7 @@ struct HomeContentView: View {
     @Binding var showFullDirectionsView: Bool
     let isLoading: Bool
     @Binding var showLocationPermissionView: Bool
+    let billableRollup: HomeBillableThisWeekRollup
     
     // Environment objects
     @ObservedObject var appState: AppState
@@ -41,6 +42,7 @@ struct HomeContentView: View {
     let startProject: (Project) -> Void
     let stopProject: (Project) -> Void
     let getActiveProject: () -> Project?
+    let openBillableItem: (HomeBillableProjectCandidate) -> Void
 
     // State for project editing
     @State private var showingEditProject = false
@@ -248,6 +250,17 @@ struct HomeContentView: View {
                 // Placeholder space when carousel is in separate layer
                 Spacer()
                     .frame(height: 120)
+            }
+
+            if !appState.isInProjectMode,
+               billableRollup.hasItems,
+               permissionStore.can("finances.view") {
+                HomeBillableThisWeekCard(
+                    rollup: billableRollup,
+                    onSelect: openBillableItem
+                )
+                .padding(.horizontal, 20)
+                .padding(.top, OPSStyle.Layout.spacing1)
             }
 
             // Map filter chips — below carousel
@@ -547,4 +560,99 @@ struct HomeContentView: View {
             }
         }
     }
+}
+
+private struct HomeBillableThisWeekCard: View {
+    let rollup: HomeBillableThisWeekRollup
+    let onSelect: (HomeBillableProjectCandidate) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    Text("// BILLABLE THIS WEEK")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.textMute)
+
+                    Text(currency(rollup.totalKnownAmount))
+                        .font(OPSStyle.Typography.dataValueLg)
+                        .foregroundColor(OPSStyle.Colors.text)
+                        .monospacedDigit()
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing1) {
+                    Text("\(rollup.projectCount)")
+                        .font(OPSStyle.Typography.cardTitle)
+                        .foregroundColor(OPSStyle.Colors.finRevenue)
+                        .monospacedDigit()
+                    Text(rollup.projectCount == 1 ? "JOB" : "JOBS")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.text3)
+                }
+            }
+
+            if !rollup.closingThisWeek.isEmpty {
+                section("CLOSING", items: rollup.closingThisWeek)
+            }
+
+            if !rollup.readyToBill.isEmpty {
+                section("READY TO BILL", items: rollup.readyToBill)
+            }
+        }
+        .opsCardStyle(padding: OPSStyle.Layout.spacing3)
+    }
+
+    private func section(_ title: String, items: [HomeBillableProjectCandidate]) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text(title)
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.text3)
+
+            ForEach(items.prefix(3)) { item in
+                Button {
+                    onSelect(item)
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                            Text(item.title.uppercased())
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.text)
+                                .lineLimit(1)
+
+                            Text("\(item.taskCount) \(item.taskCount == 1 ? "TASK" : "TASKS")")
+                                .font(OPSStyle.Typography.microLabel)
+                                .foregroundColor(OPSStyle.Colors.text3)
+                        }
+
+                        Spacer()
+
+                        Text(item.amount.map(currency) ?? "—")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(item.amount == nil ? OPSStyle.Colors.textMute : OPSStyle.Colors.finRevenue)
+                            .monospacedDigit()
+
+                        Image(systemName: OPSStyle.Icons.forward)
+                            .font(OPSStyle.Typography.microLabel)
+                            .foregroundColor(OPSStyle.Colors.textMute)
+                    }
+                    .contentShape(Rectangle())
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func currency(_ amount: Double) -> String {
+        Self.currencyFormatter.string(from: NSNumber(value: amount)) ?? "$0"
+    }
+
+    private static let currencyFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.maximumFractionDigits = 0
+        return formatter
+    }()
 }

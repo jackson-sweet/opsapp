@@ -25,6 +25,7 @@ enum NotificationCategory: String {
     case projectAdvance = "PROJECT_ADVANCE_NOTIFICATION"
     case projectPaymentReview = "PROJECT_PAYMENT_REVIEW_NOTIFICATION"
     case projectTaskReview = "PROJECT_TASK_REVIEW_NOTIFICATION"
+    case billableThisWeek = "BILLABLE_THIS_WEEK_NOTIFICATION"
     case expenseApproved = "EXPENSE_APPROVED_NOTIFICATION"
     case expenseRejected = "EXPENSE_REJECTED_NOTIFICATION"
     case expenseSubmitted = "EXPENSE_SUBMITTED_NOTIFICATION"
@@ -216,6 +217,18 @@ class NotificationManager: NSObject, ObservableObject {
             options: []
         )
 
+        let openHomeAction = UNNotificationAction(
+            identifier: "OPEN_HOME_ACTION",
+            title: "OPEN HOME",
+            options: [.foreground]
+        )
+        let billableThisWeekCategory = UNNotificationCategory(
+            identifier: NotificationCategory.billableThisWeek.rawValue,
+            actions: [openHomeAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
         // Expense / Invoice notification categories
         let expenseApprovedCategory = UNNotificationCategory(
             identifier: NotificationCategory.expenseApproved.rawValue,
@@ -290,6 +303,7 @@ class NotificationManager: NSObject, ObservableObject {
             invoiceReadyCategory,
             invoiceRevisionsCategory,
             invoiceApprovedCategory,
+            billableThisWeekCategory,
             taskReminderCategory
         ])
     }
@@ -416,6 +430,33 @@ class NotificationManager: NSObject, ObservableObject {
         notificationCenter.add(request) { error in
             if let error = error {
                 print("[NOTIFICATIONS] Failed to schedule payment review notification: \(error)")
+            }
+        }
+    }
+
+    func scheduleBillableThisWeekNotification(projectCount: Int, totalKnownAmount: Double) {
+        guard projectCount > 0 else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "BILLABLE THIS WEEK"
+        let jobLabel = "\(projectCount) \(projectCount == 1 ? "job" : "jobs")"
+        content.body = totalKnownAmount > 0
+            ? "\(jobLabel) / \(Self.currency(totalKnownAmount)) billable"
+            : "\(jobLabel) ready for billing"
+        content.categoryIdentifier = NotificationCategory.billableThisWeek.rawValue
+        content.sound = .default
+        content.userInfo = ["type": HomeBillableThisWeekNotificationDispatcher.notificationType]
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "billable-this-week-\(UUID().uuidString)",
+            content: content,
+            trigger: trigger
+        )
+
+        notificationCenter.add(request) { error in
+            if let error = error {
+                print("[NOTIFICATIONS] Failed to schedule billable-this-week notification: \(error)")
             }
         }
     }
@@ -1008,6 +1049,14 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
                     // Post notification for deep link handling
                     NotificationCenter.default.post(
                         name: Notification.Name("OpenTaskReview"),
+                        object: nil
+                    )
+                }
+
+            case NotificationCategory.billableThisWeek.rawValue:
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("NavigateToMap"),
                         object: nil
                     )
                 }
@@ -1995,4 +2044,17 @@ extension NotificationManager {
             withIdentifiers: [taskReminderIdentifier(reminderId)]
         )
     }
+
+    private static func currency(_ amount: Double) -> String {
+        "$\(wholeDollarFormatter.string(from: NSNumber(value: amount.rounded())) ?? "0")"
+    }
+
+    private static let wholeDollarFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = true
+        formatter.groupingSeparator = ","
+        formatter.maximumFractionDigits = 0
+        return formatter
+    }()
 }

@@ -452,6 +452,7 @@ struct BasicPhotoViewer: View {
     let onDismiss: () -> Void
     var projectId: String? = nil
 
+    @Environment(\.modelContext) private var modelContext
     @State private var currentIndex: Int
     @State private var showingAnnotation = false
 
@@ -524,7 +525,8 @@ struct BasicPhotoViewer: View {
                         if currentIndex < photos.count {
                             PhotoAnnotationView(
                                 photoURL: sourcePhotoURL(at: currentIndex),
-                                projectId: projectId
+                                projectId: projectId,
+                                existingAnnotation: existingAnnotation(at: currentIndex)
                             )
                         }
                     }
@@ -536,6 +538,17 @@ struct BasicPhotoViewer: View {
     private func sourcePhotoURL(at index: Int) -> String {
         guard sourcePhotos.indices.contains(index) else { return photos[index] }
         return sourcePhotos[index]
+    }
+
+    private func existingAnnotation(at index: Int) -> PhotoAnnotation? {
+        let sourceURL = sourcePhotoURL(at: index)
+        let descriptor = FetchDescriptor<PhotoAnnotation>(
+            predicate: #Predicate {
+                $0.photoURL == sourceURL && $0.deletedAt == nil
+            },
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        return try? modelContext.fetch(descriptor).first
     }
 }
 

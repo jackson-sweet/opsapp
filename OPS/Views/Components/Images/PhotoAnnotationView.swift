@@ -26,6 +26,7 @@ struct PhotoAnnotationView: View {
     @State private var loadedImage: UIImage? = nil
     @State private var loadFailed: Bool = false
     @State private var error: String? = nil
+    @State private var displayedCanvasSize: CGSize = .zero
 
     init(photoURL: String, projectId: String, existingAnnotation: PhotoAnnotation? = nil) {
         self.photoURL = photoURL
@@ -60,7 +61,8 @@ struct PhotoAnnotationView: View {
                             // view's pan only engages with two fingers.
                             ZoomablePhotoAnnotationCanvas(
                                 image: image,
-                                drawing: $drawing
+                                drawing: $drawing,
+                                displayedCanvasSize: $displayedCanvasSize
                             )
                             .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
                         } else if loadFailed {
@@ -89,13 +91,22 @@ struct PhotoAnnotationView: View {
     /// can't be sized into a UIView's content area, so we own the load.
     private func loadImage() async {
         guard loadedImage == nil, !loadFailed else { return }
-        guard let url = URL(string: photoURL) else {
+        let cacheKey = photoURL.hasPrefix("//") ? "https:" + photoURL : photoURL
+        if let cached = ImageFileManager.shared.loadImage(localID: photoURL)
+            ?? ImageFileManager.shared.loadImage(localID: cacheKey)
+            ?? ImageCache.shared.get(forKey: cacheKey) {
+            loadedImage = cached
+            return
+        }
+
+        guard let url = URL(string: cacheKey) else {
             loadFailed = true
             return
         }
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
             if let image = UIImage(data: data) {
+                _ = ImageFileManager.shared.saveImage(data: data, localID: cacheKey)
                 await MainActor.run { self.loadedImage = image }
             } else {
                 await MainActor.run { self.loadFailed = true }
@@ -205,12 +216,10 @@ struct PhotoAnnotationView: View {
         isSaving = true
         error = nil
 
-        // Bug 8824a41c — pass the loaded image's natural pixel size as the
-        // canonical canvas size. Annotations are saved against the source
-        // photo's coordinate space (so they re-align when the photo loads
-        // at a different fitted size on another device); the loaded UIImage
-        // gives us that authoritative size directly.
-        let canvasSize = loadedImage?.size ?? .zero
+        let canvasSize = PhotoAnnotationRenderGeometry.renderSize(
+            displayedCanvasSize: displayedCanvasSize,
+            sourceImageSize: loadedImage?.size ?? .zero
+        )
 
         do {
             _ = try await PhotoAnnotationSyncManager.shared.saveAnnotation(
@@ -248,6 +257,7 @@ struct PhotoAnnotationView: View {
 struct ZoomablePhotoAnnotationCanvas: UIViewRepresentable {
     let image: UIImage
     @Binding var drawing: PKDrawing
+    @Binding var displayedCanvasSize: CGSize
 
     func makeUIView(context: Context) -> UIScrollView {
         let scrollView = UIScrollView()
@@ -379,6 +389,7 @@ struct ZoomablePhotoAnnotationCanvas: UIViewRepresentable {
             container.frame = CGRect(origin: .zero, size: fitted)
             imageView.frame = container.bounds
             canvas.frame = container.bounds
+            parent.displayedCanvasSize = fitted
 
             scrollView.contentSize = fitted
             scrollView.zoomScale = 1.0

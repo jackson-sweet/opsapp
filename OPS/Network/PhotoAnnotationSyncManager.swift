@@ -11,6 +11,51 @@ import SwiftData
 import PencilKit
 // FirebaseAuthService used for token retrieval (Firebase Auth migration)
 
+struct PhotoAnnotationRenderGeometry {
+    static func renderSize(displayedCanvasSize: CGSize, sourceImageSize: CGSize) -> CGSize {
+        if displayedCanvasSize.width > 0, displayedCanvasSize.height > 0 {
+            return displayedCanvasSize
+        }
+        if sourceImageSize.width > 0, sourceImageSize.height > 0 {
+            return sourceImageSize
+        }
+        return .zero
+    }
+}
+
+struct PhotoAnnotationCompositePlan {
+    let cacheKey: String
+    let baseLocalIDs: [String]
+    let baseRemoteURL: URL?
+    let overlayRemoteURL: URL
+
+    init?(photoURL: String, annotationURL: String?) {
+        guard let annotationURL,
+              let overlayURL = Self.normalizedURL(from: annotationURL) else { return nil }
+
+        self.cacheKey = Self.normalizedCacheKey(photoURL)
+        self.baseLocalIDs = Array([photoURL, cacheKey].reduce(into: [String]()) { result, value in
+            guard !value.isEmpty, !result.contains(value) else { return }
+            result.append(value)
+        })
+        self.baseRemoteURL = Self.normalizedURL(from: photoURL)
+        self.overlayRemoteURL = overlayURL
+    }
+
+    func overlayLocalID(annotationId: String) -> String {
+        "overlay_\(annotationId)"
+    }
+
+    private static func normalizedCacheKey(_ value: String) -> String {
+        value.hasPrefix("//") ? "https:" + value : value
+    }
+
+    private static func normalizedURL(from value: String) -> URL? {
+        let normalized = normalizedCacheKey(value)
+        return URL(string: normalized)
+    }
+}
+
 @MainActor
 class PhotoAnnotationSyncManager {
     static let shared = PhotoAnnotationSyncManager()
@@ -72,13 +117,16 @@ class PhotoAnnotationSyncManager {
         let repository = PhotoAnnotationRepository(companyId: companyId)
 
         if let existingId = existingAnnotationId {
-            // Update existing annotation
-            try await repository.updateAnnotation(existingId, annotationUrl: annotationURL, note: note)
+            if let annotationURL {
+                try await repository.updateAnnotation(existingId, annotationUrl: annotationURL, note: note)
+            }
 
             // Update local model
             let descriptor = FetchDescriptor<PhotoAnnotation>(predicate: #Predicate { $0.id == existingId })
             if let existing = try? modelContext.fetch(descriptor).first {
-                existing.annotationURL = annotationURL
+                if let annotationURL {
+                    existing.annotationURL = annotationURL
+                }
                 existing.note = note
                 existing.updatedAt = Date()
                 existing.localDrawingData = drawing.dataRepresentation()
@@ -91,8 +139,38 @@ class PhotoAnnotationSyncManager {
                     _ = ImageFileManager.shared.saveImage(data: pngData, localID: "overlay_\(existingId)")
                 }
 
+                if annotationURL != nil {
+                    await preCompositeAnnotations(projectId: projectId, modelContext: modelContext)
+                }
+
                 return existing
             }
+
+            let model = PhotoAnnotation(
+                id: existingId,
+                projectId: projectId,
+                companyId: companyId,
+                photoURL: photoURL,
+                authorId: authorId
+            )
+            model.annotationURL = annotationURL
+            model.note = note
+            model.updatedAt = Date()
+            model.localDrawingData = drawing.dataRepresentation()
+            model.lastSyncedAt = Date()
+            model.needsSync = annotationURL == nil
+            modelContext.insert(model)
+            try? modelContext.save()
+
+            if let pngData = pngData {
+                _ = ImageFileManager.shared.saveImage(data: pngData, localID: "overlay_\(existingId)")
+            }
+
+            if annotationURL != nil {
+                await preCompositeAnnotations(projectId: projectId, modelContext: modelContext)
+            }
+
+            return model
         }
 
         // Create new annotation
@@ -116,6 +194,10 @@ class PhotoAnnotationSyncManager {
         // Cache overlay PNG locally for instant compositing on next load
         if let pngData = pngData {
             _ = ImageFileManager.shared.saveImage(data: pngData, localID: "overlay_\(created.id)")
+        }
+
+        if annotationURL != nil {
+            await preCompositeAnnotations(projectId: projectId, modelContext: modelContext)
         }
 
         return model
@@ -220,26 +302,24 @@ class PhotoAnnotationSyncManager {
 
         var didComposite = false
         for annotation in annotations {
-            guard let urlString = annotation.annotationURL,
-                  let overlayURL = URL(string: urlString) else { continue }
+            guard let plan = PhotoAnnotationCompositePlan(
+                photoURL: annotation.photoURL,
+                annotationURL: annotation.annotationURL
+            ) else { continue }
 
-            let photoURL = annotation.photoURL
-            let cacheKey = photoURL.hasPrefix("//") ? "https:" + photoURL : photoURL
-
-            // Load base image from file system (original, un-composited)
-            // Also check ImageCache as fallback (thumbnails may have loaded it)
-            guard let baseImage = ImageFileManager.shared.loadImage(localID: photoURL)
-                    ?? ImageFileManager.shared.loadImage(localID: cacheKey)
-                    ?? ImageCache.shared.get(forKey: cacheKey) else { continue }
+            // Load the original, un-composited image. A remote device may
+            // receive the annotation row before it has ever opened the source
+            // image, so cache misses must fall through to the source URL.
+            guard let baseImage = await loadBaseImage(for: plan) else { continue }
 
             // Load overlay from local cache or download
-            let overlayKey = "overlay_\(annotation.id)"
+            let overlayKey = plan.overlayLocalID(annotationId: annotation.id)
             var overlayImage: UIImage?
 
             if let cached = ImageFileManager.shared.loadImage(localID: overlayKey) {
                 overlayImage = cached
             } else {
-                if let (data, _) = try? await URLSession.shared.data(from: overlayURL),
+                if let (data, _) = try? await URLSession.shared.data(from: plan.overlayRemoteURL),
                    let downloaded = UIImage(data: data) {
                     overlayImage = downloaded
                     if let pngData = downloaded.pngData() {
@@ -257,13 +337,33 @@ class PhotoAnnotationSyncManager {
                 overlay.draw(in: CGRect(origin: .zero, size: originalSize))
             }
 
-            ImageCache.shared.set(composited, forKey: cacheKey)
+            ImageCache.shared.set(composited, forKey: plan.cacheKey)
             didComposite = true
         }
 
         if didComposite {
             NotificationCenter.default.post(name: .annotationsComposited, object: nil)
         }
+    }
+
+    private func loadBaseImage(for plan: PhotoAnnotationCompositePlan) async -> UIImage? {
+        for localID in plan.baseLocalIDs {
+            if let image = ImageFileManager.shared.loadImage(localID: localID) {
+                return image
+            }
+        }
+
+        if let cached = ImageCache.shared.get(forKey: plan.cacheKey) {
+            return cached
+        }
+
+        guard let baseURL = plan.baseRemoteURL,
+              let (data, _) = try? await URLSession.shared.data(from: baseURL),
+              let downloaded = UIImage(data: data) else { return nil }
+
+        _ = ImageFileManager.shared.saveImage(data: data, localID: plan.cacheKey)
+        ImageCache.shared.set(downloaded, forKey: plan.cacheKey)
+        return downloaded
     }
 
     // MARK: - Sync Pending

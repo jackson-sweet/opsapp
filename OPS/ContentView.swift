@@ -284,9 +284,8 @@ struct PINGatedView: View {
     @State private var createdClientName: String = ""
     @State private var createdClientId: String? = nil
     // Bug 321e65c8 — every new client also creates a pipeline lead. Track
-    // whether the lead made it through so the toast can tell the user
-    // either "added to pipeline" (success) or "pipeline sync pending"
-    // (offline / network error).
+    // whether the lead made it through so the toast can confirm the lead or
+    // state that the pipeline link is queued.
     @State private var createdClientLeadCreated: Bool = false
 
     // Permission change overlay — sits above all navigation stacks, sheets, and modals
@@ -313,17 +312,17 @@ struct PINGatedView: View {
 
     /// Subtitle shown under "CLIENT CREATED" in the success banner.
     /// Bug 321e65c8 — every new client also creates a pipeline lead. This
-    /// surfaces that fact to the user (or warns when the pipeline link
-    /// is still pending due to network failure).
+    /// surfaces that fact to the user, or states that the link is queued
+    /// when the direct opportunity insert cannot finish immediately.
     private var clientCreatedSubtitle: String? {
         let trimmedName = createdClientName.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedName.isEmpty {
-            return createdClientLeadCreated ? "LEAD ADDED TO PIPELINE" : "PIPELINE SYNC PENDING"
+            return createdClientLeadCreated ? "LEAD ADDED TO PIPELINE" : "PIPELINE LINK QUEUED"
         }
         if createdClientLeadCreated {
             return "\(trimmedName) · LEAD ADDED"
         }
-        return "\(trimmedName) · PIPELINE SYNC PENDING"
+        return "\(trimmedName) · PIPELINE LINK QUEUED"
     }
 
     var body: some View {
@@ -401,8 +400,8 @@ struct PINGatedView: View {
                         }
                         createdClientId = notification.userInfo?["clientId"] as? String
                         // Bug 321e65c8 — read the auto-create-lead flag so the
-                        // toast subtitle can confirm "lead added" or warn the
-                        // user the pipeline link is still pending.
+                        // toast subtitle can confirm "lead added" or state
+                        // that the pipeline link is queued.
                         createdClientLeadCreated = (notification.userInfo?["leadCreated"] as? Bool) ?? false
                         showClientCreatedMessage = true
                     }

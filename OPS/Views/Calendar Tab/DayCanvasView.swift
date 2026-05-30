@@ -343,7 +343,7 @@ struct DayPageView: View {
                     // Wizard: scroll to the active target when a new step activates
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
                         if let stepId = notification.userInfo?["stepId"] as? String {
-                            withAnimation(.easeInOut(duration: 0.3)) {
+                            withAnimation(OPSStyle.Animation.smooth) {
                                 proxy.scrollTo("wizard_active_\(stepId)", anchor: .top)
                             }
                         }
@@ -508,7 +508,7 @@ struct DayPageView: View {
                                 pushTask(task, days: 1)
                                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             }
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            withAnimation(OPSStyle.Animation.smooth) {
                                 swipeOffset[task.id] = 0
                             }
                         }
@@ -865,14 +865,14 @@ struct DayPageView: View {
     }
 
     private func enterSelectMode() {
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.fast) {
             isSelectMode = true
             appState.isScheduleSelectionMode = true
         }
     }
 
     private func exitSelectMode() {
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.fast) {
             isSelectMode = false
             selectedTaskIds.removeAll()
             appState.isScheduleSelectionMode = false

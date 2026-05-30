@@ -199,7 +199,7 @@ struct PhasedHelpButton: View {
         .offset(y: isVisible ? 0 : 10)
         .onChange(of: coordinator.phase) { _, newPhase in
             if newPhase >= .labelsTyping && !isVisible {
-                withAnimation(.easeOut(duration: 0.4)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     isVisible = true
                 }
                 // Trigger button phase after help button appears
@@ -293,8 +293,8 @@ struct ExpandingBracketInput: View {
                 .frame(width: currentSpacing, height: 2)
                 .offset(y: -8)
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: isFocused)
-        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: text)
+        .animation(OPSStyle.Animation.smooth, value: isFocused)
+        .animation(OPSStyle.Animation.smooth, value: text)
         .contentShape(Rectangle())
         .onTapGesture {
             isFocused = true

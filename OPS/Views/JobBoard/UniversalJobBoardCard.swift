@@ -1746,7 +1746,7 @@ struct UniversalJobBoardCard: View {
 
         // Tutorial mode: Block left swipe during projectListSwipe
         if tutorialMode && tutorialPhase == .projectListSwipe && direction == .left {
-            withAnimation(.easeInOut(duration: 0.25)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 swipeOffset = 0
             }
             hasTriggeredHaptic = false
@@ -1768,7 +1768,7 @@ struct UniversalJobBoardCard: View {
                 }
             }
 
-            withAnimation(.easeInOut(duration: 0.25)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 swipeOffset = 0
             }
 
@@ -1777,7 +1777,7 @@ struct UniversalJobBoardCard: View {
                 performStatusChange(to: targetStatus)
 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    withAnimation(.easeInOut(duration: 0.25)) {
+                    withAnimation(OPSStyle.Animation.smooth) {
                         isChangingStatus = false
                         confirmingStatus = nil
                         confirmingDirection = nil
@@ -1786,7 +1786,7 @@ struct UniversalJobBoardCard: View {
                 }
             }
         } else {
-            withAnimation(.easeInOut(duration: 0.25)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 swipeOffset = 0
             }
             hasTriggeredHaptic = false

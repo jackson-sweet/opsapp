@@ -156,7 +156,7 @@ struct WelcomeScreen: View {
                         .frame(width: geometry.size.width, height: geometry.size.height)
                         .clipped()
                         .opacity(currentSlide == index ? 1 : 0)
-                        .animation(.easeInOut(duration: 1.0), value: currentSlide)
+                        .animation(OPSStyle.Animation.smooth, value: currentSlide)
                 }
             }
         }

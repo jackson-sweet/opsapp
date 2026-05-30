@@ -223,8 +223,8 @@ struct PhotoStorageBudgetCard: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: hasPendingChange)
-        .animation(.easeInOut(duration: 0.25), value: applyBanner)
+        .animation(OPSStyle.Animation.fast, value: hasPendingChange)
+        .animation(OPSStyle.Animation.smooth, value: applyBanner)
         .onAppear {
             if !didLoadInitialBudget {
                 // Seed cached budget from UserDefaults (nonisolated, instant)

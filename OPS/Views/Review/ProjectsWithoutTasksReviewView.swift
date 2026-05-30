@@ -30,7 +30,7 @@ struct ProjectsWithoutTasksReviewView: View {
 
     private var expandAnimation: Animation {
         reduceMotion
-            ? .easeOut(duration: 0.1)
+            ? OPSStyle.Animation.faster
             : OPSStyle.Animation.standard
     }
 

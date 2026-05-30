@@ -375,7 +375,7 @@ struct ManageTeamView: View {
         VStack(alignment: .leading, spacing: 8) {
             // Tappable section header
             Button(action: {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     isUnassignedCollapsed.toggle()
                 }
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -788,7 +788,7 @@ struct ManageTeamView: View {
             if eligible.count > 0 {
                 let eligibleInVisibleSections = eligible.filter { $0.role != .unassigned }
                 if eligibleInVisibleSections.isEmpty && isUnassignedCollapsed {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(OPSStyle.Animation.fast) {
                         isUnassignedCollapsed = false
                     }
                     // After expansion, the wizardTarget appears already-active so onChange

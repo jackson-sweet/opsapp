@@ -24,7 +24,7 @@ struct WizardInstructionBar: View {
                     Rectangle()
                         .fill(OPSStyle.Colors.wizardAccent)
                         .frame(width: geo.size.width * stateManager.progressFraction)
-                        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: stateManager.progressFraction)
+                        .animation(OPSStyle.Animation.smooth, value: stateManager.progressFraction)
                 }
             }
             .frame(height: 3)

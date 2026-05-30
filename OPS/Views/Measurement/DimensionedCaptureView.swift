@@ -453,10 +453,10 @@ public struct DimensionedCaptureView: View {
         // Two-stage flash — 80 ms ramp up, medium impact haptic at peak, 160 ms ramp down.
         // Reduced motion: single 150 ms opacity transition (§5.3 row 3 fallback).
         if reduceMotion {
-            withAnimation(.linear(duration: 0.15)) { shutterFlash = 1.0 }
+            withAnimation(OPSStyle.Animation.smooth) { shutterFlash = 1.0 }
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             try? await Task.sleep(nanoseconds: 150_000_000)
-            withAnimation(.linear(duration: 0.15)) { shutterFlash = 0.0 }
+            withAnimation(OPSStyle.Animation.smooth) { shutterFlash = 0.0 }
         } else {
             withAnimation(.opsCurve200) { shutterFlash = 1.0 }
             // Haptic at flash peak — the §5.3 row 3 "Medium impact at flash peak".

@@ -126,7 +126,7 @@ struct OpportunityPickerView: View {
     private func newLeadRow() -> some View {
         VStack(spacing: 0) {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     viewModel.isCreatingNewLead.toggle()
                     if viewModel.isCreatingNewLead {
                         viewModel.selectedOpportunity = nil

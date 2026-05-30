@@ -287,13 +287,13 @@ struct TaskSelectorBar: View {
 
         if (isSwipingLeft && !canSwipeRight) || (isSwipingRight && !canSwipeLeft) {
             // Resistance when swiping in invalid direction
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 swipeOffset = value.translation.width * 0.2
             }
             return
         }
 
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+        withAnimation(OPSStyle.Animation.smooth) {
             swipeOffset = value.translation.width
         }
 
@@ -334,7 +334,7 @@ struct TaskSelectorBar: View {
         }
 
         // Snap back to center
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+        withAnimation(OPSStyle.Animation.smooth) {
             swipeOffset = 0
         }
     }

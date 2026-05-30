@@ -83,7 +83,7 @@ struct ClientListView: View {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach(ClientFilter.allCases, id: \.self) { filter in
                         Button(action: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(OPSStyle.Animation.fast) {
                                 activeFilter = filter
                             }
                         }) {

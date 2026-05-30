@@ -832,7 +832,7 @@ struct ExpenseFormSheet: View {
                 } else if isViewMode {
                     // View mode for draft/submitted/rejected — EDIT button + contextual action
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) { isViewMode = false }
+                        withAnimation(OPSStyle.Animation.fast) { isViewMode = false }
                     } label: {
                         Text("EDIT")
                             .font(OPSStyle.Typography.button)

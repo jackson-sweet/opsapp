@@ -191,7 +191,7 @@ struct BillingInfoView: View {
                     ) {
                         // Show content after title completes
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                            withAnimation(.easeOut(duration: 0.4)) {
+                            withAnimation(OPSStyle.Animation.fast) {
                                 showContent = true
                             }
                         }
@@ -285,7 +285,7 @@ struct BillingInfoView: View {
                     ) {
                         // Show content after title completes
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                            withAnimation(.easeOut(duration: 0.4)) {
+                            withAnimation(OPSStyle.Animation.fast) {
                                 showContent = true
                             }
                         }

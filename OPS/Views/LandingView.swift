@@ -140,13 +140,13 @@ struct LandingView: View {
 
                         // Secondary action - Log In button
                         Button(action: {
-                            withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
+                            withAnimation(OPSStyle.Animation.smooth) {
                                 showLoginMode = true
                                 pageScale = 0.98
 
                                 // Return to normal scale after small delay
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
+                                    withAnimation(OPSStyle.Animation.smooth) {
                                         pageScale = 1.0
                                     }
                                 }
@@ -176,13 +176,13 @@ struct LandingView: View {
                             // Dismiss keyboard
                             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 
-                            withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
+                            withAnimation(OPSStyle.Animation.smooth) {
                                 showLoginMode = false
                                 pageScale = 0.98
 
                                 // Return to normal scale after small delay
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
+                                    withAnimation(OPSStyle.Animation.smooth) {
                                         pageScale = 1.0
                                     }
                                 }
@@ -354,7 +354,7 @@ struct LandingView: View {
                     onShowLogin: {
                         showOnboarding = false
                         onboardingManager = nil
-                        withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
+                        withAnimation(OPSStyle.Animation.smooth) {
                             showLoginMode = true
                         }
                     }
@@ -367,7 +367,7 @@ struct LandingView: View {
             }
 
         }
-        .animation(hasAppeared ? .easeInOut(duration: 0.35) : nil, value: showLoginMode)
+        .animation(hasAppeared ? OPSStyle.Animation.smooth : nil, value: showLoginMode)
         .animation(.easeInOut, value: showOnboarding)
         .animation(.easeInOut, value: showLoginSuccess)
         .sheet(isPresented: $showForgotPassword) {

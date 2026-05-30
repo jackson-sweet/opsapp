@@ -57,7 +57,7 @@ struct DayCell: View {
                     .animation(
                         UIAccessibility.isReduceMotionEnabled
                             ? .none
-                            : .spring(response: 0.28, dampingFraction: 0.72),
+                            : OPSStyle.Animation.smooth,
                         value: isSelected
                     )
             )

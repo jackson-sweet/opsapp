@@ -89,8 +89,8 @@ struct PushInMessage: View {
                 Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isPresented)
-            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isMinimized)
+            .animation(OPSStyle.Animation.smooth, value: isPresented)
+            .animation(OPSStyle.Animation.smooth, value: isMinimized)
         }
         .edgesIgnoringSafeArea(.top)
         .onChange(of: isPresented) { _, newValue in
@@ -102,7 +102,7 @@ struct PushInMessage: View {
 
             // Always reset state (ensures clean slate for next show)
             // Use withAnimation to ensure state changes animate properly
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 isMinimized = false
                 dragOffset = 0
             }
@@ -210,7 +210,7 @@ struct PushInMessage: View {
                         minimizeMessage()
                     } else {
                         // Snap back
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        withAnimation(OPSStyle.Animation.smooth) {
                             dragOffset = 0
                         }
                     }
@@ -258,7 +258,7 @@ struct PushInMessage: View {
         .background(OPSStyle.Colors.background)
         .onTapGesture {
             // Tap to expand back to full view
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 isMinimized = false
                 dragOffset = 0
             }
@@ -274,7 +274,7 @@ struct PushInMessage: View {
         // Cancel current auto-dismiss timer
         autoDismissTimer?.invalidate()
 
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+        withAnimation(OPSStyle.Animation.smooth) {
             isMinimized = true
             dragOffset = 0
         }
@@ -311,7 +311,7 @@ struct PushInMessage: View {
         progressTimer?.invalidate()
         autoDismissTimer?.invalidate()
 
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+        withAnimation(OPSStyle.Animation.smooth) {
             isPresented = false
             isMinimized = false
         }

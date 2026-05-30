@@ -480,8 +480,8 @@ struct OnboardingABTestCoordinator: View {
                 .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: flowStep)
-        .animation(.easeInOut(duration: 0.2), value: isFinishing)
+        .animation(OPSStyle.Animation.smooth, value: flowStep)
+        .animation(OPSStyle.Animation.fast, value: isFinishing)
         .onChange(of: flowStep) { _, newStep in
             // Persist flow step for resume on app relaunch
             newStep.save()
@@ -736,7 +736,7 @@ private struct ABTestSplashView: View {
                         .frame(width: geometry.size.width, height: geometry.size.height)
                         .clipped()
                         .opacity(currentSlide == index ? 1 : 0)
-                        .animation(.easeInOut(duration: 1.0), value: currentSlide)
+                        .animation(OPSStyle.Animation.smooth, value: currentSlide)
                 }
             }
         }

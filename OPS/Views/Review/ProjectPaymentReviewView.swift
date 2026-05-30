@@ -252,7 +252,7 @@ struct ProjectPaymentReviewView: View {
             VStack(spacing: 12) {
                 // Primary CTA
                 Button(action: {
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    withAnimation(OPSStyle.Animation.smooth) {
                         activeProjects = completedProjects
                         reviewingCompleted = true
                     }
@@ -376,7 +376,7 @@ struct ProjectPaymentReviewView: View {
 
     private var celebrationScaleAnimation: Animation {
         reduceMotion
-            ? .easeOut(duration: 0.1)
+            ? OPSStyle.Animation.faster
             : OPSStyle.Animation.flip
     }
 

@@ -45,13 +45,13 @@ struct CompletionView: View {
             // in Step 8 (Company Details). Redundant syncs removed to improve performance.
 
             // Start animation sequence
-            withAnimation(.easeIn(duration: 0.8)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 logoOpacity = 1.0
             }
 
             // Fade in text after logo
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                withAnimation(.easeIn(duration: 0.8)) {
+                withAnimation(OPSStyle.Animation.smooth) {
                     textOpacity = 1.0
                 }
             }

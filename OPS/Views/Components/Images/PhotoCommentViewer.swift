@@ -93,14 +93,14 @@ struct PhotoCommentViewer: View {
                         }
                         .onEnded { value in
                             if dismissDragOffset > 120 {
-                                withAnimation(.easeOut(duration: 0.25)) {
+                                withAnimation(OPSStyle.Animation.fast) {
                                     dismissDragOffset = UIScreen.main.bounds.height
                                 }
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                                     onDismiss()
                                 }
                             } else {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                withAnimation(OPSStyle.Animation.smooth) {
                                     dismissDragOffset = 0
                                 }
                             }
@@ -110,7 +110,7 @@ struct PhotoCommentViewer: View {
                     guard newIndex < photos.count else { return }
                     viewModel.switchPhoto(to: photos[newIndex])
                     isCommentsExpanded = false
-                    withAnimation(.easeInOut(duration: 0.25)) {
+                    withAnimation(OPSStyle.Animation.smooth) {
                         showOverlay = true
                     }
                     scheduleAutoHide()
@@ -529,7 +529,7 @@ struct PhotoCommentViewer: View {
 
     private var commentHeaderBar: some View {
         Button(action: {
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 isCommentsExpanded.toggle()
             }
         }) {
@@ -599,7 +599,7 @@ struct PhotoCommentViewer: View {
                     }
                 }
                 .onEnded { value in
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(OPSStyle.Animation.fast) {
                         commentDragOffset = 0
                         if value.translation.height > 60 {
                             isCommentsExpanded = false
@@ -866,7 +866,7 @@ struct PhotoCommentViewer: View {
     // MARK: - Overlay Toggle & Auto-Hide
 
     private func toggleOverlay() {
-        withAnimation(.easeInOut(duration: 0.25)) {
+        withAnimation(OPSStyle.Animation.smooth) {
             showOverlay.toggle()
         }
         if showOverlay {
@@ -882,7 +882,7 @@ struct PhotoCommentViewer: View {
         autoHideTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(10))
             guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 1.2)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 showOverlay = false
             }
         }

@@ -240,7 +240,7 @@ struct EstimateApprovedStep: View {
 
         // 0.4s — Notification drops in
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 phase = .notification
             }
             TutorialHaptics.milestone()
@@ -248,7 +248,7 @@ struct EstimateApprovedStep: View {
 
         // 1.5s — Show the estimate line items inside the card + explainer text
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 phase = .explaining
                 showExplainer = true
             }
@@ -256,13 +256,13 @@ struct EstimateApprovedStep: View {
 
         // 3.5s — Transform: labor items become task cards
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
-            withAnimation(.easeOut(duration: 0.25)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 phase = .transforming
             }
 
             for i in 0..<TutorialData.taskCards.count {
                 DispatchQueue.main.asyncAfter(deadline: .now() + (Double(i) * 0.15)) {
-                    withAnimation(.easeOut(duration: 0.25)) {
+                    withAnimation(OPSStyle.Animation.fast) {
                         visibleTasks = i + 1
                     }
                     TutorialHaptics.arrival()
@@ -273,7 +273,7 @@ struct EstimateApprovedStep: View {
         // Crew docks
         let crewDelay = 3.5 + (Double(TutorialData.taskCards.count) * 0.15) + 0.3
         DispatchQueue.main.asyncAfter(deadline: .now() + crewDelay) {
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 showCrew = true
                 phase = .settled
             }

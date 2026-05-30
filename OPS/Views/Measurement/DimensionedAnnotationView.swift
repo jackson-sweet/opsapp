@@ -527,7 +527,7 @@ public struct DimensionedAnnotationView: View {
             for m in toAdd {
                 traceProgress[m.id] = 1.0
                 labelOpacity[m.id] = 0
-                withAnimation(.linear(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.smooth) {
                     labelOpacity[m.id] = 1.0
                 }
             }
@@ -743,7 +743,7 @@ public struct DimensionedAnnotationView: View {
 
     private var feedbackTransition: AnyTransition {
         if reduceMotion {
-            return .opacity.animation(.linear(duration: 0.15))
+            return .opacity.animation(OPSStyle.Animation.smooth)
         }
         return .asymmetric(
             insertion: .opacity.combined(with: .move(edge: .top)).animation(.opsCurve200),

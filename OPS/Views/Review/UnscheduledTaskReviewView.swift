@@ -369,7 +369,7 @@ struct UnscheduledTaskReviewView: View {
             hintPill(icon: "arrow.down", label: "CANCEL", color: OPSStyle.Colors.errorStatus)
         }
         .padding(.horizontal, 16)
-        .animation(.easeInOut(duration: 0.2), value: currentTopIndex)
+        .animation(OPSStyle.Animation.fast, value: currentTopIndex)
     }
 
     // MARK: - Toast Overlay
@@ -443,8 +443,8 @@ struct UnscheduledTaskReviewView: View {
 
     private var toastAnimation: Animation {
         reduceMotion
-            ? .easeInOut(duration: 0.2)
-            : .spring(response: 0.35, dampingFraction: 0.82)
+            ? OPSStyle.Animation.fast
+            : OPSStyle.Animation.smooth
     }
 
     private func showToast(_ message: String, kind: ToastKind, retry: RetryContext? = nil) {
@@ -625,8 +625,8 @@ struct UnscheduledTaskReviewView: View {
             // fade is gentle in both modes so the text "lands" with the
             // visual rather than ahead of it.
             let scaleAnimation: Animation = reduceMotion
-                ? .easeOut(duration: 0.25)
-                : .spring(response: 0.5, dampingFraction: 0.6)
+                ? OPSStyle.Animation.fast
+                : OPSStyle.Animation.smooth
             withAnimation(scaleAnimation) {
                 celebrationScale = 1.0
             }

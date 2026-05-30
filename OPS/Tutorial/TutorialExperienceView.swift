@@ -46,7 +46,7 @@ struct TutorialExperienceView: View {
             // Show context label after a short delay on each step
             showContextLabel = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                withAnimation(.easeOut(duration: 0.3)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     showContextLabel = true
                 }
             }
@@ -146,13 +146,13 @@ struct TutorialExperienceView: View {
     private func advance() {
         showContextLabel = false
 
-        withAnimation(.easeIn(duration: 0.15)) {
+        withAnimation(OPSStyle.Animation.fast) {
             stepOpacity = 0
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             state.advancePhase()
-            withAnimation(.easeOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 stepOpacity = 1.0
             }
         }

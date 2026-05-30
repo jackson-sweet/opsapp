@@ -510,7 +510,7 @@ struct MyExpensesView: View {
             .padding(.vertical, OPSStyle.Layout.spacing2)
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                withAnimation(OPSStyle.Animation.smooth) {
                     if isExpanded {
                         expandedMonths.remove(monthGroup.id)
                     } else {
@@ -567,7 +567,7 @@ struct MyExpensesView: View {
             .padding(.vertical, OPSStyle.Layout.spacing1)
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                withAnimation(OPSStyle.Animation.smooth) {
                     if isExpanded {
                         expandedProjects.remove(compositeKey)
                     } else {

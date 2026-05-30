@@ -378,7 +378,7 @@ struct PhasedContent<Content: View>: View {
             .offset(y: isVisible ? 0 : 20)
             .onChange(of: coordinator.phase) { _, newPhase in
                 if newPhase >= .contentFadeIn && !isVisible {
-                    withAnimation(.easeOut(duration: 0.4)) {
+                    withAnimation(OPSStyle.Animation.fast) {
                         isVisible = true
                     }
                     // After content fades in, advance to labels
@@ -464,7 +464,7 @@ struct PhasedPrimaryButton: View {
                                 ) {
                                     // Text complete - show icon after delay
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                        withAnimation(.easeOut(duration: 0.4)) {
+                                        withAnimation(OPSStyle.Animation.fast) {
                                             iconVisible = true
                                         }
                                         coordinator.advanceTo(.complete)
@@ -491,7 +491,7 @@ struct PhasedPrimaryButton: View {
         .disabled(!isEnabled || isLoading || !containerVisible)
         .onChange(of: coordinator.phase) { _, newPhase in
             if newPhase >= .buttonContainerFadeIn && !containerVisible {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                withAnimation(OPSStyle.Animation.smooth) {
                     containerVisible = true
                 }
                 // Start text typing after container appears

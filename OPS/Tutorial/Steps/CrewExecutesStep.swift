@@ -142,7 +142,7 @@ struct CrewExecutesStep: View {
 
             // → IN PROGRESS
             DispatchQueue.main.asyncAfter(deadline: .now() + base) {
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     statuses[i] = .inProgress
                 }
                 TutorialHaptics.arrival()
@@ -150,7 +150,7 @@ struct CrewExecutesStep: View {
 
             // → COMPLETE
             DispatchQueue.main.asyncAfter(deadline: .now() + base + 1.0) {
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     statuses[i] = .complete
                 }
                 TutorialHaptics.arrival()
@@ -161,14 +161,14 @@ struct CrewExecutesStep: View {
         let totalTime = 0.3 + (Double(TutorialData.taskCards.count) * 1.6) + 0.5
         DispatchQueue.main.asyncAfter(deadline: .now() + totalTime) {
             TutorialHaptics.commit()
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 showProject = true
             }
         }
 
         // Project glow
         DispatchQueue.main.asyncAfter(deadline: .now() + totalTime + 0.3) {
-            withAnimation(.easeInOut(duration: 0.5)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 projectGlow = 1
             }
             TutorialHaptics.milestone()

@@ -100,18 +100,18 @@ struct OrganizationJoinView: View {
     private func startAnimations() {
         // Initial delay to let the view appear
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            withAnimation(.easeIn(duration: 0.5)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 contentOpacity = 1.0
             }
             
             // Animate icon with spring effect
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.7, blendDuration: 0.3)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 iconScale = 1.0
             }
             
             // Fade in message after icon appears
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                withAnimation(.easeInOut(duration: 0.8)) {
+                withAnimation(OPSStyle.Animation.smooth) {
                     messageOpacity = 1.0
                 }
             }

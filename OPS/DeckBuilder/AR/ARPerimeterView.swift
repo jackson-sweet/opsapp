@@ -560,7 +560,7 @@ private struct ARTriggerButton: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         }
         .gesture(wheelDragGesture)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: wheelExpanded)
+        .animation(OPSStyle.Animation.smooth, value: wheelExpanded)
     }
 
     private func wheelSlot(index: Int) -> some View {
@@ -605,7 +605,7 @@ private struct ARTriggerButton: View {
                     executeAction(idx)
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                 }
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                withAnimation(OPSStyle.Animation.smooth) {
                     wheelExpanded = false
                     wheelHighlight = nil
                 }

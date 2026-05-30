@@ -227,7 +227,7 @@ struct MapSettingsView: View {
                     guard let anchor else { return }
 
                     UISelectionFeedbackGenerator().selectionChanged()
-                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                    withAnimation(OPSStyle.Animation.smooth) {
                         proxy.scrollTo(anchor, anchor: .top)
                     }
                     withAnimation(.easeIn(duration: 0.2).delay(0.15)) {
@@ -236,7 +236,7 @@ struct MapSettingsView: View {
                     Task {
                         try? await Task.sleep(nanoseconds: 1_600_000_000)
                         await MainActor.run {
-                            withAnimation(.easeOut(duration: 0.4)) {
+                            withAnimation(OPSStyle.Animation.fast) {
                                 highlightedSection = nil
                             }
                         }

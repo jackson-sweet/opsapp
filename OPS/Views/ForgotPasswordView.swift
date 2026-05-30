@@ -219,7 +219,7 @@ struct ForgotPasswordView: View {
                 isLoading = false
 
                 if success {
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    withAnimation(OPSStyle.Animation.smooth) {
                         showSuccess = true
                     }
                 } else {

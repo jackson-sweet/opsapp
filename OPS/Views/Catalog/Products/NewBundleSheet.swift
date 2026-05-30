@@ -273,7 +273,7 @@ struct NewBundleSheet: View {
     private var addChildButton: some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(.easeInOut(duration: 0.18)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 drawerOpen.toggle()
             }
         } label: {

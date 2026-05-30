@@ -178,11 +178,11 @@ struct WizardOverlayModifier: ViewModifier {
                     .zIndex(999)
                 }
             }
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: stateManager.isActive)
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: stateManager.currentStepIndex)
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showExitPrompt)
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: stateManager.completedWizardId != nil)
-            .animation(.easeInOut(duration: 0.2), value: stateManager.isStepTransitioning)
+            .animation(OPSStyle.Animation.smooth, value: stateManager.isActive)
+            .animation(OPSStyle.Animation.smooth, value: stateManager.currentStepIndex)
+            .animation(OPSStyle.Animation.smooth, value: showExitPrompt)
+            .animation(OPSStyle.Animation.smooth, value: stateManager.completedWizardId != nil)
+            .animation(OPSStyle.Animation.fast, value: stateManager.isStepTransitioning)
             .onChange(of: stateManager.isActive) { _, active in
                 if !active {
                     showExitPrompt = false

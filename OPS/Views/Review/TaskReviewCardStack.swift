@@ -34,23 +34,23 @@ struct TaskReviewCardStack: View {
     /// the result without the bounce.
     private var dragSettleAnimation: Animation {
         reduceMotion
-            ? .easeOut(duration: 0.2)
-            : .spring(response: 0.3, dampingFraction: 0.8)
+            ? OPSStyle.Animation.fast
+            : OPSStyle.Animation.smooth
     }
 
     /// Stack-shift animation when the top card changes — same tradeoff.
     private var stackShiftAnimation: Animation {
         reduceMotion
-            ? .easeOut(duration: 0.25)
-            : .spring(response: 0.4, dampingFraction: 0.7)
+            ? OPSStyle.Animation.fast
+            : OPSStyle.Animation.smooth
     }
 
     /// Snap-back when a drag ends below threshold — short and crisp in both
     /// modes; reduce-motion just drops the springy tail.
     private var snapBackAnimation: Animation {
         reduceMotion
-            ? .easeOut(duration: 0.2)
-            : .spring()
+            ? OPSStyle.Animation.fast
+            : OPSStyle.Animation.smooth
     }
 
     var body: some View {
@@ -174,7 +174,7 @@ struct TaskReviewCardStack: View {
         let flyAway = flyAwayOffset(for: direction)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-        withAnimation(.easeIn(duration: 0.25)) {
+        withAnimation(OPSStyle.Animation.smooth) {
             dragOffset = flyAway
         }
 

@@ -34,7 +34,7 @@ struct SyncStatusSection: View {
             VStack(spacing: 0) {
                 // Collapsed header — always visible when there's content
                 Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    withAnimation(OPSStyle.Animation.smooth) {
                         isExpanded.toggle()
                     }
                 } label: {
@@ -228,7 +228,7 @@ struct SyncStatusSection: View {
             // Cancel button — available for pending and failed (not in-progress)
             if operation.status != "inProgress" {
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(OPSStyle.Animation.smooth) {
                         syncEngine.cancelOperation(operation)
                     }
                 } label: {

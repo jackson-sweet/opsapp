@@ -76,7 +76,7 @@ struct PostTutorialCTAScreen: View {
                             typingSpeed: 40
                         ) {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                withAnimation(OPSStyle.Animation.smooth) {
                                     showButton = true
                                 }
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
@@ -116,7 +116,7 @@ struct PostTutorialCTAScreen: View {
                                         typingSpeed: 25
                                     ) {
                                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                            withAnimation(.easeOut(duration: 0.4)) {
+                                            withAnimation(OPSStyle.Animation.fast) {
                                                 showButtonIcon = true
                                             }
                                         }

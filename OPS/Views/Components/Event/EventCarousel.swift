@@ -303,7 +303,7 @@ struct EventCardView: View {
             minimumDuration: 0.6,
             maximumDistance: .infinity,
             pressing: { pressing in
-                withAnimation(.easeInOut(duration: 0.1)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     isLongPressing = pressing
                 }
 

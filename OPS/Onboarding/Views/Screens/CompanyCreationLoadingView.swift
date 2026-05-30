@@ -85,7 +85,7 @@ struct CompanyCreationLoadingView: View {
 
         // Fade in first message
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            withAnimation(.easeIn(duration: 0.4)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 textOpacity = 1.0
             }
         }
@@ -113,7 +113,7 @@ struct CompanyCreationLoadingView: View {
             currentPhase = .assigningCode
             hasReachedAssigningCode = true
 
-            withAnimation(.easeIn(duration: 0.4)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 textOpacity = 1.0
             }
         }

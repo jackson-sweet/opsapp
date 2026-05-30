@@ -186,7 +186,7 @@ struct TaskLineItem: View {
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .scaleEffect(isLongPressing ? 0.95 : 1.0)
-        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)
+        .animation(OPSStyle.Animation.smooth, value: isLongPressing)
         .if(onLongPress != nil) { view in
             view.onLongPressGesture(minimumDuration: 0.3) {
                 onLongPress?()

@@ -109,7 +109,7 @@ struct FullScreenReceiptViewer: View {
             .onEnded { value in
                 let newScale = lastScale * value.magnification
                 if newScale < 1.0 {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    withAnimation(OPSStyle.Animation.smooth) {
                         scale = 1.0
                         offset = .zero
                     }
@@ -150,7 +150,7 @@ struct FullScreenReceiptViewer: View {
     private var doubleTapGesture: some Gesture {
         TapGesture(count: 2)
             .onEnded {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                withAnimation(OPSStyle.Animation.smooth) {
                     if scale > 1.0 {
                         scale = 1.0
                         offset = .zero

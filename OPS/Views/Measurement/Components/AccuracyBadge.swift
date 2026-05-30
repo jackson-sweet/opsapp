@@ -90,11 +90,11 @@ public struct AccuracyBadge: View {
     private func runPulse() {
         guard !reduceMotion else {
             // Reduced-motion fallback: 200 ms color fade only.
-            withAnimation(.linear(duration: 0.10)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 fillOpacity = 0.6
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) {
-                withAnimation(.linear(duration: 0.10)) {
+                withAnimation(OPSStyle.Animation.smooth) {
                     fillOpacity = 1.0
                 }
             }

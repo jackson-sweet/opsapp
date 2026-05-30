@@ -479,12 +479,12 @@ struct JobBoardProjectListView: View {
             )
         }
         .onChange(of: selectedStatuses) { _, _ in
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 updateFilterVisibility()
             }
         }
         .onChange(of: selectedTeamMemberIds) { _, _ in
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 updateFilterVisibility()
             }
         }
@@ -551,7 +551,7 @@ struct JobBoardProjectListView: View {
                         text: status.displayName,
                         color: status.color,
                         onRemove: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            withAnimation(OPSStyle.Animation.smooth) {
                                 _ = selectedStatuses.remove(status)
                             }
                         }
@@ -568,7 +568,7 @@ struct JobBoardProjectListView: View {
                             text: "\(member.firstName) \(member.lastName)",
                             color: OPSStyle.Colors.primaryAccent,
                             onRemove: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                withAnimation(OPSStyle.Animation.smooth) {
                                     _ = selectedTeamMemberIds.remove(memberId)
                                 }
                             }

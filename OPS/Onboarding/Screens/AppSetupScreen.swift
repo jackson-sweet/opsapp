@@ -90,7 +90,7 @@ struct AppSetupScreen: View {
                         .tracking(2)
                         .opacity(messageOpacity)
                         .contentTransition(.numericText())
-                        .animation(.easeInOut(duration: 0.4), value: syncPhase)
+                        .animation(OPSStyle.Animation.smooth, value: syncPhase)
                         .id("setup-message-\(syncPhase)")
                 }
 
@@ -106,18 +106,18 @@ struct AppSetupScreen: View {
     // MARK: - Visual Fade-In
 
     private func startFadeInSequence() {
-        withAnimation(.easeIn(duration: 0.6)) {
+        withAnimation(OPSStyle.Animation.smooth) {
             logoOpacity = 1.0
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            withAnimation(.easeIn(duration: 0.4)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 loadingOpacity = 1.0
             }
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            withAnimation(.easeIn(duration: 0.4)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 messageOpacity = 1.0
             }
         }

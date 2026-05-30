@@ -258,7 +258,7 @@ struct TaskDetailPopupSheet: View {
 
     private var teamHeader: some View {
         Button(action: {
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 if showTeamPicker {
                     // Collapsing without DONE = discard. Draft is reset on
                     // the next open via the `if !showTeamPicker` branch.
@@ -394,7 +394,7 @@ struct TaskDetailPopupSheet: View {
         HStack(spacing: 10) {
             Button(action: {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     showTeamPicker = false
                 }
             }) {
@@ -423,7 +423,7 @@ struct TaskDetailPopupSheet: View {
                 // the parent defers it off the dismiss critical path.
                 selectedTeamMemberIds = committed
                 onCommitTeam?(committed)
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.fast) {
                     showTeamPicker = false
                 }
             }) {

@@ -115,7 +115,7 @@ struct NotificationBannerModifier: ViewModifier {
                 )
                 .ignoresSafeArea()
                 .zIndex(999)
-                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isPresented)
+                .animation(OPSStyle.Animation.smooth, value: isPresented)
             }
         }
     }

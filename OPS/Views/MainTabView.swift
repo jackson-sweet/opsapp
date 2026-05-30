@@ -407,7 +407,7 @@ struct MainTabView: View {
             .environment(\.persistentHeaderNamespace, persistentHeaderNamespace)
             .environment(\.hostsPersistentSearchButton, selectedTab != 0)
             .transition(slideTransition)
-            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: selectedTab)
+            .animation(OPSStyle.Animation.smooth, value: selectedTab)
 
             // Persistent search button overlay — rendered OUTSIDE the sliding
             // .transition above so it stays visually still while tab content
@@ -815,7 +815,7 @@ struct MainTabView: View {
 
         // Handle navigating to Clients tab in Job Board
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NavigateToClients"))) { _ in
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 selectedTab = jobBoardTabIndex
             }
             // Post follow-up notification to switch to Clients section within Job Board

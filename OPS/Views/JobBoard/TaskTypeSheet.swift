@@ -1137,7 +1137,7 @@ struct TaskTypeSheet: View {
             }
         }
         .frame(height: 48)
-        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: fraction)
+        .animation(OPSStyle.Animation.smooth, value: fraction)
     }
 
     private func overlapToFraction(_ dep: TaskTypeDependency) -> CGFloat {
@@ -1266,7 +1266,7 @@ struct TaskTypeSheet: View {
             }
         }
         .frame(height: 48)
-        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: dep.minGapDaysAfterEnd)
+        .animation(OPSStyle.Animation.smooth, value: dep.minGapDaysAfterEnd)
     }
 
     // MARK: - After-End Controls
@@ -1536,7 +1536,7 @@ struct TaskTypeSheet: View {
                             .shadow(color: OPSStyle.Colors.primaryAccent.opacity(0.35), radius: 8, y: 2)
                     }
                     .position(x: thumbCenterX, y: geo.size.height / 2)
-                    .animation(.spring(response: 0.25, dampingFraction: 0.7), value: currentIndex)
+                    .animation(OPSStyle.Animation.smooth, value: currentIndex)
                 }
                 .contentShape(Rectangle())
                 .gesture(

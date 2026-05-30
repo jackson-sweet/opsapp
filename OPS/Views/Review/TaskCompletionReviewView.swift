@@ -340,7 +340,7 @@ struct TaskCompletionReviewView: View {
 
     private var celebrationScaleAnimation: Animation {
         reduceMotion
-            ? .easeOut(duration: 0.1)
+            ? OPSStyle.Animation.faster
             : OPSStyle.Animation.flip
     }
 

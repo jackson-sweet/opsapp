@@ -150,7 +150,7 @@ struct PhotoOverlayEditorView: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: saveError)
+        .animation(OPSStyle.Animation.smooth, value: saveError)
     }
 
     // MARK: - Top Bar

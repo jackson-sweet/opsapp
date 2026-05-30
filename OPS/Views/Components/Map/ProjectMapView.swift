@@ -164,7 +164,7 @@ struct ProjectMapView: View {
                     hasIncludedUserLocationInInitialRegion = true
                 }
                 let newRegion = idealMapRegion
-                withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+                withAnimation(OPSStyle.Animation.smooth) {
                     region = newRegion
                 }
             }
@@ -204,7 +204,7 @@ struct ProjectMapView: View {
                         print("[MAP] ⚠️ Projects loaded but user location NOT available yet")
                     }
                     let newRegion = idealMapRegion
-                    withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+                    withAnimation(OPSStyle.Animation.smooth) {
                         region = newRegion
                     }
                 }
@@ -235,7 +235,7 @@ struct ProjectMapView: View {
                     print("[MAP] 📍 Rebuilt map with user location only")
                 }
 
-                withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+                withAnimation(OPSStyle.Animation.smooth) {
                     region = newRegion
                 }
             } else {
@@ -248,7 +248,7 @@ struct ProjectMapView: View {
                 // NEVER during routing - user has complete control
                 if !InProgressManager.shared.isRouting {
                     let newRegion = idealMapRegion
-                    withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+                    withAnimation(OPSStyle.Animation.smooth) {
                         region = newRegion
                     }
                 } else {
@@ -279,7 +279,7 @@ struct ProjectMapView: View {
             // NEVER apply zoom changes during routing - user has complete control
             if !InProgressManager.shared.isRouting {
                 let newRegion = idealMapRegion
-                withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+                withAnimation(OPSStyle.Animation.smooth) {
                     region = newRegion
                 }
             } else {
@@ -302,7 +302,7 @@ struct ProjectMapView: View {
         // If there was no recent user interaction, auto-zoom immediately
         if shouldAutoZoom {
             let newRegion = idealMapRegion
-            withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+            withAnimation(OPSStyle.Animation.smooth) {
                 region = newRegion
             }
         } else if userHasMovedMap {
@@ -338,7 +338,7 @@ struct ProjectMapView: View {
         autoZoomTimer?.invalidate()
         autoZoomTimer = nil
         
-        withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+        withAnimation(OPSStyle.Animation.smooth) {
             region = idealMapRegion
         }
         
@@ -385,7 +385,7 @@ struct ProjectMapView: View {
         guard mapAutoCenter && mapAutoCenterTime != "off" else { return }
         
         let newRegion = idealMapRegion
-        withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+        withAnimation(OPSStyle.Animation.smooth) {
             region = newRegion
         }
         

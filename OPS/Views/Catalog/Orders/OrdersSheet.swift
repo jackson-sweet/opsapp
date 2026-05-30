@@ -149,7 +149,7 @@ struct OrdersSheet: View {
                         case .sent:      sentContent
                         }
                     }
-                    .animation(.easeInOut(duration: 0.18), value: subSegment)
+                    .animation(OPSStyle.Animation.fast, value: subSegment)
                 }
             }
             .navigationTitle("ORDERS")

@@ -164,7 +164,7 @@ struct CatalogProductsListView: View {
         let isSelected = selectedFilter == filter
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(.easeInOut(duration: 0.18)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 selectedFilter = filter
             }
         } label: {

@@ -148,7 +148,7 @@ struct WeeklyReviewStep: View {
 
     private func startSequence() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            withAnimation(.easeOut(duration: 0.25)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 showIntro = false
             }
         }
@@ -157,7 +157,7 @@ struct WeeklyReviewStep: View {
     private func handleSwipe(direction: String) {
         onSwipe?(currentIndex, direction)
 
-        withAnimation(.easeOut(duration: 0.15)) {
+        withAnimation(OPSStyle.Animation.faster) {
             currentIndex += 1
         }
 
@@ -172,7 +172,7 @@ struct WeeklyReviewStep: View {
         showDone = true
         TutorialHaptics.milestone()
 
-        withAnimation(.easeOut(duration: 0.4)) {
+        withAnimation(OPSStyle.Animation.fast) {
             doneOpacity = 1
             doneScale = 1.0
         }
@@ -232,7 +232,7 @@ private struct TutorialReviewSwipeCard: View {
                         commitSwipe()
                     } else {
                         // dampingFraction 0.8 = controlled settle, no bounce
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        withAnimation(OPSStyle.Animation.smooth) {
                             dragOffset = .zero
                         }
                     }
@@ -410,7 +410,7 @@ private struct TutorialReviewSwipeCard: View {
             TutorialHaptics.arrival()
         }
 
-        withAnimation(.easeIn(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.fast) {
             dragOffset = CGSize(width: flyX, height: dragOffset.height)
         }
 

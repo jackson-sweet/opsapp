@@ -682,7 +682,7 @@ struct ContactDetailView: View {
         .padding(.vertical, 4)
         .opacity(showFullContact ? 1 : 0)
         .offset(y: showFullContact ? 0 : 20)
-        .animation(.easeInOut(duration: 0.4), value: showFullContact)
+        .animation(OPSStyle.Animation.smooth, value: showFullContact)
     }
     
     // MARK: - Contact Section
@@ -1211,7 +1211,7 @@ struct ContactDetailView: View {
                     // Show more/less button if there are more than 5 projects
                     if projects.count > 5 {
                         Button(action: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            withAnimation(OPSStyle.Animation.smooth) {
                                 isProjectListExpanded.toggle()
                             }
                         }) {

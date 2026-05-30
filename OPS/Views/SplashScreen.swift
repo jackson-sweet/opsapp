@@ -57,7 +57,7 @@ struct SplashScreen: View {
             // Sequence of animations
             
             // Start with background gradient
-            withAnimation(Animation.easeOut(duration: 1.2)) {
+            withAnimation(OPSStyle.Animation.fast) {
                 backgroundGradientAmount = 1.0
             }
             

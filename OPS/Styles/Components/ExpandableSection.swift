@@ -98,7 +98,7 @@ struct ExpandableSection<Content: View>: View {
             .contentShape(Rectangle())  // Make entire header tappable
             .onTapGesture {
                 guard collapsible else { return }
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                withAnimation(OPSStyle.Animation.smooth) {
                     isExpanded.toggle()
                 }
             }

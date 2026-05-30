@@ -68,8 +68,8 @@ struct CustomAlertModifier: ViewModifier {
                 }
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: alert?.id)
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isVisible)
+        .animation(OPSStyle.Animation.smooth, value: alert?.id)
+        .animation(OPSStyle.Animation.smooth, value: isVisible)
         .onChange(of: alert) { _, newValue in
             if let config = newValue {
                 isVisible = true

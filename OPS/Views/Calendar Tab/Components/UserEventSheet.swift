@@ -453,7 +453,7 @@ struct UserEventSheet: View {
 
                     Toggle("", isOn: $allDay)
                         .labelsHidden()
-                        .tint(OPSStyle.Colors.primaryAccent)
+                        .tint(OPSStyle.Colors.text)
                 }
                 .padding(.vertical, 12)
                 .padding(.horizontal, 16)

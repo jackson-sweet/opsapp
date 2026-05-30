@@ -276,7 +276,7 @@ struct ExpenseSettingsView: View {
                 }
             ))
             .labelsHidden()
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2_5)
@@ -342,7 +342,7 @@ struct ExpenseSettingsView: View {
                 }
             ))
             .labelsHidden()
-            .tint(OPSStyle.Colors.successStatus)
+            .tint(OPSStyle.Colors.text)
         }
         .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark)

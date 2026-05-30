@@ -46,6 +46,8 @@ struct CatalogView: View {
     @State private var showUnitsManage: Bool = false
     @State private var showThresholdsManage: Bool = false
     @State private var showDefaultsManage: Bool = false
+    @State private var showSetupFlow: Bool = false
+    @State private var setupMissingMappingKey: String?
     @State private var showImport: Bool = false
 
     private var selectedSegment: CatalogSegment {
@@ -102,6 +104,12 @@ struct CatalogView: View {
         .sheet(isPresented: $showUnitsManage)       { UnitsManageSheet() }
         .sheet(isPresented: $showThresholdsManage)  { ThresholdsManageSheet() }
         .sheet(isPresented: $showDefaultsManage)    { DefaultsManageSheet() }
+        .sheet(isPresented: $showSetupFlow, onDismiss: {
+            setupMissingMappingKey = nil
+        }) {
+            CatalogSetupFlowSheet(missingMappingKey: setupMissingMappingKey)
+                .environmentObject(dataController)
+        }
         .sheet(isPresented: $showImport)            {
             CatalogImportSheet()
                 .environmentObject(dataController)
@@ -110,6 +118,12 @@ struct CatalogView: View {
             let raw = notif.userInfo?["subSegment"] as? String
             ordersInitialSubSegment = OrdersSubSegment(rawValue: raw ?? "") ?? .suggested
             showOrders = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenCatalogSetup"))) { notif in
+            let key = notif.userInfo?["missingMapping"] as? String
+            setupMissingMappingKey = key?.isEmpty == false ? key : nil
+            setSegment(.stock)
+            showSetupFlow = true
         }
     }
 
@@ -192,6 +206,9 @@ struct CatalogView: View {
                 }
                 if showSetupSection {
                     Section("SETUP") {
+                        Button { showSetupFlow = true } label: {
+                            Label("Stock Setup", systemImage: "square.grid.3x3")
+                        }
                         if canManage {
                             Button { showDefaultsManage = true } label: { Label("Defaults", systemImage: "gearshape") }
                         }

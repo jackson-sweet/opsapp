@@ -37,6 +37,7 @@ struct RecurringExpenseEditSheet: View {
                     }
                     DatePicker("NEXT DUE", selection: $nextDueDate, displayedComponents: .date)
                     Toggle("HAS END DATE", isOn: $hasEndDate)
+                        .tint(OPSStyle.Colors.text)
                     if hasEndDate {
                         DatePicker(
                             "END DATE",

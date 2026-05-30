@@ -41,6 +41,8 @@ enum OPSSchemaV6: VersionedSchema {
 
     static var models: [any PersistentModel.Type] {
         OPSSchemaCommon.unchangedModels
+            + OPSSchemaCommon.v4CoreModels
+            + OPSSchemaCommon.v4TaskModels
             + OPSSchemaCommon.v3CatalogModels
             + OPSSchemaCommon.v4ReminderModels
             + OPSSchemaCommon.v6ForecastModels
@@ -59,10 +61,34 @@ enum OPSSchemaV7: VersionedSchema {
 
     static var models: [any PersistentModel.Type] {
         OPSSchemaCommon.unchangedModels
+            + OPSSchemaCommon.v4CoreModels
+            + OPSSchemaCommon.v4TaskModels
             + OPSSchemaCommon.v3CatalogModels
             + OPSSchemaCommon.v4ReminderModels
             + OPSSchemaCommon.v6ForecastModels
             + OPSSchemaCommon.v7VinylOrderModels
+            + [WizardState.self, CalendarMirrorMap.self]
+    }
+}
+
+/// Schema version 8.0.0 — Catalog setup data foundation.
+///
+/// V8 adds physical catalog stock units plus product↔catalog option mappings.
+/// It is also the first schema stage to use the live top-level
+/// `ProductBundleItem` shape with relationship fields. V3-V7 keep a frozen
+/// legacy ProductBundleItem model so their schema fingerprints stay stable.
+enum OPSSchemaV8: VersionedSchema {
+    static var versionIdentifier: Schema.Version { Schema.Version(8, 0, 0) }
+
+    static var models: [any PersistentModel.Type] {
+        OPSSchemaCommon.unchangedModels
+            + OPSSchemaCommon.v4CoreModels
+            + OPSSchemaCommon.v4TaskModels
+            + OPSSchemaCommon.v8CatalogModels
+            + OPSSchemaCommon.v4ReminderModels
+            + OPSSchemaCommon.v6ForecastModels
+            + OPSSchemaCommon.v7VinylOrderModels
+            + OPSSchemaCommon.v8CatalogSetupModels
             + [WizardState.self, CalendarMirrorMap.self]
     }
 }

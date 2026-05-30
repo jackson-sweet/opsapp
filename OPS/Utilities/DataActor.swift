@@ -84,7 +84,9 @@ actor DataActor {
     /// Entity types processed during full/delta sync, ordered by foreign-key
     /// dependencies (companies/users/clients before projects/tasks etc).
     /// Mirrors InboundProcessor.syncOrder during Phase 1 migration; the source
-    /// of truth moves here after legacy is removed.
+    /// of truth moves here after legacy is removed. New catalog setup tables
+    /// stay in dependency order but are filtered by CatalogSchemaCapabilityGate
+    /// until the target schema proves they exist.
     static let syncOrder: [SyncEntityType] = [
         .company,
         .user,
@@ -110,15 +112,19 @@ actor DataActor {
         .catalogOption,
         .catalogOptionValue,
         .catalogVariant,
+        .catalogStockUnit,
         .catalogVariantOptionValue,
         .catalogItemTag,
         .catalogSnapshot,
         .catalogSnapshotItem,
         // Product configurability layers
+        .product,
         .productOption,
         .productOptionValue,
+        .catalogProductOptionMapping,
         .productPricingModifier,
         .productMaterial,
+        .productBundleItem,
         // Adapter + restock orders (depend on Products / catalog variants).
         .companyDefaultProduct,
         .catalogOrder,
@@ -218,8 +224,9 @@ actor DataActor {
         spotlightDirty.removeAll()
         spotlightDeleted.removeAll()
 
+        let capabilities = await CatalogSchemaCapabilityGate.refresh(companyId: companyId)
         let repos = repositories(companyId: companyId)
-        let order = Self.syncOrder
+        let order = Self.syncOrder.filter { capabilities.supportsSync($0) }
         let totalSteps = Double(order.count)
 
         for (index, entityType) in order.enumerated() {
@@ -273,9 +280,11 @@ actor DataActor {
         spotlightDirty.removeAll()
         spotlightDeleted.removeAll()
 
+        let capabilities = await CatalogSchemaCapabilityGate.refresh(companyId: companyId)
         let repos = repositories(companyId: companyId)
 
         for entityType in Self.syncOrder {
+            guard capabilities.supportsSync(entityType) else { continue }
             let sinceDate = timestamps[entityType]
             guard sinceDate != nil else { continue }
 
@@ -351,6 +360,9 @@ actor DataActor {
             try await syncCatalogItems(since: since, repos: repos)
         case .catalogVariant:
             try await syncCatalogVariants(since: since, repos: repos)
+        case .catalogStockUnit:
+            guard CatalogSchemaCapabilityGate.supportsSync(.catalogStockUnit) else { return }
+            try await syncCatalogStockUnits(since: since, repos: repos)
         case .catalogOption:
             try await syncCatalogOptions(repos: repos)
         case .catalogOptionValue:
@@ -369,14 +381,21 @@ actor DataActor {
             try await syncCatalogOrderItems(repos: repos)
         case .companyDefaultProduct:
             try await syncCompanyDefaultProducts(repos: repos)
+        case .product:
+            try await syncProducts(repos: repos)
         case .productOption:
             try await syncProductOptions(repos: repos)
         case .productOptionValue:
             try await syncProductOptionValues(repos: repos)
+        case .catalogProductOptionMapping:
+            guard CatalogSchemaCapabilityGate.supportsSync(.catalogProductOptionMapping) else { return }
+            try await syncCatalogProductOptionMappings(since: since, repos: repos)
         case .productPricingModifier:
             try await syncProductPricingModifiers(repos: repos)
         case .productMaterial:
             try await syncProductMaterials(repos: repos)
+        case .productBundleItem:
+            try await syncProductBundleItems(repos: repos)
         case .inventoryUnit:
             try await syncInventoryUnits(since: since, repos: repos)
         case .inventoryTag:
@@ -1893,6 +1912,80 @@ actor DataActor {
         }
     }
 
+    // MARK: - Sync: Catalog Stock Units
+
+    private func syncCatalogStockUnits(since: Date?, repos: InboundRepositories) async throws {
+        let dtos = try await repos.catalogStockUnit.fetchForSync(since: since)
+        let deletedIds: [String]
+        if let sinceDate = since {
+            deletedIds = try await repos.catalogStockUnit.fetchDeletedIds(since: sinceDate)
+        } else {
+            deletedIds = []
+        }
+
+        guard !dtos.isEmpty || !deletedIds.isEmpty else { return }
+
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergeCatalogStockUnit(dto: dto)
+            }
+            for id in deletedIds {
+                try tombstoneCatalogStockUnit(id: id)
+            }
+        }
+        print("[DataActor] Merged \(dtos.count) catalog stock units (tombstoned \(deletedIds.count))")
+    }
+
+    private func mergeCatalogStockUnit(dto: CatalogStockUnitDTO) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<CatalogStockUnit>(predicate: #Predicate { $0.id == id })
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .catalogStockUnit,
+                entityId: id,
+                fields: [
+                    "companyId", "catalogVariantId", "unitKind", "label", "lotCode",
+                    "widthValue", "widthUnit", "originalLengthValue",
+                    "remainingLengthValue", "lengthUnit", "quantityValue",
+                    "location", "status", "sourceOrderItemId", "notes", "deletedAt"
+                ]
+            )
+            if accept.contains("companyId")             { existing.companyId = dto.companyId }
+            if accept.contains("catalogVariantId")      { existing.catalogVariantId = dto.catalogVariantId }
+            if accept.contains("unitKind")              { existing.unitKind = CatalogStockUnitKind(rawValue: dto.unitKind) ?? .each }
+            if accept.contains("label")                 { existing.label = dto.label }
+            if accept.contains("lotCode")               { existing.lotCode = dto.lotCode }
+            if accept.contains("widthValue")            { existing.widthValue = dto.widthValue }
+            if accept.contains("widthUnit")             { existing.widthUnit = dto.widthUnit }
+            if accept.contains("originalLengthValue")   { existing.originalLengthValue = dto.originalLengthValue }
+            if accept.contains("remainingLengthValue")  { existing.remainingLengthValue = dto.remainingLengthValue }
+            if accept.contains("lengthUnit")            { existing.lengthUnit = dto.lengthUnit }
+            if accept.contains("quantityValue")         { existing.quantityValue = dto.quantityValue }
+            if accept.contains("location")              { existing.location = dto.location }
+            if accept.contains("status")                { existing.status = CatalogStockUnitStatus(rawValue: dto.status) ?? .full }
+            if accept.contains("sourceOrderItemId")     { existing.sourceOrderItemId = dto.sourceOrderItemId }
+            if accept.contains("notes")                 { existing.notes = dto.notes }
+            if accept.contains("deletedAt")             { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+            existing.updatedAt = SupabaseDate.parse(dto.updatedAt) ?? existing.updatedAt
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+        }
+    }
+
+    private func tombstoneCatalogStockUnit(id: String) throws {
+        let descriptor = FetchDescriptor<CatalogStockUnit>(predicate: #Predicate { $0.id == id })
+        if let existing = try modelContext.fetch(descriptor).first {
+            existing.deletedAt = Date()
+            existing.needsSync = false
+        }
+    }
+
     // MARK: - Sync: Catalog Options (full reconcile)
 
     /// catalog_options has no updated_at — full reconcile: pull every option for
@@ -2270,6 +2363,32 @@ actor DataActor {
         }
     }
 
+    // MARK: - Sync: Products
+
+    private func syncProducts(repos: InboundRepositories) async throws {
+        let dtos = try await repos.product.fetchAll(includeInactive: true)
+        let serverIds = Set(dtos.map(\.id))
+        let companyId = repos.companyId
+
+        try modelContext.transaction {
+            for dto in dtos {
+                let accept = acceptableFields(
+                    entityType: .product,
+                    entityId: dto.id,
+                    fields: ProductSyncLocalStore.mergeFields
+                )
+                try ProductSyncLocalStore.merge(dto: dto, context: modelContext, accepting: accept)
+            }
+
+            let localProducts = try modelContext.fetch(FetchDescriptor<Product>())
+                .filter { $0.companyId == companyId }
+            for product in localProducts where !serverIds.contains(product.id) {
+                product.isActive = false
+            }
+        }
+        print("[DataActor] Merged \(dtos.count) products")
+    }
+
     // MARK: - Sync: Product Options
 
     private func syncProductOptions(repos: InboundRepositories) async throws {
@@ -2343,6 +2462,72 @@ actor DataActor {
             }
         }
         print("[DataActor] Merged \(dtos.count) product option values")
+    }
+
+    // MARK: - Sync: Catalog Product Option Mappings
+
+    private func syncCatalogProductOptionMappings(since: Date?, repos: InboundRepositories) async throws {
+        let dtos = try await repos.catalogProductOptionMapping.fetchForSync(since: since)
+        let deletedIds: [String]
+        if let sinceDate = since {
+            deletedIds = try await repos.catalogProductOptionMapping.fetchDeletedIds(since: sinceDate)
+        } else {
+            deletedIds = []
+        }
+
+        guard !dtos.isEmpty || !deletedIds.isEmpty else { return }
+
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergeCatalogProductOptionMapping(dto: dto)
+            }
+            for id in deletedIds {
+                try tombstoneCatalogProductOptionMapping(id: id)
+            }
+        }
+        print("[DataActor] Merged \(dtos.count) catalog-product option mappings (tombstoned \(deletedIds.count))")
+    }
+
+    private func mergeCatalogProductOptionMapping(dto: CatalogProductOptionMappingDTO) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<CatalogProductOptionMapping>(predicate: #Predicate { $0.id == id })
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .catalogProductOptionMapping,
+                entityId: id,
+                fields: [
+                    "companyId", "productId", "catalogItemId", "catalogOptionId",
+                    "productOptionId", "catalogOptionValueId",
+                    "productOptionValueId", "mappingKind", "deletedAt"
+                ]
+            )
+            if accept.contains("companyId")              { existing.companyId = dto.companyId }
+            if accept.contains("productId")              { existing.productId = dto.productId }
+            if accept.contains("catalogItemId")          { existing.catalogItemId = dto.catalogItemId }
+            if accept.contains("catalogOptionId")        { existing.catalogOptionId = dto.catalogOptionId }
+            if accept.contains("productOptionId")        { existing.productOptionId = dto.productOptionId }
+            if accept.contains("catalogOptionValueId")   { existing.catalogOptionValueId = dto.catalogOptionValueId }
+            if accept.contains("productOptionValueId")   { existing.productOptionValueId = dto.productOptionValueId }
+            if accept.contains("mappingKind")            { existing.mappingKind = CatalogProductOptionMappingKind(rawValue: dto.mappingKind) ?? .axis }
+            if accept.contains("deletedAt")              { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+            existing.updatedAt = SupabaseDate.parse(dto.updatedAt) ?? existing.updatedAt
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+        }
+    }
+
+    private func tombstoneCatalogProductOptionMapping(id: String) throws {
+        let descriptor = FetchDescriptor<CatalogProductOptionMapping>(predicate: #Predicate { $0.id == id })
+        if let existing = try modelContext.fetch(descriptor).first {
+            existing.deletedAt = Date()
+            existing.needsSync = false
+        }
     }
 
     // MARK: - Sync: Product Pricing Modifiers
@@ -2424,6 +2609,52 @@ actor DataActor {
             }
         }
         print("[DataActor] Merged \(dtos.count) product materials")
+    }
+
+    // MARK: - Sync: Product Bundle Items
+
+    private func syncProductBundleItems(repos: InboundRepositories) async throws {
+        let dtos = try await repos.productBundleItem.fetchAll()
+        let serverIds = Set(dtos.map(\.id))
+        let companyId = repos.companyId
+
+        try modelContext.transaction {
+            for dto in dtos {
+                let id = dto.id
+                let descriptor = FetchDescriptor<ProductBundleItem>(predicate: #Predicate { $0.id == id })
+                if let existing = try modelContext.fetch(descriptor).first {
+                    if existing.needsSync {
+                        print("[DataActor] Skipping bundle item \(id) — pending local op")
+                        continue
+                    }
+                    existing.bundleProductId = dto.bundleProductId
+                    existing.childProductId = dto.childProductId
+                    existing.quantity = dto.quantity
+                    existing.relationshipKind = dto.relationshipKind.flatMap { ProductBundleRelationshipKind(rawValue: $0) } ?? .required
+                    existing.suggestionReason = dto.suggestionReason
+                    existing.compatibilitySelectorJSON = dto.compatibilitySelector?.rawJSONString
+                    existing.displayOrder = dto.displayOrder
+                    existing.updatedAt = SupabaseDate.parse(dto.updatedAt) ?? existing.updatedAt
+                    existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+                    existing.lastSyncedAt = Date()
+                    existing.needsSync = false
+                } else {
+                    let model = dto.toModel()
+                    model.lastSyncedAt = Date()
+                    model.needsSync = false
+                    modelContext.insert(model)
+                }
+            }
+
+            let companyProductIds = Set(try modelContext.fetch(FetchDescriptor<Product>())
+                .filter { $0.companyId == companyId }
+                .map(\.id))
+            let allLocal = try modelContext.fetch(FetchDescriptor<ProductBundleItem>())
+            for row in allLocal where companyProductIds.contains(row.bundleProductId) && !serverIds.contains(row.id) {
+                modelContext.delete(row)
+            }
+        }
+        print("[DataActor] Merged \(dtos.count) product bundle items")
     }
 
     // MARK: - Sync: Inventory Units (legacy)
@@ -3244,6 +3475,7 @@ actor DataActor {
                 case .catalogSnapshot(let dto):         try mergeCatalogSnapshot(dto: dto)
                 case .catalogOrder(let dto):            try mergeCatalogOrder(dto: dto)
                 case .companyDefaultProduct(let dto):   try mergeCompanyDefaultProduct(dto: dto)
+                case .product(let dto):                 try ProductSyncLocalStore.merge(dto: dto, context: modelContext)
                 }
             }
         } catch {
@@ -3917,19 +4149,19 @@ actor DataActor {
             // Create present — merge subsequent updates in.
             if let createOp = ops.first(where: { $0.operationType == "create" }) {
                 var allChangedFields = Set(createOp.getChangedFields())
-                var latestPayload = createOp.payload
+                var mergedPayload = createOp.payload
 
                 for op in ops where op.id != createOp.id {
                     let fields = op.getChangedFields()
                     allChangedFields.formUnion(fields)
-                    latestPayload = op.payload
+                    if let encoded = mergePayloads(base: mergedPayload, overlay: op.payload) {
+                        mergedPayload = encoded
+                    }
                     op.status = "completed"
                     op.completedAt = Date()
                 }
 
-                if let mergedPayload = mergePayloads(base: createOp.payload, overlay: latestPayload) {
-                    createOp.payload = mergedPayload
-                }
+                createOp.payload = mergedPayload
                 createOp.changedFields = Array(allChangedFields).joined(separator: ",")
                 result.append(createOp)
                 continue
@@ -4033,7 +4265,7 @@ actor DataActor {
         "id", "bubble_id", "company_id", "project_id", "task_type_id",
         "custom_title", "task_notes", "status", "task_color", "display_order",
         "team_member_ids", "source_line_item_id", "source_estimate_id",
-        "start_date", "end_date", "duration", "dependency_overrides",
+        "start_date", "end_date", "duration", "schedule_locked", "dependency_overrides",
         "start_time", "end_time", "deleted_at", "created_at", "updated_at"
     ]
 
@@ -4260,6 +4492,7 @@ enum RealtimeUpdate: Sendable {
     case catalogSnapshot(CatalogSnapshotDTO)
     case catalogOrder(CatalogOrderDTO)
     case companyDefaultProduct(CompanyDefaultProductDTO)
+    case product(ProductDTO)
 }
 
 // MARK: - Inbound Repositories Helper
@@ -4284,8 +4517,12 @@ struct InboundRepositories {
     let invoice: InvoiceRepository
     let estimate: EstimateRepository
     let catalog: CatalogRepository
+    let catalogStockUnit: CatalogStockUnitRepository
+    let catalogProductOptionMapping: CatalogProductOptionMappingRepository
     let inventory: InventoryRepository
+    let product: ProductRepository
     let productRichness: ProductRichnessRepository
+    let productBundleItem: ProductBundleItemRepository
     let defaultProduct: CompanyDefaultProductRepository
     let order: CatalogOrderRepository
 
@@ -4306,8 +4543,12 @@ struct InboundRepositories {
         self.invoice = InvoiceRepository(companyId: companyId)
         self.estimate = EstimateRepository(companyId: companyId)
         self.catalog = CatalogRepository(companyId: companyId)
+        self.catalogStockUnit = CatalogStockUnitRepository(companyId: companyId)
+        self.catalogProductOptionMapping = CatalogProductOptionMappingRepository(companyId: companyId)
         self.inventory = InventoryRepository(companyId: companyId)
+        self.product = ProductRepository(companyId: companyId)
         self.productRichness = ProductRichnessRepository(companyId: companyId)
+        self.productBundleItem = ProductBundleItemRepository(companyId: companyId)
         self.defaultProduct = CompanyDefaultProductRepository(companyId: companyId)
         self.order = CatalogOrderRepository(companyId: companyId)
     }

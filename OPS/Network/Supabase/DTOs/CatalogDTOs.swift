@@ -272,6 +272,16 @@ struct CatalogItemTagDTO: Codable, Identifiable {
     }
 }
 
+struct CreateCatalogItemTagDTO: Codable {
+    let catalogItemId: String
+    let tagId: String
+
+    enum CodingKeys: String, CodingKey {
+        case catalogItemId  = "catalog_item_id"
+        case tagId          = "tag_id"
+    }
+}
+
 struct CatalogUnitDTO: Codable, Identifiable {
     let id: String
     let companyId: String
@@ -401,6 +411,7 @@ struct CreateCatalogItemDTO: Codable {
     let defaultWarningThreshold: Double?
     let defaultCriticalThreshold: Double?
     let defaultUnitId: String?
+    var imageUrl: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case companyId                  = "company_id"
@@ -412,6 +423,7 @@ struct CreateCatalogItemDTO: Codable {
         case defaultWarningThreshold    = "default_warning_threshold"
         case defaultCriticalThreshold   = "default_critical_threshold"
         case defaultUnitId              = "default_unit_id"
+        case imageUrl                   = "image_url"
     }
 }
 
@@ -592,9 +604,8 @@ struct CreateInventoryDeductionDTO: Codable {
 }
 
 // Additional Create/Update DTOs follow the same pattern. They are added on
-// demand by callers (e.g., CatalogRepository) — most catalog write paths from
-// iOS are quantity adjustments on variants, which use UpdateCatalogVariantDTO
-// above. Authoring options/values/tags is read-only on iOS for now (web-only).
+// demand by callers (e.g., CatalogRepository) while keeping partial updates
+// nil-safe so unrelated columns are not clobbered.
 
 struct UpsertCatalogVariantOptionValueDTO: Codable {
     let variantId: String

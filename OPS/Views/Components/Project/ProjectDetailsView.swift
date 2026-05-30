@@ -157,19 +157,6 @@ struct ProjectDetailsView: View {
                         ContactDetailView(user: member)
                             .environmentObject(dataController)
                     }
-                    .sheet(isPresented: $viewModel.showingScheduler) {
-                        CalendarSchedulerSheet(
-                            isPresented: $viewModel.showingScheduler,
-                            itemType: .project(project),
-                            currentStartDate: project.startDate,
-                            currentEndDate: project.endDate,
-                            onScheduleUpdate: { start, end in
-                                viewModel.handleScheduleUpdate(startDate: start, endDate: end)
-                            },
-                            onClearDates: { viewModel.handleClearDates() }
-                        )
-                        .environmentObject(dataController)
-                    }
                     // Address editing is now inline in DetailsTabView
                     .sheet(isPresented: $viewModel.showingAddTaskSheet) {
                         TaskFormSheet(

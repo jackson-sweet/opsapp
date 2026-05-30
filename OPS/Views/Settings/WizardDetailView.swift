@@ -229,7 +229,7 @@ struct WizardDetailView: View {
                         }
                     }
                 ))
-                .tint(OPSStyle.Colors.wizardAccent)
+                .tint(OPSStyle.Colors.text)
             }
             .padding(.vertical, 14)
             .padding(.horizontal, 16)

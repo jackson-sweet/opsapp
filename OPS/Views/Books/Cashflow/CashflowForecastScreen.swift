@@ -142,7 +142,7 @@ struct CashflowForecastScreen: View {
                     }
                 ))
                 .font(OPSStyle.Typography.sectionLabel)
-                .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+                .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
             }
         }
     }

@@ -126,6 +126,20 @@ class NotificationRepository {
         return (response.count ?? 0) > 0
     }
 
+    /// Returns true when a notification for the same typed action has already
+    /// been created, read or unread. Weekly summary notifications use this to
+    /// avoid duplicating a rail row after the operator has already opened it.
+    func hasNotification(type: String, userId: String, actionUrl: String) async throws -> Bool {
+        let response = try await client
+            .from("notifications")
+            .select("id", head: true, count: .exact)
+            .eq("user_id", value: userId)
+            .eq("type", value: type)
+            .eq("action_url", value: actionUrl)
+            .execute()
+        return (response.count ?? 0) > 0
+    }
+
     /// Fetch recent notifications for a user (last 50)
     func fetchRecent(userId: String, limit: Int = 50) async throws -> [NotificationDTO] {
         try await client

@@ -364,13 +364,18 @@ struct PhotoCommentViewer: View {
             return
         }
 
-        guard annotationImageSize.width > 0 && annotationImageSize.height > 0 else {
+        let renderSize = PhotoAnnotationRenderGeometry.renderSize(
+            displayedCanvasSize: annotationImageSize,
+            sourceImageSize: annotationImage?.size ?? .zero
+        )
+
+        guard renderSize.width > 0 && renderSize.height > 0 else {
             print("[ANNOTATION] Save failed: annotationImageSize is zero")
             annotationError = "Unable to save — image not ready"
             return
         }
 
-        print("[ANNOTATION] Saving: \(annotationDrawing.strokes.count) strokes, imageSize=\(annotationImageSize), photo=\(photos[currentIndex])")
+        print("[ANNOTATION] Saving: \(annotationDrawing.strokes.count) strokes, imageSize=\(renderSize), photo=\(photos[currentIndex])")
 
         annotationIsSaving = true
         annotationError = nil
@@ -383,7 +388,7 @@ struct PhotoCommentViewer: View {
                 drawing: annotationDrawing,
                 note: "",
                 photoURL: photos[currentIndex],
-                imageSize: annotationImageSize,
+                imageSize: renderSize,
                 projectId: projectId,
                 companyId: companyId,
                 authorId: user.id,
@@ -395,6 +400,11 @@ struct PhotoCommentViewer: View {
             // Composite the annotation onto the cached photo so it's
             // immediately visible when the viewer returns to normal mode.
             compositeAnnotationIntoCache()
+            await loadAnnotationMetadata()
+            await PhotoAnnotationSyncManager.shared.preCompositeAnnotations(
+                projectId: projectId,
+                modelContext: modelContext
+            )
             imageRefreshToken += 1
 
             withAnimation(OPSStyle.Animation.fast) {

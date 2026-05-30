@@ -28,6 +28,8 @@ struct UnscheduledTaskReviewView: View {
     @State private var pendingCancelTask: ProjectTask? = nil
     @State private var showCrewPicker: Bool = false
     @State private var pendingAssignTask: ProjectTask? = nil
+    @State private var assignPickerCountsAsReview: Bool = true
+    @State private var manualScheduleTask: ProjectTask? = nil
     @State private var assignSelectedIds: Set<String> = []
     /// Bug 040e4482 — true only after the operator explicitly taps DONE in
     /// the crew picker. Drag-to-dismiss leaves this false so we treat the
@@ -60,6 +62,8 @@ struct UnscheduledTaskReviewView: View {
 
     private enum RetryAction {
         case autoSchedule
+        case assignCrew
+        case manualSchedule
         case markComplete
     }
 
@@ -119,6 +123,27 @@ struct UnscheduledTaskReviewView: View {
     /// Whether the current top task is unassigned
     private var currentTaskIsUnassigned: Bool {
         currentTask?.getTeamMemberIds().isEmpty ?? true
+    }
+
+    private func openCrewPicker(
+        for task: ProjectTask,
+        selectedIds: Set<String>,
+        countsAsReview: Bool
+    ) {
+        pendingAssignTask = task
+        assignSelectedIds = selectedIds
+        assignPickerCountsAsReview = countsAsReview
+        pickerDidConfirm = false
+        showCrewPicker = true
+    }
+
+    private func retryAction(for recoveryAction: AutoScheduleFailureRecoveryAction?) -> RetryAction {
+        switch recoveryAction {
+        case .assignCrew:
+            return .assignCrew
+        case .manualSchedule, .none:
+            return .manualSchedule
+        }
     }
 
     var body: some View {
@@ -239,6 +264,23 @@ struct UnscheduledTaskReviewView: View {
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $manualScheduleTask) { task in
+            CalendarSchedulerSheet(
+                isPresented: Binding(
+                    get: { manualScheduleTask != nil },
+                    set: { if !$0 { manualScheduleTask = nil } }
+                ),
+                itemType: .task(task),
+                currentStartDate: task.startDate,
+                currentEndDate: task.endDate,
+                onScheduleUpdate: { start, end in
+                    manuallySchedule(task, startDate: start, endDate: end)
+                },
+                onClearDates: nil,
+                preselectedTeamMemberIds: Set(task.getTeamMemberIds())
+            )
+            .environmentObject(dataController)
         }
         .alert("Cancel Task?", isPresented: $showCancelConfirmation) {
             Button("Keep Task", role: .cancel) {
@@ -390,7 +432,7 @@ struct UnscheduledTaskReviewView: View {
 
                     if retryContext != nil {
                         Button(action: performRetry) {
-                            Text("RETRY")
+                            Text(toastActionLabel)
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .padding(.horizontal, 10)
@@ -405,7 +447,7 @@ struct UnscheduledTaskReviewView: View {
                         .buttonStyle(.plain)
                         .disabled(retryInFlight)
                         .opacity(retryInFlight ? 0.5 : 1)
-                        .accessibilityLabel("Retry failed action")
+                        .accessibilityLabel(toastActionAccessibilityLabel)
 
                         Button(action: dismissToast) {
                             Image(systemName: "xmark")
@@ -439,6 +481,30 @@ struct UnscheduledTaskReviewView: View {
         // when retry buttons widen it.
         .allowsHitTesting(retryContext != nil)
         .animation(toastAnimation, value: toastMessage)
+    }
+
+    private var toastActionLabel: String {
+        guard let context = retryContext else { return "RETRY" }
+        switch context.action {
+        case .autoSchedule, .markComplete:
+            return "RETRY"
+        case .assignCrew:
+            return "ASSIGN CREW"
+        case .manualSchedule:
+            return "SCHEDULE"
+        }
+    }
+
+    private var toastActionAccessibilityLabel: String {
+        guard let context = retryContext else { return "Retry failed action" }
+        switch context.action {
+        case .autoSchedule, .markComplete:
+            return "Retry failed action"
+        case .assignCrew:
+            return "Assign crew"
+        case .manualSchedule:
+            return "Schedule manually"
+        }
     }
 
     private var toastAnimation: Animation {
@@ -490,6 +556,13 @@ struct UnscheduledTaskReviewView: View {
 
         switch captured.action {
         case .autoSchedule: autoScheduleTask(captured.task)
+        case .assignCrew:
+            openCrewPicker(
+                for: captured.task,
+                selectedIds: Set(captured.task.getTeamMemberIds()),
+                countsAsReview: false
+            )
+        case .manualSchedule: manualScheduleTask = captured.task
         case .markComplete: markTaskComplete(captured.task)
         }
         retryInFlight = false
@@ -646,10 +719,7 @@ struct UnscheduledTaskReviewView: View {
             let isUnassigned = task.getTeamMemberIds().isEmpty
             if isUnassigned {
                 // Task has no crew — open picker, then auto-schedule after assignment
-                pendingAssignTask = task
-                assignSelectedIds = []
-                pickerDidConfirm = false
-                showCrewPicker = true
+                openCrewPicker(for: task, selectedIds: [], countsAsReview: true)
             } else {
                 // Already assigned — auto-schedule immediately
                 autoScheduleTask(task)
@@ -670,10 +740,11 @@ struct UnscheduledTaskReviewView: View {
                 // task so the operator's "resolve this card" intent is
                 // honored end-to-end instead of leaving the task assigned
                 // but still unscheduled.
-                pendingAssignTask = task
-                assignSelectedIds = Set(task.getTeamMemberIds())
-                pickerDidConfirm = false
-                showCrewPicker = true
+                openCrewPicker(
+                    for: task,
+                    selectedIds: Set(task.getTeamMemberIds()),
+                    countsAsReview: true
+                )
             } else {
                 // Assigned — mark complete via canonical path.
                 markTaskComplete(task)
@@ -691,12 +762,14 @@ struct UnscheduledTaskReviewView: View {
     /// Called when crew picker is dismissed
     private func handleCrewPickerDismiss() {
         guard let task = pendingAssignTask else { return }
+        let countsAsReview = assignPickerCountsAsReview
 
         // Bug 040e4482 — only commit the picker selections when the operator
         // explicitly tapped DONE. Drag-to-dismiss is a back-out gesture; the
         // ephemeral row taps the user made while exploring should not turn
-        // into a silent crew assignment + auto-schedule. The card still
-        // counts as reviewed since the operator has seen and decided on it.
+        // into a silent crew assignment + auto-schedule. Swipe-opened
+        // pickers still count the card as reviewed; retry-opened pickers
+        // keep the original review count intact.
         let confirmed = pickerDidConfirm
         let selectionsToApply = confirmed ? assignSelectedIds : Set<String>()
 
@@ -723,15 +796,30 @@ struct UnscheduledTaskReviewView: View {
             // Operator hit DONE with no selections — explicit no-op. Surface
             // a toast so the swipe has a visible effect instead of feeling
             // like the gesture was swallowed.
-            showToast("NO CREW SELECTED — TASK LEFT UNASSIGNED", kind: .error)
+            showToast(
+                "NO CREW SELECTED — TASK LEFT UNASSIGNED",
+                kind: .error,
+                retry: countsAsReview ? nil : RetryContext(task: task, action: .assignCrew)
+            )
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        } else if !countsAsReview {
+            showToast(
+                "CREW MISSING — ASSIGN CREW",
+                kind: .error,
+                retry: RetryContext(task: task, action: .assignCrew)
+            )
         }
 
-        reviewedCount += 1
+        if countsAsReview {
+            reviewedCount += 1
+        }
         pendingAssignTask = nil
+        assignPickerCountsAsReview = true
         assignSelectedIds = []
         pickerDidConfirm = false
-        checkCompletion()
+        if countsAsReview {
+            checkCompletion()
+        }
     }
 
     private func markTaskComplete(_ task: ProjectTask) {
@@ -795,11 +883,17 @@ struct UnscheduledTaskReviewView: View {
             anchorDate: Date()
         )
 
-        // If the scheduler couldn't place the task, surface why — previously
-        // this was a silent no-op ("swipe has no visible effect").
+        // If the scheduler couldn't place the task, keep the recovery in-flow
+        // instead of leaving the operator with a dead-end error toast.
         guard let placement = plan.placements.first else {
-            let reason = plan.conflicts.first?.message ?? "no available slot"
-            showToast("COULDN'T SCHEDULE — \(reason.uppercased())", kind: .error)
+            let recoveryAction = retryAction(
+                for: AutoScheduleFailureRecovery.recoveryAction(for: plan)
+            )
+            showToast(
+                AutoScheduleFailureRecovery.message(for: plan),
+                kind: .error,
+                retry: RetryContext(task: task, action: recoveryAction)
+            )
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             return
         }
@@ -833,6 +927,35 @@ struct UnscheduledTaskReviewView: View {
                         "SCHEDULE FAILED — TRY AGAIN",
                         kind: .error,
                         retry: RetryContext(task: task, action: .autoSchedule)
+                    )
+                }
+            }
+        }
+    }
+
+    private func manuallySchedule(_ task: ProjectTask, startDate: Date, endDate: Date) {
+        Task {
+            do {
+                try await dataController.updateTaskSchedule(
+                    task: task,
+                    startDate: startDate,
+                    endDate: endDate
+                )
+                await MainActor.run {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showToast(
+                        "SCHEDULED \(formatScheduledRange(start: startDate, end: endDate))",
+                        kind: .success
+                    )
+                }
+            } catch {
+                print("[UNSCHEDULED_REVIEW] Failed to manually schedule task: \(error)")
+                await MainActor.run {
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    showToast(
+                        "SCHEDULE FAILED — TRY AGAIN",
+                        kind: .error,
+                        retry: RetryContext(task: task, action: .manualSchedule)
                     )
                 }
             }

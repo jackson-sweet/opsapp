@@ -4,10 +4,8 @@
 //
 //  Detail screen for a single Product. Combines a lightweight in-place
 //  editor for base fields (name, base price, pricing unit, taxable,
-//  active) with read-only sub-views that surface the product's options,
-//  pricing modifiers, and recipe rows. Authoring those richer fields
-//  lives on web for now; the iOS detail keeps you confident the rules
-//  are wired correctly.
+//  active) with authoring for sellable options, pricing modifiers,
+//  recipes, and bundle composition when the operator has manage access.
 //
 
 import SwiftUI
@@ -70,6 +68,11 @@ struct ProductDetailView: View {
     /// surfaced when `product.kind == .package` and the operator can
     /// manage products.
     @State private var showingBundleEditSheet: Bool = false
+
+    /// Shared authoring sheet for product_options, product_option_values,
+    /// and product_pricing_modifiers. Catalog Setup LINKS presents the
+    /// same sheet to keep the product configuration workflow unified.
+    @State private var showingOptionAuthoringSheet: Bool = false
 
     /// Inline create sheets — opened from the "+ NEW …" menu items so the
     /// user never has to leave the detail screen, navigate elsewhere, then
@@ -212,10 +215,10 @@ struct ProductDetailView: View {
                     coreCard
                     categoryCard
                     taskTypeCard
-                    if !productOptions.isEmpty {
+                    if !productOptions.isEmpty || canManageProducts {
                         optionsSection
                     }
-                    if !productModifiers.isEmpty {
+                    if !productModifiers.isEmpty || (canManageProducts && !productOptions.isEmpty) {
                         modifiersSection
                     }
                     // Branch on kind: bundles replace the recipe section
@@ -261,6 +264,10 @@ struct ProductDetailView: View {
         }
         .sheet(isPresented: $showingBundleEditSheet) {
             BundleCompositionEditSheet(product: product)
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingOptionAuthoringSheet) {
+            ProductOptionAuthoringSheet(product: product)
                 .environmentObject(dataController)
         }
         .sheet(isPresented: $showingNewCategorySheet) {
@@ -550,7 +557,7 @@ struct ProductDetailView: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
             .disabled(!canManageProducts)
             .onChange(of: taxable) { _, _ in
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -561,7 +568,7 @@ struct ProductDetailView: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
             .disabled(!canManageProducts)
             .onChange(of: isActive) { _, _ in
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -837,22 +844,50 @@ struct ProductDetailView: View {
 
     private var optionsSection: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            sectionHeader(title: "OPTIONS · \(productOptions.count)")
-            OptionsReadOnlyView(
-                options: productOptions,
-                optionValues: productOptionValues
-            )
+            configurableSectionHeader(title: "OPTIONS · \(productOptions.count)")
+            if productOptions.isEmpty {
+                Text("// NO OPTIONS YET — TAP EDIT TO AUTHOR SELLABLE CHOICES")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .padding(OPSStyle.Layout.spacing3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+            } else {
+                OptionsReadOnlyView(
+                    options: productOptions,
+                    optionValues: productOptionValues
+                )
+            }
         }
     }
 
     private var modifiersSection: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            sectionHeader(title: "PRICING MODIFIERS · \(productModifiers.count)")
-            ModifiersReadOnlyView(
-                modifiers: productModifiers,
-                options: productOptions,
-                optionValues: productOptionValues
-            )
+            configurableSectionHeader(title: "PRICING MODIFIERS · \(productModifiers.count)")
+            if productModifiers.isEmpty {
+                Text("// NO PRICE RULES — TAP EDIT WHEN A CHOICE CHANGES PRICE")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .padding(OPSStyle.Layout.spacing3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+            } else {
+                ModifiersReadOnlyView(
+                    modifiers: productModifiers,
+                    options: productOptions,
+                    optionValues: productOptionValues
+                )
+            }
         }
     }
 
@@ -889,6 +924,10 @@ struct ProductDetailView: View {
             .sorted { $0.displayOrder < $1.displayOrder }
     }
 
+    private var bundleCompositionGroups: ProductBundleCompositionGroups {
+        ProductBundleCompositionGrouping.group(bundleItemsForProduct)
+    }
+
     /// Lookup map of every product the operator can reach — used by the
     /// read-only renderer to render child names + per-unit prices.
     private var childProductsByIdMap: [String: Product] {
@@ -896,6 +935,15 @@ struct ProductDetailView: View {
     }
 
     private var bundleChildCount: Int { bundleItemsForProduct.count }
+    private var bundleRequiredChildCount: Int { bundleCompositionGroups.required.count }
+    private var bundleSuggestedChildCount: Int { bundleCompositionGroups.suggested.count }
+
+    private var bundleCompositionTitle: String {
+        if bundleSuggestedChildCount > 0 {
+            return "// COMPOSITION · \(bundleRequiredChildCount) REQUIRED · \(bundleSuggestedChildCount) SUGGESTED"
+        }
+        return "// COMPOSITION · \(bundleChildCount) ITEM\(bundleChildCount == 1 ? "" : "S")"
+    }
 
     @ViewBuilder
     private var bundleCompositionSection: some View {
@@ -911,7 +959,7 @@ struct ProductDetailView: View {
 
     private var bundleCompositionHeader: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            Text("// COMPOSITION · \(bundleChildCount) ITEM\(bundleChildCount == 1 ? "" : "S")")
+            Text(bundleCompositionTitle)
                 .font(OPSStyle.Typography.panelTitle)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Spacer()
@@ -968,6 +1016,32 @@ struct ProductDetailView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Spacer()
             viewOnWebLink
+        }
+    }
+
+    @ViewBuilder
+    private func configurableSectionHeader(title: String) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Text("// \(title)")
+                .font(OPSStyle.Typography.panelTitle)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            Spacer()
+            if canManageProducts {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showingOptionAuthoringSheet = true
+                } label: {
+                    Text("EDIT")
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, 4)
+                        .frame(minHeight: OPSStyle.Layout.touchTargetMin / 2)
+                }
+                .accessibilityLabel("Edit product options and pricing modifiers")
+            } else {
+                viewOnWebLink
+            }
         }
     }
 

@@ -201,7 +201,7 @@ struct SettingsToggle: View {
                 }
             ))
             .labelsHidden()
-            .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+            .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
         }
         .padding(16)
         .cornerRadius(OPSStyle.Layout.cornerRadius)

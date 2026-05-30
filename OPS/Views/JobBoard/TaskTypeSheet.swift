@@ -1385,7 +1385,7 @@ struct TaskTypeSheet: View {
                     }
                 ))
                 .labelsHidden()
-                .tint(OPSStyle.Colors.primaryAccent)
+                .tint(OPSStyle.Colors.text)
             }
 
             // INHERIT CREW
@@ -1408,7 +1408,7 @@ struct TaskTypeSheet: View {
                     }
                 ))
                 .labelsHidden()
-                .tint(OPSStyle.Colors.primaryAccent)
+                .tint(OPSStyle.Colors.text)
                 .disabled(!inheritEnabled)
                 .opacity(inheritEnabled ? 1.0 : 0.4)
             }

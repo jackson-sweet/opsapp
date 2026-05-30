@@ -1,0 +1,11 @@
+NOTICE — IBM Carbon Design System Icons
+=========================================
+Source: https://github.com/carbon-design-system/carbon
+License: Apache License, Version 2.0
+Copyright: Copyright IBM Corp. 2018, 2024
+
+These icons are used under the Apache 2.0 license.
+The full license text is in the LICENSE file alongside this notice.
+
+OPS slug names and the .symbolset packaging are original work by
+the OPS engineering team and are not part of the Carbon project.

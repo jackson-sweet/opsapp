@@ -271,57 +271,57 @@ private struct StatusSection: View {
     let canEdit: Bool
     var onChangeStatus: (() -> Void)? = nil
 
-    private var card: some View {
+    // Compact, single-line status field — a labelled value row, not a
+    // content-weight glass card. A single enum value doesn't warrant the same
+    // card the content-rich sections use; the original full card read oversized
+    // and bolted-on at the top of the tab (bug f3a300f7 follow-up).
+    private var row: some View {
         HStack(spacing: 12) {
-            // Canonical job-status badge — same pill used across the app
-            // (Job Board, search) for project status. Color + label come
-            // straight from the Status enum, so this stays in lockstep
-            // with the picker sheet's own current-status readout.
-            StatusBadge.forJobStatus(status, size: .large)
+            // Inline label — reuses the app's `[ LABEL ]` section-label convention.
+            Text("[ STATUS ]")
+                .font(OPSStyle.Typography.smallCaption)
+                .textCase(.uppercase)
+                .tracking(1)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-            Spacer()
+            Spacer(minLength: 12)
 
-            // Edit affordance — mirrors the empty client card's "ASSIGN":
-            // UPPERCASE accent label + chevron. Hidden for users who can't
-            // edit, leaving a clean static readout.
+            // Current status — canonical badge at the standard (medium) size.
+            StatusBadge.forJobStatus(status, size: .medium)
+
+            // The whole row is tappable; a chevron signals it (no separate label).
             if canEdit {
-                Text("CHANGE")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-
                 Image(systemName: OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
         }
-        .padding(14)
         .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-        )
+        .padding(.horizontal, 16)
         .contentShape(Rectangle())
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionLabel("STATUS")
-
+        VStack(spacing: 0) {
             if canEdit, let onChangeStatus {
                 Button(action: {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     onChangeStatus()
                 }) {
-                    card
+                    row
                 }
                 .buttonStyle(PlainButtonStyle())
-                .padding(.horizontal, 16)
             } else {
-                card
-                    .padding(.horizontal, 16)
+                row
             }
+
+            // Hairline anchors the backgroundless field above the content
+            // sections below it.
+            Rectangle()
+                .fill(OPSStyle.Colors.separator)
+                .frame(height: 1)
+                .padding(.horizontal, 16)
+                .padding(.top, OPSStyle.Layout.spacing2)
         }
     }
 }

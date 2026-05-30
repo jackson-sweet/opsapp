@@ -557,7 +557,7 @@ struct ProductDetailView: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
             .disabled(!canManageProducts)
             .onChange(of: taxable) { _, _ in
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -568,7 +568,7 @@ struct ProductDetailView: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
             .disabled(!canManageProducts)
             .onChange(of: isActive) { _, _ in
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()

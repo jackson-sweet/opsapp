@@ -926,7 +926,7 @@ struct CatalogSetupFlowSheet: View {
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
-                    .tint(OPSStyle.Colors.primaryAccent)
+                    .tint(OPSStyle.Colors.text)
                     .padding(OPSStyle.Layout.spacing2)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)

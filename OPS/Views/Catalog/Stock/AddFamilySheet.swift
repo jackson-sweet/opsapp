@@ -218,7 +218,7 @@ struct AddFamilySheet: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
             }
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
         }
     }
 

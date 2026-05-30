@@ -722,21 +722,21 @@ private struct ProductOptionEditorSheet: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
 
             Toggle(isOn: $affectsPrice) {
                 Text("Affects price")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
 
             Toggle(isOn: $affectsRecipe) {
                 Text("Affects recipe")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
 
             CatalogFieldLabel("Default")
             TextField("", text: $defaultValue)

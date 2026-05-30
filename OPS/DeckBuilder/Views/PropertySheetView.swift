@@ -490,7 +490,7 @@ struct PropertySheetView: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Spacer()
                     Text(DimensionEngine.formatArea(area, system: viewModel.drawingData.config.measurementSystem))
-                        .font(.system(size: 20, weight: .bold, design: .monospaced))
+                        .font(OPSStyle.Typography.titleMono)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 .padding(OPSStyle.Layout.spacing3)

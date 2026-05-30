@@ -241,7 +241,7 @@ struct ARPerimeterView: View {
                 // Dimension readout
                 if !viewModel.liveDimensionLabel.isEmpty {
                     Text(viewModel.liveDimensionLabel)
-                        .font(.system(size: 20, weight: .bold, design: .monospaced))
+                        .font(OPSStyle.Typography.titleMono)
                         .foregroundColor(.white)
                         .shadow(color: .black, radius: 3, y: 1)
                 }
@@ -404,7 +404,7 @@ struct ARPerimeterView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
                     Text("Cancel")
-                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .font(OPSStyle.Typography.monoValue)
                         .foregroundColor(.white)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)

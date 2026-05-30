@@ -605,7 +605,7 @@ struct DeckBuilderView: View {
                 .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
             Text(label)
-                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                .font(OPSStyle.Typography.monoValue)
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)

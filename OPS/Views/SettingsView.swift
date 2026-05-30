@@ -44,7 +44,6 @@ struct SettingsView: View {
         case manageTeam
         case taskTypes
         case inventorySettings
-        case inventoryTracking
 
         var id: String { rawValue }
     }
@@ -223,20 +222,10 @@ struct SettingsView: View {
                                             action: { activeDestination = .inventorySettings }
                                         )
                                     }
-
-                                    // Inventory tracking on/off lives in Company
-                                    // Settings too (Closed PM Decision 4). Writing
-                                    // the mode requires catalog.manage, so gate the
-                                    // entry to it — never to a role.
-                                    if permissionStore.can("catalog.manage") {
-                                        sectionDivider
-
-                                        settingsRow(
-                                            icon: OPSStyle.Icons.inventoryTracking,
-                                            title: "Inventory Tracking",
-                                            action: { activeDestination = .inventoryTracking }
-                                        )
-                                    }
+                                    // Inventory tracking on/off now lives inside the
+                                    // Inventory screen (top "TRACKING" section) and
+                                    // the Catalog Setup review step — both gated to
+                                    // catalog.manage. No separate top-level row.
                                 }
                                 .padding(.horizontal, 20)
                             }
@@ -639,11 +628,6 @@ struct SettingsView: View {
         case .inventorySettings:
             NavigationStack {
                 InventorySettingsView()
-                    .environmentObject(dataController)
-            }
-        case .inventoryTracking:
-            NavigationStack {
-                InventoryTrackingSettingsView()
                     .environmentObject(dataController)
             }
         }

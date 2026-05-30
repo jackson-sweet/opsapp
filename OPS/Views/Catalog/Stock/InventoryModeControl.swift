@@ -197,9 +197,30 @@ struct InventoryModeControl: View {
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         case .failed:
-            Text("SYS :: MODE UNAVAILABLE")
-                .font(OPSStyle.Typography.metadata)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            // A read failure must not permanently lock the control: the status
+            // line carries a RETRY that re-runs the fetch. We never enable blind
+            // toggling while the mode is unknown — recovery is an explicit retry.
+            HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
+                Text("SYS :: MODE UNAVAILABLE")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Spacer(minLength: OPSStyle.Layout.spacing2)
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    Task { await viewModel.load() }
+                } label: {
+                    Text("RETRY")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .frame(minWidth: OPSStyle.Layout.touchTargetMin,
+                               minHeight: OPSStyle.Layout.touchTargetMin)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("Retry")
+                .accessibilityHint("Re-checks inventory tracking status.")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         case .loaded:
             Text(viewModel.isTracked
                  ? "On. Accepted estimates project material demand. Completed tasks deduct stock."

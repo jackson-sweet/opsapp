@@ -142,6 +142,41 @@ final class InventoryModeTests: XCTestCase {
         // After failure the VM re-reads — stub still reports the original off mode.
         XCTAssertEqual(vm.mode, .off)
     }
+
+    // MARK: - Read resilience (retry)
+
+    @MainActor
+    func testReadFailureLeavesControlNonInteractive() async {
+        // A failed read must NOT enable blind toggling while the mode is unknown.
+        let client = StubInventoryModeClient(initialMode: .tracked)
+        client.failNextFetch = true
+        let vm = InventoryModeViewModel(client: client)
+        await vm.load()
+
+        XCTAssertEqual(vm.loadState, .failed("read failed"))
+        XCTAssertFalse(vm.isInteractive, "A failed read must leave the toggle locked.")
+    }
+
+    @MainActor
+    func testRetryAfterReadFailureRecoversToLoaded() async {
+        // RETRY re-runs load(); a transient read failure must not brick the
+        // control. After one failed fetch the next load() succeeds and the
+        // toggle becomes interactive again.
+        let client = StubInventoryModeClient(initialMode: .tracked)
+        client.failNextFetch = true
+        let vm = InventoryModeViewModel(client: client)
+
+        await vm.load()
+        XCTAssertEqual(vm.loadState, .failed("read failed"))
+        XCTAssertFalse(vm.isInteractive)
+
+        // Simulate the RETRY button: re-run load() against a now-healthy read.
+        await vm.load()
+
+        XCTAssertEqual(vm.loadState, .loaded, "RETRY must recover to .loaded.")
+        XCTAssertTrue(vm.isInteractive, "After a successful retry the toggle unlocks.")
+        XCTAssertEqual(vm.mode, .tracked, "Recovered mode reflects server truth.")
+    }
 }
 
 // MARK: - Test double
@@ -151,13 +186,22 @@ private final class StubInventoryModeClient: InventoryModeClient {
     private(set) var fetchedMode: InventoryMode
     private(set) var lastSetMode: InventoryMode?
     var failNextSet = false
+    var failNextFetch = false
 
     init(initialMode: InventoryMode) {
         self.fetchedMode = initialMode
     }
 
     func fetchInventoryMode() async throws -> InventoryMode {
-        fetchedMode
+        if failNextFetch {
+            failNextFetch = false
+            throw NSError(
+                domain: "test",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "read failed"]
+            )
+        }
+        return fetchedMode
     }
 
     func setInventoryMode(_ mode: InventoryMode) async throws -> SetInventoryModeResponseDTO {

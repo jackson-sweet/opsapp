@@ -85,6 +85,11 @@ struct InventorySettingsView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing5) {
+                        // TRACKING SECTION (Closed PM Decision 4) — writing the
+                        // mode requires catalog.manage, so gate to the granular
+                        // permission, never a role.
+                        trackingSection
+
                         // SNAPSHOTS SECTION
                         snapshotsSection
 
@@ -154,6 +159,29 @@ struct InventorySettingsView: View {
             .disabled(newUnitName.trimmingCharacters(in: .whitespaces).isEmpty)
         } message: {
             Text("Enter a name for the unit (e.g. carton, pallet)")
+        }
+    }
+
+    // MARK: - Tracking Section
+
+    /// Inventory tracking on/off. Gated to `catalog.manage` (writing the mode is
+    /// a manage action) — the control is hidden, not locked, for view-only
+    /// access since this screen is reachable with `catalog.view` alone. The
+    /// control hosts its own card chrome, so this section adds only the header.
+    @ViewBuilder
+    private var trackingSection: some View {
+        if PermissionStore.shared.can("catalog.manage"), !companyId.isEmpty {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+                Text("TRACKING")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+
+                InventoryModeControl(
+                    client: CompanyInventoryModeRepository(companyId: companyId)
+                )
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+            }
         }
     }
 

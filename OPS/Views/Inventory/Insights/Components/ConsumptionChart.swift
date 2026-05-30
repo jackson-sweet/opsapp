@@ -255,7 +255,6 @@ struct ConsumptionChart: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
-        .shadow(color: Color.black.opacity(0.4), radius: 4, x: 0, y: 2)
     }
 
     // MARK: - Legend

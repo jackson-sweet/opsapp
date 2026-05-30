@@ -72,7 +72,6 @@ public struct MeasureLoupe: View {
             crosshair
         }
         .frame(width: Self.diameter, height: Self.diameter)
-        .shadow(color: Color.black.opacity(0.4), radius: 6, x: 0, y: 2)
         .position(clampedScreenPosition)
         .allowsHitTesting(false)
         .accessibilityHidden(true)

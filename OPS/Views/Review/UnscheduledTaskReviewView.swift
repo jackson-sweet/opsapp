@@ -426,7 +426,6 @@ struct UnscheduledTaskReviewView: View {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .strokeBorder((toastKind == .success ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus).opacity(0.35), lineWidth: 1)
                 )
-                .shadow(color: Color.black.opacity(0.35), radius: 10, y: 4)
                 .padding(.horizontal, 16)
                 .padding(.top, 68)
                 .transition(.move(edge: .top).combined(with: .opacity))

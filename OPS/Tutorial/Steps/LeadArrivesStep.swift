@@ -135,10 +135,6 @@ struct LeadArrivesStep: View {
                     lineWidth: OPSStyle.Layout.Border.standard
                 )
         )
-        .shadow(
-            color: OPSStyle.Colors.primaryAccent.opacity(glowAmount * 0.06),
-            radius: 16, x: 0, y: 4
-        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("New lead: \(TutorialData.clientName), \(TutorialData.projectTitle). Tap to accept.")
         .accessibilityAddTraits(.isButton)

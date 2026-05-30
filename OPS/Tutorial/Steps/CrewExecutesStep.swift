@@ -120,10 +120,6 @@ struct CrewExecutesStep: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .stroke(OPSStyle.Colors.successStatus.opacity(projectGlow * 0.3), lineWidth: OPSStyle.Layout.Border.standard)
         )
-        .shadow(
-            color: OPSStyle.Colors.successStatus.opacity(projectGlow * 0.06),
-            radius: 16, x: 0, y: 4
-        )
     }
 
     // MARK: - Execution Sequence

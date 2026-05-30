@@ -78,7 +78,6 @@ struct DeckBuilderView: View {
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
                             )
-                            .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing4)
                     .padding(.top, floatingHeaderTopPadding)
@@ -213,7 +212,6 @@ struct DeckBuilderView: View {
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                         .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
                                 )
-                                .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
                         )
                         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
                         .animation(OPSStyle.Animation.fast, value: viewModel.isMultiLevel)
@@ -292,7 +290,6 @@ struct DeckBuilderView: View {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                             .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
                     )
-                    .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
                     .padding(.horizontal, OPSStyle.Layout.spacing4)
                     .padding(.bottom, OPSStyle.Layout.spacing2)
             }
@@ -499,7 +496,10 @@ struct DeckBuilderView: View {
                     .padding(.vertical, 14)
                     .background(OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
                 }
                 .padding(.bottom, 80)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -520,7 +520,10 @@ struct DeckBuilderView: View {
                 .padding(.vertical, 12)
                 .background(OPSStyle.Colors.cardBackground)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
                 .padding(.top, 60)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .onAppear {
@@ -541,7 +544,10 @@ struct DeckBuilderView: View {
                     .padding(.vertical, 10)
                     .background(OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
                     .padding(.top, 100)
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .onAppear {
@@ -611,7 +617,6 @@ struct DeckBuilderView: View {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: 1)
                 )
-                .shadow(color: .black.opacity(0.2), radius: 6, y: 2)
         )
         .allowsHitTesting(false)
     }
@@ -818,7 +823,6 @@ struct DeckBuilderView: View {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                         .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
                 )
-                .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
         )
     }
 
@@ -846,7 +850,6 @@ struct DeckBuilderView: View {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                         .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
                 )
-                .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
         )
     }
 
@@ -892,7 +895,6 @@ struct DeckBuilderView: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
         )
-        .shadow(color: Color.black.opacity(0.2), radius: 6, y: 2)
         .fixedSize(horizontal: true, vertical: false)
     }
 

@@ -485,7 +485,10 @@ struct ARPerimeterView: View {
         .frame(width: 200)
         .background(OPSStyle.Colors.cardBackground)
         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .shadow(color: .black.opacity(0.3), radius: 8)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
 }
 

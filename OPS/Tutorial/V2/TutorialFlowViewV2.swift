@@ -746,10 +746,6 @@ struct TutorialFlowViewV2: View {
                     lineWidth: OPSStyle.Layout.Border.standard
                 )
         )
-        .shadow(
-            color: isEstimateMode ? .clear : OPSStyle.Colors.primaryAccent.opacity(leadGlow * 0.06),
-            radius: 16, x: 0, y: 4
-        )
         .contentShape(Rectangle())
         .onTapGesture {
             if leadInteractive && !isEstimateMode { handleLeadTap() }
@@ -3019,7 +3015,6 @@ private struct TapToBeginHint: View {
                 .tracking(2)
         }
         .foregroundStyle(Color.white.opacity(glowActive ? 0.6 : 0.2))
-        .shadow(color: Color.white.opacity(glowActive ? 0.3 : 0), radius: 8, x: 0, y: 0)
         .onAppear {
             withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
                 glowActive = true
@@ -3151,8 +3146,6 @@ private struct CloseoutSwipeHint: View {
                 .font(.system(size: 9, weight: .semibold))
         }
         .foregroundStyle(Color.white.opacity(glowActive ? 0.6 : 0.2))
-        // Glow shadow — pulses with the text opacity
-        .shadow(color: Color.white.opacity(glowActive ? 0.3 : 0), radius: 8, x: 0, y: 0)
         .onAppear {
             // easeInOut 1.5s autoreverses = smooth breathing glow
             withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {

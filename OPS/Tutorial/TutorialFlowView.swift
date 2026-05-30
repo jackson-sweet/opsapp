@@ -440,10 +440,6 @@ struct TutorialFlowView: View {
                     lineWidth: OPSStyle.Layout.Border.standard
                 )
         )
-        .shadow(
-            color: isEstimateMode ? .clear : OPSStyle.Colors.primaryAccent.opacity(leadGlow * 0.06),
-            radius: 16, x: 0, y: 4
-        )
         .contentShape(Rectangle())
         .onTapGesture {
             if leadInteractive && !isEstimateMode { handleLeadTap() }

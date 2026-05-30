@@ -1533,7 +1533,6 @@ struct TaskTypeSheet: View {
                         Circle()
                             .fill(OPSStyle.Colors.primaryAccent)
                             .frame(width: 22, height: 22)
-                            .shadow(color: OPSStyle.Colors.primaryAccent.opacity(0.35), radius: 8, y: 2)
                     }
                     .position(x: thumbCenterX, y: geo.size.height / 2)
                     .animation(OPSStyle.Animation.smooth, value: currentIndex)

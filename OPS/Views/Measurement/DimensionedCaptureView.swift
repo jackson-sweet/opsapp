@@ -619,7 +619,6 @@ public struct DimensionedCaptureView: View {
                 .strokeBorder(OPSStyle.Colors.roseLine, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
-        .shadow(color: Color.black.opacity(0.5), radius: 4, y: 2)
         .onTapGesture { withAnimation(.opsCurve200) { errorToast = nil } }
     }
 

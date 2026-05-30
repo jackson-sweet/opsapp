@@ -204,7 +204,7 @@ struct ProjectListFilterSheet: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                     Spacer()
                     if sortOption == option {
-                        Image(systemName: OPSStyle.Icons.checkmark)
+                        Image(OPSStyle.Icons.checkmark)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }

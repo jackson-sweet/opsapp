@@ -270,7 +270,7 @@ struct BulkQuantityAdjustmentSheet: View {
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                Image(systemName: OPSStyle.Icons.chevronRight)
+                Image(OPSStyle.Icons.chevronRight)
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 

@@ -137,7 +137,7 @@ struct InlineTaskRow: View {
                         Text(type.display)
                         if type.id == task.taskTypeId {
                             Spacer()
-                            Image(systemName: OPSStyle.Icons.checkmark)
+                            Image(OPSStyle.Icons.checkmark)
                         }
                     }
                 }
@@ -148,7 +148,7 @@ struct InlineTaskRow: View {
             Button {
                 onCreateNewTaskType()
             } label: {
-                Label("New Task Type", systemImage: OPSStyle.Icons.plus)
+                Label("New Task Type", image: OPSStyle.Icons.plus)
             }
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing1) {
@@ -163,7 +163,7 @@ struct InlineTaskRow: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                Image(systemName: OPSStyle.Icons.chevronDown)
+                Image(OPSStyle.Icons.chevronDown)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.text3)
             }
@@ -193,7 +193,7 @@ struct InlineTaskRow: View {
             onTeamTap()
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing1) {
-                Image(systemName: OPSStyle.Icons.personTwo)
+                Image(OPSStyle.Icons.personTwo)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(
                         teamMemberCount > 0
@@ -230,7 +230,7 @@ struct InlineTaskRow: View {
             onDateTap()
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing1) {
-                Image(systemName: OPSStyle.Icons.calendar)
+                Image(OPSStyle.Icons.calendar)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(
                         task.startDate != nil
@@ -271,7 +271,7 @@ struct InlineTaskRow: View {
             chipHaptic()
             onOpenFullEditor()
         } label: {
-            Image(systemName: OPSStyle.Icons.chevronRight)
+            Image(OPSStyle.Icons.chevronRight)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.text3)
                 .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -291,7 +291,7 @@ struct InlineTaskRow: View {
             #endif
             onDelete()
         } label: {
-            Image(systemName: OPSStyle.Icons.xmark)
+            Image(OPSStyle.Icons.xmark)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.rose)
                 .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -307,13 +307,13 @@ struct InlineTaskRow: View {
         Button {
             onOpenFullEditor()
         } label: {
-            Label("Open Full Editor", systemImage: OPSStyle.Icons.pencil)
+            Label("Open Full Editor", image: OPSStyle.Icons.pencil)
         }
 
         Button {
             onDuplicate()
         } label: {
-            Label("Duplicate", systemImage: OPSStyle.Icons.copy)
+            Label("Duplicate", image: OPSStyle.Icons.copy)
         }
 
         Divider()
@@ -323,21 +323,21 @@ struct InlineTaskRow: View {
             Button {
                 onStatusChange(.active)
             } label: {
-                Label("Mark Active", systemImage: OPSStyle.Icons.circle)
+                Label("Mark Active", image: OPSStyle.Icons.circle)
             }
         }
         if task.status != .completed {
             Button {
                 onStatusChange(.completed)
             } label: {
-                Label("Mark Completed", systemImage: OPSStyle.Icons.checkmarkCircle)
+                Label("Mark Completed", image: OPSStyle.Icons.checkmarkCircle)
             }
         }
         if task.status != .cancelled {
             Button {
                 onStatusChange(.cancelled)
             } label: {
-                Label("Cancel Task", systemImage: OPSStyle.Icons.xmarkCircle)
+                Label("Cancel Task", image: OPSStyle.Icons.xmarkCircle)
             }
         }
 
@@ -346,7 +346,7 @@ struct InlineTaskRow: View {
         Button(role: .destructive) {
             onDelete()
         } label: {
-            Label("Delete", systemImage: OPSStyle.Icons.delete)
+            Label("Delete", image: OPSStyle.Icons.delete)
         }
     }
 

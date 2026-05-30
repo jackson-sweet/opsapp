@@ -40,7 +40,7 @@ struct TeamRoleAssignmentSheet: View {
                                 // Header message
                                 VStack(alignment: .leading, spacing: 8) {
                                     HStack(spacing: 8) {
-                                        Image(systemName: OPSStyle.Icons.alert)
+                                        Image(OPSStyle.Icons.alert)
                                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                                             .foregroundColor(OPSStyle.Colors.warningStatus)
 

@@ -111,7 +111,7 @@ struct OPSFloatingButtonBar<Content: View>: View {
         OPSFloatingButtonBar {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 HStack(spacing: OPSStyle.Layout.spacing1) {
-                    Image(systemName: OPSStyle.Icons.exclamationmarkCircleFill)
+                    Image(OPSStyle.Icons.exclamationmarkCircleFill)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                     Text("Amount is required")

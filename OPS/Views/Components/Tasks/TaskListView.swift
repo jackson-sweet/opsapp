@@ -66,7 +66,7 @@ struct TaskListView: View {
                     showingTaskForm = true
                 }) {
                     VStack(spacing: 12) {
-                        Image(systemName: OPSStyle.Icons.task)
+                        Image(OPSStyle.Icons.task)
                             .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 

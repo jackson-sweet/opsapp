@@ -357,7 +357,7 @@ struct OPSMapContainer: View {
                                                 .fill(project.status.color.opacity(0.15))
                                         )
 
-                                    Image(systemName: OPSStyle.Icons.chevronRight)
+                                    Image(OPSStyle.Icons.chevronRight)
                                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 }

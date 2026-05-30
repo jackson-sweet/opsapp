@@ -33,7 +33,7 @@ struct NotificationListView: View {
                 // Header — matches SettingsHeader pattern
                 HStack {
                     Button(action: { dismiss() }) {
-                        Image(systemName: OPSStyle.Icons.chevronLeft)
+                        Image(OPSStyle.Icons.chevronLeft)
                             .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
@@ -405,7 +405,7 @@ struct NotificationListView: View {
                     .font(OPSStyle.Typography.microLabel)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                Image(systemName: OPSStyle.Icons.chevronUp)
+                Image(OPSStyle.Icons.chevronUp)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
@@ -434,7 +434,7 @@ struct NotificationListView: View {
                     .font(OPSStyle.Typography.button)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                Image(systemName: OPSStyle.Icons.chevronDown)
+                Image(OPSStyle.Icons.chevronDown)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.leading, OPSStyle.Layout.spacing1)
@@ -517,7 +517,7 @@ struct NotificationListView: View {
                             .truncationMode(.tail)
                     }
 
-                    Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
+                    Image(isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .padding(.top, 4)

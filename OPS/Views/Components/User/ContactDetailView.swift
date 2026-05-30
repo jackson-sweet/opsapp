@@ -152,7 +152,7 @@ struct ContactDetailView: View {
                                     if client.subClients.isEmpty {
                                         // Empty state
                                         VStack(spacing: 12) {
-                                            Image(systemName: OPSStyle.Icons.subClient)
+                                            Image(OPSStyle.Icons.subClient)
                                                 .font(.system(size: OPSStyle.Layout.IconSize.xl))
                                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -711,7 +711,7 @@ struct ContactDetailView: View {
                             }
                         }) {
                             HStack(spacing: 12) {
-                                Image(systemName: OPSStyle.Icons.envelope)
+                                Image(OPSStyle.Icons.envelope)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     .frame(width: 24)
@@ -723,7 +723,7 @@ struct ContactDetailView: View {
 
                                 Spacer()
 
-                                Image(systemName: OPSStyle.Icons.envelopeFill)
+                                Image(OPSStyle.Icons.envelopeFill)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
@@ -740,7 +740,7 @@ struct ContactDetailView: View {
                         .simultaneousGesture(longPressGesture(for: .email))
                     } else {
                         HStack(spacing: 12) {
-                            Image(systemName: OPSStyle.Icons.envelope)
+                            Image(OPSStyle.Icons.envelope)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 .frame(width: 24)
@@ -781,7 +781,7 @@ struct ContactDetailView: View {
                         )
                     } else if let phone = self.phone, !phone.isEmpty {
                         HStack(spacing: 12) {
-                            Image(systemName: OPSStyle.Icons.phone)
+                            Image(OPSStyle.Icons.phone)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 .frame(width: 24)
@@ -800,7 +800,7 @@ struct ContactDetailView: View {
                                     openURL(phoneURL)
                                 }
                             }) {
-                                Image(systemName: OPSStyle.Icons.phoneFill)
+                                Image(OPSStyle.Icons.phoneFill)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
@@ -829,7 +829,7 @@ struct ContactDetailView: View {
                         .simultaneousGesture(longPressGesture(for: .phone))
                     } else {
                         HStack(spacing: 12) {
-                            Image(systemName: OPSStyle.Icons.phone)
+                            Image(OPSStyle.Icons.phone)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 .frame(width: 24)
@@ -878,7 +878,7 @@ struct ContactDetailView: View {
                                 }
                             }) {
                                 HStack(spacing: 12) {
-                                    Image(systemName: OPSStyle.Icons.address)
+                                    Image(OPSStyle.Icons.address)
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                                         .frame(width: 24)
@@ -1071,7 +1071,7 @@ struct ContactDetailView: View {
                             showingContactExportOptions = true
                         }) {
                             HStack {
-                                Image(systemName: OPSStyle.Icons.addContact)
+                                Image(OPSStyle.Icons.addContact)
                                     .font(OPSStyle.Typography.body)
                                 Text("Save to Contacts")
                                     .font(OPSStyle.Typography.button)
@@ -1234,7 +1234,7 @@ struct ContactDetailView: View {
                     showingCreateProject = true
                 }) {
                     VStack(spacing: 12) {
-                        Image(systemName: OPSStyle.Icons.addProject)
+                        Image(OPSStyle.Icons.addProject)
                             .font(.system(size: OPSStyle.Layout.IconSize.xl))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 

@@ -781,7 +781,7 @@ struct TaskFormSheet: View {
                     HStack(spacing: 12) {
                         // Calendar icon + date (always show)
                         HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.calendar)
+                            Image(OPSStyle.Icons.calendar)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -799,7 +799,7 @@ struct TaskFormSheet: View {
 
                         // Team icon + count (always show)
                         HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.personTwo)
+                            Image(OPSStyle.Icons.personTwo)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -959,7 +959,7 @@ struct TaskFormSheet: View {
                                     createNewProjectFromSearch()
                                 }) {
                                     HStack(spacing: 10) {
-                                        Image(systemName: OPSStyle.Icons.plusCircleFill)
+                                        Image(OPSStyle.Icons.plusCircleFill)
                                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
 
@@ -1035,7 +1035,7 @@ struct TaskFormSheet: View {
                     showingCreateTaskType = true
                 }) {
                     HStack(spacing: 4) {
-                        Image(systemName: OPSStyle.Icons.add)
+                        Image(OPSStyle.Icons.add)
                         Text("NEW TYPE")
                     }
                     .font(OPSStyle.Typography.smallCaption)

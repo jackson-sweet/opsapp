@@ -122,7 +122,7 @@ struct WhatsNewView: View {
 
                                 NavigationLink(destination: FeatureRequestView()) {
                                     HStack {
-                                        Image(systemName: OPSStyle.Icons.envelopeFill)
+                                        Image(OPSStyle.Icons.envelopeFill)
                                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -132,7 +132,7 @@ struct WhatsNewView: View {
 
                                         Spacer()
 
-                                        Image(systemName: OPSStyle.Icons.chevronRight)
+                                        Image(OPSStyle.Icons.chevronRight)
                                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     }
@@ -436,7 +436,7 @@ private struct StatusSection: View {
                                 .background(OPSStyle.Colors.cardBackgroundDark)
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
 
-                            Image(systemName: OPSStyle.Icons.chevronRight)
+                            Image(OPSStyle.Icons.chevronRight)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 .rotationEffect(.degrees(expandedCategories.contains("\(status.rawValue)_\(group.categoryName)") ? 90 : 0))

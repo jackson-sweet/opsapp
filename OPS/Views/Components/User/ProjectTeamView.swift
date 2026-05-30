@@ -150,7 +150,7 @@ struct ProjectTeamView: View {
         HStack {
             Spacer()
             VStack(spacing: 8) {
-                Image(systemName: OPSStyle.Icons.crew)
+                Image(OPSStyle.Icons.crew)
                     .font(.system(size: OPSStyle.Layout.IconSize.xl))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -243,14 +243,14 @@ struct ProjectTeamView: View {
         Button(action: {
             toggleMemberSelection(memberId: memberId)
         }) {
-            Image(systemName: selectedMemberIds.contains(memberId) ? OPSStyle.Icons.checkmarkCircleFill : OPSStyle.Icons.circle)
+            Image(selectedMemberIds.contains(memberId) ? OPSStyle.Icons.checkmarkCircleFill : OPSStyle.Icons.circle)
                 .font(.system(size: OPSStyle.Layout.IconSize.lg))
                 .foregroundColor(selectedMemberIds.contains(memberId) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
         }
     }
 
     private var chevronIndicator: some View {
-        Image(systemName: OPSStyle.Icons.chevronRight)
+        Image(OPSStyle.Icons.chevronRight)
             .font(.system(size: OPSStyle.Layout.IconSize.sm))
             .foregroundColor(OPSStyle.Colors.secondaryText)
     }
@@ -298,7 +298,7 @@ struct ProjectTeamView: View {
             Button(action: {
                 toggleMemberSelection(memberId: member.id)
             }) {
-                Image(systemName: selectedMemberIds.contains(member.id) ? OPSStyle.Icons.checkmarkCircleFill : OPSStyle.Icons.plusCircle)
+                Image(selectedMemberIds.contains(member.id) ? OPSStyle.Icons.checkmarkCircleFill : OPSStyle.Icons.plusCircle)
                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
@@ -451,7 +451,7 @@ struct FullTeamListView: View {
                                 
                                 Spacer()
                                 
-                                Image(systemName: OPSStyle.Icons.chevronRight)
+                                Image(OPSStyle.Icons.chevronRight)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                     .font(OPSStyle.Typography.smallBody)
                             }

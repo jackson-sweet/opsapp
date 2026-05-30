@@ -295,7 +295,7 @@ struct RoleDetailView: View {
                             if !roleUsers.isEmpty {
                                 VStack(alignment: .leading, spacing: 8) {
                                     HStack(spacing: 6) {
-                                        Image(systemName: OPSStyle.Icons.crew)
+                                        Image(OPSStyle.Icons.crew)
                                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                             .foregroundColor(OPSStyle.Colors.secondaryText)
                                         Text("\(roleUsers.count) TEAM MEMBER\(roleUsers.count == 1 ? "" : "S")")
@@ -342,7 +342,7 @@ struct RoleDetailView: View {
                             // Error
                             if let error = errorMessage {
                                 HStack(spacing: 8) {
-                                    Image(systemName: OPSStyle.Icons.alert)
+                                    Image(OPSStyle.Icons.alert)
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.errorStatus)
                                     Text(error)
@@ -474,7 +474,7 @@ struct RoleDetailView: View {
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
 
-                    Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
+                    Image(isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }

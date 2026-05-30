@@ -687,7 +687,7 @@ struct InventoryView: View {
                         HStack(spacing: OPSStyle.Layout.spacing3) {
                             Button(action: { showingAddItemSheet = true }) {
                                 HStack(spacing: OPSStyle.Layout.spacing1) {
-                                    Image(systemName: OPSStyle.Icons.plus)
+                                    Image(OPSStyle.Icons.plus)
                                     Text("Add Item")
                                 }
                                 .font(OPSStyle.Typography.bodyBold)
@@ -1103,7 +1103,7 @@ struct InventoryView: View {
                         // Delete button
                         Button(action: { showingDeleteConfirmation = true }) {
                             HStack(spacing: OPSStyle.Layout.spacing1) {
-                                Image(systemName: OPSStyle.Icons.trash)
+                                Image(OPSStyle.Icons.trash)
                                 Text("DELETE")
                             }
                             .font(OPSStyle.Typography.captionBold)

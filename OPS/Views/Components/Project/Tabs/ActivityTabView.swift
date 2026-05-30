@@ -183,7 +183,7 @@ struct ActivityTabView: View {
             // Error banner
             if let error = notesViewModel.error {
                 HStack(spacing: OPSStyle.Layout.spacing1) {
-                    Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                    Image(OPSStyle.Icons.exclamationmarkTriangleFill)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                     Text(error)
@@ -193,7 +193,7 @@ struct ActivityTabView: View {
                     Button {
                         notesViewModel.error = nil
                     } label: {
-                        Image(systemName: OPSStyle.Icons.xmark)
+                        Image(OPSStyle.Icons.xmark)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
@@ -215,7 +215,7 @@ struct ActivityTabView: View {
                     notesViewModel.handleMentionInput(notesViewModel.newNoteText)
                     isTextFieldFocused = true
                 }) {
-                    Image(systemName: OPSStyle.Icons.mention)
+                    Image(OPSStyle.Icons.mention)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
@@ -290,7 +290,7 @@ struct ActivityTabView: View {
                 if notesViewModel.showAllTeamOption {
                     Button(action: { notesViewModel.insertAllTeamMention() }) {
                         HStack(spacing: OPSStyle.Layout.spacing1) {
-                            Image(systemName: OPSStyle.Icons.crew)
+                            Image(OPSStyle.Icons.crew)
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 .frame(width: 24, height: 24)

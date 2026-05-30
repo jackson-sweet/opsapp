@@ -20,7 +20,7 @@ struct WizardTestingView: View {
                 ZStack {
                     HStack {
                         Button(action: { dismiss() }) {
-                            Image(systemName: OPSStyle.Icons.close)
+                            Image(OPSStyle.Icons.close)
                                 .font(.system(size: 20))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }

@@ -145,7 +145,7 @@ struct DetailsTabView: View {
                     viewModel.showingDeleteAlert = true
                 }) {
                     HStack(spacing: 6) {
-                        Image(systemName: OPSStyle.Icons.delete)
+                        Image(OPSStyle.Icons.delete)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         Text("DELETE PROJECT")
                             .font(OPSStyle.Typography.captionBold)
@@ -289,7 +289,7 @@ private struct StatusSection: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
-                Image(systemName: OPSStyle.Icons.chevronRight)
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -410,7 +410,7 @@ struct ClientSection: View {
             }
 
             Button(action: onContactTap) {
-                Image(systemName: OPSStyle.Icons.chevronRight)
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -689,7 +689,7 @@ struct TaskListSection: View {
                                     size: .small
                                 )
                             } else {
-                                Image(systemName: OPSStyle.Icons.chevronRight)
+                                Image(OPSStyle.Icons.chevronRight)
                                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
@@ -866,7 +866,7 @@ struct DescriptionSection: View {
                                 editText = description
                                 isEditing = true
                             }) {
-                                Image(systemName: OPSStyle.Icons.pencil)
+                                Image(OPSStyle.Icons.pencil)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
@@ -951,7 +951,7 @@ struct AddressSection: View {
                             .buttonStyle(PlainButtonStyle())
 
                             Button(action: cancelEdit) {
-                                Image(systemName: OPSStyle.Icons.xmark)
+                                Image(OPSStyle.Icons.xmark)
                                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
@@ -1028,7 +1028,7 @@ struct AddressSection: View {
 
                         if canEdit {
                             Button(action: startEditing) {
-                                Image(systemName: OPSStyle.Icons.pencil)
+                                Image(OPSStyle.Icons.pencil)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }

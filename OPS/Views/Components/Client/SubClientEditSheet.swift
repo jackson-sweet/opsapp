@@ -166,7 +166,7 @@ struct SubClientEditSheet: View {
                             showingContactPicker = true
                         }) {
                             HStack(spacing: 8) {
-                                Image(systemName: OPSStyle.Icons.addContact)
+                                Image(OPSStyle.Icons.addContact)
                                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                                 Text("Import from Contacts")
                                     .font(OPSStyle.Typography.button)

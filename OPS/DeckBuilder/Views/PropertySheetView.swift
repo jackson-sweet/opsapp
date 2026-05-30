@@ -522,7 +522,7 @@ struct PropertySheetView: View {
                             Button {
                                 viewModel.removeFootprintItem(item.id)
                             } label: {
-                                Image(systemName: OPSStyle.Icons.xmarkCircleFill)
+                                Image(OPSStyle.Icons.xmarkCircleFill)
                                     .foregroundColor(OPSStyle.Colors.errorStatus)
                             }
                         }

@@ -84,7 +84,7 @@ struct FullScreenReceiptViewer: View {
                 Button {
                     dismiss()
                 } label: {
-                    Image(systemName: OPSStyle.Icons.xmark)
+                    Image(OPSStyle.Icons.xmark)
                         .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .bold))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)

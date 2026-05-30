@@ -427,7 +427,7 @@ struct ManageSubscriptionView: View {
 
             Spacer()
 
-            Image(systemName: OPSStyle.Icons.chevronRight)
+            Image(OPSStyle.Icons.chevronRight)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }

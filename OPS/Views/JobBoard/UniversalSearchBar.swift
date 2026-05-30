@@ -57,7 +57,7 @@ struct UniversalSearchBar: View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
                 HStack(spacing: 8) {
-                    Image(systemName: OPSStyle.Icons.search)
+                    Image(OPSStyle.Icons.search)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
@@ -70,7 +70,7 @@ struct UniversalSearchBar: View {
                         Button(action: {
                             searchText = ""
                         }) {
-                            Image(systemName: OPSStyle.Icons.xmarkCircleFill)
+                            Image(OPSStyle.Icons.xmarkCircleFill)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         }
@@ -91,7 +91,7 @@ struct UniversalSearchBar: View {
                             }
                         }
                     }) {
-                        Image(systemName: OPSStyle.Icons.filter)
+                        Image(OPSStyle.Icons.filter)
                             .font(.system(size: OPSStyle.Layout.IconSize.lg))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }

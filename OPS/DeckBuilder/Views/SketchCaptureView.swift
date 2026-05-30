@@ -660,7 +660,7 @@ struct SketchCaptureView: View {
                 Button {
                     dismiss()
                 } label: {
-                    Image(systemName: OPSStyle.Icons.xmark)
+                    Image(OPSStyle.Icons.xmark)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -820,7 +820,7 @@ struct SketchCaptureView: View {
             Spacer()
 
             // Error icon
-            Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+            Image(OPSStyle.Icons.exclamationmarkTriangleFill)
                 .font(.system(size: 40))
                 .foregroundColor(OPSStyle.Colors.errorStatus)
 

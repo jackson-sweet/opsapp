@@ -77,7 +77,7 @@ struct TaskTypeReminderListSection: View {
                     )
                 } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: OPSStyle.Icons.plus)
+                        Image(OPSStyle.Icons.plus)
                             .font(.system(size: 12, weight: .semibold))
                         Text("ADD")
                             .font(OPSStyle.Typography.captionBold)
@@ -177,10 +177,10 @@ struct TaskTypeReminderListSection: View {
                 Spacer()
                 Menu {
                     Button { edit() } label: {
-                        Label("Edit", systemImage: OPSStyle.Icons.pencil)
+                        Label("Edit", image: OPSStyle.Icons.pencil)
                     }
                     Button(role: .destructive) { delete() } label: {
-                        Label("Delete", systemImage: OPSStyle.Icons.trash)
+                        Label("Delete", image: OPSStyle.Icons.trash)
                     }
                 } label: {
                     Image(systemName: "ellipsis")

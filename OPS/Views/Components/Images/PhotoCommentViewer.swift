@@ -262,7 +262,7 @@ struct PhotoCommentViewer: View {
 
             // Undo
             Button(action: undoAnnotationStroke) {
-                Image(systemName: OPSStyle.Icons.undo)
+                Image(OPSStyle.Icons.undo)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(annotationDrawing.strokes.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
             }
@@ -482,7 +482,7 @@ struct PhotoCommentViewer: View {
     private var topBar: some View {
         HStack {
             Button(action: onDismiss) {
-                Image(systemName: OPSStyle.Icons.xmark)
+                Image(OPSStyle.Icons.xmark)
                     .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(12)
@@ -617,7 +617,7 @@ struct PhotoCommentViewer: View {
                 if viewModel.showAllTeamOption {
                     Button(action: { viewModel.insertAllTeamMention() }) {
                         HStack(spacing: OPSStyle.Layout.spacing1) {
-                            Image(systemName: OPSStyle.Icons.crew)
+                            Image(OPSStyle.Icons.crew)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 .frame(width: 24, height: 24)
@@ -687,7 +687,7 @@ struct PhotoCommentViewer: View {
             Button(action: {
                 Task { await viewModel.postComment() }
             }) {
-                Image(systemName: OPSStyle.Icons.sendFill)
+                Image(OPSStyle.Icons.sendFill)
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(
                         viewModel.newCommentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

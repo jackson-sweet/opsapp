@@ -64,7 +64,7 @@ struct PhotoAnnotationView: View {
                             )
                             .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
                         } else if loadFailed {
-                            Image(systemName: OPSStyle.Icons.photo)
+                            Image(OPSStyle.Icons.photo)
                                 .font(OPSStyle.Typography.largeTitle)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         } else {
@@ -119,7 +119,7 @@ struct PhotoAnnotationView: View {
             Spacer()
 
             Button(action: { undoLastStroke() }) {
-                Image(systemName: OPSStyle.Icons.undo)
+                Image(OPSStyle.Icons.undo)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(drawing.strokes.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
             }
@@ -163,7 +163,7 @@ struct PhotoAnnotationView: View {
                 .frame(height: 1)
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: OPSStyle.Icons.notes)
+                Image(OPSStyle.Icons.notes)
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 

@@ -193,7 +193,7 @@ struct ProjectSearchSheet: View {
                         dismiss()
                     }) {
                         HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.xmark)
+                            Image(OPSStyle.Icons.xmark)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                             Text("CLOSE")
                                 .font(OPSStyle.Typography.captionBold)
@@ -238,7 +238,7 @@ struct ProjectSearchSheet: View {
         HStack(spacing: 0) {
             // Search field
             HStack(spacing: 12) {
-                Image(systemName: OPSStyle.Icons.search)
+                Image(OPSStyle.Icons.search)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 
@@ -252,7 +252,7 @@ struct ProjectSearchSheet: View {
                     Button(action: {
                         searchText = ""
                     }) {
-                        Image(systemName: OPSStyle.Icons.xmarkCircleFill)
+                        Image(OPSStyle.Icons.xmarkCircleFill)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -280,7 +280,7 @@ struct ProjectSearchSheet: View {
                         .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
                     
                     ZStack {
-                        Image(systemName: OPSStyle.Icons.filter)
+                        Image(OPSStyle.Icons.filter)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
                         
@@ -428,7 +428,7 @@ struct ProjectSearchSheet: View {
     private var statusFilterSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: OPSStyle.Icons.alert)
+                Image(OPSStyle.Icons.alert)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -565,7 +565,7 @@ struct ProjectSearchSheet: View {
     private var teamMemberFilterSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: OPSStyle.Icons.crew)
+                Image(OPSStyle.Icons.crew)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 
@@ -640,7 +640,7 @@ struct ProjectSearchSheet: View {
             } else if filteredProjects.isEmpty {
                 Spacer()
                 VStack(spacing: 16) {
-                    Image(systemName: searchText.isEmpty ? OPSStyle.Icons.project : OPSStyle.Icons.search)
+                    Image(searchText.isEmpty ? OPSStyle.Icons.project : OPSStyle.Icons.search)
                         .font(OPSStyle.Typography.largeTitle)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -808,7 +808,7 @@ struct ProjectSearchRow: View {
                         HStack(spacing: 8) {
                             if let startDate = project.startDate {
                                 HStack(spacing: 4) {
-                                    Image(systemName: OPSStyle.Icons.calendar)
+                                    Image(OPSStyle.Icons.calendar)
                                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     
@@ -820,7 +820,7 @@ struct ProjectSearchRow: View {
                             
                             if let address = project.address, !address.isEmpty {
                                 HStack(spacing: 4) {
-                                    Image(systemName: OPSStyle.Icons.jobSite)
+                                    Image(OPSStyle.Icons.jobSite)
                                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -836,7 +836,7 @@ struct ProjectSearchRow: View {
                     Spacer()
 
                     // Chevron
-                    Image(systemName: OPSStyle.Icons.chevronRight)
+                    Image(OPSStyle.Icons.chevronRight)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }

@@ -266,7 +266,7 @@ struct ProgressInvoiceSheet: View {
                         let current = selections[item.id]?.percentage ?? 100.0
                         selections[item.id]?.percentage = min(100, current + 10)
                     } label: {
-                        Image(systemName: OPSStyle.Icons.plus)
+                        Image(OPSStyle.Icons.plus)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: 32, height: 32)

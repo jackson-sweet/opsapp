@@ -183,7 +183,7 @@ struct InventorySettingsView: View {
 
                         Spacer()
 
-                        Image(systemName: OPSStyle.Icons.chevronRight)
+                        Image(OPSStyle.Icons.chevronRight)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
@@ -316,7 +316,7 @@ struct InventorySettingsView: View {
 
                         Spacer()
 
-                        Image(systemName: OPSStyle.Icons.chevronRight)
+                        Image(OPSStyle.Icons.chevronRight)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
@@ -357,7 +357,7 @@ struct InventorySettingsView: View {
 
                 Button(action: { showingAddUnit = true }) {
                     HStack(spacing: OPSStyle.Layout.spacing1) {
-                        Image(systemName: OPSStyle.Icons.plus)
+                        Image(OPSStyle.Icons.plus)
                         Text("Add")
                     }
                     .font(OPSStyle.Typography.caption)
@@ -457,7 +457,7 @@ struct InventorySettingsView: View {
 
             if canDelete {
                 Button(action: { deleteUnit(unit) }) {
-                    Image(systemName: OPSStyle.Icons.trash)
+                    Image(OPSStyle.Icons.trash)
                         .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -484,7 +484,7 @@ struct InventorySettingsView: View {
 
                 Button(action: { showingAddTag = true }) {
                     HStack(spacing: OPSStyle.Layout.spacing1) {
-                        Image(systemName: OPSStyle.Icons.plus)
+                        Image(OPSStyle.Icons.plus)
                         Text("Add")
                     }
                     .font(OPSStyle.Typography.caption)
@@ -556,7 +556,7 @@ struct InventorySettingsView: View {
                                     Spacer()
 
                                     Button(action: { deleteTag(tag) }) {
-                                        Image(systemName: OPSStyle.Icons.trash)
+                                        Image(OPSStyle.Icons.trash)
                                             .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                                             .foregroundColor(OPSStyle.Colors.errorStatus)
                                     }
@@ -733,7 +733,7 @@ struct InventorySettingsView: View {
                                 .foregroundColor(value > 0 ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
 
                             Button(action: { removeValue(value) }) {
-                                Image(systemName: OPSStyle.Icons.xmark)
+                                Image(OPSStyle.Icons.xmark)
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
@@ -772,7 +772,7 @@ struct InventorySettingsView: View {
                             .onSubmit { addValue() }
 
                         Button(action: { addValue() }) {
-                            Image(systemName: OPSStyle.Icons.plus)
+                            Image(OPSStyle.Icons.plus)
                                 .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)

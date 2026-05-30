@@ -109,7 +109,7 @@ struct QuantityAdjustmentSheet: View {
                         showingEditSheet = true
                     }) {
                         HStack(spacing: OPSStyle.Layout.spacing2) {
-                            Image(systemName: OPSStyle.Icons.pencil)
+                            Image(OPSStyle.Icons.pencil)
                             Text("Edit Item")
                         }
                         .font(OPSStyle.Typography.bodyBold)
@@ -245,7 +245,7 @@ struct QuantityAdjustmentSheet: View {
             Text(Self.formatQuantity(item.quantity))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-            Image(systemName: OPSStyle.Icons.chevronRight)
+            Image(OPSStyle.Icons.chevronRight)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             Text(Self.formatQuantity(currentQuantity))

@@ -64,7 +64,7 @@ struct ProjectsWithoutTasksReviewView: View {
     private var header: some View {
         HStack {
             Button(action: { dismiss() }) {
-                Image(systemName: OPSStyle.Icons.chevronLeft)
+                Image(OPSStyle.Icons.chevronLeft)
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
@@ -179,7 +179,7 @@ struct ProjectsWithoutTasksReviewView: View {
 
             Spacer()
 
-            Image(systemName: OPSStyle.Icons.chevronRight)
+            Image(OPSStyle.Icons.chevronRight)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }

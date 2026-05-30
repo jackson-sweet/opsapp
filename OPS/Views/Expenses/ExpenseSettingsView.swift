@@ -112,7 +112,7 @@ struct ExpenseSettingsView: View {
 
                 Spacer()
 
-                Image(systemName: OPSStyle.Icons.chevronRight)
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -157,7 +157,7 @@ struct ExpenseSettingsView: View {
                     Text(reviewFrequency.displayName)
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    Image(systemName: OPSStyle.Icons.chevronDown)
+                    Image(OPSStyle.Icons.chevronDown)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
@@ -358,7 +358,7 @@ struct ExpenseSettingsView: View {
             showAddRuleSheet = true
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing1) {
-                Image(systemName: OPSStyle.Icons.plus)
+                Image(OPSStyle.Icons.plus)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 Text("ADD RULE")
                     .font(OPSStyle.Typography.captionBold)

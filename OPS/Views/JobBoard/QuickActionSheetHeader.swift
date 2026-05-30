@@ -18,7 +18,7 @@ struct QuickActionSheetHeader: View {
         VStack(spacing: 0) {
             HStack {
                 Button(action: onDismiss) {
-                    Image(systemName: OPSStyle.Icons.xmark)
+                    Image(OPSStyle.Icons.xmark)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
@@ -115,7 +115,7 @@ struct QuickActionContextHeader: View {
 
                     if let address = formattedAddress {
                         HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.locationFill)
+                            Image(OPSStyle.Icons.locationFill)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 

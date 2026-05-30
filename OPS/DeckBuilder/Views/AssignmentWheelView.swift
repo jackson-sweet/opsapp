@@ -288,7 +288,13 @@ struct AssignmentWheelView: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     } else {
-                        Image(systemName: isExpanded ? OPSStyle.Icons.xmark : "circle.grid.2x2")
+                        Group {
+                            if isExpanded {
+                                Image(OPSStyle.Icons.xmark)
+                            } else {
+                                Image(systemName: "circle.grid.2x2")
+                            }
+                        }
                             .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .bold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }

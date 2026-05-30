@@ -78,7 +78,7 @@ struct ProjectImagesSection: View {
     // Empty state view
     private var emptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
-            Image(systemName: OPSStyle.Icons.photo)
+            Image(OPSStyle.Icons.photo)
                 .font(.system(size: OPSStyle.Layout.IconSize.xl))
                 .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
 

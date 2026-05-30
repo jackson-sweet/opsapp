@@ -45,7 +45,7 @@ struct UserPermissionsListView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             // Section header
                             HStack(spacing: 6) {
-                                Image(systemName: OPSStyle.Icons.crew)
+                                Image(OPSStyle.Icons.crew)
                                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 Text("\(teamMembers.count) TEAM MEMBER\(teamMembers.count == 1 ? "" : "S")")
@@ -155,7 +155,7 @@ struct UserPermissionsListView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Image(systemName: OPSStyle.Icons.chevronRight)
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

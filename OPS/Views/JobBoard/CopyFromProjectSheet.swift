@@ -120,7 +120,7 @@ struct CopyFromProjectSheet: View {
             if showingOverwriteWarning {
                 VStack(spacing: 8) {
                     HStack(spacing: 8) {
-                        Image(systemName: OPSStyle.Icons.alert)
+                        Image(OPSStyle.Icons.alert)
                             .foregroundColor(OPSStyle.Colors.warningStatus)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
@@ -149,7 +149,7 @@ struct CopyFromProjectSheet: View {
         VStack(spacing: 0) {
             // Search bar
             HStack {
-                Image(systemName: OPSStyle.Icons.search)
+                Image(OPSStyle.Icons.search)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
                 TextField("Search projects...", text: $searchText)
@@ -161,7 +161,7 @@ struct CopyFromProjectSheet: View {
                     Button(action: {
                         searchText = ""
                     }) {
-                        Image(systemName: OPSStyle.Icons.xmarkCircleFill)
+                        Image(OPSStyle.Icons.xmarkCircleFill)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                 }
@@ -213,7 +213,7 @@ struct CopyFromProjectSheet: View {
                 HStack(spacing: 12) {
                     if let address = project.address, !address.isEmpty {
                         HStack(alignment: .bottom, spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.location)
+                            Image(OPSStyle.Icons.location)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -226,7 +226,7 @@ struct CopyFromProjectSheet: View {
 
                     if let startDate = project.startDate {
                         HStack(alignment: .bottom, spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.calendar)
+                            Image(OPSStyle.Icons.calendar)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -239,7 +239,7 @@ struct CopyFromProjectSheet: View {
 
                     if !project.teamMembers.isEmpty {
                         HStack(alignment: .bottom, spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.personTwo)
+                            Image(OPSStyle.Icons.personTwo)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -252,7 +252,7 @@ struct CopyFromProjectSheet: View {
 
                     // Task count
                     HStack(alignment: .bottom, spacing: 4) {
-                        Image(systemName: OPSStyle.Icons.task)
+                        Image(OPSStyle.Icons.task)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(project.tasks.isEmpty ? OPSStyle.Colors.tertiaryText.opacity(0.5) : OPSStyle.Colors.tertiaryText)
 
@@ -382,7 +382,7 @@ struct CopyFromProjectSheet: View {
 
                 // Show warning icon if field is already populated
                 if populatedFields.contains(field.id) && field.hasData {
-                    Image(systemName: OPSStyle.Icons.alert)
+                    Image(OPSStyle.Icons.alert)
                         .foregroundColor(OPSStyle.Colors.warningStatus)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 }

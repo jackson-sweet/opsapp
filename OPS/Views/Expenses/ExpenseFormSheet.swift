@@ -377,7 +377,7 @@ struct ExpenseFormSheet: View {
             } else if isViewMode {
                 // No receipt — show placeholder in view mode
                 VStack(spacing: OPSStyle.Layout.spacing2) {
-                    Image(systemName: OPSStyle.Icons.photo)
+                    Image(OPSStyle.Icons.photo)
                         .font(.system(size: OPSStyle.Layout.IconSize.xl))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Text("NO RECEIPT")
@@ -399,7 +399,7 @@ struct ExpenseFormSheet: View {
                     showReceiptSourceSheet = true
                 } label: {
                     VStack(spacing: OPSStyle.Layout.spacing2) {
-                        Image(systemName: OPSStyle.Icons.receipt)
+                        Image(OPSStyle.Icons.receipt)
                             .font(.system(size: OPSStyle.Layout.IconSize.xl))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Text("ADD RECEIPT PHOTO")
@@ -613,7 +613,7 @@ struct ExpenseFormSheet: View {
         VStack(spacing: 0) {
             if projectAllocations.isEmpty && viewModel.settings?.requireProjectAssignment == true {
                 HStack(spacing: OPSStyle.Layout.spacing1) {
-                    Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                    Image(OPSStyle.Icons.exclamationmarkTriangleFill)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     Text("REQUIRED FOR SUBMISSION")
                         .font(OPSStyle.Typography.smallCaption)
@@ -650,7 +650,7 @@ struct ExpenseFormSheet: View {
                         }
                     } label: {
                         HStack(spacing: OPSStyle.Layout.spacing2) {
-                            Image(systemName: OPSStyle.Icons.plus)
+                            Image(OPSStyle.Icons.plus)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                             Text("ADD PROJECT")
@@ -664,7 +664,7 @@ struct ExpenseFormSheet: View {
                 } else {
                     // per_job mode — exactly one project per expense.
                     HStack(spacing: OPSStyle.Layout.spacing1) {
-                        Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                        Image(OPSStyle.Icons.exclamationmarkTriangleFill)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         Text("PER-JOB COMPANIES ALLOW ONE PROJECT PER EXPENSE")
                             .font(OPSStyle.Typography.smallCaption)
@@ -684,7 +684,7 @@ struct ExpenseFormSheet: View {
         let project = hasProject ? allProjects.first(where: { $0.id == projectAllocations[index].projectId }) : nil
 
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: OPSStyle.Icons.folderFill)
+            Image(OPSStyle.Icons.folderFill)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -741,7 +741,7 @@ struct ExpenseFormSheet: View {
                 Button {
                     projectAllocations.remove(at: index)
                 } label: {
-                    Image(systemName: OPSStyle.Icons.xmark)
+                    Image(OPSStyle.Icons.xmark)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
@@ -775,7 +775,7 @@ struct ExpenseFormSheet: View {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                         ForEach(validationErrors, id: \.self) { error in
                             HStack(spacing: OPSStyle.Layout.spacing1) {
-                                Image(systemName: OPSStyle.Icons.exclamationmarkCircleFill)
+                                Image(OPSStyle.Icons.exclamationmarkCircleFill)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.errorStatus)
                                 Text(error)
@@ -822,7 +822,7 @@ struct ExpenseFormSheet: View {
                 } else if isLocked {
                     // Approved / Reimbursed — status badge only
                     HStack {
-                        Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                        Image(OPSStyle.Icons.checkmarkCircleFill)
                             .foregroundColor(OPSStyle.Colors.successStatus)
                         Text(expenseStatus == .reimbursed ? "REIMBURSED" : "APPROVED")
                             .font(OPSStyle.Typography.captionBold)
@@ -1369,7 +1369,7 @@ private struct ExpenseCategoryPickerSheet: View {
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                 Spacer()
                                 if selectedId == nil {
-                                    Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                                    Image(OPSStyle.Icons.checkmarkCircleFill)
                                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 }
@@ -1400,7 +1400,7 @@ private struct ExpenseCategoryPickerSheet: View {
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                     Spacer()
                                     if selectedId == cat.id {
-                                        Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                                        Image(OPSStyle.Icons.checkmarkCircleFill)
                                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     }
@@ -1467,7 +1467,7 @@ private struct ExpensePaymentPickerSheet: View {
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                     Spacer()
                                     if selected == method {
-                                        Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                                        Image(OPSStyle.Icons.checkmarkCircleFill)
                                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     }
@@ -1659,7 +1659,7 @@ private struct ExpenseCurrencyPickerSheet: View {
                                         }
                                         Spacer()
                                         if selected.uppercased() == code {
-                                            Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                                            Image(OPSStyle.Icons.checkmarkCircleFill)
                                                 .font(.system(size: OPSStyle.Layout.IconSize.md))
                                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                                         }

@@ -580,7 +580,7 @@ struct ManageTeamView: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .frame(width: 44, height: 44)
                 } else {
-                    Image(systemName: OPSStyle.Icons.chevronRight)
+                    Image(OPSStyle.Icons.chevronRight)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }

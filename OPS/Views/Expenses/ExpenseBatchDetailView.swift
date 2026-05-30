@@ -467,7 +467,7 @@ struct ExpenseBatchDetailView: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 Task { await viewModel.unflagExpense(expense.id) }
             } label: {
-                Image(systemName: OPSStyle.Icons.xmark)
+                Image(OPSStyle.Icons.xmark)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

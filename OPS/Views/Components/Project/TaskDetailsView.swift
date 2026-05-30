@@ -98,7 +98,7 @@ struct TaskDetailsView: View {
                                 .lineLimit(1)
                         }
 
-                        Image(systemName: OPSStyle.Icons.chevronRight)
+                        Image(OPSStyle.Icons.chevronRight)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -136,7 +136,7 @@ struct TaskDetailsView: View {
                         // Source attribution (visible to all roles)
                         if let _ = task.sourceEstimateId {
                             HStack(spacing: OPSStyle.Layout.spacing2) {
-                                Image(systemName: OPSStyle.Icons.estimateDoc)
+                                Image(OPSStyle.Icons.estimateDoc)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 Text("[AUTO-GENERATED FROM ESTIMATE]")
@@ -341,7 +341,7 @@ struct TaskDetailsView: View {
 
             Button(action: { showingClientContact = true }) {
                 HStack(spacing: 12) {
-                    Image(systemName: OPSStyle.Icons.client)
+                    Image(OPSStyle.Icons.client)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: 24)
 
@@ -353,18 +353,18 @@ struct TaskDetailsView: View {
 
                     // Contact indicators
                     HStack(spacing: 8) {
-                        Image(systemName: OPSStyle.Icons.phoneFill)
+                        Image(OPSStyle.Icons.phoneFill)
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .opacity(project.effectiveClientPhone != nil ? 1.0 : 0.2)
 
-                        Image(systemName: OPSStyle.Icons.envelopeFill)
+                        Image(OPSStyle.Icons.envelopeFill)
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .opacity(project.effectiveClientEmail != nil ? 1.0 : 0.2)
                     }
 
-                    Image(systemName: OPSStyle.Icons.chevronRight)
+                    Image(OPSStyle.Icons.chevronRight)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
@@ -395,7 +395,7 @@ struct TaskDetailsView: View {
                 VStack(spacing: 12) {
                     // Scheduled date
                     HStack(spacing: 12) {
-                        Image(systemName: OPSStyle.Icons.calendar)
+                        Image(OPSStyle.Icons.calendar)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: 24)
 
@@ -423,7 +423,7 @@ struct TaskDetailsView: View {
 
                         // Chevron indicator for users with edit permission
                         if permissionStore.can("tasks.edit") {
-                            Image(systemName: OPSStyle.Icons.chevronRight)
+                            Image(OPSStyle.Icons.chevronRight)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
@@ -435,7 +435,7 @@ struct TaskDetailsView: View {
                             .background(OPSStyle.Colors.inputFieldBorder)
 
                         HStack(spacing: 12) {
-                            Image(systemName: OPSStyle.Icons.calendarBadgeCheckmark)
+                            Image(OPSStyle.Icons.calendarBadgeCheckmark)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(width: 24)
 
@@ -720,7 +720,7 @@ struct TaskDetailsView: View {
     private func emptyNavigationPill(caption: String, iconPosition: IconPosition) -> some View {
         HStack(spacing: 8) {
             if iconPosition == .leading {
-                Image(systemName: OPSStyle.Icons.chevronLeft)
+                Image(OPSStyle.Icons.chevronLeft)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.5))
             }
@@ -736,7 +736,7 @@ struct TaskDetailsView: View {
             }
 
             if iconPosition == .trailing {
-                Image(systemName: OPSStyle.Icons.chevronRight)
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.5))
             }
@@ -761,7 +761,7 @@ struct TaskDetailsView: View {
             showingDeleteConfirmation = true
         }) {
             HStack(spacing: 8) {
-                Image(systemName: OPSStyle.Icons.delete)
+                Image(OPSStyle.Icons.delete)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 Text("DELETE TASK")
                     .font(OPSStyle.Typography.captionBold)
@@ -1223,7 +1223,7 @@ struct TaskDetailsView: View {
             // Notes saved notification
             if showingSaveNotification {
                 HStack(spacing: 8) {
-                    Image(systemName: OPSStyle.Icons.complete)
+                    Image(OPSStyle.Icons.complete)
                         .foregroundColor(OPSStyle.Colors.successStatus)
 
                     Text("Notes saved")

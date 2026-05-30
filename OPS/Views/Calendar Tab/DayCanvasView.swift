@@ -644,7 +644,7 @@ struct DayPageView: View {
             VStack(alignment: .leading, spacing: 0) {
                 // Icon + Title
                 HStack(spacing: 12) {
-                    Image(systemName: OPSStyle.Icons.schedule)
+                    Image(OPSStyle.Icons.schedule)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.wizardAccent)
 

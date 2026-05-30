@@ -357,7 +357,7 @@ struct AllPhotosGalleryView: View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             // Search field
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: OPSStyle.Icons.search)
+                Image(OPSStyle.Icons.search)
                     .font(.system(size: OPSStyle.Layout.SearchField.iconSize))
                     .foregroundColor(OPSStyle.Layout.SearchField.iconColor)
 
@@ -368,7 +368,7 @@ struct AllPhotosGalleryView: View {
 
                 if !searchText.isEmpty {
                     Button(action: { searchText = "" }) {
-                        Image(systemName: OPSStyle.Icons.xmarkCircleFill)
+                        Image(OPSStyle.Icons.xmarkCircleFill)
                             .font(.system(size: OPSStyle.Layout.SearchField.clearButtonSize))
                             .foregroundColor(OPSStyle.Layout.SearchField.clearButtonColor)
                     }
@@ -385,7 +385,7 @@ struct AllPhotosGalleryView: View {
             // Filter button
             Button(action: { showFilterSheet = true }) {
                 ZStack(alignment: .topTrailing) {
-                    Image(systemName: OPSStyle.Icons.filter)
+                    Image(OPSStyle.Icons.filter)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -466,7 +466,7 @@ struct AllPhotosGalleryView: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                Image(systemName: OPSStyle.Icons.chevronDown)
+                Image(OPSStyle.Icons.chevronDown)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .rotationEffect(.degrees(isExpanded ? 0 : -90))
@@ -532,7 +532,7 @@ struct AllPhotosGalleryView: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                Image(systemName: OPSStyle.Icons.chevronDown)
+                Image(OPSStyle.Icons.chevronDown)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .rotationEffect(.degrees(isExpanded ? 0 : -90))
@@ -702,7 +702,7 @@ struct AllPhotosGalleryView: View {
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                    Image(systemName: OPSStyle.Icons.chevronRight)
+                    Image(OPSStyle.Icons.chevronRight)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }

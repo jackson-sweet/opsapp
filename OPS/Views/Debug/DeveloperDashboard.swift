@@ -83,7 +83,7 @@ struct DeveloperDashboard: View {
                 ZStack {
                     HStack {
                         Button(action: { dismiss() }) {
-                            Image(systemName: OPSStyle.Icons.close)
+                            Image(OPSStyle.Icons.close)
                                 .font(.system(size: 20))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
@@ -95,7 +95,7 @@ struct DeveloperDashboard: View {
                             exitDeveloperMode()
                         } label: {
                             HStack(spacing: 6) {
-                                Image(systemName: OPSStyle.Icons.xmarkCircleFill)
+                                Image(OPSStyle.Icons.xmarkCircleFill)
                                     .font(.system(size: 16))
                                 Text("Exit Dev Mode")
                                     .font(OPSStyle.Typography.caption)

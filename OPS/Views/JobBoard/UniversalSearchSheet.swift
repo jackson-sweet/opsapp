@@ -987,7 +987,7 @@ struct UniversalSearchSheet: View {
     private var undoBanner: some View {
         if let task = undoTask {
             HStack(spacing: 10) {
-                Image(systemName: OPSStyle.Icons.complete)
+                Image(OPSStyle.Icons.complete)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.successStatus)
 

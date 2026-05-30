@@ -265,7 +265,7 @@ struct MyExpensesView: View {
 
                 if submitLoadingComplete {
                     // Success state
-                    Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                    Image(OPSStyle.Icons.checkmarkCircleFill)
                         .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                         .foregroundColor(OPSStyle.Colors.successStatus)
                         .transition(.scale.combined(with: .opacity))
@@ -377,7 +377,7 @@ struct MyExpensesView: View {
                             } label: {
                                 HStack(spacing: OPSStyle.Layout.spacing3) {
                                     // Selection indicator
-                                    Image(systemName: isSelected ? OPSStyle.Icons.checkmarkCircleFill : OPSStyle.Icons.circle)
+                                    Image(isSelected ? OPSStyle.Icons.checkmarkCircleFill : OPSStyle.Icons.circle)
                                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                                         .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
 
@@ -397,7 +397,7 @@ struct MyExpensesView: View {
                                         // Missing required fields warning
                                         if isSelected, let issue = selectedExpensesWithIssues.first(where: { $0.expense.id == expense.id }) {
                                             HStack(spacing: OPSStyle.Layout.spacing1) {
-                                                Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                                                Image(OPSStyle.Icons.exclamationmarkTriangleFill)
                                                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                                 let missing = [
                                                     issue.missingPhoto ? "receipt photo" : nil,
@@ -435,7 +435,7 @@ struct MyExpensesView: View {
                 if !selectedExpensesWithIssues.isEmpty {
                     let issueCount = selectedExpensesWithIssues.count
                     HStack(spacing: OPSStyle.Layout.spacing2) {
-                        Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                        Image(OPSStyle.Icons.exclamationmarkTriangleFill)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text("\(issueCount) expense\(issueCount == 1 ? " is" : "s are") missing required fields")
                             .font(OPSStyle.Typography.smallCaption)
@@ -503,7 +503,7 @@ struct MyExpensesView: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
+                Image(isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
@@ -544,7 +544,7 @@ struct MyExpensesView: View {
 
         VStack(spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: OPSStyle.Layout.spacing1) {
-                Image(systemName: OPSStyle.Icons.folderFill)
+                Image(OPSStyle.Icons.folderFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -559,7 +559,7 @@ struct MyExpensesView: View {
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
+                Image(isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -626,7 +626,7 @@ struct MyExpensesView: View {
     private var searchAndFilter: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
             HStack {
-                Image(systemName: OPSStyle.Icons.search)
+                Image(OPSStyle.Icons.search)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 TextField("Search expenses...", text: $searchText)
                     .font(OPSStyle.Typography.body)
@@ -636,7 +636,7 @@ struct MyExpensesView: View {
                     }
                 if !searchText.isEmpty {
                     Button { searchText = ""; viewModel.searchText = "" } label: {
-                        Image(systemName: OPSStyle.Icons.xmarkCircleFill)
+                        Image(OPSStyle.Icons.xmarkCircleFill)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                 }
@@ -692,7 +692,7 @@ struct MyExpensesView: View {
     private var emptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
-            Image(systemName: OPSStyle.Icons.expense)
+            Image(OPSStyle.Icons.expense)
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Text("NO EXPENSES YET")
@@ -715,7 +715,7 @@ struct MyExpensesView: View {
 
     private var filterEmptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: OPSStyle.Icons.expense)
+            Image(OPSStyle.Icons.expense)
                 .font(.system(size: OPSStyle.Layout.IconSize.xl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Text("NO EXPENSES MATCH FILTER")
@@ -732,7 +732,7 @@ struct MyExpensesView: View {
         Button {
             showNewExpenseSheet = true
         } label: {
-            Image(systemName: OPSStyle.Icons.plus)
+            Image(OPSStyle.Icons.plus)
                 .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .medium))
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(width: OPSStyle.Layout.touchTargetLarge, height: OPSStyle.Layout.touchTargetLarge)

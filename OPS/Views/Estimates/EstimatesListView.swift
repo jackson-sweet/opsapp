@@ -194,7 +194,7 @@ struct EstimatesListView: View {
     private var emptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
-            Image(systemName: OPSStyle.Icons.estimateDoc)
+            Image(OPSStyle.Icons.estimateDoc)
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Text(viewModel.estimates.isEmpty ? "NO ESTIMATES YET" : "NO ESTIMATES MATCH FILTER")

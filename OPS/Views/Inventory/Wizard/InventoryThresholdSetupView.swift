@@ -485,7 +485,7 @@ private struct ThresholdStepperRow: View {
                 TutorialHaptics.lightTap()
                 value += 1
             } label: {
-                Image(systemName: OPSStyle.Icons.plus)
+                Image(OPSStyle.Icons.plus)
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: 28, height: 28)

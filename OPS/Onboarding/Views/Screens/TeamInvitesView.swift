@@ -129,7 +129,7 @@ struct TeamInvitesView: View {
                     
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            Image(systemName: OPSStyle.Icons.info)
+                            Image(OPSStyle.Icons.info)
                                 .foregroundColor(Color("AccentPrimary"))
                             
                             Text("What happens next?")

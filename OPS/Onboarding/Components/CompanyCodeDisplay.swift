@@ -66,7 +66,13 @@ struct CompanyCodeDisplay: View {
             }
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: copied ? "checkmark" : OPSStyle.Icons.copy)
+                Group {
+                    if copied {
+                        Image(systemName: "checkmark")
+                    } else {
+                        Image(OPSStyle.Icons.copy)
+                    }
+                }
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                 Text(copied ? "Copied!" : "Copy Code")
                     .font(OPSStyle.Typography.button)

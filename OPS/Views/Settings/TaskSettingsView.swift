@@ -111,7 +111,7 @@ struct TaskSettingsView: View {
                     Spacer()
                     
                     Button(action: { showingAddSheet = true }) {
-                        Image(systemName: OPSStyle.Icons.plusCircleFill)
+                        Image(OPSStyle.Icons.plusCircleFill)
                             .font(.system(size: OPSStyle.Layout.IconSize.lg))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
@@ -372,7 +372,7 @@ struct TaskTypeRow: View {
                 Spacer()
 
                 if !taskType.isDefault {
-                    Image(systemName: OPSStyle.Icons.chevronRight)
+                    Image(OPSStyle.Icons.chevronRight)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }

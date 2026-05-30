@@ -279,7 +279,7 @@ struct SettingsView: View {
                                                 .frame(width: 8, height: 8)
                                         }
 
-                                        Image(systemName: OPSStyle.Icons.chevronRight)
+                                        Image(OPSStyle.Icons.chevronRight)
                                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     }
@@ -678,7 +678,7 @@ struct SettingsView: View {
 
     private var searchEmptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
-            Image(systemName: OPSStyle.Icons.search)
+            Image(OPSStyle.Icons.search)
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -698,7 +698,7 @@ struct SettingsView: View {
 
     private func searchNoResults(query: String) -> some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
-            Image(systemName: OPSStyle.Icons.search)
+            Image(OPSStyle.Icons.search)
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -759,7 +759,7 @@ struct SettingsView: View {
 
                 Spacer(minLength: 8)
 
-                Image(systemName: OPSStyle.Icons.chevronRight)
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .padding(.top, 4) // Match icon alignment
@@ -868,7 +868,7 @@ struct SettingsView: View {
 
                 Spacer()
 
-                Image(systemName: OPSStyle.Icons.chevronRight)
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -986,7 +986,7 @@ struct SettingsView: View {
 
                 Spacer()
 
-                Image(systemName: OPSStyle.Icons.chevronRight)
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

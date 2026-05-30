@@ -36,7 +36,7 @@ struct ImagePickerView: View {
                 photoLibrary: .shared()
             ) {
                 HStack {
-                    Image(systemName: OPSStyle.Icons.photos)
+                    Image(OPSStyle.Icons.photos)
                     Text("Select Photo")
                 }
                 .frame(maxWidth: .infinity)

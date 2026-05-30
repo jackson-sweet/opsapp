@@ -172,7 +172,7 @@ struct PhotoFilterSheet: View {
 
                                 // Search field
                                 HStack(spacing: OPSStyle.Layout.spacing2) {
-                                    Image(systemName: OPSStyle.Icons.search)
+                                    Image(OPSStyle.Icons.search)
                                         .font(.system(size: OPSStyle.Layout.SearchField.iconSize))
                                         .foregroundColor(OPSStyle.Layout.SearchField.iconColor)
 
@@ -183,7 +183,7 @@ struct PhotoFilterSheet: View {
 
                                     if !projectSearchText.isEmpty {
                                         Button(action: { projectSearchText = "" }) {
-                                            Image(systemName: OPSStyle.Icons.xmarkCircleFill)
+                                            Image(OPSStyle.Icons.xmarkCircleFill)
                                                 .font(.system(size: OPSStyle.Layout.SearchField.clearButtonSize))
                                                 .foregroundColor(OPSStyle.Layout.SearchField.clearButtonColor)
                                         }
@@ -282,7 +282,7 @@ struct PhotoFilterSheet: View {
                 .lineLimit(1)
 
             Button(action: { projectIds.remove(project.id) }) {
-                Image(systemName: OPSStyle.Icons.xmarkCircleFill)
+                Image(OPSStyle.Icons.xmarkCircleFill)
                     .font(.system(size: 12))
                     .foregroundColor(OPSStyle.Colors.primaryText.opacity(0.6))
             }
@@ -338,7 +338,7 @@ struct PhotoFilterSheet: View {
                 Spacer()
 
                 Button(action: onClear) {
-                    Image(systemName: OPSStyle.Icons.xmarkCircleFill)
+                    Image(OPSStyle.Icons.xmarkCircleFill)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }

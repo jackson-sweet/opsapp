@@ -156,7 +156,7 @@ struct CompanyCodeDisplayView: View {
                             // Info section
                             VStack(alignment: .leading, spacing: 16) {
                                 HStack(alignment: .top, spacing: 12) {
-                                    Image(systemName: OPSStyle.Icons.info)
+                                    Image(OPSStyle.Icons.info)
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                                         .font(OPSStyle.Typography.body)
                                     

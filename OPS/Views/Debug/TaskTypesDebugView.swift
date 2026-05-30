@@ -27,7 +27,7 @@ struct TaskTypesDebugView: View {
                 // Header
                 HStack {
                     Button(action: { dismiss() }) {
-                        Image(systemName: OPSStyle.Icons.close)
+                        Image(OPSStyle.Icons.close)
                             .font(.system(size: 20))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
@@ -41,7 +41,7 @@ struct TaskTypesDebugView: View {
                     Spacer()
                     
                     Button(action: { showingAddTaskType = true }) {
-                        Image(systemName: OPSStyle.Icons.add)
+                        Image(OPSStyle.Icons.add)
                             .font(.system(size: 20))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }

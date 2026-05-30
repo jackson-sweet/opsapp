@@ -120,7 +120,7 @@ struct ProjectPhotosGrid: View {
                     
                     Button(action: { showingCamera = true }) {
                         HStack {
-                            Image(systemName: OPSStyle.Icons.photo)
+                            Image(OPSStyle.Icons.photo)
                             Text("Add Photo")
                                 .font(OPSStyle.Typography.bodyEmphasis)
                         }
@@ -222,7 +222,7 @@ struct ProjectPhotosGrid: View {
         VStack(spacing: 24) {
             Spacer()
             
-            Image(systemName: OPSStyle.Icons.photos)
+            Image(OPSStyle.Icons.photos)
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -240,7 +240,7 @@ struct ProjectPhotosGrid: View {
 
             Button(action: { showingCamera = true }) {
                 HStack {
-                    Image(systemName: OPSStyle.Icons.photo)
+                    Image(OPSStyle.Icons.photo)
                     Text("Add Photo")
                         .font(OPSStyle.Typography.bodyEmphasis)
                 }

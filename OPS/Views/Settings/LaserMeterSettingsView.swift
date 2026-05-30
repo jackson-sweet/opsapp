@@ -350,7 +350,7 @@ struct LaserMeterSettingsView: View {
                                 // Signal strength indicator
                                 signalBars(rssi: device.rssi)
 
-                                Image(systemName: OPSStyle.Icons.chevronRight)
+                                Image(OPSStyle.Icons.chevronRight)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }

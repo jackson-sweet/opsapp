@@ -51,7 +51,7 @@ struct ClearDataView: View {
                 // Header
                 HStack {
                     Button(action: { dismiss() }) {
-                        Image(systemName: OPSStyle.Icons.close)
+                        Image(OPSStyle.Icons.close)
                             .font(.system(size: 20))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
@@ -75,7 +75,7 @@ struct ClearDataView: View {
                     VStack(spacing: 20) {
                         // Warning card
                         VStack(spacing: 12) {
-                            Image(systemName: OPSStyle.Icons.alert)
+                            Image(OPSStyle.Icons.alert)
                                 .font(.system(size: 40))
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
 

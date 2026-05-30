@@ -72,7 +72,7 @@ struct RoleListView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = errorMessage {
                 VStack(spacing: 12) {
-                    Image(systemName: OPSStyle.Icons.alert)
+                    Image(OPSStyle.Icons.alert)
                         .font(.system(size: OPSStyle.Layout.IconSize.xl))
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                     Text(error)
@@ -257,7 +257,7 @@ struct RoleListView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Image(systemName: OPSStyle.Icons.chevronRight)
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

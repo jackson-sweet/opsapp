@@ -121,7 +121,7 @@ struct AdvanceNoticePreferences: View {
                     dayBinding.wrappedValue = day
                 }) {
                     if dayBinding.wrappedValue == day {
-                        Label("\(day) days", systemImage: OPSStyle.Icons.checkmark)
+                        Label("\(day) days", image: OPSStyle.Icons.checkmark)
                     } else {
                         Text("\(day) days")
                     }
@@ -141,7 +141,7 @@ struct AdvanceNoticePreferences: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 
-                Image(systemName: OPSStyle.Icons.chevronDown)
+                Image(OPSStyle.Icons.chevronDown)
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

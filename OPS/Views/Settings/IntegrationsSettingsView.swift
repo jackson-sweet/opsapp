@@ -68,7 +68,7 @@ struct IntegrationsSettingsView: View {
 
                         // Info note
                         HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: OPSStyle.Icons.info)
+                            Image(OPSStyle.Icons.info)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -144,7 +144,7 @@ struct IntegrationsSettingsView: View {
 
                 if isConnected {
                     HStack(spacing: 4) {
-                        Image(systemName: OPSStyle.Icons.complete)
+                        Image(OPSStyle.Icons.complete)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text("CONNECTED")
                             .font(OPSStyle.Typography.smallCaption)

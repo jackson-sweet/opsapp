@@ -126,7 +126,7 @@ struct CompanySetupPromptView: View {
                     Spacer()
 
                     Button { skipForNow() } label: {
-                        Image(systemName: OPSStyle.Icons.xmark)
+                        Image(OPSStyle.Icons.xmark)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -258,7 +258,7 @@ struct CompanySetupPromptView: View {
                                                     .foregroundColor(editedAddress.isEmpty ? OPSStyle.Colors.placeholderText : OPSStyle.Colors.primaryText)
                                                     .lineLimit(1)
                                                 Spacer()
-                                                Image(systemName: OPSStyle.Icons.chevronRight)
+                                                Image(OPSStyle.Icons.chevronRight)
                                                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                                             }
@@ -298,7 +298,7 @@ struct CompanySetupPromptView: View {
                     // Error message
                     if let error = errorMessage {
                         HStack(spacing: OPSStyle.Layout.spacing2) {
-                            Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                            Image(OPSStyle.Icons.exclamationmarkTriangleFill)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.errorStatus)
                             Text(error)

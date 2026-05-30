@@ -236,7 +236,7 @@ struct SecuritySettingsView: View {
                                     if UserDefaults.standard.bool(forKey: "developerModeEnabled") {
                                         // Show if already enabled
                                         HStack {
-                                            Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                                            Image(OPSStyle.Icons.checkmarkCircleFill)
                                                 .foregroundColor(OPSStyle.Colors.successStatus)
                                             Text("Developer Mode Already Active")
                                                 .font(OPSStyle.Typography.caption)
@@ -321,7 +321,13 @@ struct SecuritySettingsView: View {
                 } else {
                     // Success message
                     VStack(spacing: 16) {
-                        Image(systemName: developerModeActivated ? "hammer.circle.fill" : OPSStyle.Icons.checkmarkCircleFill)
+                        Group {
+                            if developerModeActivated {
+                                Image(systemName: "hammer.circle.fill")
+                            } else {
+                                Image(OPSStyle.Icons.checkmarkCircleFill)
+                            }
+                        }
                             .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(developerModeActivated ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.successStatus)
                             .padding(.bottom, 8)

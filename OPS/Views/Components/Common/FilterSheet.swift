@@ -149,7 +149,7 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
                         Spacer()
 
                         if selectedSort.wrappedValue == option {
-                            Image(systemName: OPSStyle.Icons.checkmark)
+                            Image(OPSStyle.Icons.checkmark)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
@@ -499,7 +499,7 @@ private struct MultiSelectFilterSection<T: Hashable>: View {
                         Spacer()
 
                         if selection.contains(option) {
-                            Image(systemName: OPSStyle.Icons.checkmark)
+                            Image(OPSStyle.Icons.checkmark)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
@@ -586,7 +586,7 @@ private struct IdBasedMultiSelectSection<T: Identifiable>: View {
                         Spacer()
 
                         if selection.contains(getId(option)) {
-                            Image(systemName: OPSStyle.Icons.checkmark)
+                            Image(OPSStyle.Icons.checkmark)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
@@ -692,7 +692,7 @@ private struct SearchableMultiSelectSection<T: Hashable & Identifiable>: View {
 
                 // Search field
                 HStack(spacing: 8) {
-                    Image(systemName: OPSStyle.Icons.search)
+                    Image(OPSStyle.Icons.search)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -706,7 +706,7 @@ private struct SearchableMultiSelectSection<T: Hashable & Identifiable>: View {
                         Button(action: {
                             searchText = ""
                         }) {
-                            Image(systemName: OPSStyle.Icons.xmarkCircleFill)
+                            Image(OPSStyle.Icons.xmarkCircleFill)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
@@ -750,7 +750,7 @@ private struct SearchableMultiSelectSection<T: Hashable & Identifiable>: View {
                             Text("SHOW MORE")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            Image(systemName: OPSStyle.Icons.chevronDown)
+                            Image(OPSStyle.Icons.chevronDown)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                             Spacer()
@@ -844,11 +844,11 @@ private struct FilterRow: View {
             Spacer()
 
             if isSelected && !isSpecial {
-                Image(systemName: OPSStyle.Icons.checkmark)
+                Image(OPSStyle.Icons.checkmark)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             } else if isSpecial && isSelected {
-                Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                Image(OPSStyle.Icons.checkmarkCircleFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }

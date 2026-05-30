@@ -93,7 +93,7 @@ struct ProjectNotesView: View {
 
     private var emptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: OPSStyle.Icons.notes)
+            Image(OPSStyle.Icons.notes)
                 .font(.system(size: OPSStyle.Layout.IconSize.xl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -119,7 +119,7 @@ struct ProjectNotesView: View {
                         viewModel.insertAllTeamMention()
                     }) {
                         HStack(spacing: OPSStyle.Layout.spacing1) {
-                            Image(systemName: OPSStyle.Icons.crew)
+                            Image(OPSStyle.Icons.crew)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 .frame(width: 24, height: 24)
@@ -187,7 +187,7 @@ struct ProjectNotesView: View {
             Button(action: {
                 Task { await viewModel.postNote() }
             }) {
-                Image(systemName: OPSStyle.Icons.sendFill)
+                Image(OPSStyle.Icons.sendFill)
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(
                         viewModel.newNoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -269,7 +269,7 @@ struct ProjectNoteRow: View {
 
                 if isOwnNote {
                     Button(action: { showDeleteConfirmation = true }) {
-                        Image(systemName: OPSStyle.Icons.trash)
+                        Image(OPSStyle.Icons.trash)
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }

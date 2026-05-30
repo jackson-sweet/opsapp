@@ -177,7 +177,13 @@ private struct ReminderRow: View {
             Button {
                 Task { await toggle() }
             } label: {
-                Image(systemName: reminder.isAcknowledged ? OPSStyle.Icons.checkmarkCircleFill : "circle")
+                Group {
+                    if reminder.isAcknowledged {
+                        Image(OPSStyle.Icons.checkmarkCircleFill)
+                    } else {
+                        Image(systemName: "circle")
+                    }
+                }
                     .font(.system(size: 22, weight: .regular))
                     .foregroundColor(reminder.isAcknowledged ? OPSStyle.Colors.successStatus : OPSStyle.Colors.tertiaryText)
                     .frame(width: 44, height: 44)

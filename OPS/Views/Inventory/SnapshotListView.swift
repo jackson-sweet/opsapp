@@ -88,7 +88,7 @@ struct SnapshotListView: View {
 
             Button(action: { loadSnapshots() }) {
                 HStack(spacing: OPSStyle.Layout.spacing1) {
-                    Image(systemName: OPSStyle.Icons.arrowClockwise)
+                    Image(OPSStyle.Icons.arrowClockwise)
                     Text("Refresh")
                 }
                 .font(OPSStyle.Typography.bodyBold)
@@ -150,7 +150,7 @@ struct SnapshotListView: View {
 
                 Spacer()
 
-                Image(systemName: OPSStyle.Icons.chevronRight)
+                Image(OPSStyle.Icons.chevronRight)
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

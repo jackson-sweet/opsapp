@@ -129,7 +129,7 @@ struct OnboardingHelpButton: View {
             showHelp = true
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: OPSStyle.Icons.info)
+                Image(OPSStyle.Icons.info)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 Text("Need help?")
                     .font(OPSStyle.Typography.caption)

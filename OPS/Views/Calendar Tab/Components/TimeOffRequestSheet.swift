@@ -239,7 +239,7 @@ struct TimeOffRequestSheet: View {
             Spacer()
 
             if canRequestForOthers {
-                Image(systemName: OPSStyle.Icons.chevronRight)
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

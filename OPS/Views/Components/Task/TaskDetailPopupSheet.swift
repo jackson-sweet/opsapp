@@ -236,7 +236,7 @@ struct TaskDetailPopupSheet: View {
 
                 Spacer()
 
-                Image(systemName: OPSStyle.Icons.chevronRight)
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -323,7 +323,13 @@ struct TaskDetailPopupSheet: View {
 
                 Spacer()
 
-                Image(systemName: showTeamPicker ? "chevron.down" : OPSStyle.Icons.chevronRight)
+                Group {
+                    if showTeamPicker {
+                        Image(systemName: "chevron.down")
+                    } else {
+                        Image(OPSStyle.Icons.chevronRight)
+                    }
+                }
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

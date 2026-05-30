@@ -89,7 +89,7 @@ struct UserPermissionDetailView: View {
                             // Error
                             if let error = errorMessage {
                                 HStack(spacing: 8) {
-                                    Image(systemName: OPSStyle.Icons.alert)
+                                    Image(OPSStyle.Icons.alert)
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.errorStatus)
                                     Text(error)
@@ -254,7 +254,7 @@ struct UserPermissionDetailView: View {
     private func roleOption(_ role: UserRole, title: String, description: String) -> some View {
         Button(action: { selectedRole = role }) {
             HStack(spacing: 12) {
-                Image(systemName: selectedRole == role ? OPSStyle.Icons.checkmarkCircleFill : OPSStyle.Icons.circle)
+                Image(selectedRole == role ? OPSStyle.Icons.checkmarkCircleFill : OPSStyle.Icons.circle)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(selectedRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
 

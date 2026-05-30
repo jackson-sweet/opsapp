@@ -96,7 +96,7 @@ struct TaskLineItem: View {
                     HStack(spacing: 12) {
                         // Calendar icon + date
                         HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.calendar)
+                            Image(OPSStyle.Icons.calendar)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -114,7 +114,7 @@ struct TaskLineItem: View {
 
                         // Team icon + count
                         HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.personTwo)
+                            Image(OPSStyle.Icons.personTwo)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 

@@ -269,7 +269,7 @@ struct StairConfigView: View {
     private var noElevationWarning: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: OPSStyle.Icons.exclamationmarkTriangle)
+                Image(OPSStyle.Icons.exclamationmarkTriangle)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
                 Text("Deck height required")

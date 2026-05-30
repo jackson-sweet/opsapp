@@ -594,161 +594,165 @@ enum OPSStyle {
     }
 
     // MARK: - Icons
+    // Asset-catalog Carbon custom symbols (slug prefix `ops.`) are consumed via
+    // `Image(_:)` / `Label(_, image:)`, NOT `Image(systemName:)`. The bare SF
+    // Symbol values below (where no Carbon match exists) continue to be consumed
+    // via `Image(systemName:)`.
     enum Icons {
         // MARK: - OPS Domain Semantic Icons
         // These are THE standardized icons for core OPS concepts
         // Always use these for their designated purpose to maintain consistency
 
         // Core entities
-        static let project = "folder.fill"                  // THE icon for Projects
-        static let task = "checklist"                       // THE icon for Tasks
-        static let taskType = "tag.fill"                    // THE icon for Task Types
-        static let client = "person.circle.fill"            // THE icon for Clients
-        static let subClient = "person.2.fill"              // THE icon for Sub-clients
-        static let teamMember = "person.fill"               // THE icon for Team Members
-        static let crew = "person.3.fill"                   // THE icon for Crews/Teams
+        static let project = "ops.project"                  // THE icon for Projects
+        static let task = "ops.task"                        // THE icon for Tasks
+        static let taskType = "ops.task-type"               // THE icon for Task Types
+        static let client = "ops.client"                    // THE icon for Clients
+        static let subClient = "ops.sub-client"             // THE icon for Sub-clients
+        static let teamMember = "ops.team-member"           // THE icon for Team Members
+        static let crew = "ops.crew"                        // THE icon for Crews/Teams
 
         // Scheduling & Time
-        static let schedule = "calendar.badge.clock"        // THE icon for Scheduling
-        static let deadline = "calendar.badge.exclamationmark" // THE icon for Deadlines
-        static let duration = "clock.fill"                  // THE icon for Duration/Time
+        static let schedule = "ops.schedule-confirmed"      // THE icon for Scheduling
+        static let deadline = "ops.deadline"                // THE icon for Deadlines
+        static let duration = "ops.duration"                // THE icon for Duration/Time
 
         // Location & Site
-        static let jobSite = "location.fill"                // THE icon for Job Sites
-        static let address = "mappin.and.ellipse"           // THE icon for Addresses
+        static let jobSite = "ops.job-site"                 // THE icon for Job Sites
+        static let address = "ops.address"                  // THE icon for Addresses
 
         // Content & Media
-        static let notes = "note.text"                      // THE icon for Notes
-        static let description = "text.alignleft"           // THE icon for Description
-        static let photos = "photo.on.rectangle"            // THE icon for Photos
-        static let documents = "doc.text.fill"              // THE icon for Documents
+        static let notes = "ops.note"                       // THE icon for Notes
+        static let description = "text.alignleft"           // THE icon for Description (no Carbon match — SF Symbol)
+        static let photos = "ops.photo"                     // THE icon for Photos
+        static let documents = "ops.document"               // THE icon for Documents
 
         // Actions
-        static let add = "plus.circle.fill"                 // THE icon for Add/Create
-        static let edit = "pencil.circle.fill"              // THE icon for Edit
-        static let delete = "trash.fill"                    // THE icon for Delete
-        static let sync = "arrow.triangle.2.circlepath"     // THE icon for Sync
-        static let share = "square.and.arrow.up"            // THE icon for Share
-        static let filter = "line.horizontal.3.decrease.circle" // THE icon for Filter
-        static let sort = "arrow.up.arrow.down.circle"      // THE icon for Sort
-        static let addContact = "person.crop.circle.badge.plus" // THE icon for Add from Contacts
-        static let addProject = "folder.badge.plus"         // THE icon for Create Project
+        static let add = "ops.add-circle"                   // THE icon for Add/Create
+        static let edit = "ops.edit"                        // THE icon for Edit
+        static let delete = "ops.delete"                    // THE icon for Delete
+        static let sync = "ops.sync"                        // THE icon for Sync
+        static let share = "ops.share"                      // THE icon for Share
+        static let filter = "ops.filter"                    // THE icon for Filter
+        static let sort = "ops.sort"                        // THE icon for Sort
+        static let addContact = "ops.new-client"            // THE icon for Add from Contacts
+        static let addProject = "ops.new-project"           // THE icon for Create Project
 
         // Status & State
-        static let complete = "checkmark.circle.fill"       // THE icon for Complete
-        static let incomplete = "circle"                    // THE icon for Incomplete
-        static let inProgress = "clock.arrow.circlepath"    // THE icon for In Progress (if needed)
-        static let alert = "exclamationmark.triangle.fill"  // THE icon for Alerts/Warnings
-        static let error = "xmark.octagon.fill"             // THE icon for Errors
-        static let info = "info.circle.fill"                // THE icon for Information
+        static let complete = "ops.success"                 // THE icon for Complete
+        static let incomplete = "ops.incomplete"            // THE icon for Incomplete
+        static let inProgress = "ops.in-progress"           // THE icon for In Progress (if needed)
+        static let alert = "ops.warning"                    // THE icon for Alerts/Warnings
+        static let error = "ops.error-critical"             // THE icon for Errors
+        static let info = "ops.info"                        // THE icon for Information
 
         // System
-        static let settings = "gearshape.fill"              // THE icon for Settings
-        static let search = "magnifyingglass"               // THE icon for Search
-        static let menu = "line.3.horizontal"               // THE icon for Menu
-        static let close = "xmark"                          // THE icon for Close/Dismiss
-        static let back = "chevron.left"                    // THE icon for Back navigation
-        static let forward = "chevron.right"                // THE icon for Forward navigation
+        static let settings = "ops.nav-settings"            // THE icon for Settings
+        static let search = "ops.search"                    // THE icon for Search
+        static let menu = "ops.menu"                        // THE icon for Menu
+        static let close = "ops.close"                      // THE icon for Close/Dismiss
+        static let back = "ops.chevron-left"                // THE icon for Back navigation
+        static let forward = "ops.chevron-right"            // THE icon for Forward navigation
 
         // MARK: - Legacy SF Symbols (Currently in Use)
         // These are used in existing code - during Track F migration, replace with semantic icons above
         // Example: Replace `OPSStyle.Icons.calendar` with `OPSStyle.Icons.schedule`
 
-        static let calendar = "calendar"
-        static let calendarFill = "calendar.fill"
-        static let calendarBadgeCheckmark = "calendar.badge.checkmark"
-        static let person = "person"
-        static let personFill = "person.fill"
-        static let personTwo = "person.2"
-        static let personTwoFill = "person.2.fill"
-        static let personCircle = "person.circle"
-        static let personCircleFill = "person.circle.fill"
-        static let location = "location"
-        static let locationFill = "location.fill"
-        static let phone = "phone"
-        static let phoneFill = "phone.fill"
-        static let envelope = "envelope"
-        static let envelopeFill = "envelope.fill"
-        static let folder = "folder"
-        static let folderFill = "folder.fill"
-        static let checklist = "checklist"
-        static let checkmark = "checkmark"
-        static let checkmarkSquare = "checkmark.square"
-        static let checkmarkSquareFill = "checkmark.square.fill"
-        static let checkmarkCircle = "checkmark.circle"
-        static let checkmarkCircleFill = "checkmark.circle.fill"
-        static let circle = "circle"
-        static let square = "square"
-        static let squareFill = "square.fill"
-        static let xmark = "xmark"
-        static let xmarkCircle = "xmark.circle"
-        static let xmarkCircleFill = "xmark.circle.fill"
-        static let chevronRight = "chevron.right"
-        static let chevronLeft = "chevron.left"
-        static let chevronUp = "chevron.up"
-        static let chevronDown = "chevron.down"
-        static let plus = "plus"
-        static let plusCircle = "plus.circle"
-        static let plusCircleFill = "plus.circle.fill"
-        static let minus = "minus"
-        static let minusCircle = "minus.circle"
-        static let minusCircleFill = "minus.circle.fill"
-        static let exclamationmarkTriangle = "exclamationmark.triangle"
-        static let exclamationmarkTriangleFill = "exclamationmark.triangle.fill"
-        static let gearshape = "gearshape"
-        static let gearshapeFill = "gearshape.fill"
-        static let house = "house"
-        static let houseFill = "house.fill"
-        static let map = "map"
-        static let mapFill = "map.fill"
-        static let ellipsis = "ellipsis"
-        static let ellipsisCircle = "ellipsis.circle"
-        static let ellipsisCircleFill = "ellipsis.circle.fill"
-        static let listBullet = "list.bullet"
-        static let trash = "trash"
-        static let trashFill = "trash.fill"
-        static let pencil = "pencil"
-        static let pencilCircle = "pencil.circle"
-        static let pencilCircleFill = "pencil.circle.fill"
-        static let arrowClockwise = "arrow.clockwise"
-        static let arrowCounterclockwise = "arrow.counterclockwise"
-        static let magnifyingglass = "magnifyingglass"
-        static let magnifyingglassCircle = "magnifyingglass.circle"
-        static let magnifyingglassCircleFill = "magnifyingglass.circle.fill"
-        static let bellFill = "bell.fill"
-        static let photo = "photo"
-        static let photoFill = "photo.fill"
-        static let camera = "camera"
-        static let cameraFill = "camera.fill"
-        static let clock = "clock"
-        static let copy = "doc.on.doc"
+        static let calendar = "ops.date"
+        static let calendarFill = "ops.date"
+        static let calendarBadgeCheckmark = "ops.schedule-confirmed"
+        static let person = "ops.client"
+        static let personFill = "ops.client"
+        static let personTwo = "ops.sub-client"
+        static let personTwoFill = "ops.sub-client"
+        static let personCircle = "ops.team-member"
+        static let personCircleFill = "ops.team-member"
+        static let location = "ops.address"
+        static let locationFill = "ops.address"
+        static let phone = "ops.call"
+        static let phoneFill = "ops.call"
+        static let envelope = "ops.email"
+        static let envelopeFill = "ops.email"
+        static let folder = "ops.project"
+        static let folderFill = "ops.project"
+        static let checklist = "ops.task"
+        static let checkmark = "ops.checkmark"
+        static let checkmarkSquare = "checkmark.square"        // no Carbon match — SF Symbol
+        static let checkmarkSquareFill = "checkmark.square.fill" // no Carbon match — SF Symbol
+        static let checkmarkCircle = "ops.checkmark"
+        static let checkmarkCircleFill = "ops.success"
+        static let circle = "ops.incomplete"
+        static let square = "square"                            // no Carbon match — SF Symbol
+        static let squareFill = "square.fill"                  // no Carbon match — SF Symbol
+        static let xmark = "ops.close"
+        static let xmarkCircle = "ops.deal-lost"
+        static let xmarkCircleFill = "ops.close"
+        static let chevronRight = "ops.chevron-right"
+        static let chevronLeft = "ops.chevron-left"
+        static let chevronUp = "ops.chevron-up"
+        static let chevronDown = "ops.chevron-down"
+        static let plus = "ops.add"
+        static let plusCircle = "ops.add-circle"
+        static let plusCircleFill = "ops.add-circle"
+        static let minus = "minus"                              // no Carbon match — SF Symbol
+        static let minusCircle = "minus.circle"                // no Carbon match — SF Symbol
+        static let minusCircleFill = "minus.circle.fill"       // no Carbon match — SF Symbol
+        static let exclamationmarkTriangle = "ops.warning"
+        static let exclamationmarkTriangleFill = "ops.warning"
+        static let gearshape = "ops.nav-settings"
+        static let gearshapeFill = "ops.nav-settings"
+        static let house = "ops.nav-portal-home"
+        static let houseFill = "ops.nav-portal-home"
+        static let map = "ops.nav-map"
+        static let mapFill = "ops.nav-map"
+        static let ellipsis = "ops.overflow"
+        static let ellipsisCircle = "ops.overflow"
+        static let ellipsisCircleFill = "ops.overflow"
+        static let listBullet = "ops.view-list"
+        static let trash = "ops.delete"
+        static let trashFill = "ops.delete"
+        static let pencil = "ops.edit"
+        static let pencilCircle = "ops.edit"
+        static let pencilCircleFill = "ops.edit"
+        static let arrowClockwise = "ops.refresh"
+        static let arrowCounterclockwise = "ops.reset"
+        static let magnifyingglass = "ops.search"
+        static let magnifyingglassCircle = "ops.search"
+        static let magnifyingglassCircleFill = "ops.search"
+        static let bellFill = "ops.notification-bell"
+        static let photo = "ops.photo"
+        static let photoFill = "ops.photo"
+        static let camera = "camera"                            // no Carbon match — SF Symbol
+        static let cameraFill = "camera.fill"                  // no Carbon match — SF Symbol
+        static let clock = "ops.clock"
+        static let copy = "ops.copy"
 
         // Pipeline & Financial (Feb 2026)
-        static let opportunity      = "arrow.up.right.circle.fill"
-        static let pipelineChart    = "chart.bar.doc.horizontal.fill"
-        static let estimateDoc      = "doc.text.fill"
-        static let invoiceReceipt   = "receipt"
-        static let paymentDollar    = "dollarsign.circle.fill"
-        static let siteVisitPin     = "mappin.circle.fill"
-        static let activityBubble   = "bubble.left.and.text.bubble.right.fill"
-        static let followUpAlarm    = "alarm.fill"
-        static let stageAdvance     = "arrow.forward.circle.fill"
-        static let dealWon          = "checkmark.seal.fill"
-        static let dealLost         = "xmark.seal.fill"
-        static let accountingChart  = "chart.bar.fill"
-        static let productTag       = "tag.fill"
-        static let stale            = "exclamationmark.triangle.fill"
-        static let expense          = "dollarsign.circle"
-        static let banknoteFill     = "banknote.fill"
-        static let undo             = "arrow.uturn.backward"
-        static let sendFill         = "arrow.up.circle.fill"
-        static let bell             = "bell"
-        static let mention          = "at"
-        static let assignmentNotification = "person.badge.plus"
-        static let pencilTip        = "pencil.tip"
-        static let receipt          = "doc.text.viewfinder"
-        static let clockFill        = "clock.fill"
-        static let exclamationmarkCircleFill = "exclamationmark.circle.fill"
+        static let opportunity      = "ops.lead"
+        static let pipelineChart    = "ops.nav-pipeline"
+        static let estimateDoc      = "ops.estimate"
+        static let invoiceReceipt   = "ops.invoice"
+        static let paymentDollar    = "ops.payment"
+        static let siteVisitPin     = "ops.site-visit"
+        static let activityBubble   = "ops.activity-log"
+        static let followUpAlarm    = "ops.deadline"
+        static let stageAdvance     = "ops.arrow-right"
+        static let dealWon          = "ops.deal-won"
+        static let dealLost         = "ops.deal-lost"
+        static let accountingChart  = "ops.trending-up"
+        static let productTag       = "ops.task-type"
+        static let stale            = "ops.warning"
+        static let expense          = "ops.expense"
+        static let banknoteFill     = "ops.money"
+        static let undo             = "ops.undo"
+        static let sendFill         = "ops.send"
+        static let bell             = "ops.notification-bell"
+        static let mention          = "ops.mention"
+        static let assignmentNotification = "ops.invite-member"
+        static let pencilTip        = "ops.draw-pen"
+        static let receipt          = "ops.invoice"
+        static let clockFill        = "ops.duration"
+        static let exclamationmarkCircleFill = "ops.error"
     }
 
     // MARK: - Wizard

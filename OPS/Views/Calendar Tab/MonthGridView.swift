@@ -909,7 +909,7 @@ private struct MonthJumpPicker: View {
                 Button {
                     withAnimation(OPSStyle.Animation.fast) { displayYear -= 1 }
                 } label: {
-                    Image(systemName: OPSStyle.Icons.chevronLeft)
+                    Image(OPSStyle.Icons.chevronLeft)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -927,7 +927,7 @@ private struct MonthJumpPicker: View {
                 Button {
                     withAnimation(OPSStyle.Animation.fast) { displayYear += 1 }
                 } label: {
-                    Image(systemName: OPSStyle.Icons.chevronRight)
+                    Image(OPSStyle.Icons.chevronRight)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -1522,7 +1522,7 @@ struct DayDetailsSheet: View {
 
                 if scheduledTasks.isEmpty && dayUserEvents.isEmpty {
                     VStack(spacing: 12) {
-                        Image(systemName: OPSStyle.Icons.calendar)
+                        Image(OPSStyle.Icons.calendar)
                             .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -1690,7 +1690,7 @@ struct EventDetailCard: View {
                     }
 
                     HStack(spacing: 4) {
-                        Image(systemName: OPSStyle.Icons.calendar)
+                        Image(OPSStyle.Icons.calendar)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         Text(dateRangeText)
                             .font(OPSStyle.Typography.smallCaption)
@@ -1700,7 +1700,7 @@ struct EventDetailCard: View {
 
                 Spacer()
 
-                Image(systemName: OPSStyle.Icons.chevronRight)
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

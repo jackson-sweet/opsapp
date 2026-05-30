@@ -30,7 +30,7 @@ struct EstimatePreviewSheet: View {
                     // AR accuracy warning
                     if let note = arNote {
                         HStack(spacing: OPSStyle.Layout.spacing2) {
-                            Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                            Image(OPSStyle.Icons.exclamationmarkTriangleFill)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text(note)
                                 .font(OPSStyle.Typography.caption)

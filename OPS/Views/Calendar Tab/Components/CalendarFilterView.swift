@@ -175,7 +175,7 @@ struct CalendarFilterView: View {
                         Spacer()
 
                         if selectedTaskTypeIds.contains(type.id) {
-                            Image(systemName: OPSStyle.Icons.checkmark)
+                            Image(OPSStyle.Icons.checkmark)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
@@ -229,7 +229,7 @@ struct CalendarFilterView: View {
                         Spacer()
 
                         if selectedStatuses.contains(status) {
-                            Image(systemName: OPSStyle.Icons.checkmark)
+                            Image(OPSStyle.Icons.checkmark)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
@@ -275,7 +275,7 @@ struct CalendarFilterView: View {
 
                     // Search field
                     HStack(spacing: 8) {
-                        Image(systemName: OPSStyle.Icons.search)
+                        Image(OPSStyle.Icons.search)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -287,7 +287,7 @@ struct CalendarFilterView: View {
 
                         if !_clientSearchText.isEmpty {
                             Button(action: { _clientSearchText = "" }) {
-                                Image(systemName: OPSStyle.Icons.xmarkCircleFill)
+                                Image(OPSStyle.Icons.xmarkCircleFill)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
@@ -324,7 +324,7 @@ struct CalendarFilterView: View {
                             Text("SHOW MORE")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            Image(systemName: OPSStyle.Icons.chevronDown)
+                            Image(OPSStyle.Icons.chevronDown)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                             Spacer()
@@ -400,7 +400,7 @@ struct CalendarFilterView: View {
                 .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.text2)
             Spacer()
             if isSelected {
-                Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                Image(OPSStyle.Icons.checkmarkCircleFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
@@ -430,7 +430,7 @@ struct CalendarFilterView: View {
             Spacer()
 
             if isSelected {
-                Image(systemName: OPSStyle.Icons.checkmark)
+                Image(OPSStyle.Icons.checkmark)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }

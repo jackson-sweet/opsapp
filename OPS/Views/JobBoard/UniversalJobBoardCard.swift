@@ -447,7 +447,7 @@ struct UniversalJobBoardCard: View {
             // Row 3: Dates + task progress
             HStack(spacing: OPSStyle.Layout.spacing3) {
                 HStack(spacing: 4) {
-                    Image(systemName: OPSStyle.Icons.calendar)
+                    Image(OPSStyle.Icons.calendar)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Text(compactDateRange)

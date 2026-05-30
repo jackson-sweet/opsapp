@@ -104,7 +104,7 @@ final class TaskType: Identifiable {
         "checkmark.circle.fill", // Inspection/completion
         "shippingbox.fill",   // Materials/delivery
         "bolt.fill",          // Electrical
-        "drop.fill",          // Plumbing
+        "drop.fill",          // Plumbing — TODO(carbon-icons): bespoke trade glyph pending
         "house.fill"          // General/other
     ]
     

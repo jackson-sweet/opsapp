@@ -83,12 +83,12 @@ struct ActivityEntryView: View {
                             editText = note.content ?? ""
                             isEditing = true
                         }) {
-                            Label("Edit", systemImage: OPSStyle.Icons.pencil)
+                            Label("Edit", image: OPSStyle.Icons.pencil)
                         }
                         Button(role: .destructive, action: {
                             showDeleteConfirmation = true
                         }) {
-                            Label("Delete", systemImage: OPSStyle.Icons.trash)
+                            Label("Delete", image: OPSStyle.Icons.trash)
                         }
                     } label: {
                         Image(systemName: "ellipsis")
@@ -218,7 +218,7 @@ struct ActivityEntryView: View {
                 if editShowAllTeam {
                     Button(action: insertEditAllTeamMention) {
                         HStack(spacing: OPSStyle.Layout.spacing1) {
-                            Image(systemName: OPSStyle.Icons.crew)
+                            Image(OPSStyle.Icons.crew)
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 .frame(width: 24, height: 24)

@@ -24,7 +24,7 @@ struct SettingsHeader: View {
             Button(action: {
                 onBackTapped()
             }) {
-                Image(systemName: OPSStyle.Icons.chevronLeft)
+                Image(OPSStyle.Icons.chevronLeft)
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }

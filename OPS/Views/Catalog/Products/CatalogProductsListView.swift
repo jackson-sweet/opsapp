@@ -314,7 +314,7 @@ private struct ProductRow: View {
                 }
             }
 
-            Image(systemName: OPSStyle.Icons.chevronRight)
+            Image(OPSStyle.Icons.chevronRight)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .padding(.top, 2)

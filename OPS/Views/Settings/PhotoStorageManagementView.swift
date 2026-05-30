@@ -110,7 +110,7 @@ struct PhotoStorageManagementView: View {
                 }
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: { dismiss() }) {
-                        Image(systemName: OPSStyle.Icons.chevronLeft)
+                        Image(OPSStyle.Icons.chevronLeft)
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
@@ -365,7 +365,7 @@ struct PhotoStorageManagementView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     projectPendingLocalRemoval = item
                 }) {
-                    Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                    Image(OPSStyle.Icons.checkmarkCircleFill)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.successStatus)
                         .frame(width: 44, height: 44)

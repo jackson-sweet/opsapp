@@ -834,7 +834,7 @@ struct CollapsibleSection<Content: View>: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
+                Image(isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
@@ -879,7 +879,7 @@ struct SectionButton: View {
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                Image(systemName: OPSStyle.Icons.chevronRight)
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -929,7 +929,7 @@ struct ProjectListSheet: View {
                 VStack(spacing: 0) {
                     // Search bar
                     HStack(spacing: 12) {
-                        Image(systemName: OPSStyle.Icons.search)
+                        Image(OPSStyle.Icons.search)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
 

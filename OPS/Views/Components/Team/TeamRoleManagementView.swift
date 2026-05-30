@@ -37,7 +37,7 @@ struct TeamRoleManagementView: View {
 
                 Spacer()
 
-                Image(systemName: OPSStyle.Icons.chevronRight)
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -95,7 +95,7 @@ struct TeamRoleManagementSheet: View {
                     } else {
                         // Search bar
                         HStack {
-                            Image(systemName: OPSStyle.Icons.search)
+                            Image(OPSStyle.Icons.search)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
                             TextField("Search team members", text: $searchText)
@@ -229,7 +229,7 @@ struct TeamRoleManagementSheet: View {
 
     private var emptySearchView: some View {
         VStack(spacing: 16) {
-            Image(systemName: OPSStyle.Icons.search)
+            Image(OPSStyle.Icons.search)
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -354,7 +354,7 @@ struct TeamMemberRoleEditRow: View {
                 Spacer()
 
                 // Chevron
-                Image(systemName: OPSStyle.Icons.chevronRight)
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -473,7 +473,7 @@ struct RolePickerSheet: View {
                 Spacer()
 
                 if currentRole == role {
-                    Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                    Image(OPSStyle.Icons.checkmarkCircleFill)
                         .font(.system(size: OPSStyle.Layout.IconSize.lg))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }

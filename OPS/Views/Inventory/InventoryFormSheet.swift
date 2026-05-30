@@ -200,7 +200,7 @@ struct InventoryFormSheet: View {
                         if isEditing {
                             Button(action: { showingDeleteConfirmation = true }) {
                                 HStack(spacing: OPSStyle.Layout.spacing2) {
-                                    Image(systemName: OPSStyle.Icons.trash)
+                                    Image(OPSStyle.Icons.trash)
                                     Text("Delete Item")
                                 }
                                 .font(OPSStyle.Typography.bodyBold)
@@ -327,7 +327,7 @@ struct InventoryFormSheet: View {
 
                             Spacer()
 
-                            Image(systemName: OPSStyle.Icons.chevronDown)
+                            Image(OPSStyle.Icons.chevronDown)
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
@@ -363,7 +363,7 @@ struct InventoryFormSheet: View {
                                 .foregroundColor(OPSStyle.Colors.primaryText)
 
                             Button(action: { removeTag(tag) }) {
-                                Image(systemName: OPSStyle.Icons.xmark)
+                                Image(OPSStyle.Icons.xmark)
                                     .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
@@ -396,7 +396,7 @@ struct InventoryFormSheet: View {
                     .onSubmit { addTagsFromInput() }
 
                 Button(action: { addTagsFromInput() }) {
-                    Image(systemName: OPSStyle.Icons.plus)
+                    Image(OPSStyle.Icons.plus)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)

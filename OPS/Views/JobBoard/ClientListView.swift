@@ -125,7 +125,7 @@ struct ClientListView: View {
                 if activeFilter == .new && sortedAndFilteredClients.isEmpty {
                     VStack(spacing: OPSStyle.Layout.spacing3) {
                         Spacer()
-                        Image(systemName: OPSStyle.Icons.client)
+                        Image(OPSStyle.Icons.client)
                             .font(.system(size: 44))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Text("NO NEW CLIENTS")

@@ -84,7 +84,7 @@ struct OrganizationTeamView: View {
                             Spacer()
                             
                             // Indicator
-                            Image(systemName: OPSStyle.Icons.chevronRight)
+                            Image(OPSStyle.Icons.chevronRight)
                                 .font(OPSStyle.Typography.smallBody)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
@@ -142,7 +142,7 @@ struct OrganizationFullTeamView: View {
                 VStack {
                     // Search field
                     HStack {
-                        Image(systemName: OPSStyle.Icons.search)
+                        Image(OPSStyle.Icons.search)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         
                         TextField("Search team members", text: $searchText)
@@ -172,7 +172,7 @@ struct OrganizationFullTeamView: View {
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             } else {
                                 // No search results
-                                Image(systemName: OPSStyle.Icons.search)
+                                Image(OPSStyle.Icons.search)
                                     .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.5))
                                 

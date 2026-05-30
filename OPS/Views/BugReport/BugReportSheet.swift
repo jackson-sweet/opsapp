@@ -283,7 +283,7 @@ struct BugReportSheet: View {
                         showFullScreenshot = false
                     } label: {
                         HStack(spacing: OPSStyle.Layout.spacing1) {
-                            Image(systemName: OPSStyle.Icons.xmark)
+                            Image(OPSStyle.Icons.xmark)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                             Text("Close")
                                 .font(OPSStyle.Typography.captionBold)
@@ -307,7 +307,7 @@ struct BugReportSheet: View {
 
     private var successOverlay: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
-            Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+            Image(OPSStyle.Icons.checkmarkCircleFill)
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.successStatus)
 

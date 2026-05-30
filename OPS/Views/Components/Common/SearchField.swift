@@ -205,7 +205,7 @@ struct SearchField<Item: Identifiable & Hashable>: View {
 
                 // Selection checkmark
                 if selectedId == getId(item) {
-                    Image(systemName: OPSStyle.Icons.checkmark)
+                    Image(OPSStyle.Icons.checkmark)
                         .font(.system(size: OPSStyle.Layout.SearchField.rowCheckmarkSize))
                         .foregroundColor(OPSStyle.Layout.SearchField.rowCheckmarkColor)
                 }

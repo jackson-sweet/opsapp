@@ -68,7 +68,7 @@ struct ProductPickerSheet: View {
                 } else if filteredProducts.isEmpty {
                     VStack(spacing: OPSStyle.Layout.spacing3) {
                         Spacer()
-                        Image(systemName: OPSStyle.Icons.productTag)
+                        Image(OPSStyle.Icons.productTag)
                             .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Text(products.isEmpty ? "NO PRODUCTS IN CATALOG" : "NO MATCHES")

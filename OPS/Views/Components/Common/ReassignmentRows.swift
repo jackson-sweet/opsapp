@@ -39,7 +39,7 @@ struct ProjectReassignmentRow: View {
             if markedForDeletion {
                 Button(action: onToggleDelete) {
                     HStack {
-                        Image(systemName: OPSStyle.Icons.close)
+                        Image(OPSStyle.Icons.close)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
 
@@ -74,7 +74,7 @@ struct ProjectReassignmentRow: View {
                     )
 
                     Button(action: onToggleDelete) {
-                        Image(systemName: OPSStyle.Icons.delete)
+                        Image(OPSStyle.Icons.delete)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                             .frame(width: 44, height: 44)
@@ -144,7 +144,7 @@ struct TaskReassignmentRow: View {
             if markedForDeletion {
                 Button(action: onToggleDelete) {
                     HStack {
-                        Image(systemName: OPSStyle.Icons.close)
+                        Image(OPSStyle.Icons.close)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
 
@@ -194,7 +194,7 @@ struct TaskReassignmentRow: View {
                     )
 
                     Button(action: onToggleDelete) {
-                        Image(systemName: OPSStyle.Icons.delete)
+                        Image(OPSStyle.Icons.delete)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                             .frame(width: 44, height: 44)

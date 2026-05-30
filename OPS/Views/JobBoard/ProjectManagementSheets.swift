@@ -188,7 +188,7 @@ struct StatusOption: View {
                 Spacer()
 
                 if isSelected && !isDisabled {
-                    Image(systemName: OPSStyle.Icons.checkmark)
+                    Image(OPSStyle.Icons.checkmark)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
@@ -507,7 +507,7 @@ struct TaskPickerForTeamChange: View {
                             showingTaskForm = true
                         }) {
                             HStack {
-                                Image(systemName: OPSStyle.Icons.add)
+                                Image(OPSStyle.Icons.add)
                                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                                 Text("CREATE NEW TASK")
                                     .font(OPSStyle.Typography.bodyBold)
@@ -624,7 +624,7 @@ struct ProjectTeamChangeView: View {
         VStack(spacing: 0) {
             ForEach(Array(project.teamMembers.enumerated()), id: \.element.id) { index, member in
                 HStack(spacing: 12) {
-                    Image(systemName: OPSStyle.Icons.crew)
+                    Image(OPSStyle.Icons.crew)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 20)
@@ -903,7 +903,7 @@ struct TaskTeamChangeView: View {
             if let task = task {
                 ForEach(Array(task.teamMembers.enumerated()), id: \.element.id) { index, member in
                 HStack(spacing: 12) {
-                    Image(systemName: OPSStyle.Icons.crew)
+                    Image(OPSStyle.Icons.crew)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 20)

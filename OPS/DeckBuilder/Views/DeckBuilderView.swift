@@ -480,7 +480,7 @@ struct DeckBuilderView: View {
                     showingEstimateDetail = true
                 } label: {
                     HStack(spacing: OPSStyle.Layout.spacing2_5) {
-                        Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                        Image(OPSStyle.Icons.checkmarkCircleFill)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.successStatus)
 
@@ -488,7 +488,7 @@ struct DeckBuilderView: View {
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
 
-                        Image(systemName: OPSStyle.Icons.chevronRight)
+                        Image(OPSStyle.Icons.chevronRight)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -649,7 +649,7 @@ struct DeckBuilderView: View {
                         .tint(.white)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                 } else {
-                    Image(systemName: OPSStyle.Icons.xmark)
+                    Image(OPSStyle.Icons.xmark)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -923,7 +923,7 @@ struct DeckBuilderView: View {
             EmptyView()
         case .warning:
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                Image(OPSStyle.Icons.exclamationmarkTriangleFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                 Text("AR Estimate — refine with tape or laser")
                     .font(OPSStyle.Typography.smallCaption)
@@ -938,7 +938,7 @@ struct DeckBuilderView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
         case .verified:
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                Image(OPSStyle.Icons.checkmarkCircleFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                 Text("All dimensions verified")
                     .font(OPSStyle.Typography.smallCaption)

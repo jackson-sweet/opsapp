@@ -211,7 +211,7 @@ struct PhotoGalleryViewer: View {
             // Go to Project row
             Button(action: { goToProject(photo.projectId) }) {
                 HStack(spacing: OPSStyle.Layout.spacing2_5) {
-                    Image(systemName: OPSStyle.Icons.chevronRight)
+                    Image(OPSStyle.Icons.chevronRight)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 20, alignment: .center)

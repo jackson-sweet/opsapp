@@ -57,7 +57,7 @@ struct ScheduledTasksDebugView: View {
                 // Header
                 HStack {
                     Button(action: { dismiss() }) {
-                        Image(systemName: OPSStyle.Icons.close)
+                        Image(OPSStyle.Icons.close)
                             .font(.system(size: 20))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
@@ -71,7 +71,7 @@ struct ScheduledTasksDebugView: View {
                     Spacer()
 
                     Button(action: fetchTasks) {
-                        Image(systemName: OPSStyle.Icons.sync)
+                        Image(OPSStyle.Icons.sync)
                             .font(.system(size: 20))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
@@ -82,7 +82,7 @@ struct ScheduledTasksDebugView: View {
                 // Search bar
                 HStack {
                     HStack {
-                        Image(systemName: OPSStyle.Icons.search)
+                        Image(OPSStyle.Icons.search)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         TextField("Search by ID, title, or project...", text: $searchText)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -90,7 +90,7 @@ struct ScheduledTasksDebugView: View {
                             .textInputAutocapitalization(.never)
                         if !searchText.isEmpty {
                             Button(action: { searchText = "" }) {
-                                Image(systemName: OPSStyle.Icons.xmarkCircleFill)
+                                Image(OPSStyle.Icons.xmarkCircleFill)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                         }
@@ -141,7 +141,7 @@ struct ScheduledTasksDebugView: View {
                 } else if let error = errorMessage {
                     Spacer()
                     VStack(spacing: 16) {
-                        Image(systemName: OPSStyle.Icons.alert)
+                        Image(OPSStyle.Icons.alert)
                             .font(.system(size: 50))
                             .foregroundColor(OPSStyle.Colors.warningStatus)
                         Text("Error")
@@ -520,7 +520,7 @@ struct TaskSearchSheet: View {
 
                                 if !taskId.isEmpty {
                                     Button(action: { taskId = "" }) {
-                                        Image(systemName: OPSStyle.Icons.xmarkCircleFill)
+                                        Image(OPSStyle.Icons.xmarkCircleFill)
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     }
                                 }
@@ -528,7 +528,7 @@ struct TaskSearchSheet: View {
 
                             Button(action: searchTask) {
                                 HStack {
-                                    Image(systemName: OPSStyle.Icons.search)
+                                    Image(OPSStyle.Icons.search)
                                     Text("Search Local")
                                 }
                                 .font(OPSStyle.Typography.bodyBold)
@@ -543,7 +543,7 @@ struct TaskSearchSheet: View {
 
                         if let error = errorMessage {
                             HStack {
-                                Image(systemName: OPSStyle.Icons.alert)
+                                Image(OPSStyle.Icons.alert)
                                     .foregroundColor(OPSStyle.Colors.warningStatus)
                                 Text(error)
                                     .font(OPSStyle.Typography.caption)

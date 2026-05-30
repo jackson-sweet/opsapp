@@ -1043,7 +1043,7 @@ struct ProjectDetailsView: View {
                 VStack {
                     Spacer()
                     HStack {
-                        Image(systemName: OPSStyle.Icons.complete)
+                        Image(OPSStyle.Icons.complete)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text("Saved")
                             .font(OPSStyle.Typography.captionBold)

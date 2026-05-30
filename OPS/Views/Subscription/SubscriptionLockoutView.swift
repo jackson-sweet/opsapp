@@ -159,7 +159,7 @@ struct SubscriptionLockoutView: View {
                     // Show current seat usage
                     if subscriptionManager.maxSeats > 0 {
                         HStack(spacing: 6) {
-                            Image(systemName: OPSStyle.Icons.crew)
+                            Image(OPSStyle.Icons.crew)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text("\(subscriptionManager.seatedEmployees.count) OF \(subscriptionManager.maxSeats) SEATS USED")

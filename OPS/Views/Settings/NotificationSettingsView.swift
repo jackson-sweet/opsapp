@@ -321,7 +321,7 @@ struct NotificationSettingsView: View {
     private func errorCard(_ message: String) -> some View {
         VStack(spacing: 12) {
             HStack(spacing: 8) {
-                Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                Image(OPSStyle.Icons.exclamationmarkTriangleFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
                 Text(message)
@@ -1043,7 +1043,7 @@ struct DaySelector: View {
                     value = day
                 } label: {
                     if value == day {
-                        Label("\(day) days", systemImage: OPSStyle.Icons.checkmark)
+                        Label("\(day) days", image: OPSStyle.Icons.checkmark)
                     } else {
                         Text("\(day) days")
                     }
@@ -1070,7 +1070,7 @@ struct DaySelector: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
 
-                    Image(systemName: OPSStyle.Icons.chevronDown)
+                    Image(OPSStyle.Icons.chevronDown)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }

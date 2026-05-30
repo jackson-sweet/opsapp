@@ -28,7 +28,7 @@ struct ClientInfoCard: View {
                     // Email
                     if let email = clientEmail, !email.isEmpty {
                         HStack(spacing: 8) {
-                            Image(systemName: OPSStyle.Icons.envelope)
+                            Image(OPSStyle.Icons.envelope)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -46,7 +46,7 @@ struct ClientInfoCard: View {
                     // Phone
                     if let phone = clientPhone, !phone.isEmpty {
                         HStack(spacing: 8) {
-                            Image(systemName: OPSStyle.Icons.phone)
+                            Image(OPSStyle.Icons.phone)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
 

@@ -144,7 +144,7 @@ struct ExpensesListView: View {
     private var orphanRecoveryBanner: some View {
         if viewModel.orphanCount > 0 {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                Image(OPSStyle.Icons.exclamationmarkTriangleFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
 
@@ -193,7 +193,7 @@ struct ExpensesListView: View {
     private var header: some View {
         HStack {
             Button(action: { dismiss() }) {
-                Image(systemName: OPSStyle.Icons.chevronLeft)
+                Image(OPSStyle.Icons.chevronLeft)
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
@@ -521,7 +521,7 @@ struct ExpensesListView: View {
                 }
             }
 
-            Image(systemName: OPSStyle.Icons.chevronRight)
+            Image(OPSStyle.Icons.chevronRight)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
@@ -541,7 +541,7 @@ struct ExpensesListView: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             showAddExpense = true
         } label: {
-            Image(systemName: OPSStyle.Icons.plus)
+            Image(OPSStyle.Icons.plus)
                 .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .medium))
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(width: OPSStyle.Layout.touchTargetLarge, height: OPSStyle.Layout.touchTargetLarge)

@@ -91,7 +91,7 @@ struct DeckToolbar: View {
             // line, intrinsic-width so the pill stays compact regardless of
             // count digits.
             HStack(spacing: OPSStyle.Layout.spacing1) {
-                Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                Image(OPSStyle.Icons.checkmarkCircleFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 Text("\(total)")
@@ -130,7 +130,7 @@ struct DeckToolbar: View {
                         HStack {
                             Text(type.rawValue.capitalized)
                             if viewModel.tapSelectFilter.contains(type) {
-                                Image(systemName: OPSStyle.Icons.checkmark)
+                                Image(OPSStyle.Icons.checkmark)
                             }
                         }
                     }

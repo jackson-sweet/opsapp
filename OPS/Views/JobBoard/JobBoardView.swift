@@ -1345,7 +1345,7 @@ struct TaskListSheet: View {
                 VStack(spacing: 0) {
                     // Search bar
                     HStack(spacing: 12) {
-                        Image(systemName: OPSStyle.Icons.search)
+                        Image(OPSStyle.Icons.search)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
@@ -1371,7 +1371,7 @@ struct TaskListSheet: View {
 
                     if filteredTasks.isEmpty {
                         VStack(spacing: 16) {
-                            Image(systemName: OPSStyle.Icons.task)
+                            Image(OPSStyle.Icons.task)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text(searchText.isEmpty ? "No tasks" : "No matching tasks")

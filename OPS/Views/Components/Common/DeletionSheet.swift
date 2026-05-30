@@ -272,7 +272,7 @@ struct DeletionSheet<Item, ChildItem, ReassignmentItem>: View {
                 }
             }) {
                 HStack {
-                    Image(systemName: bulkDeleteAll ? OPSStyle.Icons.close : OPSStyle.Icons.delete)
+                    Image(bulkDeleteAll ? OPSStyle.Icons.close : OPSStyle.Icons.delete)
                         .font(OPSStyle.Typography.body)
                     Text(bulkDeleteAll ? "Don't Delete All \(childType)s" : "Delete All \(childType)s")
                         .font(OPSStyle.Typography.bodyBold)

@@ -1309,7 +1309,7 @@ struct ProjectFormSheet: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         showingContactPicker = true
                     }) {
-                        Image(systemName: OPSStyle.Icons.addContact)
+                        Image(OPSStyle.Icons.addContact)
                             .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .regular))
                             .foregroundColor(
                                 isImportingContact
@@ -1417,7 +1417,7 @@ struct ProjectFormSheet: View {
                         }
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.client)
+                            Image(OPSStyle.Icons.client)
                                 .font(.system(size: 10))
                             Text("CLIENT")
                                 .font(OPSStyle.Typography.microLabel)
@@ -1434,7 +1434,7 @@ struct ProjectFormSheet: View {
                         }
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.locationFill)
+                            Image(OPSStyle.Icons.locationFill)
                                 .font(.system(size: 10))
                             Text("ADDRESS")
                                 .font(OPSStyle.Typography.microLabel)
@@ -1760,7 +1760,7 @@ struct ProjectFormSheet: View {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             capturedDeckDesign = nil
                         } label: {
-                            Image(systemName: OPSStyle.Icons.xmark)
+                            Image(OPSStyle.Icons.xmark)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 .padding(8)
@@ -1988,7 +1988,7 @@ struct ProjectFormSheet: View {
     private var addRowButton: some View {
         Button(action: handleAddRowTap) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: OPSStyle.Icons.plusCircleFill)
+                Image(OPSStyle.Icons.plusCircleFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                 Text(localTasks.isEmpty ? "Add Task" : "Add Another Task")
                     .font(OPSStyle.Typography.body)
@@ -2217,7 +2217,7 @@ struct ProjectFormSheet: View {
 
                         // Calendar icon + date
                         HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.calendar)
+                            Image(OPSStyle.Icons.calendar)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -2235,7 +2235,7 @@ struct ProjectFormSheet: View {
 
                         // Team icon + unique count across all tasks
                         HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.personTwo)
+                            Image(OPSStyle.Icons.personTwo)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -2394,7 +2394,7 @@ struct ProjectFormSheet: View {
             HStack(spacing: 8) {
                 if taskCount > 0 {
                     HStack(spacing: 4) {
-                        Image(systemName: OPSStyle.Icons.task)
+                        Image(OPSStyle.Icons.task)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Text("\(taskCount) TASK\(taskCount == 1 ? "" : "S")")

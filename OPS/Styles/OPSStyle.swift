@@ -583,12 +583,14 @@ enum OPSStyle {
         /// Deprecated — prefer `.hover` (150ms). Kept for existing call sites.
         static let quick    = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.150)
         /// Deprecated — prefer `.hover` (150ms).
-        static let fast     = SwiftUI.Animation.easeInOut(duration: 0.2)
-        static let faster   = SwiftUI.Animation.easeOut(duration: 0.15)
+        // Per design-system rule: one easing curve only (drag-reorder exception handled at call sites).
+        static let fast     = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.2)
+        static let faster   = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.15)
         // Spring — DEPRECATED (spec v2: no spring physics, no bounce. Exception: drag-and-drop reorder only.)
         // Kept for backward compat — migrate call sites to .hover / .panel / .page.
-        static let spring     = SwiftUI.Animation.spring(response: 0.3, dampingFraction: 0.7)
-        static let springFast = SwiftUI.Animation.spring(response: 0.2, dampingFraction: 0.7)
+        static let spring     = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.3)
+        static let springFast = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.2)
+        static let smooth     = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.3)
     }
 
     // MARK: - Icons

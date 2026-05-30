@@ -30,7 +30,7 @@ struct ProjectPinCard: View {
             // ── Drag indicator ──
             HStack {
                 Spacer()
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                     .fill(Color.white.opacity(0.20))
                     .frame(width: 36, height: 4)
                 Spacer()
@@ -393,7 +393,7 @@ struct ProjectPinCard: View {
                                         .resizable()
                                         .scaledToFill()
                                         .frame(width: 80, height: 80)
-                                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                                        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
                                 case .failure:
                                     photoPlaceholder
                                 case .empty:
@@ -412,7 +412,7 @@ struct ProjectPinCard: View {
     }
 
     private var photoPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 4)
+        RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
             .fill(Color.white.opacity(0.05))
             .frame(width: 80, height: 80)
             .overlay(

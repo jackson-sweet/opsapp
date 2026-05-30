@@ -27,7 +27,7 @@ struct ActiveProjectCard: View {
                 .foregroundColor(.white)
                 .frame(width: 44, height: 44)
                 .background(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .fill(OPSStyle.Colors.primaryAccent)
                 )
 
@@ -53,14 +53,14 @@ struct ActiveProjectCard: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .background(
-            RoundedRectangle(cornerRadius: 4)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                 .fill(.ultraThinMaterial)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
         )
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
     }
 
     /// Client name + address joined with a middot, skipping empty parts.

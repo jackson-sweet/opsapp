@@ -168,7 +168,7 @@ struct CreateOrderSheet: View {
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 4)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                     .stroke(status.color, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
@@ -195,7 +195,7 @@ struct CreateOrderSheet: View {
                         .frame(width: 28, height: 28)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .background(OPSStyle.Colors.subtleBackground)
-                        .cornerRadius(6)
+                        .cornerRadius(OPSStyle.Layout.cardRadius)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Decrease order quantity")
@@ -214,7 +214,7 @@ struct CreateOrderSheet: View {
                         .frame(width: 28, height: 28)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .background(OPSStyle.Colors.subtleBackground)
-                        .cornerRadius(6)
+                        .cornerRadius(OPSStyle.Layout.cardRadius)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Increase order quantity")

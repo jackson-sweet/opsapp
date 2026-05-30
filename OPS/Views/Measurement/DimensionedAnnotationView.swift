@@ -638,7 +638,7 @@ public struct DimensionedAnnotationView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(
-                            RoundedRectangle(cornerRadius: 5)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                                 .fill(OPSStyle.Colors.surfaceActive)
                         )
                 }
@@ -653,7 +653,7 @@ public struct DimensionedAnnotationView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(
-                            RoundedRectangle(cornerRadius: 5)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                                 .fill(OPSStyle.Colors.opsAccent)
                         )
                 }

@@ -66,7 +66,7 @@ struct AnimatedWalkthroughView: View {
                 // Custom page indicator — animated bars instead of dots
                 HStack(spacing: 6) {
                     ForEach(0..<screens.count, id: \.self) { index in
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .fill(index == currentPage ? Color.white : OPSStyle.Colors.tertiaryText.opacity(0.4))
                             .frame(width: index == currentPage ? 24 : 8, height: 4)
                             .animation(OPSStyle.Animation.fast, value: currentPage)

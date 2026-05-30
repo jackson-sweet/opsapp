@@ -43,10 +43,10 @@ public struct UnitCycleChip: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .background(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .fill(.ultraThinMaterial)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                 .strokeBorder(OPSStyle.Colors.glassBorder, lineWidth: 0.5)
                         )
                 )

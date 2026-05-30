@@ -385,7 +385,7 @@ struct SketchCleanupView: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .background(
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                     .fill(OPSStyle.Colors.cardBackground.opacity(0.85))
             )
         }

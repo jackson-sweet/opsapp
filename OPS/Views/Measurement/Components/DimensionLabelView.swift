@@ -166,10 +166,10 @@ public struct DimensionLabelView: View {
         .padding(.vertical, metrics.chipVerticalPadding)
         .frame(width: chipRect.width, height: chipRect.height)
         .background(
-            RoundedRectangle(cornerRadius: 4)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                 .fill(Color(red: 10/255, green: 10/255, blue: 10/255).opacity(0.85))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .strokeBorder(Color.white.opacity(0.15), lineWidth: 0.5)
                 )
         )

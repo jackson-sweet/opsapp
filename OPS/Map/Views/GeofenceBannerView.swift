@@ -103,14 +103,14 @@ struct GeofenceBannerView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(
-            RoundedRectangle(cornerRadius: 4)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                 .fill(.ultraThinMaterial)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
         )
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
         .padding(.horizontal, 16)
     }
 }

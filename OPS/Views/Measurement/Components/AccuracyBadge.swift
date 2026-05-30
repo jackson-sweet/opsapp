@@ -69,10 +69,10 @@ public struct AccuracyBadge: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(
-            RoundedRectangle(cornerRadius: 4)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                 .fill(fillColor.opacity(fillOpacity))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .strokeBorder(borderColor, lineWidth: 0.5)
                 )
         )
@@ -156,10 +156,10 @@ public struct CoplanarOnlyChip: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                     .fill(OPSStyle.Colors.tan.opacity(0.85))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 4)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                             .strokeBorder(OPSStyle.Colors.tanLine, lineWidth: 0.5)
                     )
             )

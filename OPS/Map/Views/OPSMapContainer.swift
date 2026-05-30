@@ -282,7 +282,7 @@ struct OPSMapContainer: View {
                         // ── Drag indicator (matches ProjectPinCard) ──
                         HStack {
                             Spacer()
-                            RoundedRectangle(cornerRadius: 2)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                                 .fill(Color.white.opacity(0.20))
                                 .frame(width: 36, height: 4)
                             Spacer()

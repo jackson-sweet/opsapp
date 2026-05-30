@@ -149,7 +149,7 @@ struct PhotoGalleryViewer: View {
             // Drag handle
             HStack {
                 Spacer()
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                     .fill(OPSStyle.Colors.tertiaryText)
                     .frame(width: 36, height: 4)
                 Spacer()

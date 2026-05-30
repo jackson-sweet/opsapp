@@ -132,7 +132,7 @@ struct TimeOffRequestSheet: View {
                             .padding(14)
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 2)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                                     .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
                             )
                             .padding(.horizontal, 20)
@@ -153,7 +153,7 @@ struct TimeOffRequestSheet: View {
                             }
                             .frame(height: 52)
                             .background(Color(red: 196/255, green: 168/255, blue: 104/255))
-                            .cornerRadius(2)
+                            .cornerRadius(OPSStyle.Layout.progressBarRadius)
                         }
                         .disabled(isSaving)
                         .padding(.horizontal, 20)
@@ -247,7 +247,7 @@ struct TimeOffRequestSheet: View {
         .padding(14)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .overlay(
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                 .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
         )
     }

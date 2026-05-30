@@ -123,7 +123,7 @@ struct DepletionForecastChart: View {
 
                 HStack(spacing: 6) {
                     // Bar
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                         .fill(barColor(for: forecast.daysRemaining))
                         .frame(width: barWidth, height: 6)
 

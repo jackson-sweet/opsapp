@@ -332,11 +332,11 @@ struct PropertySheetView: View {
                         viewModel.setRailingWallMaterial(edgeId, material: material)
                     } label: {
                         VStack(spacing: 4) {
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                 .fill(Color(hex: material.fillHex) ?? .gray)
                                 .frame(height: 28)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                         .stroke(
                                             railing.wallMaterial == material
                                                 ? OPSStyle.Colors.primaryAccent
@@ -383,11 +383,11 @@ struct PropertySheetView: View {
                         }
                     } label: {
                         VStack(spacing: 4) {
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                 .fill(Color(hex: material.fillHex) ?? .gray)
                                 .frame(height: 28)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                         .stroke(
                                             edge.houseEdgeMaterial == material
                                                 ? OPSStyle.Colors.primaryAccent

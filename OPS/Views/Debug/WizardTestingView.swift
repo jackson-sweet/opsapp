@@ -172,7 +172,7 @@ struct WizardTestingView: View {
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 24, height: 24)
                         .background(OPSStyle.Colors.background.opacity(0.5))
-                        .cornerRadius(4)
+                        .cornerRadius(OPSStyle.Layout.chipRadius)
                     }
                 }
             }

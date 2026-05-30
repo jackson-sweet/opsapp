@@ -66,10 +66,10 @@ public struct CloseConfirmationSheet: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(
-                            RoundedRectangle(cornerRadius: 5)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                                 .strokeBorder(OPSStyle.Colors.rose.opacity(0.5), lineWidth: 1)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 5)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                                         .fill(OPSStyle.Colors.roseSoft)
                                 )
                         )
@@ -87,7 +87,7 @@ public struct CloseConfirmationSheet: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(
-                            RoundedRectangle(cornerRadius: 5)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                                 .fill(OPSStyle.Colors.surfaceActive)
                         )
                 }

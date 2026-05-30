@@ -121,10 +121,10 @@ struct CrewTooltipCard: View {
         .padding(.vertical, 14)
         .frame(maxWidth: 280)
         .background(
-            RoundedRectangle(cornerRadius: 4)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                 .fill(.ultraThinMaterial)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
         )

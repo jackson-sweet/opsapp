@@ -209,7 +209,7 @@ struct TaskTypeMergeSheet: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
                         .background(OPSStyle.Colors.background.opacity(0.6))
-                        .cornerRadius(4)
+                        .cornerRadius(OPSStyle.Layout.chipRadius)
                 }
 
                 Image(systemName: selectedTargetId == target.id ? "checkmark.circle.fill" : "circle")

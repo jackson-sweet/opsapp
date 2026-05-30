@@ -104,7 +104,7 @@ struct OpportunityPickerView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(4)
+                    .cornerRadius(OPSStyle.Layout.chipRadius)
 
                 // Checkmark if selected
                 if viewModel.selectedOpportunity?.id == opp.id {

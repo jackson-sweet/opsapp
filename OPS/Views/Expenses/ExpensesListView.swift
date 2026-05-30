@@ -285,11 +285,11 @@ struct ExpensesListView: View {
             // Animated progress bar
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                         .fill(OPSStyle.Colors.primaryAccent.opacity(0.3))
                         .frame(height: 6)
 
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                         .fill(OPSStyle.Colors.successStatus)
                         .frame(width: geometry.size.width * approvedFraction, height: 6)
                         .animation(OPSStyle.Animation.smooth, value: approvedFraction)

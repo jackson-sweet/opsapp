@@ -49,7 +49,7 @@ struct PersonalEventSheet: View {
                             .padding(14)
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 2)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                                     .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
                             )
                             .padding(.horizontal, 20)
@@ -100,7 +100,7 @@ struct PersonalEventSheet: View {
                             .padding(14)
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 2)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                                     .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
                             )
                             .padding(.horizontal, 20)
@@ -127,7 +127,7 @@ struct PersonalEventSheet: View {
                             .padding(14)
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 2)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                                     .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
                             )
                         }
@@ -144,7 +144,7 @@ struct PersonalEventSheet: View {
                             .padding(10)
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 2)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                                     .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
                             )
                             .padding(.horizontal, 20)
@@ -165,7 +165,7 @@ struct PersonalEventSheet: View {
                             }
                             .frame(height: 52)
                             .background(OPSStyle.Colors.primaryText)
-                            .cornerRadius(2)
+                            .cornerRadius(OPSStyle.Layout.progressBarRadius)
                         }
                         .disabled(title.isEmpty || isSaving)
                         .padding(.horizontal, 20)

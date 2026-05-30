@@ -104,7 +104,7 @@ struct TaskBioSheet: View {
                     ForEach(photos, id: \.self) { url in
                         PhotoThumbnail(url: url, project: task.project)
                             .frame(width: 200, height: 200)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.modalRadius))
                     }
                 }
                 .padding(.horizontal, 16)
@@ -121,7 +121,7 @@ struct TaskBioSheet: View {
             Rectangle()
                 .fill(Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent)
                 .frame(height: 4)
-                .cornerRadius(2)
+                .cornerRadius(OPSStyle.Layout.progressBarRadius)
 
             // Task title
             Text(task.displayTitle.uppercased())

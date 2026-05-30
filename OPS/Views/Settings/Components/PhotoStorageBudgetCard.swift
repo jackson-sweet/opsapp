@@ -176,7 +176,7 @@ struct PhotoStorageBudgetCard: View {
                         .fill(isOverBudget ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryAccent)
                         .frame(width: geo.size.width * usagePercent)
                 }
-                .cornerRadius(4)
+                .cornerRadius(OPSStyle.Layout.chipRadius)
             }
             .frame(height: 8)
 

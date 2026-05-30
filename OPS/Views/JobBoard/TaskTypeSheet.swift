@@ -446,11 +446,11 @@ struct TaskTypeSheet: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 10)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
                         .fill(taskTypeColor.opacity(0.12))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
                         .stroke(taskTypeColor, lineWidth: 1.5)
                 )
         }
@@ -1319,11 +1319,11 @@ struct TaskTypeSheet: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
                             .background(
-                                RoundedRectangle(cornerRadius: 6)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
                                     .fill(isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.25) : Color.white.opacity(0.04))
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 6)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
                                     .stroke(isSelected ? OPSStyle.Colors.primaryAccent : Color.clear, lineWidth: 1)
                             )
                     }

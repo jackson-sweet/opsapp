@@ -296,7 +296,7 @@ struct ColumnMappingView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(OPSStyle.Colors.primaryAccent)
-            .cornerRadius(12)
+            .cornerRadius(OPSStyle.Layout.modalRadius)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Remove \(name) from bulk tags")
@@ -317,9 +317,9 @@ struct ColumnMappingView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(OPSStyle.Colors.background)
-            .cornerRadius(12)
+            .cornerRadius(OPSStyle.Layout.modalRadius)
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.modalRadius)
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }

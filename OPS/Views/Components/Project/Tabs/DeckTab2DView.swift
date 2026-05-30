@@ -871,7 +871,7 @@ struct DeckTab2DView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(Color.black.opacity(0.6))
-                    .cornerRadius(4)
+                    .cornerRadius(OPSStyle.Layout.chipRadius)
             }
         }
         .padding(.top, 16)

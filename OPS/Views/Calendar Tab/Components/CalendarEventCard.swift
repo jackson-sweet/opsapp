@@ -235,11 +235,11 @@ struct CalendarEventCard: View {
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .fill(badgeColor.opacity(0.12))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .stroke(badgeColor.opacity(0.35), lineWidth: 0.5)
                     )
                     .padding(.top, 4 + 14) // 4pt vertical padding + 14pt card inset
@@ -262,11 +262,11 @@ struct CalendarEventCard: View {
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .fill(statusColor.opacity(0.12))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .stroke(statusColor.opacity(0.45), lineWidth: 0.5)
                     )
                     .padding(.bottom, 4 + 8) // 4pt vertical padding + 8pt card inset

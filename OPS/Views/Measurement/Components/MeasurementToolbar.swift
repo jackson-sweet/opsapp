@@ -160,7 +160,7 @@ public struct MeasurementToolbar: View {
             }
             .frame(width: size, height: size)
             .background(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
                     .fill(active ? OPSStyle.Colors.surfaceActive : Color.clear)
             )
             .foregroundColor(

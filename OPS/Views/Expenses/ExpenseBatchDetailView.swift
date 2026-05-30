@@ -194,17 +194,17 @@ struct ExpenseBatchDetailView: View {
             GeometryReader { geometry in
                 HStack(spacing: 1) {
                     if cleanCount > 0 {
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .fill(OPSStyle.Colors.successStatus)
                             .frame(width: geometry.size.width * cleanFraction)
                     }
                     if flaggedCount > 0 {
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .fill(OPSStyle.Colors.warningStatus)
                             .frame(width: geometry.size.width * flaggedFraction)
                     }
                     if cleanCount == 0 && flaggedCount == 0 {
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .fill(OPSStyle.Colors.cardBorder)
                     }
                 }

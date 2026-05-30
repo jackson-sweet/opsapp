@@ -1176,7 +1176,7 @@ struct DeckCanvasView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(OPSStyle.Colors.cardBackground.opacity(0.85))
-            .cornerRadius(6)
+            .cornerRadius(OPSStyle.Layout.cardRadius)
         }
     }
 
@@ -1227,7 +1227,7 @@ struct DeckCanvasView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .background(OPSStyle.Colors.cardBackground.opacity(0.85))
-                .cornerRadius(6)
+                .cornerRadius(OPSStyle.Layout.cardRadius)
         }
     }
 

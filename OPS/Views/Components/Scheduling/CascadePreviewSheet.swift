@@ -32,7 +32,7 @@ struct CascadePreviewSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             // Drag indicator
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                 .fill(Color.white.opacity(0.3))
                 .frame(width: 36, height: 4)
                 .padding(.top, 8)

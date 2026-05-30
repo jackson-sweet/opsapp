@@ -67,7 +67,7 @@ struct SyncStatusSection: View {
         HStack(spacing: 12) {
             // Status icon
             if isSyncing {
-                Image("ops.refresh")
+                Image(OPSStyle.Icons.arrowClockwise)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .rotationEffect(.degrees(isSyncing ? 360 : 0))
@@ -77,7 +77,7 @@ struct SyncStatusSection: View {
                     )
                     .frame(width: 20, height: 20)
             } else {
-                Image("ops.refresh")
+                Image(OPSStyle.Icons.arrowClockwise)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
                     .frame(width: 20, height: 20)
@@ -147,7 +147,7 @@ struct SyncStatusSection: View {
                     }
                 } label: {
                     HStack(spacing: 6) {
-                        Image("ops.refresh")
+                        Image(OPSStyle.Icons.arrowClockwise)
                             .font(.system(size: 12, weight: .medium))
                         Text("RETRY ALL FAILED (\(failedOps.count))")
                             .font(OPSStyle.Typography.smallCaption)
@@ -215,7 +215,7 @@ struct SyncStatusSection: View {
                     try? dataController.modelContext?.save()
                     Task { await syncEngine.triggerSync() }
                 } label: {
-                    Image("ops.refresh")
+                    Image(OPSStyle.Icons.arrowClockwise)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 28, height: 28)
@@ -232,7 +232,7 @@ struct SyncStatusSection: View {
                         syncEngine.cancelOperation(operation)
                     }
                 } label: {
-                    Image("ops.close")
+                    Image(OPSStyle.Icons.close)
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .frame(width: 24, height: 24)
@@ -249,7 +249,7 @@ struct SyncStatusSection: View {
     private func statusIcon(for operation: SyncOperation) -> some View {
         switch operation.status {
         case "pending":
-            Image("ops.clock")
+            Image(OPSStyle.Icons.clock)
                 .font(.system(size: 11))
                 .foregroundColor(OPSStyle.Colors.warningStatus)
         case "inProgress":
@@ -257,11 +257,11 @@ struct SyncStatusSection: View {
                 .scaleEffect(0.5)
                 .tint(OPSStyle.Colors.primaryAccent)
         case "failed":
-            Image("ops.close")
+            Image(OPSStyle.Icons.close)
                 .font(.system(size: 11))
                 .foregroundColor(OPSStyle.Colors.errorStatus)
         default:
-            Image("ops.success")
+            Image(OPSStyle.Icons.checkmarkCircleFill)
                 .font(.system(size: 11))
                 .foregroundColor(OPSStyle.Colors.successStatus)
         }

@@ -943,7 +943,7 @@ struct ProjectDetailsView: View {
 
                                     // Checkmark for currently selected task
                                     if isSelected {
-                                        Image("ops.checkmark")
+                                        Image(OPSStyle.Icons.checkmark)
                                             .font(.system(size: 10, weight: .bold))
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     }

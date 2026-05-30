@@ -450,7 +450,7 @@ struct InventoryView: View {
                     HStack {
                         Text(mode.rawValue)
                         if sortMode == mode {
-                            Image("ops.checkmark")
+                            Image(OPSStyle.Icons.checkmark)
                         }
                     }
                 }
@@ -516,7 +516,7 @@ struct InventoryView: View {
             showingCreateOrderSheet = true
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image("ops.order")
+                Image(OPSStyle.Icons.order)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
                 VStack(alignment: .leading, spacing: 2) {
@@ -533,7 +533,7 @@ struct InventoryView: View {
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .tracking(1.1)
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -584,7 +584,7 @@ struct InventoryView: View {
         Button(action: action) {
             HStack(spacing: 4) {
                 if showClearIcon {
-                    Image("ops.close")
+                    Image(OPSStyle.Icons.close)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                 }
                 Text(title)
@@ -615,7 +615,7 @@ struct InventoryView: View {
             showingImportSheet = true
         }) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image("ops.download")
+                Image(OPSStyle.Icons.download)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
@@ -631,7 +631,7 @@ struct InventoryView: View {
 
                 Spacer()
 
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -662,7 +662,7 @@ struct InventoryView: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             } else {
-                Image("ops.inventory-item")
+                Image(OPSStyle.Icons.inventoryItem)
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -702,7 +702,7 @@ struct InventoryView: View {
                         // Import button
                         Button(action: { showingImportSheet = true }) {
                             HStack(spacing: OPSStyle.Layout.spacing1) {
-                                Image("ops.download")
+                                Image(OPSStyle.Icons.download)
                                 Text("Import from Spreadsheet")
                             }
                             .font(OPSStyle.Typography.body)
@@ -1034,7 +1034,7 @@ struct InventoryView: View {
                     // Selection tools button
                     Button(action: { showingSelectionTools = true }) {
                         HStack(spacing: OPSStyle.Layout.spacing2) {
-                            Image("ops.task")
+                            Image(OPSStyle.Icons.task)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text("SELECTION TOOLS")
                                 .font(OPSStyle.Typography.captionBold)
@@ -1042,7 +1042,7 @@ struct InventoryView: View {
                             Text("\(selectedItemIds.count) selected")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            Image("ops.chevron-up")
+                            Image(OPSStyle.Icons.chevronUp)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
@@ -1083,7 +1083,7 @@ struct InventoryView: View {
                         // Tags button
                         Button(action: { showingBulkTagsSheet = true }) {
                             HStack(spacing: OPSStyle.Layout.spacing1) {
-                                Image("ops.task-type")
+                                Image(OPSStyle.Icons.taskType)
                                 Text("TAGS")
                             }
                             .font(OPSStyle.Typography.captionBold)
@@ -1165,7 +1165,7 @@ struct InventoryView: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 Text(filter.displayText)
                     .font(OPSStyle.Typography.smallCaption)
-                Image("ops.close")
+                Image(OPSStyle.Icons.close)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
             }
             .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -1226,7 +1226,7 @@ struct InventoryView: View {
 
                         HStack(spacing: OPSStyle.Layout.spacing2) {
                             HStack(spacing: OPSStyle.Layout.spacing2) {
-                                Image("ops.search")
+                                Image(OPSStyle.Icons.search)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -1243,7 +1243,7 @@ struct InventoryView: View {
 
                                 if !selectionKeywordText.isEmpty {
                                     Button(action: { selectionKeywordText = "" }) {
-                                        Image("ops.close")
+                                        Image(OPSStyle.Icons.close)
                                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     }
@@ -1374,7 +1374,7 @@ struct InventoryView: View {
 
                 Spacer()
 
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

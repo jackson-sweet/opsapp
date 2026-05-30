@@ -368,7 +368,7 @@ struct MapSettingsView: View {
             // Labels
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Image("ops.arrow-left")
+                    Image(OPSStyle.Icons.arrowLeft)
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Text("OUTER RING = TASK TYPES")
@@ -378,7 +378,7 @@ struct MapSettingsView: View {
                 }
 
                 HStack(spacing: 8) {
-                    Image("ops.arrow-left")
+                    Image(OPSStyle.Icons.arrowLeft)
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Text("CENTER DOT = STATUS")
@@ -463,7 +463,7 @@ struct MapSettingsView: View {
                 showingVoiceInfo = true
             } label: {
                 HStack(spacing: 8) {
-                    Image("ops.external-link")
+                    Image(OPSStyle.Icons.externalLink)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     Text("HOW TO DOWNLOAD VOICES")
                         .font(OPSStyle.Typography.captionBold)

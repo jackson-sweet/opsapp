@@ -176,7 +176,7 @@ struct CreationPickerView: View {
 
                 Spacer()
 
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

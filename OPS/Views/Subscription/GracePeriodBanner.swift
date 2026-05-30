@@ -21,7 +21,7 @@ struct GracePeriodBanner: View {
                 // Banner content
                 HStack(spacing: 12) {
                     // Warning icon - smaller, more subtle
-                    Image("ops.warning")
+                    Image(OPSStyle.Icons.alert)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.invertedText)
                     

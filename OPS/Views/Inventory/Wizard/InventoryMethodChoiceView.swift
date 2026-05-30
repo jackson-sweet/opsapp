@@ -24,7 +24,7 @@ struct InventoryMethodChoiceView: View {
             VStack(alignment: .leading, spacing: 0) {
                 // Icon + Title
                 HStack(spacing: 12) {
-                    Image("ops.inventory-item")
+                    Image(OPSStyle.Icons.inventoryItem)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.wizardAccent)
 
@@ -47,7 +47,7 @@ struct InventoryMethodChoiceView: View {
                     onManual()
                 } label: {
                     HStack {
-                        Image("ops.add-circle")
+                        Image(OPSStyle.Icons.add)
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.invertedText)
 
@@ -57,7 +57,7 @@ struct InventoryMethodChoiceView: View {
 
                         Spacer()
 
-                        Image("ops.arrow-right")
+                        Image(OPSStyle.Icons.arrowRight)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.invertedText)
                     }
@@ -74,7 +74,7 @@ struct InventoryMethodChoiceView: View {
                     onImport()
                 } label: {
                     HStack {
-                        Image("ops.document")
+                        Image(OPSStyle.Icons.documents)
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -84,7 +84,7 @@ struct InventoryMethodChoiceView: View {
 
                         Spacer()
 
-                        Image("ops.arrow-right")
+                        Image(OPSStyle.Icons.arrowRight)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }

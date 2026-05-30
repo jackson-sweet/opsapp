@@ -156,7 +156,7 @@ struct LeadArrivesStep: View {
 
     private var sourceRow: some View {
         HStack(spacing: 6) {
-            Image("ops.email")
+            Image(OPSStyle.Icons.envelope)
                 .font(.system(size: 11))
             Text("GMAIL")
                 .font(.microLabel)

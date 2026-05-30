@@ -297,7 +297,7 @@ struct PropertySheetView: View {
     @ViewBuilder
     private func edgeLabelField(edgeId: String, edge: DeckEdge) -> some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            Image("ops.task-type")
+            Image(OPSStyle.Icons.taskType)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             TextField("Label (optional)", text: Binding(
@@ -564,7 +564,7 @@ struct PropertySheetView: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image("ops.task-type")
+                Image(OPSStyle.Icons.taskType)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 TextField("e.g. BBQ pad, Hot tub deck", text: Binding(

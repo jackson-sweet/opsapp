@@ -226,7 +226,7 @@ public struct DimensionedCaptureView: View {
     @ViewBuilder
     private var unsupportedGate: some View {
         VStack(spacing: 24) {
-            Image("ops.ar-scan")
+            Image(OPSStyle.Icons.arScan)
                 .font(.system(size: 40, weight: .light))
                 .foregroundColor(OPSStyle.Colors.text2)
             Text("// NO DEPTH")
@@ -341,7 +341,7 @@ public struct DimensionedCaptureView: View {
                 Button {
                     dismiss()
                 } label: {
-                    Image("ops.close")
+                    Image(OPSStyle.Icons.close)
                         .font(.system(size: 18, weight: .regular))
                         .foregroundColor(OPSStyle.Colors.text2)
                         .frame(width: 44, height: 44)

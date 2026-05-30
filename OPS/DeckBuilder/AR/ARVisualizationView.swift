@@ -83,7 +83,7 @@ struct ARVisualizationView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             VStack(spacing: 20) {
-                Image("ops.ar-scan")
+                Image(OPSStyle.Icons.arScan)
                     .font(.system(size: 48))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Text(message)
@@ -123,7 +123,7 @@ struct ARVisualizationView: View {
             Button {
                 dismiss()
             } label: {
-                Image("ops.close")
+                Image(OPSStyle.Icons.close)
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(.white)
                     .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)

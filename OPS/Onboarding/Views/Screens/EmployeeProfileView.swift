@@ -106,7 +106,7 @@ struct EmployeeProfileView: View {
                                     Text("CONTINUE")
                                         .font(OPSStyle.Typography.bodyBold)
                                     Spacer()
-                                    Image("ops.arrow-right")
+                                    Image(OPSStyle.Icons.arrowRight)
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                                 }
                             }

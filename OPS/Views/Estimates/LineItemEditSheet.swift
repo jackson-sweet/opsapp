@@ -336,7 +336,7 @@ struct LineItemEditSheet: View {
                 Text(currentLabel)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                Image("ops.chevron-down")
+                Image(OPSStyle.Icons.chevronDown)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
@@ -384,7 +384,7 @@ struct LineItemEditSheet: View {
                 let next = min(999, current + 1)
                 configuredOptions[opt.id] = .integer(next)
             } label: {
-                Image("ops.add")
+                Image(OPSStyle.Icons.plus)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: 36, height: 36)

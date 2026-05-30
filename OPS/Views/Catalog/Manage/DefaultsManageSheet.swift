@@ -198,11 +198,11 @@ private struct DefaultRow: View {
                     Button(role: .destructive) {
                         onClear()
                     } label: {
-                        Label("Clear", image: "ops.close")
+                        Label("Clear", image: OPSStyle.Icons.close)
                     }
                 }
             } label: {
-                Image("ops.overflow")
+                Image(OPSStyle.Icons.ellipsis)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
             }

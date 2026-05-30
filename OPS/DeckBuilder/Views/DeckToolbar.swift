@@ -247,7 +247,7 @@ struct DeckToolbar: View {
                 viewModel.marqueeShape = .lasso
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
-                Image("ops.lasso")
+                Image(OPSStyle.Icons.lasso)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(viewModel.marqueeShape == .lasso ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
                     .padding(.horizontal, OPSStyle.Layout.spacing2)
@@ -282,7 +282,7 @@ struct DeckToolbar: View {
                         if hasSurfaces { viewModel.moveSelectedSurfacesToLevel(at: idx) }
                         if hasEdges    { viewModel.moveSelectedEdgesToLevel(at: idx) }
                     } label: {
-                        Label(level.name, image: "ops.product-family")
+                        Label(level.name, image: OPSStyle.Icons.productFamily)
                     }
                 }
                 if viewModel.drawingData.levels.count < 3 {
@@ -297,12 +297,12 @@ struct DeckToolbar: View {
                         viewModel.moveSelectedSurfacesToNewLevel()
                     }
                 } label: {
-                    Label("New Level", image: "ops.copy")
+                    Label("New Level", image: OPSStyle.Icons.copy)
                 }
             }
         } label: {
             VStack(spacing: 3) {
-                Image("ops.product-family")
+                Image(OPSStyle.Icons.productFamily)
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                     .foregroundColor(.white)
                 Text("Move")
@@ -392,7 +392,7 @@ struct DeckToolbar: View {
                 }
 
                 if viewModel.isLaserConnected {
-                    Image("ops.laser-meter")
+                    Image(OPSStyle.Icons.laserMeter)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.successStatus)
                         .frame(width: 28, height: OPSStyle.Layout.touchTargetMin)
@@ -405,7 +405,7 @@ struct DeckToolbar: View {
                 Button {
                     viewModel.showingSettings = true
                 } label: {
-                    Image("ops.nav-settings")
+                    Image(OPSStyle.Icons.gearshape)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -626,7 +626,7 @@ struct DeckToolbar: View {
             viewModel.editingVertexId = nil
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } label: {
-            Image("ops.close")
+            Image(OPSStyle.Icons.close)
                 .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -760,7 +760,7 @@ struct DeckToolbar: View {
                             Button {
                                 viewModel.selectOnlyVertices()
                             } label: {
-                                Label("Vertices (\(vertexCount))", image: "ops.incomplete")
+                                Label("Vertices (\(vertexCount))", image: OPSStyle.Icons.incomplete)
                             }
                         }
                         if surfaceSelected {
@@ -778,7 +778,7 @@ struct DeckToolbar: View {
                 }
             } label: {
                 VStack(spacing: 3) {
-                    Image("ops.filter")
+                    Image(OPSStyle.Icons.filter)
                         .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                         .foregroundColor(.white)
                     Text("Filter")
@@ -820,7 +820,7 @@ struct DeckToolbar: View {
                 Button {
                     viewModel.filterSelectedEdges { $0.edgeType == .houseEdge }
                 } label: {
-                    Label("House Edges (\(houseCount))", image: "ops.nav-portal-home")
+                    Label("House Edges (\(houseCount))", image: OPSStyle.Icons.house)
                 }
                 Button {
                     viewModel.filterSelectedEdges { $0.edgeType == .deckEdge }
@@ -852,7 +852,7 @@ struct DeckToolbar: View {
                     Button {
                         viewModel.filterSelectedEdges { $0.railingConfig == nil }
                     } label: {
-                        Label("No Railing (\(unrailedCount))", image: "ops.close")
+                        Label("No Railing (\(unrailedCount))", image: OPSStyle.Icons.close)
                     }
                 }
             }
@@ -879,12 +879,12 @@ struct DeckToolbar: View {
                 Button {
                     viewModel.filterSelectedEdges { !$0.assignedItems.isEmpty }
                 } label: {
-                    Label("With Material (\(withMaterial))", image: "ops.inventory-item")
+                    Label("With Material (\(withMaterial))", image: OPSStyle.Icons.inventoryItem)
                 }
                 Button {
                     viewModel.filterSelectedEdges { $0.assignedItems.isEmpty }
                 } label: {
-                    Label("No Material (\(withoutMaterial))", image: "ops.inventory-item")
+                    Label("No Material (\(withoutMaterial))", image: OPSStyle.Icons.inventoryItem)
                 }
             }
         }

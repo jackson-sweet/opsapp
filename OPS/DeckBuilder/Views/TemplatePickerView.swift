@@ -75,7 +75,7 @@ struct TemplatePickerView: View {
             Button {
                 dismiss()
             } label: {
-                Image("ops.close")
+                Image(OPSStyle.Icons.close)
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(.white)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -179,7 +179,7 @@ struct TemplatePickerView: View {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .fill(OPSStyle.Colors.cardBackground)
                         .overlay(
-                            Image("ops.view-grid")
+                            Image(OPSStyle.Icons.viewGrid)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         )
                 }
@@ -191,7 +191,7 @@ struct TemplatePickerView: View {
                     .fill(OPSStyle.Colors.cardBackground)
                     .frame(width: 60, height: 60)
                     .overlay(
-                        Image("ops.view-grid")
+                        Image(OPSStyle.Icons.viewGrid)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     )
             }
@@ -241,7 +241,7 @@ struct TemplatePickerView: View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
 
-            Image("ops.in-progress")
+            Image(OPSStyle.Icons.inProgress)
                 .font(.system(size: 40, weight: .light))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 

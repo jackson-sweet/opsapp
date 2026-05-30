@@ -50,7 +50,7 @@ struct TaskSettingsView: View {
                     // Empty state
                     Spacer()
                     VStack(spacing: 20) {
-                        Image("ops.view-grid")
+                        Image(OPSStyle.Icons.viewGrid)
                             .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         
@@ -396,7 +396,7 @@ struct TaskTypeRow: View {
             Button {
                 onRename()
             } label: {
-                Label("Rename", image: "ops.edit")
+                Label("Rename", image: OPSStyle.Icons.edit)
             }
             .disabled(taskType.isDefault)
 
@@ -413,7 +413,7 @@ struct TaskTypeRow: View {
             Button(role: .destructive) {
                 onDelete()
             } label: {
-                Label("Delete", image: "ops.delete")
+                Label("Delete", image: OPSStyle.Icons.delete)
             }
             .disabled(taskType.isDefault)
         }

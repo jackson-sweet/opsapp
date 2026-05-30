@@ -239,7 +239,7 @@ public struct DimensionedAnnotationView: View {
                 .foregroundColor(OPSStyle.Colors.text)
             Spacer()
             Button(action: handleCloseTap) {
-                Image("ops.close")
+                Image(OPSStyle.Icons.close)
                     .font(.system(size: 18, weight: .regular))
                     .foregroundColor(OPSStyle.Colors.text2)
                     .frame(width: 44, height: 44)
@@ -431,7 +431,7 @@ public struct DimensionedAnnotationView: View {
 
     private var failedPhotoState: some View {
         VStack(spacing: 12) {
-            Image("ops.photo")
+            Image(OPSStyle.Icons.photo)
                 .font(.system(size: 36, weight: .light))
                 .foregroundColor(OPSStyle.Colors.text3)
             Text("// PHOTO UNAVAILABLE")

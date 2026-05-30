@@ -47,7 +47,7 @@ struct CashflowForecastScreen: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: { showSettings = true }) {
-                        Image("ops.nav-settings")
+                        Image(OPSStyle.Icons.gearshape)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                 }

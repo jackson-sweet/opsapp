@@ -45,7 +45,7 @@ struct PermissionsView: View {
                         viewModel.moveToPreviousStep()
                     }) {
                         HStack(spacing: 4) {
-                            Image("ops.chevron-left")
+                            Image(OPSStyle.Icons.chevronLeft)
                                 .font(OPSStyle.Typography.button)
                             Text("Back")
                                 .font(OPSStyle.Typography.button)
@@ -172,7 +172,7 @@ struct LocationPermissionPhase: View {
                     }
                     
                     // Location pin
-                    Image("ops.job-site")
+                    Image(OPSStyle.Icons.jobSite)
                         .font(OPSStyle.Typography.displayLarge)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
@@ -290,7 +290,7 @@ struct NotificationPermissionPhase: View {
                 // Notification icon and animation
                 ZStack {
                     // Notification bell
-                    Image("ops.notification-bell")
+                    Image(OPSStyle.Icons.bell)
                         .font(OPSStyle.Typography.displayLarge)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                     

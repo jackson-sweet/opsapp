@@ -319,7 +319,7 @@ struct ManageTeamView: View {
                 if isCompanyAdmin {
                     Button(action: { showSeatManagement = true }) {
                         HStack(spacing: 4) {
-                            Image("ops.contact")
+                            Image(OPSStyle.Icons.contact)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             Text("SEATS")
                                 .font(OPSStyle.Typography.smallCaption)
@@ -381,7 +381,7 @@ struct ManageTeamView: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }) {
                 HStack(spacing: 6) {
-                    Image("ops.help")
+                    Image(OPSStyle.Icons.help)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Text("UNASSIGNED (\(unassignedMembers.count))")
@@ -546,7 +546,7 @@ struct ManageTeamView: View {
                                     HStack {
                                         Text(role.displayName)
                                         if member.role == role {
-                                            Image("ops.checkmark")
+                                            Image(OPSStyle.Icons.checkmark)
                                         }
                                     }
                                 }
@@ -555,18 +555,18 @@ struct ManageTeamView: View {
 
                         Section {
                             Button(action: { permissionsMember = member }) {
-                                Label("Permissions", image: "ops.role")
+                                Label("Permissions", image: OPSStyle.Icons.role)
                             }
 
                             Button(role: .destructive) {
                                 memberToRemove = member
                                 showRemoveConfirmation = true
                             } label: {
-                                Label("Remove", image: "ops.remove-member")
+                                Label("Remove", image: OPSStyle.Icons.removeMember)
                             }
                         }
                     } label: {
-                        Image("ops.overflow")
+                        Image(OPSStyle.Icons.ellipsis)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .frame(width: 44, height: 44)
@@ -575,7 +575,7 @@ struct ManageTeamView: View {
                     .wizardTarget("assign_role")
                 } else if isCreator && isCompanyAdmin {
                     // Creator: show locked icon (no role change, no removal)
-                    Image("ops.locked")
+                    Image(OPSStyle.Icons.locked)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .frame(width: 44, height: 44)
@@ -597,7 +597,7 @@ struct ManageTeamView: View {
     private var pendingInvitesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image("ops.in-progress")
+                Image(OPSStyle.Icons.inProgress)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
                 Text("PENDING INVITES (\(pendingInvitations.count))")
@@ -677,7 +677,7 @@ struct ManageTeamView: View {
                 invitationToRevoke = invite
                 showRevokeConfirmation = true
             } label: {
-                Image("ops.close")
+                Image(OPSStyle.Icons.close)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .frame(width: 32, height: 32)
@@ -692,7 +692,7 @@ struct ManageTeamView: View {
     private var inviteButton: some View {
         Button(action: { showInviteSheet = true }) {
             HStack(spacing: 8) {
-                Image("ops.invite-member")
+                Image(OPSStyle.Icons.assignmentNotification)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 Text("INVITE TEAM MEMBERS")
                     .font(OPSStyle.Typography.bodyBold)
@@ -737,7 +737,7 @@ struct ManageTeamView: View {
 
     private func errorBanner(_ error: String) -> some View {
         HStack(spacing: 8) {
-            Image("ops.warning")
+            Image(OPSStyle.Icons.alert)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.errorStatus)
             Text(error)
@@ -1060,7 +1060,7 @@ struct TeamInviteSheet: View {
                             if inviteInputs.count < 10 {
                                 Button(action: addInputField) {
                                     HStack(spacing: 8) {
-                                        Image("ops.add-circle")
+                                        Image(OPSStyle.Icons.add)
                                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
 
@@ -1081,7 +1081,7 @@ struct TeamInviteSheet: View {
                         // Error message
                         if let error = errorMessage {
                             HStack(spacing: 8) {
-                                Image("ops.warning")
+                                Image(OPSStyle.Icons.alert)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.errorStatus)
 
@@ -1185,7 +1185,7 @@ struct TeamInviteSheet: View {
                     Button {
                         removeInput(at: index)
                     } label: {
-                        Image("ops.close")
+                        Image(OPSStyle.Icons.close)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                             .frame(width: 28, height: 28)

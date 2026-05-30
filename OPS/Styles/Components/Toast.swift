@@ -278,7 +278,7 @@ private struct ToastBanner: View {
                     .fontWeight(.semibold)
                     .kerning(1.4)
                     .textCase(.uppercase)
-                Image("ops.arrow-right")
+                Image(OPSStyle.Icons.arrowRight)
                     .font(.system(size: 10, weight: .semibold))
             }
             .foregroundColor(OPSStyle.Colors.text)

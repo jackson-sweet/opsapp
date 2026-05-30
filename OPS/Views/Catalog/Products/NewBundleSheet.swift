@@ -305,7 +305,7 @@ struct NewBundleSheet: View {
     private var drawer: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image("ops.search")
+                Image(OPSStyle.Icons.search)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 TextField("Search products…", text: $drawerSearch)
@@ -315,7 +315,7 @@ struct NewBundleSheet: View {
                     .textInputAutocapitalization(.never)
                 if !drawerSearch.isEmpty {
                     Button { drawerSearch = "" } label: {
-                        Image("ops.close")
+                        Image(OPSStyle.Icons.close)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                 }
@@ -371,7 +371,7 @@ struct NewBundleSheet: View {
                     .font(OPSStyle.Typography.metadata)
                     .monospacedDigit()
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Image("ops.add-circle")
+                Image(OPSStyle.Icons.add)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
@@ -432,7 +432,7 @@ struct NewBundleSheet: View {
             Button(role: .destructive) {
                 removeChild(draft)
             } label: {
-                Label("Remove", image: "ops.delete")
+                Label("Remove", image: OPSStyle.Icons.delete)
             }
         }
     }
@@ -462,7 +462,7 @@ struct NewBundleSheet: View {
             Button {
                 increment(draft)
             } label: {
-                Image("ops.add")
+                Image(OPSStyle.Icons.plus)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: 36, height: 36)

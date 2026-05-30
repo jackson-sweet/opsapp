@@ -391,7 +391,7 @@ struct ClientSection: View {
                 let hasEmail = project.effectiveClientEmail != nil && !project.effectiveClientEmail!.isEmpty
 
                 Button(action: onCall) {
-                    Image("ops.call")
+                    Image(OPSStyle.Icons.phone)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(hasPhone ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText.opacity(0.3))
                 }
@@ -400,7 +400,7 @@ struct ClientSection: View {
                 .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
 
                 Button(action: onEmail) {
-                    Image("ops.email")
+                    Image(OPSStyle.Icons.envelope)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(hasEmail ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText.opacity(0.3))
                 }
@@ -442,7 +442,7 @@ struct ClientSection: View {
                 .fill(OPSStyle.Colors.cardBackgroundDark)
                 .frame(width: 36, height: 36)
                 .overlay(
-                    Image("ops.company")
+                    Image(OPSStyle.Icons.company)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 )
@@ -705,11 +705,11 @@ struct TaskListSection: View {
                         // Select / Deselect
                         if isSelected {
                             Button(action: { onSelectTask?(task) }) {
-                                Label("Deselect", image: "ops.close")
+                                Label("Deselect", image: OPSStyle.Icons.close)
                             }
                         } else {
                             Button(action: { onSelectTask?(task) }) {
-                                Label("Select Task", image: "ops.checkmark")
+                                Label("Select Task", image: OPSStyle.Icons.checkmark)
                             }
                         }
 
@@ -718,14 +718,14 @@ struct TaskListSection: View {
                         // Status actions based on current status
                         if task.status == .active {
                             Button(action: { onCompleteTask?(task) }) {
-                                Label("Complete", image: "ops.checkmark")
+                                Label("Complete", image: OPSStyle.Icons.checkmark)
                             }
                             Button(role: .destructive, action: { onCancelTask?(task) }) {
-                                Label("Cancel Task", image: "ops.close")
+                                Label("Cancel Task", image: OPSStyle.Icons.close)
                             }
                         } else if task.status == .completed || task.status == .cancelled {
                             Button(action: { onReopenTask?(task) }) {
-                                Label("Reopen", image: "ops.undo")
+                                Label("Reopen", image: OPSStyle.Icons.undo)
                             }
                         }
 
@@ -734,7 +734,7 @@ struct TaskListSection: View {
                         // Delete (always available for admin)
                         if canEdit {
                             Button(role: .destructive, action: { onDeleteTask?(task) }) {
-                                Label("Delete Task", image: "ops.delete")
+                                Label("Delete Task", image: OPSStyle.Icons.delete)
                             }
                         }
                     }
@@ -765,7 +765,7 @@ struct TaskListSection: View {
 
                     Button(action: onAddTask) {
                         HStack(spacing: 8) {
-                            Image("ops.add")
+                            Image(OPSStyle.Icons.plus)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text("ADD TASK")
                                 .font(OPSStyle.Typography.captionBold)
@@ -879,7 +879,7 @@ struct DescriptionSection: View {
                         isEditing = true
                     }) {
                         HStack(spacing: 6) {
-                            Image("ops.add")
+                            Image(OPSStyle.Icons.plus)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text("ADD DESCRIPTION")
                                 .font(OPSStyle.Typography.captionBold)
@@ -929,7 +929,7 @@ struct AddressSection: View {
                     // Inline edit mode
                     VStack(alignment: .leading, spacing: 0) {
                         HStack(spacing: 8) {
-                            Image("ops.site-visit")
+                            Image(OPSStyle.Icons.siteVisitPin)
                                 .font(.system(size: OPSStyle.Layout.IconSize.md))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
 
@@ -968,7 +968,7 @@ struct AddressSection: View {
                             ForEach(completer.results, id: \.self) { result in
                                 Button(action: { selectResult(result) }) {
                                     HStack(spacing: 8) {
-                                        Image("ops.job-site")
+                                        Image(OPSStyle.Icons.jobSite)
                                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
 
@@ -1008,7 +1008,7 @@ struct AddressSection: View {
                         if let address = address, !address.isEmpty {
                             Button(action: onDirections) {
                                 HStack(spacing: 8) {
-                                    Image("ops.site-visit")
+                                    Image(OPSStyle.Icons.siteVisitPin)
                                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                     Text(address)
@@ -1143,7 +1143,7 @@ struct PhotosSection: View {
             VStack(spacing: 0) {
                 if photos.isEmpty {
                     HStack {
-                        Image("ops.photo")
+                        Image(OPSStyle.Icons.photo)
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Text("No photos yet")

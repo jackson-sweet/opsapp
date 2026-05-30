@@ -331,7 +331,7 @@ struct TaskRescheduleSheet: View {
     private var inspectAffordance: some View {
         Button(action: { openDayDetail() }) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image("ops.zoom-in")
+                Image(OPSStyle.Icons.zoomIn)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 Text("PINCH OR TAP TO INSPECT THIS DAY")
@@ -339,7 +339,7 @@ struct TaskRescheduleSheet: View {
                     .tracking(0.8)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Spacer(minLength: 0)
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -410,13 +410,13 @@ struct TaskRescheduleSheet: View {
                 showCalendarScheduler = true
             } label: {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
-                    Image("ops.date")
+                    Image(OPSStyle.Icons.calendar)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     Text("OPEN CALENDAR")
                         .font(OPSStyle.Typography.captionBold)
                         .tracking(1.0)
                     Spacer(minLength: 0)
-                    Image("ops.arrow-up-right")
+                    Image(OPSStyle.Icons.arrowUpRight)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                         .opacity(0.7)
                 }

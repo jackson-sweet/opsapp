@@ -31,7 +31,7 @@ struct CompanyAddressView: View {
                         onboardingViewModel.moveToPreviousStep()
                     }) {
                         HStack(spacing: 4) {
-                            Image("ops.chevron-left")
+                            Image(OPSStyle.Icons.chevronLeft)
                                 .font(OPSStyle.Typography.button)
                             Text("Back")
                                 .font(OPSStyle.Typography.button)

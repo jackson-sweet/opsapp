@@ -89,7 +89,7 @@ struct ActivityTabView: View {
             } else if feedItems.isEmpty {
                 // Empty state
                 VStack(spacing: 12) {
-                    Image("ops.note")
+                    Image(OPSStyle.Icons.notes)
                         .font(.system(size: OPSStyle.Layout.IconSize.xl))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Text("No activity yet")
@@ -152,7 +152,7 @@ struct ActivityTabView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
 
                                 Button(action: { notesViewModel.removeImage(at: index) }) {
-                                    Image("ops.close")
+                                    Image(OPSStyle.Icons.close)
                                         .font(.system(size: 18))
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                         .background(Circle().fill(OPSStyle.Colors.background))
@@ -249,7 +249,7 @@ struct ActivityTabView: View {
                 Button(action: {
                     Task { await notesViewModel.postNote() }
                 }) {
-                    Image("ops.upload")
+                    Image(OPSStyle.Icons.upload)
                         .font(.system(size: OPSStyle.Layout.IconSize.lg))
                         .foregroundColor(
                             notesViewModel.canPost
@@ -818,7 +818,7 @@ private struct UploadingPhotoTile: View {
                     Circle()
                         .fill(OPSStyle.Colors.errorStatus)
                         .frame(width: 18, height: 18)
-                    Image("ops.error")
+                    Image(OPSStyle.Icons.exclamationmarkCircleFill)
                         .font(.system(size: 11, weight: .heavy))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
@@ -841,7 +841,7 @@ private struct UploadingPhotoTile: View {
         )
         .contextMenu {
             Button(role: .destructive, action: onDismiss) {
-                Label("Dismiss", image: "ops.delete")
+                Label("Dismiss", image: OPSStyle.Icons.delete)
             }
         }
     }

@@ -175,35 +175,35 @@ struct CatalogView: View {
                 if showStockSection {
                     Section("STOCK") {
                         Button { showSnapshots = true } label: {
-                            Label("Snapshots", image: "ops.in-progress")
+                            Label("Snapshots", image: OPSStyle.Icons.inProgress)
                         }
                         if showStockManageRows {
-                            Button { showCategoriesManage = true } label: { Label("Categories", image: "ops.project") }
-                            Button { showTagsManage = true }       label: { Label("Tags", image: "ops.task-type") }
-                            Button { showUnitsManage = true }      label: { Label("Units", image: "ops.measure") }
-                            Button { showThresholdsManage = true } label: { Label("Thresholds", image: "ops.warning") }
+                            Button { showCategoriesManage = true } label: { Label("Categories", image: OPSStyle.Icons.project) }
+                            Button { showTagsManage = true }       label: { Label("Tags", image: OPSStyle.Icons.taskType) }
+                            Button { showUnitsManage = true }      label: { Label("Units", image: OPSStyle.Icons.measure) }
+                            Button { showThresholdsManage = true } label: { Label("Thresholds", image: OPSStyle.Icons.alert) }
                         }
                     }
                 }
                 if showOrdersSection {
                     Section("ORDERS") {
-                        Button { showOrders = true } label: { Label("Orders", image: "ops.inventory-item") }
+                        Button { showOrders = true } label: { Label("Orders", image: OPSStyle.Icons.inventoryItem) }
                     }
                 }
                 if showSetupSection {
                     Section("SETUP") {
                         if canManage {
-                            Button { showDefaultsManage = true } label: { Label("Defaults", image: "ops.nav-settings") }
+                            Button { showDefaultsManage = true } label: { Label("Defaults", image: OPSStyle.Icons.gearshape) }
                         }
                         if permissionStore.can("catalog.import") {
                             Button { showImport = true } label: {
-                                Label("Import…", image: "ops.download")
+                                Label("Import…", image: OPSStyle.Icons.download)
                             }
                         }
                     }
                 }
             } label: {
-                Image("ops.overflow")
+                Image(OPSStyle.Icons.ellipsis)
                     .font(.title3)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)

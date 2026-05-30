@@ -188,7 +188,7 @@ extension OnboardingScaffold where Footer == EmptyView {
         showBackButton: false
     ) {
         VStack {
-            Image("ops.nav-jobs")
+            Image(OPSStyle.Icons.navJobs)
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
 

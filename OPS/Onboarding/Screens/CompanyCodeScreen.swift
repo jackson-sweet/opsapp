@@ -91,7 +91,7 @@ struct CompanyCodeScreen: View {
                         showInviteSheet = true
                     } label: {
                         HStack(spacing: 8) {
-                            Image("ops.sub-client")
+                            Image(OPSStyle.Icons.subClient)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
 
                             Text("INVITE CREW")
@@ -401,7 +401,7 @@ struct InviteTeamSheet: View {
                     }
                 } label: {
                     HStack {
-                        Image("ops.message")
+                        Image(OPSStyle.Icons.message)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
                         Text("TEXT IT")
@@ -476,7 +476,7 @@ struct InviteTeamSheet: View {
                                             inviteEmails.remove(at: index)
                                         }
                                     } label: {
-                                        Image("ops.close")
+                                        Image(OPSStyle.Icons.close)
                                             .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                                             .frame(width: 28, height: 28)
@@ -492,7 +492,7 @@ struct InviteTeamSheet: View {
                                     focusedEmailIndex = newIndex
                                 } label: {
                                     HStack(spacing: 6) {
-                                        Image("ops.add-circle")
+                                        Image(OPSStyle.Icons.add)
                                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
                                         Text("Add email")

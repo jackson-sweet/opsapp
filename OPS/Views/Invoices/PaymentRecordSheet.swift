@@ -75,7 +75,7 @@ struct PaymentRecordSheet: View {
                                         )
                                     Spacer()
                                     if method == m {
-                                        Image("ops.checkmark")
+                                        Image(OPSStyle.Icons.checkmark)
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     }

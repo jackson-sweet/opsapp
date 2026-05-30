@@ -67,7 +67,7 @@ struct InvoiceDetailView: View {
                             }
                         }
                     } label: {
-                        Image("ops.overflow")
+                        Image(OPSStyle.Icons.ellipsis)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
                 }

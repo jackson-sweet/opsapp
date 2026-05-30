@@ -50,7 +50,7 @@ struct InvoicesListView: View {
 
             // Search
             HStack {
-                Image("ops.search")
+                Image(OPSStyle.Icons.search)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 TextField("Search invoices...", text: $searchText)
                     .font(OPSStyle.Typography.body)
@@ -60,7 +60,7 @@ struct InvoicesListView: View {
                     }
                 if !searchText.isEmpty {
                     Button { searchText = ""; viewModel.searchText = "" } label: {
-                        Image("ops.close")
+                        Image(OPSStyle.Icons.close)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                 }

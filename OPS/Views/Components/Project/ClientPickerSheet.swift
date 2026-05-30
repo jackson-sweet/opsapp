@@ -37,7 +37,7 @@ struct ClientPickerSheet: View {
                 VStack(spacing: 0) {
                     // Search field
                     HStack(spacing: 8) {
-                        Image("ops.search")
+                        Image(OPSStyle.Icons.search)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         TextField("Search clients", text: $searchText)

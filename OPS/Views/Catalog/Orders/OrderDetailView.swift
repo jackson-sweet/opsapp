@@ -212,7 +212,7 @@ struct OrderDetailView: View {
                         expectedDeliveryField = nil
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } label: {
-                        Image("ops.close")
+                        Image(OPSStyle.Icons.close)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                     .accessibilityLabel("Clear expected delivery")
@@ -329,15 +329,15 @@ struct OrderDetailView: View {
                         Button {
                             startEditing(item)
                         } label: {
-                            Label("Edit", image: "ops.edit")
+                            Label("Edit", image: OPSStyle.Icons.edit)
                         }
                         Button(role: .destructive) {
                             removeItem(item)
                         } label: {
-                            Label("Remove", image: "ops.delete")
+                            Label("Remove", image: OPSStyle.Icons.delete)
                         }
                     } label: {
-                        Image("ops.overflow")
+                        Image(OPSStyle.Icons.ellipsis)
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                             .frame(

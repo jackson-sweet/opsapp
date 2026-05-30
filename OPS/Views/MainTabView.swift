@@ -288,7 +288,7 @@ struct MainTabView: View {
                 appState.showingUniversalSearch = true
             }
         } label: {
-            Image("ops.search")
+            Image(OPSStyle.Icons.search)
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(width: 44, height: 44)

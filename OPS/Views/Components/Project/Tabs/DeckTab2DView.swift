@@ -845,7 +845,7 @@ struct DeckTab2DView: View {
                     measurementEnd = nil
                 }
             } label: {
-                Image("ops.measure")
+                Image(OPSStyle.Icons.measure)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(measurementMode ? .black : .white)
                     .frame(width: 40, height: 40)

@@ -188,7 +188,7 @@ struct JobBoardView: View {
                                     showingProjectFilterSheet = true
                                 }
                             }) {
-                                Image("ops.filter")
+                                Image(OPSStyle.Icons.filter)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .padding(.horizontal, 10)
@@ -612,7 +612,7 @@ struct JobBoardClientsPreview: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
@@ -658,7 +658,7 @@ struct JobBoardProjectsPreview: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
@@ -957,7 +957,7 @@ struct JobBoardTasksView: View {
                         )
                 }
 
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -1090,7 +1090,7 @@ struct ClientRowView: View {
             
             Spacer()
             
-            Image("ops.chevron-right")
+            Image(OPSStyle.Icons.chevronRight)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
@@ -1121,7 +1121,7 @@ struct ProjectRowView: View {
             
             Spacer()
             
-            Image("ops.chevron-right")
+            Image(OPSStyle.Icons.chevronRight)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
@@ -1154,7 +1154,7 @@ struct TaskTypeRowView: View {
 
                 Spacer()
 
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -1269,7 +1269,7 @@ struct CreateMenuItem: View {
 
                 Spacer()
 
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -1295,7 +1295,7 @@ struct TaskFilterBadge: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
 
             Button(action: onRemove) {
-                Image("ops.close")
+                Image(OPSStyle.Icons.close)
                     .font(.system(size: 8, weight: .bold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .frame(width: 20, height: 20)
@@ -1356,7 +1356,7 @@ struct TaskListSheet: View {
 
                         if !searchText.isEmpty {
                             Button(action: { searchText = "" }) {
-                                Image("ops.close")
+                                Image(OPSStyle.Icons.close)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             }

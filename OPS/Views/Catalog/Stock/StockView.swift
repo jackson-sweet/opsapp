@@ -484,7 +484,7 @@ struct ChipLabel: View {
             Text(text)
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
-            Image("ops.chevron-down")
+            Image(OPSStyle.Icons.chevronDown)
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
         }
@@ -524,7 +524,7 @@ struct ThresholdBanner: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image("ops.warning")
+                Image(OPSStyle.Icons.alert)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
                 VStack(alignment: .leading, spacing: 2) {
@@ -545,7 +545,7 @@ struct ThresholdBanner: View {
                     }
                 }
                 Spacer()
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

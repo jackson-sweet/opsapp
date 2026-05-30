@@ -367,7 +367,7 @@ struct SubClientEditSheet: View {
                     // Address or Title
                     if !viewModel.address.isEmpty {
                         HStack(spacing: 4) {
-                            Image("ops.site-visit")
+                            Image(OPSStyle.Icons.siteVisitPin)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text(viewModel.address.components(separatedBy: ",").first ?? viewModel.address)
@@ -377,7 +377,7 @@ struct SubClientEditSheet: View {
                         }
                     } else if !viewModel.title.isEmpty {
                         HStack(spacing: 4) {
-                            Image("ops.nav-jobs")
+                            Image(OPSStyle.Icons.navJobs)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text(viewModel.title)

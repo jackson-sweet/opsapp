@@ -160,7 +160,7 @@ struct CredentialsScreen: View {
 
                             Spacer()
 
-                            Image("ops.arrow-right")
+                            Image(OPSStyle.Icons.arrowRight)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         }
                         .padding(.horizontal, 20)

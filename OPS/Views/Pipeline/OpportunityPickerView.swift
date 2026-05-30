@@ -16,7 +16,7 @@ struct OpportunityPickerView: View {
         VStack(spacing: 0) {
             // Search bar
             HStack(spacing: 12) {
-                Image("ops.search")
+                Image(OPSStyle.Icons.search)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .font(.system(size: 16))
 
@@ -29,7 +29,7 @@ struct OpportunityPickerView: View {
                     Button {
                         viewModel.opportunitySearchText = ""
                     } label: {
-                        Image("ops.close")
+                        Image(OPSStyle.Icons.close)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                 }
@@ -108,7 +108,7 @@ struct OpportunityPickerView: View {
 
                 // Checkmark if selected
                 if viewModel.selectedOpportunity?.id == opp.id {
-                    Image("ops.success")
+                    Image(OPSStyle.Icons.checkmarkCircleFill)
                         .foregroundColor(OPSStyle.Colors.successStatus)
                         .font(.system(size: 20))
                 }
@@ -138,7 +138,7 @@ struct OpportunityPickerView: View {
                         Circle()
                             .fill(OPSStyle.Colors.successStatus.opacity(0.2))
                             .frame(width: 40, height: 40)
-                        Image("ops.add")
+                        Image(OPSStyle.Icons.plus)
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.successStatus)
                     }

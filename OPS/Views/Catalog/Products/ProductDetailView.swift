@@ -642,7 +642,7 @@ struct ProductDetailView: View {
                 .lineLimit(1)
             Spacer()
             if canManageProducts {
-                Image("ops.chevron-down")
+                Image(OPSStyle.Icons.chevronDown)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -719,7 +719,7 @@ struct ProductDetailView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
                     if selectedUnitId == unit.id {
-                        Label(unit.display, image: "ops.checkmark")
+                        Label(unit.display, image: OPSStyle.Icons.checkmark)
                     } else {
                         Text(unit.display)
                     }
@@ -730,7 +730,7 @@ struct ProductDetailView: View {
                 showingNewUnitSheet = true
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
-                Label("New unit…", image: "ops.add")
+                Label("New unit…", image: OPSStyle.Icons.plus)
             }
         } label: {
             menuLabel(text: selectedUnitDisplay)
@@ -762,7 +762,7 @@ struct ProductDetailView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
                     if selectedCategoryId == category.id {
-                        Label(category.name, image: "ops.checkmark")
+                        Label(category.name, image: OPSStyle.Icons.checkmark)
                     } else {
                         Text(category.name)
                     }
@@ -773,7 +773,7 @@ struct ProductDetailView: View {
                 showingNewCategorySheet = true
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
-                Label("New category…", image: "ops.add")
+                Label("New category…", image: OPSStyle.Icons.plus)
             }
         } label: {
             menuLabel(text: selectedCategoryDisplay)
@@ -797,7 +797,7 @@ struct ProductDetailView: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .lineLimit(1)
             Spacer()
-            Image("ops.chevron-down")
+            Image(OPSStyle.Icons.chevronDown)
                 .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }

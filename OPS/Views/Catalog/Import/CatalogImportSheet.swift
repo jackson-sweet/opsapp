@@ -226,7 +226,7 @@ struct CatalogImportSheet: View {
                         }
                     }
                 if s != Step.allCases.last {
-                    Image("ops.chevron-right")
+                    Image(OPSStyle.Icons.chevronRight)
                         .font(.caption2)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
@@ -266,7 +266,7 @@ struct CatalogImportSheet: View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
 
-            Image("ops.download")
+            Image(OPSStyle.Icons.download)
                 .font(.system(size: 56, weight: .light))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -441,7 +441,7 @@ struct CatalogImportSheet: View {
                                 ? OPSStyle.Colors.tertiaryText
                                 : OPSStyle.Colors.primaryText
                         )
-                    Image("ops.chevron-down")
+                    Image(OPSStyle.Icons.chevronDown)
                         .font(.caption2)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
@@ -645,7 +645,7 @@ struct CatalogImportSheet: View {
                     .font(OPSStyle.Typography.panelTitle)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             } else if applySucceeded {
-                Image("ops.deal-won")
+                Image(OPSStyle.Icons.dealWon)
                     .font(.system(size: 56, weight: .light))
                     .foregroundColor(OPSStyle.Colors.successStatus)
                 Text("// IMPORTED")
@@ -662,7 +662,7 @@ struct CatalogImportSheet: View {
                 .buttonStyle(PrimaryStepButton(disabled: false))
                 .padding(.top, OPSStyle.Layout.spacing3)
             } else if let err = applyError {
-                Image("ops.warning")
+                Image(OPSStyle.Icons.alert)
                     .font(.system(size: 48, weight: .light))
                     .foregroundColor(OPSStyle.Colors.errorStatus)
                 Text("// IMPORT FAILED")

@@ -147,7 +147,7 @@ struct LeadActionCard: View {
         HStack(spacing: 10) {
             if let dueText {
                 HStack(spacing: 4) {
-                    Image("ops.clock")
+                    Image(OPSStyle.Icons.clock)
                         .font(.system(size: 11, weight: .regular))
                     Text(dueText)
                         .font(.custom("JetBrainsMono-Regular", size: 9.5))

@@ -237,7 +237,7 @@ struct AppHeader: View {
                                     .font(.system(size: 10, weight: .bold))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             } else {
-                                Image("ops.notification-bell")
+                                Image(OPSStyle.Icons.bell)
                                     .font(.system(size: 11, weight: .semibold))
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                             }
@@ -349,7 +349,7 @@ struct AppHeader: View {
                     // Calendar/month toggle button (schedule only)
                     if headerType == .schedule, let onMonthTapped = onMonthTapped {
                         Button(action: onMonthTapped) {
-                            Image("ops.date")
+                            Image(OPSStyle.Icons.calendar)
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(width: 44, height: 44)
@@ -417,7 +417,7 @@ struct AppHeader: View {
                         if let onUnscheduledReviewTapped {
                             Button(action: { onUnscheduledReviewTapped() }) {
                                 ZStack(alignment: .topTrailing) {
-                                    Image("ops.deadline")
+                                    Image(OPSStyle.Icons.deadline)
                                         .font(OPSStyle.Typography.bodyBold)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                         .frame(width: 44, height: 44)
@@ -458,7 +458,7 @@ struct AppHeader: View {
                                 }
                             }) {
                                 ZStack(alignment: .topTrailing) {
-                                    Image("ops.task")
+                                    Image(OPSStyle.Icons.task)
                                         .font(OPSStyle.Typography.bodyBold)
                                         .foregroundColor(isTaskReviewLocked ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
                                         .frame(width: 44, height: 44)
@@ -494,7 +494,7 @@ struct AppHeader: View {
                                 }
                             }) {
                                 ZStack(alignment: .topTrailing) {
-                                    Image("ops.columns")
+                                    Image(OPSStyle.Icons.columns)
                                         .font(OPSStyle.Typography.bodyBold)
                                         .foregroundColor(isPaymentReviewLocked ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
                                         .frame(width: 44, height: 44)
@@ -524,7 +524,7 @@ struct AppHeader: View {
                     // Insights button (inventory only)
                     if headerType == .inventory, let onInsightsTapped = onInsightsTapped {
                         Button(action: onInsightsTapped) {
-                            Image("ops.trending-up")
+                            Image(OPSStyle.Icons.accountingChart)
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(width: 44, height: 44)
@@ -564,7 +564,7 @@ struct AppHeader: View {
                                 appState.showingUniversalSearch = true
                             }
                         }) {
-                            Image("ops.search")
+                            Image(OPSStyle.Icons.search)
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(width: 44, height: 44)
@@ -598,7 +598,7 @@ struct AppHeader: View {
     /// content on the same animation.
     private var settingsSearchField: some View {
         HStack(spacing: 12) {
-            Image("ops.search")
+            Image(OPSStyle.Icons.search)
                 .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -617,7 +617,7 @@ struct AppHeader: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     appState.settingsSearchQuery = ""
                 }) {
-                    Image("ops.close")
+                    Image(OPSStyle.Icons.close)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
@@ -740,7 +740,7 @@ struct AppHeader: View {
                 // Feature request button (1/3 width)
                 NavigationLink(destination: FeatureRequestView()) {
                     HStack {
-                        Image("ops.tip")
+                        Image(OPSStyle.Icons.tip)
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                         
@@ -760,7 +760,7 @@ struct AppHeader: View {
                     dataController.logout()
                 }) {
                     HStack {
-                        Image("ops.sign-out")
+                        Image(OPSStyle.Icons.signOut)
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                         
@@ -813,7 +813,7 @@ struct AvatarSyncOverlay: View {
     var body: some View {
         ZStack {
             // Spinning sync icon ring
-            Image("ops.refresh")
+            Image(OPSStyle.Icons.arrowClockwise)
                 .font(.system(size: 20, weight: .medium))
                 .foregroundColor(isSyncing ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.warningStatus)
                 .rotationEffect(.degrees(rotation))

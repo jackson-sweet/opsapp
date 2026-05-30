@@ -16,7 +16,7 @@ struct MapLocationPermissionView: View {
         VStack(alignment: .leading, spacing: 24) {
             Spacer()
 
-            Image("ops.job-site")
+            Image(OPSStyle.Icons.jobSite)
                 .font(.system(size: 36))
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
 

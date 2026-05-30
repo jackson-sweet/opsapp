@@ -24,7 +24,7 @@ struct TeamInvitesView: View {
                     onboardingViewModel.moveToPreviousStep()
                 }) {
                     HStack(spacing: 4) {
-                        Image("ops.chevron-left")
+                        Image(OPSStyle.Icons.chevronLeft)
                             .font(OPSStyle.Typography.button)
                         Text("Back")
                             .font(OPSStyle.Typography.button)
@@ -114,7 +114,7 @@ struct TeamInvitesView: View {
                         if inviteEmails.count < 10 {
                             Button(action: addEmailField) {
                                 HStack {
-                                    Image("ops.add-circle")
+                                    Image(OPSStyle.Icons.add)
                                         .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
 

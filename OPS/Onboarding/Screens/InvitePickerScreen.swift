@@ -100,7 +100,7 @@ struct InvitePickerScreen: View {
                     Spacer()
 
                     // Chevron
-                    Image("ops.chevron-right")
+                    Image(OPSStyle.Icons.chevronRight)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }

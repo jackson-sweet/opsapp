@@ -46,7 +46,7 @@ struct WizardPromptOverlay: View {
 
                 // Time estimate
                 HStack(spacing: 6) {
-                    Image("ops.clock")
+                    Image(OPSStyle.Icons.clock)
                         .font(.system(size: 12))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -93,7 +93,7 @@ struct WizardPromptOverlay: View {
 
                         Spacer()
 
-                        Image("ops.arrow-right")
+                        Image(OPSStyle.Icons.arrowRight)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.buttonText)
                     }

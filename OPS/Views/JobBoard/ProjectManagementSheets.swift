@@ -235,7 +235,7 @@ struct SchedulingModeConversionSheet: View {
 
                 VStack(spacing: OPSStyle.Layout.spacing4) {
                     // Icon
-                    Image("ops.task")  // Always task-based now
+                    Image(OPSStyle.Icons.task)  // Always task-based now
                         .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
 
@@ -254,7 +254,7 @@ struct SchedulingModeConversionSheet: View {
                            // SchedulingModeBadge(eventType: project.eventType ?? .project)
                         }
 
-                        Image("ops.arrow-right")
+                        Image(OPSStyle.Icons.arrowRight)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
                         VStack(spacing: 8) {
@@ -478,7 +478,7 @@ struct TaskPickerForTeamChange: View {
 
                                             Spacer()
 
-                                            Image("ops.chevron-right")
+                                            Image(OPSStyle.Icons.chevronRight)
                                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                         }

@@ -127,7 +127,7 @@ struct FeatureItem: View {
     var body: some View {
         HStack(spacing: 10) {
             // Checkmark indicator
-            Image("ops.success")
+            Image(OPSStyle.Icons.checkmarkCircleFill)
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
             

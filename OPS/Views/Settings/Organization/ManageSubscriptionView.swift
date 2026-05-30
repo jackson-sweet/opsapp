@@ -67,7 +67,7 @@ struct ManageSubscriptionView: View {
                             // Error message
                             if let error = errorMessage {
                                 HStack(spacing: 8) {
-                                    Image("ops.warning")
+                                    Image(OPSStyle.Icons.alert)
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.errorStatus)
 
@@ -361,7 +361,7 @@ struct ManageSubscriptionView: View {
             // Warning if at limit
             if isAtLimit {
                 HStack(spacing: 6) {
-                    Image("ops.warning")
+                    Image(OPSStyle.Icons.alert)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.warningStatus)
 
@@ -461,7 +461,7 @@ struct ManageSubscriptionView: View {
                 } else if let error = stripeInfoError {
                     // Error state - show cached data with error indicator
                     HStack(spacing: 4) {
-                        Image("ops.warning")
+                        Image(OPSStyle.Icons.alert)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.warningStatus)
                         Text("Using cached data")
@@ -547,7 +547,7 @@ struct ManageSubscriptionView: View {
         // Cancellation pending warning
         if cancelAtPeriodEnd {
             HStack(spacing: 4) {
-                Image("ops.error")
+                Image(OPSStyle.Icons.exclamationmarkCircleFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
 
@@ -567,7 +567,7 @@ struct ManageSubscriptionView: View {
                 Spacer()
 
                 HStack(spacing: 4) {
-                    Image("ops.success")
+                    Image(OPSStyle.Icons.checkmarkCircleFill)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.successStatus)
 
@@ -614,7 +614,7 @@ struct ManageSubscriptionView: View {
     private func noActiveSubscriptionView(_ company: Company) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
-                Image("ops.info")
+                Image(OPSStyle.Icons.info)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
@@ -648,7 +648,7 @@ struct ManageSubscriptionView: View {
                     Spacer()
 
                     HStack(spacing: 4) {
-                        Image("ops.success")
+                        Image(OPSStyle.Icons.checkmarkCircleFill)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.successStatus)
 
@@ -669,7 +669,7 @@ struct ManageSubscriptionView: View {
                 showCancelConfirmation = true
             }) {
                 HStack(spacing: 8) {
-                    Image("ops.close")
+                    Image(OPSStyle.Icons.close)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
                     Text("CANCEL SUBSCRIPTION")
@@ -696,7 +696,7 @@ struct ManageSubscriptionView: View {
                         // Warning header
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 8) {
-                                Image("ops.warning")
+                                Image(OPSStyle.Icons.alert)
                                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                                     .foregroundColor(OPSStyle.Colors.errorStatus)
 

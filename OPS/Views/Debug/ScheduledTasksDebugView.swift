@@ -100,7 +100,7 @@ struct ScheduledTasksDebugView: View {
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
 
                     Button(action: { showingTaskSearchSheet = true }) {
-                        Image("ops.nav-set-audit")
+                        Image(OPSStyle.Icons.navSetAudit)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .padding(8)
                             .background(OPSStyle.Colors.cardBackgroundDark)
@@ -157,7 +157,7 @@ struct ScheduledTasksDebugView: View {
                 } else if filteredTasks.isEmpty {
                     Spacer()
                     VStack(spacing: 16) {
-                        Image("ops.deadline")
+                        Image(OPSStyle.Icons.deadline)
                             .font(.system(size: 50))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Text("No Tasks Found")
@@ -568,7 +568,7 @@ struct TaskSearchSheet: View {
                         // Local SwiftData result
                         if let local = localTask {
                             VStack(alignment: .leading, spacing: 12) {
-                                Label("LOCAL SWIFTDATA", image: "ops.database")
+                                Label("LOCAL SWIFTDATA", image: OPSStyle.Icons.database)
                                     .font(OPSStyle.Typography.captionBold)
                                     .foregroundColor(OPSStyle.Colors.successStatus)
 
@@ -593,7 +593,7 @@ struct TaskSearchSheet: View {
                             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         } else if !isSearching && !taskId.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
-                                Label("LOCAL SWIFTDATA", image: "ops.database")
+                                Label("LOCAL SWIFTDATA", image: OPSStyle.Icons.database)
                                     .font(OPSStyle.Typography.captionBold)
                                     .foregroundColor(OPSStyle.Colors.errorStatus)
                                 Text("Task not found in local SwiftData")

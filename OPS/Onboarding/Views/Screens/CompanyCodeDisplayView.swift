@@ -49,7 +49,7 @@ struct CompanyCodeDisplayView: View {
                         viewModel.moveToPreviousStep()
                     }) {
                         HStack(spacing: 4) {
-                            Image("ops.chevron-left")
+                            Image(OPSStyle.Icons.chevronLeft)
                                 .font(OPSStyle.Typography.button)
                             Text("Back")
                                 .font(OPSStyle.Typography.button)
@@ -174,7 +174,7 @@ struct CompanyCodeDisplayView: View {
                                 }
                                 
                                 HStack(alignment: .top, spacing: 12) {
-                                    Image("ops.shield")
+                                    Image(OPSStyle.Icons.shield)
                                         .foregroundColor(OPSStyle.Colors.successStatus)
                                         .font(OPSStyle.Typography.body)
                                     

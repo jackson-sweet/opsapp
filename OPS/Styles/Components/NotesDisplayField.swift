@@ -114,7 +114,7 @@ struct NotesDisplayField: View {
                         isExpanded = true
                     }
                 }) {
-                    Image("ops.edit")
+                    Image(OPSStyle.Icons.edit)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
@@ -166,7 +166,7 @@ struct NotesDisplayField: View {
                             isExpanded = true
                         }
                     }) {
-                        Image("ops.edit")
+                        Image(OPSStyle.Icons.edit)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }

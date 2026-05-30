@@ -236,7 +236,7 @@ struct ClearDataButton: View {
                 
                 Spacer()
                 
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: 14))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

@@ -42,7 +42,7 @@ struct CreateDefaultInventoryUnitsView: View {
             VStack(spacing: 24) {
                 // Header
                 VStack(spacing: 8) {
-                    Image("ops.inventory-item")
+                    Image(OPSStyle.Icons.inventoryItem)
                         .font(.system(size: 48))
                         .foregroundColor(Color.teal)
 
@@ -241,7 +241,7 @@ struct UnitChip: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
 
             if isDefault {
-                Image("ops.deal-won")
+                Image(OPSStyle.Icons.dealWon)
                     .font(.system(size: 10))
                     .foregroundColor(Color.teal)
             }

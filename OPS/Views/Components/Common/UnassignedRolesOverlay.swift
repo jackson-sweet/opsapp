@@ -83,7 +83,7 @@ struct UnassignedRolesOverlay: View {
                 // Error message
                 if let error = errorMessage {
                     HStack(spacing: 6) {
-                        Image("ops.warning")
+                        Image(OPSStyle.Icons.alert)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                         Text(error.uppercased())
@@ -116,7 +116,7 @@ struct UnassignedRolesOverlay: View {
 
             Spacer()
 
-            Image("ops.invite-member")
+            Image(OPSStyle.Icons.assignmentNotification)
                 .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
@@ -152,7 +152,7 @@ struct UnassignedRolesOverlay: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.primaryText)
 
-                        Image("ops.checkmark")
+                        Image(OPSStyle.Icons.checkmark)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }

@@ -722,7 +722,7 @@ struct FilterBadge: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
 
             Button(action: onRemove) {
-                Image("ops.close")
+                Image(OPSStyle.Icons.close)
                     .font(.system(size: 8, weight: .bold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .frame(width: 20, height: 20)
@@ -940,7 +940,7 @@ struct ProjectListSheet: View {
 
                         if !searchText.isEmpty {
                             Button(action: { searchText = "" }) {
-                                Image("ops.close")
+                                Image(OPSStyle.Icons.close)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             }
@@ -955,7 +955,7 @@ struct ProjectListSheet: View {
 
                     if filteredProjects.isEmpty {
                         VStack(spacing: 16) {
-                            Image("ops.project")
+                            Image(OPSStyle.Icons.project)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text(searchText.isEmpty ? "No projects" : "No matching projects")

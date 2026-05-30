@@ -37,7 +37,7 @@ struct ProjectExpensesTabView: View {
             // Add expense button
             Button(action: onAddExpense) {
                 HStack(spacing: 8) {
-                    Image("ops.add")
+                    Image(OPSStyle.Icons.plus)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     Text("ADD EXPENSE")
                         .font(OPSStyle.Typography.captionBold)
@@ -87,7 +87,7 @@ struct ProjectExpensesTabView: View {
 
     private var emptyState: some View {
         VStack(spacing: 12) {
-            Image("ops.invoice")
+            Image(OPSStyle.Icons.invoiceReceipt)
                 .font(.system(size: OPSStyle.Layout.IconSize.xl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Text("No expenses for this project")

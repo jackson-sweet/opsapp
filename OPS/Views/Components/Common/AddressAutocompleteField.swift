@@ -67,7 +67,7 @@ struct AddressAutocompleteField: View {
                             .scaleEffect(0.8)
                             .frame(width: 20, height: 20)
                     } else {
-                        Image("ops.job-site")
+                        Image(OPSStyle.Icons.jobSite)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
@@ -81,7 +81,7 @@ struct AddressAutocompleteField: View {
                         searchResults = []
                         showingResults = false
                     }) {
-                        Image("ops.close")
+                        Image(OPSStyle.Icons.close)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                 }

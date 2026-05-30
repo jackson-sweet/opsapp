@@ -136,12 +136,12 @@ struct QuickAddSuggestionsRail: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 prefilledSuggestion = suggestion
             } label: {
-                Label("Edit Before Adding", image: "ops.edit")
+                Label("Edit Before Adding", image: OPSStyle.Icons.edit)
             }
             Button(role: .destructive) {
                 dismiss(suggestion)
             } label: {
-                Label("Dismiss Suggestion", image: "ops.close")
+                Label("Dismiss Suggestion", image: OPSStyle.Icons.close)
             }
         }
     }

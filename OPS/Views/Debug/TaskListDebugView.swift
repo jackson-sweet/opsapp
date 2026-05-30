@@ -73,7 +73,7 @@ struct TaskListDebugView: View {
                 } else if tasks.isEmpty {
                     Spacer()
                     VStack(spacing: 16) {
-                        Image("ops.line-item")
+                        Image(OPSStyle.Icons.lineItem)
                             .font(.system(size: 50))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Text("No Tasks Found")

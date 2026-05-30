@@ -150,7 +150,7 @@ struct ButtonStyles_Previews: PreviewProvider {
 
             Button { } label: {
                 HStack {
-                    Image("ops.checkmark")
+                    Image(OPSStyle.Icons.checkmark)
                     Text("Primary")
                 }
             }
@@ -158,7 +158,7 @@ struct ButtonStyles_Previews: PreviewProvider {
 
             Button { } label: {
                 HStack {
-                    Image("ops.close")
+                    Image(OPSStyle.Icons.close)
                     Text("Disabled Primary")
                 }
             }
@@ -167,7 +167,7 @@ struct ButtonStyles_Previews: PreviewProvider {
 
             Button { } label: {
                 HStack {
-                    Image("ops.info")
+                    Image(OPSStyle.Icons.info)
                     Text("Secondary")
                 }
             }
@@ -175,23 +175,23 @@ struct ButtonStyles_Previews: PreviewProvider {
 
             Button { } label: {
                 HStack {
-                    Image("ops.delete")
+                    Image(OPSStyle.Icons.delete)
                     Text("Destructive")
                 }
             }
             .opsDestructiveButtonStyle()
 
             HStack(spacing: 16) {
-                Button { } label: { Image("ops.add") }
+                Button { } label: { Image(OPSStyle.Icons.plus) }
                     .opsIconButtonStyle()
 
-                Button { } label: { Image("ops.edit") }
+                Button { } label: { Image(OPSStyle.Icons.edit) }
                     .opsIconButtonStyle(foregroundColor: OPSStyle.Colors.opsAccent)
 
-                Button { } label: { Image("ops.delete") }
+                Button { } label: { Image(OPSStyle.Icons.delete) }
                     .opsIconButtonStyle(foregroundColor: OPSStyle.Colors.rose)
 
-                Button { } label: { Image("ops.favorite") }
+                Button { } label: { Image(OPSStyle.Icons.favorite) }
                     .opsIconButtonStyle(foregroundColor: OPSStyle.Colors.tan)
             }
         }

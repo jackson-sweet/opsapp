@@ -320,7 +320,7 @@ struct UnscheduledTaskReviewView: View {
     private var header: some View {
         HStack {
             Button(action: { dismiss() }) {
-                Image("ops.close")
+                Image(OPSStyle.Icons.close)
                     .font(.system(size: 18, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: 44, height: 44)
@@ -408,7 +408,7 @@ struct UnscheduledTaskReviewView: View {
                         .accessibilityLabel("Retry failed action")
 
                         Button(action: dismissToast) {
-                            Image("ops.close")
+                            Image(OPSStyle.Icons.close)
                                 .font(.system(size: 12, weight: .bold))
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .frame(width: 28, height: 28)
@@ -549,7 +549,7 @@ struct UnscheduledTaskReviewView: View {
 
                     Spacer()
 
-                    Image("ops.arrow-right")
+                    Image(OPSStyle.Icons.arrowRight)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 }
                 .foregroundColor(OPSStyle.Colors.invertedText)
@@ -576,7 +576,7 @@ struct UnscheduledTaskReviewView: View {
                     .frame(width: 140, height: 140)
                     .scaleEffect(celebrationScale)
 
-                Image("ops.success")
+                Image(OPSStyle.Icons.checkmarkCircleFill)
                     .font(.system(size: 64, weight: .light))
                     .foregroundColor(OPSStyle.Colors.successStatus)
                     .scaleEffect(celebrationScale)
@@ -601,7 +601,7 @@ struct UnscheduledTaskReviewView: View {
 
                     Spacer()
 
-                    Image("ops.arrow-right")
+                    Image(OPSStyle.Icons.arrowRight)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 }
                 .foregroundColor(OPSStyle.Colors.invertedText)

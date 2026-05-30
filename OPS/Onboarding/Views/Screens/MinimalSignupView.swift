@@ -194,7 +194,7 @@ struct MinimalSignupView: View {
                             HStack {
                                 Spacer()
                                 if !isLoading {
-                                    Image("ops.arrow-right")
+                                    Image(OPSStyle.Icons.arrowRight)
                                         .foregroundColor(OPSStyle.Colors.invertedText)
                                         .font(OPSStyle.Typography.caption.weight(.semibold))
                                         .padding(.trailing, 20)

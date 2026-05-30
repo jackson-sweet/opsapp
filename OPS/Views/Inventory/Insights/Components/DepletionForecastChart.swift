@@ -61,7 +61,7 @@ struct DepletionForecastChart: View {
 
     private var sectionHeader: some View {
         HStack(spacing: 6) {
-            Image("ops.loading")
+            Image(OPSStyle.Icons.loading)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 

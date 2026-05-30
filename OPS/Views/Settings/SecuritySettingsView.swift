@@ -247,7 +247,7 @@ struct SecuritySettingsView: View {
                                         // Show activation button
                                         Button(action: activateDeveloperMode) {
                                             HStack {
-                                                Image("ops.nav-set-developer")
+                                                Image(OPSStyle.Icons.navSetDeveloper)
                                                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                                                 Text("Enter Developer Mode")
                                                     .font(OPSStyle.Typography.body)
@@ -323,7 +323,7 @@ struct SecuritySettingsView: View {
                     VStack(spacing: 16) {
                         Group {
                             if developerModeActivated {
-                                Image("ops.nav-set-developer")
+                                Image(OPSStyle.Icons.navSetDeveloper)
                             } else {
                                 Image(OPSStyle.Icons.checkmarkCircleFill)
                             }

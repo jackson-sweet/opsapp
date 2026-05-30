@@ -84,7 +84,7 @@ struct ExpandableNotesView: View {
                                 isExpanded = true
                             }
                         }) {
-                            Image("ops.edit")
+                            Image(OPSStyle.Icons.edit)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
@@ -158,7 +158,7 @@ struct ExpandableNotesView: View {
                                             isExpanded = true
                                         }
                                     }) {
-                                        Image("ops.edit")
+                                        Image(OPSStyle.Icons.edit)
                                             .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     }

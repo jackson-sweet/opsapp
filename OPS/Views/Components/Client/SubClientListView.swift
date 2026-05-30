@@ -38,7 +38,7 @@ struct SubClientListView: View {
                 if canAddSubContacts {
                     Button(action: onCreateSubClient) {
                         HStack(spacing: 4) {
-                            Image("ops.add")
+                            Image(OPSStyle.Icons.plus)
                                 .font(OPSStyle.Typography.smallCaption)
                             Text("Add")
                                 .font(OPSStyle.Typography.smallCaption)
@@ -210,7 +210,7 @@ struct SubClientRow: View {
                 if isExpanded && !isEditing && canEditSubContacts {
                     Button(action: onEdit) {
                         HStack(spacing: 4) {
-                            Image("ops.edit")
+                            Image(OPSStyle.Icons.edit)
                                 .font(OPSStyle.Typography.smallCaption)
                             Text("Edit")
                                 .font(OPSStyle.Typography.smallCaption)
@@ -358,7 +358,7 @@ struct SubClientRow: View {
                                 
                                 // Message button
                                 Button(action: onMessage) {
-                                    Image("ops.message")
+                                    Image(OPSStyle.Icons.message)
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                         .frame(width: 44, height: 44)
@@ -434,7 +434,7 @@ struct SubClientRow: View {
                                     UIApplication.shared.open(mapsURL)
                                 }
                             }) {
-                                Image("ops.nav-map")
+                                Image(OPSStyle.Icons.map)
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .frame(width: 44, height: 44)
@@ -502,7 +502,7 @@ struct SubClientRow: View {
                             }
                         }) {
                             VStack(spacing: 4) {
-                                Image("ops.share")
+                                Image(OPSStyle.Icons.share)
                                     .font(OPSStyle.Typography.body)
                                 Text("Share")
                                     .font(OPSStyle.Typography.smallCaption)

@@ -610,7 +610,7 @@ struct SketchCaptureView: View {
                     showingPhotoPicker = true
                 } label: {
                     HStack(spacing: OPSStyle.Layout.spacing2) {
-                        Image("ops.photo")
+                        Image(OPSStyle.Icons.photo)
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                         Text("Choose from Library")
                             .font(OPSStyle.Typography.button)

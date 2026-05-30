@@ -210,7 +210,7 @@ struct ProfileJoinScreen: View {
                     .fill(OPSStyle.Colors.primaryAccent.opacity(0.1))
                     .frame(width: 48, height: 48)
 
-                Image("ops.company")
+                Image(OPSStyle.Icons.company)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
@@ -233,7 +233,7 @@ struct ProfileJoinScreen: View {
 
             Spacer()
 
-            Image("ops.success")
+            Image(OPSStyle.Icons.checkmarkCircleFill)
                 .foregroundColor(OPSStyle.Colors.successStatus)
         }
         .padding(16)

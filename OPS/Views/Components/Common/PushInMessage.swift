@@ -152,7 +152,7 @@ struct PushInMessage: View {
                 Button(action: {
                     dismissMessage()
                 }) {
-                    Image("ops.close")
+                    Image(OPSStyle.Icons.close)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .frame(width: 24, height: 24)

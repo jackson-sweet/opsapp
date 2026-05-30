@@ -190,7 +190,7 @@ struct OrganizationDetailsView: View {
                         // Error message
                         if let error = errorMessage {
                             HStack(spacing: 8) {
-                                Image("ops.warning")
+                                Image(OPSStyle.Icons.alert)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.errorStatus)
 
@@ -268,7 +268,7 @@ struct OrganizationDetailsView: View {
                 Button(action: {
                     showingCompanyCodeInfo = true
                 }) {
-                    Image("ops.info")
+                    Image(OPSStyle.Icons.info)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
@@ -314,7 +314,7 @@ struct OrganizationDetailsView: View {
                         generator.notificationOccurred(.success)
                     }) {
                         HStack(spacing: 4) {
-                            Image("ops.copy")
+                            Image(OPSStyle.Icons.copy)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             Text("COPY")
                                 .font(OPSStyle.Typography.smallCaption)
@@ -414,7 +414,7 @@ struct OrganizationDetailsView: View {
             .fill(OPSStyle.Colors.cardBackgroundDark)
             .frame(width: 72, height: 72)
             .overlay(
-                Image("ops.company")
+                Image(OPSStyle.Icons.company)
                     .font(.system(size: OPSStyle.Layout.IconSize.xl))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             )

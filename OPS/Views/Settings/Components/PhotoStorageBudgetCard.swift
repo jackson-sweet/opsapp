@@ -319,7 +319,7 @@ struct PhotoStorageBudgetCard: View {
     private func capHitBanner(report: PhotoPrefetchBudgetReport) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Image("ops.warning")
+                Image(OPSStyle.Icons.alert)
                     .foregroundColor(OPSStyle.Colors.warningStatus)
                 Text("STORAGE LIMIT REACHED")
                     .font(OPSStyle.Typography.captionBold)

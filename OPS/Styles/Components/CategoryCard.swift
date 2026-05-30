@@ -56,7 +56,7 @@ struct CategoryCard: View {
             
             Spacer()
             
-            Image("ops.chevron-right")
+            Image(OPSStyle.Icons.chevronRight)
                 .font(OPSStyle.Typography.smallBody)
                 .foregroundColor(isDisabled ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
         }

@@ -281,7 +281,7 @@ struct RoleDetailView: View {
                             // Preset role banner
                             if isPresetRole {
                                 HStack(spacing: 8) {
-                                    Image("ops.locked")
+                                    Image(OPSStyle.Icons.locked)
                                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     Text("Preset roles are read-only")
@@ -354,7 +354,7 @@ struct RoleDetailView: View {
 
                             // Search field
                             HStack(spacing: OPSStyle.Layout.spacing2) {
-                                Image("ops.search")
+                                Image(OPSStyle.Icons.search)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 TextField("Search permissions…", text: $searchQuery)
@@ -364,7 +364,7 @@ struct RoleDetailView: View {
                                     .autocapitalization(.none)
                                 if !searchQuery.isEmpty {
                                     Button(action: { searchQuery = "" }) {
-                                        Image("ops.close")
+                                        Image(OPSStyle.Icons.close)
                                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     }

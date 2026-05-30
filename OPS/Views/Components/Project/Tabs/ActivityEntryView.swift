@@ -91,7 +91,7 @@ struct ActivityEntryView: View {
                             Label("Delete", image: OPSStyle.Icons.trash)
                         }
                     } label: {
-                        Image("ops.overflow")
+                        Image(OPSStyle.Icons.ellipsis)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                             .frame(width: 32, height: 32)

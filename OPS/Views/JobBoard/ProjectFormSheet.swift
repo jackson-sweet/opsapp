@@ -961,7 +961,7 @@ struct ProjectFormSheet: View {
                         if mode.isCreate && !tutorialMode {
                             Button(action: { showingCopyFromProject = true }) {
                                 HStack {
-                                    Image("ops.copy")
+                                    Image(OPSStyle.Icons.copy)
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -1253,7 +1253,7 @@ struct ProjectFormSheet: View {
                     selectedClientId = nil
                     clientSearchText = ""
                 }) {
-                    Image("ops.close")
+                    Image(OPSStyle.Icons.close)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
@@ -1272,7 +1272,7 @@ struct ProjectFormSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 0) {
                 HStack {
-                    Image("ops.search")
+                    Image(OPSStyle.Icons.search)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
                     TextField("Search or create client...", text: $clientSearchText)
@@ -1285,7 +1285,7 @@ struct ProjectFormSheet: View {
                         Button(action: {
                             clientSearchText = ""
                         }) {
-                            Image("ops.close")
+                            Image(OPSStyle.Icons.close)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                     }
@@ -1342,7 +1342,7 @@ struct ProjectFormSheet: View {
                     if matchingClients.isEmpty && !tutorialMode {
                         Button(action: { showingCreateClient = true }) {
                             HStack {
-                                Image("ops.add-circle")
+                                Image(OPSStyle.Icons.add)
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 Text("Create \"\(clientSearchText)\"")
                                     .font(OPSStyle.Typography.body)
@@ -1576,7 +1576,7 @@ struct ProjectFormSheet: View {
                         HStack {
                             Text(status.displayName)
                             if selectedStatus == status {
-                                Image("ops.checkmark")
+                                Image(OPSStyle.Icons.checkmark)
                             }
                         }
                     }
@@ -1589,7 +1589,7 @@ struct ProjectFormSheet: View {
 
                     Spacer()
 
-                    Image("ops.chevron-down")
+                    Image(OPSStyle.Icons.chevronDown)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
@@ -1767,7 +1767,7 @@ struct ProjectFormSheet: View {
                         }
                         .buttonStyle(PlainButtonStyle())
                     } else {
-                        Image("ops.chevron-right")
+                        Image(OPSStyle.Icons.chevronRight)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
@@ -2067,7 +2067,7 @@ struct ProjectFormSheet: View {
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(alignment: .topTrailing) {
                                     Button(action: { removeImage(at: index) }) {
-                                        Image("ops.close")
+                                        Image(OPSStyle.Icons.close)
                                             .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .bold))
                                             .foregroundColor(OPSStyle.Colors.primaryText)
                                             .frame(width: 24, height: 24)
@@ -2086,7 +2086,7 @@ struct ProjectFormSheet: View {
 
                         Button(action: { showingPhotoSourceChooser = true }) {
                             VStack {
-                                Image("ops.add")
+                                Image(OPSStyle.Icons.plus)
                                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
@@ -2206,7 +2206,7 @@ struct ProjectFormSheet: View {
                     HStack(spacing: 12) {
                         // Address
                         HStack(spacing: 4) {
-                            Image("ops.site-visit")
+                            Image(OPSStyle.Icons.siteVisitPin)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text(address.isEmpty ? "NO ADDRESS" : address.components(separatedBy: ",").first ?? address)

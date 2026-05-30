@@ -33,7 +33,7 @@ struct CompanyTeamMembersListView: View {
                 Button(action: { 
                     fetchTeamMembers()
                 }) {
-                    Label("Load Team Members", image: "ops.refresh")
+                    Label("Load Team Members", image: OPSStyle.Icons.arrowClockwise)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .padding(.vertical, 8)
@@ -98,7 +98,7 @@ struct CompanyTeamMemberListRow: View {
                         }
                     }) {
                         // NOTE: envelope.circle.fill does not have a semantic icon - using legacy
-                        Image("ops.email")
+                        Image(OPSStyle.Icons.envelope)
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.8))
                     }
@@ -112,7 +112,7 @@ struct CompanyTeamMemberListRow: View {
                         }
                     }) {
                         // NOTE: phone.circle.fill does not have a semantic icon - using legacy
-                        Image("ops.call")
+                        Image(OPSStyle.Icons.phone)
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }

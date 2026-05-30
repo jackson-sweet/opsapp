@@ -103,7 +103,7 @@ struct RoleListView: View {
                                 showingRoleForm = true
                             }) {
                                 HStack(spacing: 8) {
-                                    Image("ops.add")
+                                    Image(OPSStyle.Icons.plus)
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                                     Text("NEW ROLE")
                                         .font(OPSStyle.Typography.captionBold)
@@ -269,7 +269,7 @@ struct RoleListView: View {
         .contextMenu {
             // Duplicate (available for all roles)
             Button(action: { duplicateRole(role) }) {
-                Label("Duplicate", image: "ops.copy")
+                Label("Duplicate", image: OPSStyle.Icons.copy)
             }
 
             if !isPreset {
@@ -279,7 +279,7 @@ struct RoleListView: View {
                     roleFormName = role.name
                     showingRoleForm = true
                 }) {
-                    Label("Rename", image: "ops.edit")
+                    Label("Rename", image: OPSStyle.Icons.edit)
                 }
 
                 // Delete (custom only)
@@ -287,7 +287,7 @@ struct RoleListView: View {
                     roleToDelete = role
                     showingDeleteConfirmation = true
                 }) {
-                    Label("Delete", image: "ops.delete")
+                    Label("Delete", image: OPSStyle.Icons.delete)
                 }
             }
         }

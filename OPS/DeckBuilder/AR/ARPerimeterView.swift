@@ -96,7 +96,7 @@ struct ARPerimeterView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             VStack(spacing: 20) {
-                Image("ops.ar-scan")
+                Image(OPSStyle.Icons.arScan)
                     .font(.system(size: 48))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Text(message)
@@ -152,7 +152,7 @@ struct ARPerimeterView: View {
                 showingDoneConfirmation = true
             }
         } label: {
-            Image("ops.close")
+            Image(OPSStyle.Icons.close)
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundColor(.white)
                 .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
@@ -367,7 +367,7 @@ struct ARPerimeterView: View {
                         viewModel.undoLastVertex()
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } label: {
-                        Image("ops.undo")
+                        Image(OPSStyle.Icons.undo)
                             .font(.system(size: 16, weight: .medium))
                             .foregroundColor(.white)
                             .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
@@ -435,7 +435,7 @@ struct ARPerimeterView: View {
         return Button {
             viewModel.undoLastVertex()
         } label: {
-            Image("ops.undo")
+            Image(OPSStyle.Icons.undo)
                 .font(.system(size: 18, weight: .medium))
                 .foregroundColor(.white)
                 .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
@@ -473,7 +473,7 @@ struct ARPerimeterView: View {
                 viewModel.popoverVertexIndex = nil
             } label: {
                 HStack {
-                    Image("ops.delete")
+                    Image(OPSStyle.Icons.delete)
                     Text("Delete")
                 }
                 .font(.system(size: 16, weight: .medium))

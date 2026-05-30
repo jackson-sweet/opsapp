@@ -295,13 +295,13 @@ struct InfoCard: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 8) {
-                Label("Development Mode Active", image: "ops.nav-set-developer")
+                Label("Development Mode Active", image: OPSStyle.Icons.navSetDeveloper)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.successStatus)
                 
                 HStack(spacing: 16) {
                     if let user = dataController.currentUser {
-                        Label(user.fullName, image: "ops.client")
+                        Label(user.fullName, image: OPSStyle.Icons.client)
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }

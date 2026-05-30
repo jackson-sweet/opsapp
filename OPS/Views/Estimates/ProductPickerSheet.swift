@@ -41,7 +41,7 @@ struct ProductPickerSheet: View {
         NavigationStack {
             VStack(spacing: 0) {
                 HStack {
-                    Image("ops.search")
+                    Image(OPSStyle.Icons.search)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     TextField("Search products...", text: $searchText)
                         .font(OPSStyle.Typography.body)

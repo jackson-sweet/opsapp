@@ -108,7 +108,7 @@ struct PhotoGalleryViewer: View {
     private var topBar: some View {
         HStack {
             Button(action: onDismiss) {
-                Image("ops.close")
+                Image(OPSStyle.Icons.close)
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -192,7 +192,7 @@ struct PhotoGalleryViewer: View {
             // Share row
             Button(action: shareCurrentPhoto) {
                 HStack(spacing: OPSStyle.Layout.spacing2_5) {
-                    Image("ops.share")
+                    Image(OPSStyle.Icons.share)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(isLocal ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                         .frame(width: 20, alignment: .center)
@@ -313,7 +313,7 @@ struct GalleryZoomablePhotoView: View {
             } else if !isOnDevice {
                 // Remote photo — download prompt
                 VStack(spacing: OPSStyle.Layout.spacing3) {
-                    Image("ops.download")
+                    Image(OPSStyle.Icons.download)
                         .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -336,7 +336,7 @@ struct GalleryZoomablePhotoView: View {
                 ProgressView()
                     .tint(OPSStyle.Colors.secondaryText)
             } else {
-                Image("ops.photo")
+                Image(OPSStyle.Icons.photo)
                     .font(.system(size: OPSStyle.Layout.IconSize.xl))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

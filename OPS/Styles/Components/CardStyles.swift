@@ -201,7 +201,7 @@ struct CardStyles_Previews: PreviewProvider {
                 HStack(spacing: 16) {
                     OPSAccentCard(accentColor: OPSStyle.Colors.olive) {
                         VStack {
-                            Image("ops.success")
+                            Image(OPSStyle.Icons.checkmarkCircleFill)
                                 .foregroundColor(OPSStyle.Colors.olive)
                             Text("Complete")
                                 .font(OPSStyle.Typography.bodyBold)
@@ -210,7 +210,7 @@ struct CardStyles_Previews: PreviewProvider {
                     }
                     OPSAccentCard(accentColor: OPSStyle.Colors.rose) {
                         VStack {
-                            Image("ops.error")
+                            Image(OPSStyle.Icons.exclamationmarkCircleFill)
                                 .foregroundColor(OPSStyle.Colors.rose)
                             Text("Error")
                                 .font(OPSStyle.Typography.bodyBold)

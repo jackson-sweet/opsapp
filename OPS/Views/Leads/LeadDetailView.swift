@@ -186,7 +186,7 @@ private struct DetailNavBar: View {
         HStack {
             Button(action: onBack) {
                 HStack(spacing: 6) {
-                    Image("ops.chevron-left")
+                    Image(OPSStyle.Icons.chevronLeft)
                         .font(.system(size: 16, weight: .regular))
                     Text("LEADS")
                         .font(.custom("JetBrainsMono-Regular", size: 10))

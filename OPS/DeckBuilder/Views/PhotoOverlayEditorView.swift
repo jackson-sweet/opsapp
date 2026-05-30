@@ -126,7 +126,7 @@ struct PhotoOverlayEditorView: View {
         .overlay(alignment: .bottom) {
             if let error = saveError {
                 HStack(spacing: 10) {
-                    Image("ops.warning")
+                    Image(OPSStyle.Icons.alert)
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.errorStatus)
 
@@ -161,7 +161,7 @@ struct PhotoOverlayEditorView: View {
             Button {
                 onDismiss()
             } label: {
-                Image("ops.close")
+                Image(OPSStyle.Icons.close)
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(.white)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -179,7 +179,7 @@ struct PhotoOverlayEditorView: View {
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                 } else {
                     HStack(spacing: 6) {
-                        Image("ops.download")
+                        Image(OPSStyle.Icons.download)
                             .font(.system(size: 16, weight: .medium))
                         Text("Save")
                             .font(OPSStyle.Typography.bodyBold)
@@ -196,7 +196,7 @@ struct PhotoOverlayEditorView: View {
                 Task { await shareComposite() }
             } label: {
                 HStack(spacing: 6) {
-                    Image("ops.share")
+                    Image(OPSStyle.Icons.share)
                         .font(.system(size: 16, weight: .medium))
                     Text("Share")
                         .font(OPSStyle.Typography.bodyBold)

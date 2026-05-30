@@ -162,7 +162,7 @@ struct ARAgingDetailView: View {
 
     private func errorView(_ msg: String) -> some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
-            Image("ops.warning")
+            Image(OPSStyle.Icons.alert)
                 .font(.system(size: OPSStyle.Layout.IconSize.xl))
                 .foregroundColor(OPSStyle.Colors.warningStatus)
             Text("COULD NOT LOAD AR DATA")

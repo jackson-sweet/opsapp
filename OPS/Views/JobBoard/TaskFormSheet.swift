@@ -1008,7 +1008,7 @@ struct TaskFormSheet: View {
                                 projectSearchText = ""
                             }
                         }) {
-                            Image("ops.close")
+                            Image(OPSStyle.Icons.close)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
                     }
@@ -1120,7 +1120,7 @@ struct TaskFormSheet: View {
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                     Spacer()
                                     if selectedTaskTypeId == taskType.id {
-                                        Image("ops.checkmark")
+                                        Image(OPSStyle.Icons.checkmark)
                                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     }
@@ -1172,7 +1172,7 @@ struct TaskFormSheet: View {
                         HStack {
                             Text(status.displayName)
                             if selectedStatus == status {
-                                Image("ops.checkmark")
+                                Image(OPSStyle.Icons.checkmark)
                             }
                         }
                     }
@@ -1185,7 +1185,7 @@ struct TaskFormSheet: View {
 
                     Spacer()
 
-                    Image("ops.chevron-down")
+                    Image(OPSStyle.Icons.chevronDown)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
@@ -1240,7 +1240,7 @@ struct TaskFormSheet: View {
 
                 Spacer()
 
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
@@ -1273,7 +1273,7 @@ struct TaskFormSheet: View {
                         autoScheduleTask()
                     }) {
                         HStack(spacing: 4) {
-                            Image("ops.magic-generate")
+                            Image(OPSStyle.Icons.magicGenerate)
                             Text("AUTO")
                         }
                         .font(OPSStyle.Typography.smallCaption)
@@ -1301,7 +1301,7 @@ struct TaskFormSheet: View {
                     }
                 }) {
                     HStack {
-                        Image("ops.date")
+                        Image(OPSStyle.Icons.calendar)
                             .foregroundColor(OPSStyle.Colors.primaryText)
 
                         if let startDate = startDate, let endDate = endDate {
@@ -1321,7 +1321,7 @@ struct TaskFormSheet: View {
 
                         Spacer()
 
-                        Image("ops.chevron-right")
+                        Image(OPSStyle.Icons.chevronRight)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -1345,7 +1345,7 @@ struct TaskFormSheet: View {
         if let taskType = selectedTaskType, !taskType.dependencies.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Image("ops.dependency")
+                    Image(OPSStyle.Icons.dependency)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                     Text("DEPENDENCIES")
                         .font(OPSStyle.Typography.captionBold)

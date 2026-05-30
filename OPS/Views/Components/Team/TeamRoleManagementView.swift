@@ -20,7 +20,7 @@ struct TeamRoleManagementView: View {
         }) {
             HStack(spacing: 12) {
                 // NOTE: person.2.badge.gearshape does not have a semantic icon - using legacy
-                Image("ops.crew")
+                Image(OPSStyle.Icons.crew)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(width: 32)

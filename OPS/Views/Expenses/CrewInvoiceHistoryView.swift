@@ -47,7 +47,7 @@ struct CrewInvoiceHistoryView: View {
             if crewBatches.isEmpty {
                 VStack(spacing: OPSStyle.Layout.spacing3) {
                     Spacer().frame(height: OPSStyle.Layout.spacing5 * 2.5)
-                    Image("ops.document")
+                    Image(OPSStyle.Icons.documents)
                         .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Text("NO INVOICES YET")
@@ -95,7 +95,7 @@ struct CrewInvoiceHistoryView: View {
 
                 statusPill(batch.status)
 
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -124,7 +124,7 @@ struct CrewInvoiceHistoryView: View {
                     }
                 } label: {
                     HStack(spacing: OPSStyle.Layout.spacing1) {
-                        Image("ops.chevron-left")
+                        Image(OPSStyle.Icons.chevronLeft)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text("BACK TO INVOICES")
                             .font(OPSStyle.Typography.captionBold)
@@ -162,7 +162,7 @@ struct CrewInvoiceHistoryView: View {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     // Flag icon
                     if isFlagged {
-                        Image("ops.flagged")
+                        Image(OPSStyle.Icons.flagged)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.warningStatus)
                     }
@@ -181,7 +181,7 @@ struct CrewInvoiceHistoryView: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
 
                     // Rotating chevron
-                    Image("ops.chevron-right")
+                    Image(OPSStyle.Icons.chevronRight)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))

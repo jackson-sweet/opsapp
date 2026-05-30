@@ -633,7 +633,7 @@ struct NotificationSettingsView: View {
                                         updateQuietHours(startHour: hour, endHour: quietHoursEndInt)
                                     } label: {
                                         if quietHoursStartInt == hour {
-                                            Label(formatHour(hour), image: "ops.checkmark")
+                                            Label(formatHour(hour), image: OPSStyle.Icons.checkmark)
                                         } else {
                                             Text(formatHour(hour))
                                         }
@@ -644,7 +644,7 @@ struct NotificationSettingsView: View {
                                     Text(formatHour(quietHoursStartInt))
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
-                                    Image("ops.chevron-down")
+                                    Image(OPSStyle.Icons.chevronDown)
                                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 }
@@ -667,7 +667,7 @@ struct NotificationSettingsView: View {
                                         updateQuietHours(startHour: quietHoursStartInt, endHour: hour)
                                     } label: {
                                         if quietHoursEndInt == hour {
-                                            Label(formatHour(hour), image: "ops.checkmark")
+                                            Label(formatHour(hour), image: OPSStyle.Icons.checkmark)
                                         } else {
                                             Text(formatHour(hour))
                                         }
@@ -678,7 +678,7 @@ struct NotificationSettingsView: View {
                                     Text(formatHour(quietHoursEndInt))
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
-                                    Image("ops.chevron-down")
+                                    Image(OPSStyle.Icons.chevronDown)
                                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 }
@@ -872,7 +872,7 @@ struct NotificationSettingsView: View {
                 sendTestNotification()
             } label: {
                 HStack {
-                    Image("ops.notification-bell")
+                    Image(OPSStyle.Icons.bell)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
 
                     Text("SEND TEST NOTIFICATION")
@@ -953,7 +953,7 @@ struct NotificationSettingsView: View {
                     if muteUntil > Date().timeIntervalSince1970 {
                         let endDate = Date(timeIntervalSince1970: muteUntil)
                         HStack {
-                            Image("ops.notification-muted")
+                            Image(OPSStyle.Icons.notificationMuted)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
 
@@ -1029,7 +1029,7 @@ struct DaySelector: View {
                     value = 0
                 } label: {
                     if value == 0 {
-                        Label("None", image: "ops.checkmark")
+                        Label("None", image: OPSStyle.Icons.checkmark)
                     } else {
                         Text("None")
                     }

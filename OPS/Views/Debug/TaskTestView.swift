@@ -35,27 +35,27 @@ struct TaskTestView: View {
     private var testActionsSection: some View {
         VStack(spacing: 12) {
             Button(action: createTestData) {
-                Label("Create Test Data", image: "ops.add-circle")
+                Label("Create Test Data", image: OPSStyle.Icons.add)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
 
             Button(action: testTaskStatusPropagation) {
-                Label("Test Status Propagation", image: "ops.refresh")
+                Label("Test Status Propagation", image: OPSStyle.Icons.arrowClockwise)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
             .disabled(testProject == nil)
 
             Button(action: testTaskDateAssignment) {
-                Label("Assign Task Dates", image: "ops.date")
+                Label("Assign Task Dates", image: OPSStyle.Icons.calendar)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
             .disabled(testTasks.isEmpty)
 
             Button(action: cleanupTestData) {
-                Label("Cleanup Test Data", image: "ops.delete")
+                Label("Cleanup Test Data", image: OPSStyle.Icons.delete)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
@@ -71,14 +71,14 @@ struct TaskTestView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
            
             Button(action: testTaskTypeSync) {
-                Label("Test TaskType Sync", image: "ops.refresh")
+                Label("Test TaskType Sync", image: OPSStyle.Icons.arrowClockwise)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .disabled(isSyncing)
 
             Button(action: testTaskSync) {
-                Label("Test Task Sync", image: "ops.refresh")
+                Label("Test Task Sync", image: OPSStyle.Icons.arrowClockwise)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)

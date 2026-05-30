@@ -264,7 +264,7 @@ struct InventoryFormSheet: View {
             showingImportFromForm = true
         }) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image("ops.download")
+                Image(OPSStyle.Icons.download)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 Text("IMPORT FROM SPREADSHEET")
                     .font(OPSStyle.Typography.captionBold)
@@ -454,7 +454,7 @@ struct InventoryFormSheet: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }) {
             HStack(spacing: 4) {
-                Image("ops.add")
+                Image(OPSStyle.Icons.plus)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                 Text(tag)
                     .font(OPSStyle.Typography.caption)
@@ -547,12 +547,12 @@ struct InventoryFormSheet: View {
                         .foregroundColor(valueBinding.wrappedValue.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
 
                     HStack(spacing: OPSStyle.Layout.spacing1) {
-                        Image("ops.arrow-left")
+                        Image(OPSStyle.Icons.arrowLeft)
                             .font(.system(size: 10))
                         Text("SWIPE TO ADJUST")
                             .font(OPSStyle.Typography.smallCaption)
                             .tracking(0.5)
-                        Image("ops.arrow-right")
+                        Image(OPSStyle.Icons.arrowRight)
                             .font(.system(size: 10))
                     }
                     .foregroundColor(OPSStyle.Colors.tertiaryText)

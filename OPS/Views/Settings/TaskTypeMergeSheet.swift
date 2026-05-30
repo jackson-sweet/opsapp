@@ -269,7 +269,7 @@ struct TaskTypeMergeSheet: View {
 
     private var emptyState: some View {
         VStack(spacing: 14) {
-            Image("ops.database")
+            Image(OPSStyle.Icons.database)
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Text("NO OTHER TASK TYPES")

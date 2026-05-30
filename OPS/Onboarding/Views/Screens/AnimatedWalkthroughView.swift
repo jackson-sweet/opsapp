@@ -83,7 +83,7 @@ struct AnimatedWalkthroughView: View {
 
                         Spacer()
 
-                        Image("ops.arrow-right")
+                        Image(OPSStyle.Icons.arrowRight)
                             .foregroundColor(OPSStyle.Colors.invertedText)
                             .font(OPSStyle.Typography.caption.weight(.semibold))
                     }

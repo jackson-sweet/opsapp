@@ -36,7 +36,7 @@ struct UnitPickerField: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
                     if selectedUnitId == unit.id {
-                        Label(unit.display, image: "ops.checkmark")
+                        Label(unit.display, image: OPSStyle.Icons.checkmark)
                     } else {
                         Text(unit.display)
                     }
@@ -48,7 +48,7 @@ struct UnitPickerField: View {
                     onCreateRequested()
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
-                    Label("New unit…", image: "ops.add")
+                    Label("New unit…", image: OPSStyle.Icons.plus)
                 }
             }
         } label: {
@@ -71,7 +71,7 @@ struct UnitPickerField: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .lineLimit(1)
             Spacer()
-            Image("ops.chevron-down")
+            Image(OPSStyle.Icons.chevronDown)
                 .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }

@@ -753,6 +753,95 @@ enum OPSStyle {
         static let receipt          = "ops.invoice"
         static let clockFill        = "ops.duration"
         static let exclamationmarkCircleFill = "ops.error"
+
+        // MARK: - Carbon literals (tokenization sweep, May 2026)
+        // Slugs previously hardcoded as Image("ops.<slug>") string literals across the
+        // codebase, now routed through OPSStyle.Icons. One token per Carbon asset, with
+        // existing semantic aliases above kept for backwards compatibility.
+
+        // Wayfinding atoms — arrows, chevrons, expand/collapse
+        static let arrowLeft        = "ops.arrow-left"
+        static let arrowRight       = "ops.arrow-right"
+        static let arrowUp          = "ops.arrow-up"
+        static let arrowUpRight     = "ops.arrow-up-right"
+        static let collapse         = "ops.collapse"
+        static let expand           = "ops.expand"
+        static let externalLink     = "ops.external-link"
+        static let link             = "ops.link"
+        static let pin              = "ops.pin"
+        static let signOut          = "ops.sign-out"
+
+        // Editing / transforms
+        static let adjust           = "ops.adjust"
+        static let columns          = "ops.columns"
+        static let lasso            = "ops.lasso"
+        static let measure          = "ops.measure"
+        static let redo             = "ops.redo"
+        static let zoomIn           = "ops.zoom-in"
+
+        // Field tools — capture, scan, measurement
+        static let arScan           = "ops.ar-scan"
+        static let laserMeter       = "ops.laser-meter"
+        static let model3d          = "ops.model-3d"
+        static let scan             = "ops.scan"
+        static let voiceInput       = "ops.voice-input"
+
+        // Content actions
+        static let download         = "ops.download"
+        static let favorite         = "ops.favorite"
+        static let flagged          = "ops.flagged"
+        static let loading          = "ops.loading"
+        static let locked           = "ops.locked"
+        static let magicGenerate    = "ops.magic-generate"
+        static let order            = "ops.order"
+        static let upload           = "ops.upload"
+        static let viewGrid         = "ops.view-grid"
+
+        // Domain entities — people, products, structure
+        static let certification    = "ops.certification"
+        static let company          = "ops.company"
+        static let contact          = "ops.contact"
+        static let dependency       = "ops.dependency"
+        static let inventoryItem    = "ops.inventory-item"
+        static let lineItem         = "ops.line-item"
+        static let productFamily    = "ops.product-family"
+        static let removeMember     = "ops.remove-member"
+        static let role             = "ops.role"
+        static let tradeGeneral     = "ops.trade-general"
+
+        // Lead temperature
+        static let cold             = "ops.cold"
+        static let hot              = "ops.hot"
+
+        // Communications
+        static let message          = "ops.message"
+        static let notificationMuted = "ops.notification-muted"
+
+        // Calendar / scheduling
+        static let newEvent         = "ops.new-event"
+
+        // Expenses
+        static let expenseVehicle   = "ops.expense-vehicle"
+
+        // System status
+        static let database         = "ops.database"
+        static let offline          = "ops.offline"
+        static let online           = "ops.online"
+        static let shield           = "ops.shield"
+        static let shieldVerified   = "ops.shield-verified"
+
+        // Guidance / help
+        static let ai               = "ops.ai"
+        static let help             = "ops.help"
+        static let learning         = "ops.learning"
+        static let tip              = "ops.tip"
+
+        // Settings navigation
+        static let navJobs          = "ops.nav-jobs"
+        static let navSetAudit      = "ops.nav-set-audit"
+        static let navSetBilling    = "ops.nav-set-billing"
+        static let navSetDeveloper  = "ops.nav-set-developer"
+        static let navSetSecurity   = "ops.nav-set-security"
     }
 
     // MARK: - Wizard

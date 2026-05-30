@@ -366,7 +366,7 @@ struct OrdersSheet: View {
                     }
                 }
                 Spacer()
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

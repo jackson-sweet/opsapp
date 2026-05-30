@@ -117,7 +117,7 @@ struct StockItemPicker: View {
 
     private var searchField: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            Image("ops.search")
+            Image(OPSStyle.Icons.search)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             TextField("Search stock items", text: $searchQuery)
@@ -129,7 +129,7 @@ struct StockItemPicker: View {
                     searchQuery = ""
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
-                    Image("ops.close")
+                    Image(OPSStyle.Icons.close)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 }
@@ -156,7 +156,7 @@ struct StockItemPicker: View {
                     ProgressView()
                         .tint(OPSStyle.Colors.primaryAccent)
                 } else {
-                    Image("ops.add-circle")
+                    Image(OPSStyle.Icons.add)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
@@ -194,7 +194,7 @@ struct StockItemPicker: View {
             dismiss()
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image("ops.inventory-item")
+                Image(OPSStyle.Icons.inventoryItem)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Text(family.name)
@@ -203,7 +203,7 @@ struct StockItemPicker: View {
                     .lineLimit(1)
                 Spacer()
                 if isSelected {
-                    Image("ops.checkmark")
+                    Image(OPSStyle.Icons.checkmark)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }

@@ -255,7 +255,7 @@ struct TutorialFlowViewV2: View {
                                 .lineLimit(1)
 
                             HStack(spacing: 6) {
-                                Image("ops.project")
+                                Image(OPSStyle.Icons.project)
                                     .font(.system(size: 11))
                                 Text("PARKSIDE DUPLEX")
                                     .font(.caption)
@@ -263,7 +263,7 @@ struct TutorialFlowViewV2: View {
                             .foregroundStyle(Color.white.opacity(0.2))
 
                             HStack(spacing: 6) {
-                                Image("ops.team-member")
+                                Image(OPSStyle.Icons.teamMember)
                                     .font(.system(size: 11))
                                 Text("METRO PROPERTY MGMT")
                                     .font(.smallCaption)
@@ -808,7 +808,7 @@ struct TutorialFlowViewV2: View {
 
     private var leadSourceRow: some View {
         HStack(spacing: 6) {
-            Image("ops.email")
+            Image(OPSStyle.Icons.envelope)
                 .font(.system(size: 11))
             Text("GMAIL")
                 .font(.microLabel)
@@ -937,7 +937,7 @@ struct TutorialFlowViewV2: View {
 
     private var approvalBanner: some View {
         HStack(spacing: 12) {
-            Image("ops.success")
+            Image(OPSStyle.Icons.checkmarkCircleFill)
                 .font(.system(size: 22))
                 .foregroundStyle(OPSStyle.Colors.successStatus)
 
@@ -1008,7 +1008,7 @@ struct TutorialFlowViewV2: View {
                 .fill(color.opacity(0.2))
                 .frame(width: 24, height: 24)
                 .overlay(
-                    Image("ops.client")
+                    Image(OPSStyle.Icons.client)
                         .font(.system(size: 11))
                         .foregroundStyle(color)
                 )
@@ -1102,7 +1102,7 @@ struct TutorialFlowViewV2: View {
 
             if projectAssembling {
                 if s == 2 {
-                    Image("ops.checkmark")
+                    Image(OPSStyle.Icons.checkmark)
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(OPSStyle.Colors.successStatus)
                         .frame(width: 14)
@@ -1135,7 +1135,7 @@ struct TutorialFlowViewV2: View {
             Spacer()
 
             if !projectAssembling && s == 2 {
-                Image("ops.success")
+                Image(OPSStyle.Icons.checkmarkCircleFill)
                     .font(.system(size: 18))
                     .foregroundStyle(OPSStyle.Colors.successStatus)
                     .transition(.scale.combined(with: .opacity))
@@ -1224,7 +1224,7 @@ struct TutorialFlowViewV2: View {
                 HStack(spacing: 0) {
                     // Left hint — animated arrow pulses left
                     HStack(spacing: 6) {
-                        Image("ops.arrow-left")
+                        Image(OPSStyle.Icons.arrowLeft)
                             .font(.system(size: 11, weight: .medium))
                             .symbolEffect(.pulse, options: .repeating.speed(0.5))
                         Text("SKIP")
@@ -1247,7 +1247,7 @@ struct TutorialFlowViewV2: View {
                         Text("COMPLETE")
                             .font(.smallCaption)
                             .tracking(1.2)
-                        Image("ops.arrow-right")
+                        Image(OPSStyle.Icons.arrowRight)
                             .font(.system(size: 11, weight: .medium))
                             .symbolEffect(.pulse, options: .repeating.speed(0.5))
                     }
@@ -1313,7 +1313,7 @@ struct TutorialFlowViewV2: View {
         return VStack(alignment: .leading, spacing: 0) {
             // Header — project incomplete
             HStack(spacing: 10) {
-                Image("ops.warning")
+                Image(OPSStyle.Icons.alert)
                     .font(.system(size: 18))
                     .foregroundStyle(OPSStyle.Colors.warningStatus)
 
@@ -1366,7 +1366,7 @@ struct TutorialFlowViewV2: View {
                 VStack(spacing: 8) {
                     Button { handleLeftSwipeAction("push") } label: {
                         HStack(spacing: 10) {
-                            Image("ops.arrow-right")
+                            Image(OPSStyle.Icons.arrowRight)
                                 .font(.system(size: 14))
                             Text("PUSH FINISH DATE")
                                 .font(.button)
@@ -1389,7 +1389,7 @@ struct TutorialFlowViewV2: View {
 
                     Button { handleLeftSwipeAction("reschedule") } label: {
                         HStack(spacing: 10) {
-                            Image("ops.schedule-confirmed")
+                            Image(OPSStyle.Icons.calendarBadgeCheckmark)
                                 .font(.system(size: 14))
                             Text("RESCHEDULE")
                                 .font(.button)
@@ -1452,7 +1452,7 @@ struct TutorialFlowViewV2: View {
                 .stroke(OPSStyle.Colors.successStatus.opacity(0.2), lineWidth: 1.5)
                 .frame(width: 64, height: 64)
                 .overlay(
-                    Image("ops.checkmark")
+                    Image(OPSStyle.Icons.checkmark)
                         .font(.system(size: 22, weight: .medium))
                         .foregroundStyle(OPSStyle.Colors.successStatus)
                 )
@@ -1521,7 +1521,7 @@ struct TutorialFlowViewV2: View {
 
                     if showPaidBanner {
                         HStack(spacing: 6) {
-                            Image("ops.success")
+                            Image(OPSStyle.Icons.checkmarkCircleFill)
                                 .font(.system(size: 14))
                             Text("PAID")
                                 .font(.status)
@@ -1533,7 +1533,7 @@ struct TutorialFlowViewV2: View {
 
                     if showSentIndicator && !showPaidBanner {
                         HStack(spacing: 6) {
-                            Image("ops.send")
+                            Image(OPSStyle.Icons.sendFill)
                                 .font(.system(size: 12))
                             Text("SENT")
                                 .font(.microLabel)
@@ -1553,7 +1553,7 @@ struct TutorialFlowViewV2: View {
                     ForEach(Array(project.tasks.enumerated()), id: \.offset) { _, task in
                         let isSwipedTask = task.name == project.swipedTaskName
                         HStack(spacing: 8) {
-                            Image("ops.checkmark")
+                            Image(OPSStyle.Icons.checkmark)
                                 .font(.system(size: 10, weight: .medium))
                                 .foregroundStyle(OPSStyle.Colors.successStatus)
                                 .frame(width: 14)
@@ -1610,7 +1610,7 @@ struct TutorialFlowViewV2: View {
                     ForEach(0..<min(closeoutTasksReturned, project.tasks.count), id: \.self) { i in
                         let task = project.tasks[i]
                         HStack(spacing: 8) {
-                            Image("ops.checkmark")
+                            Image(OPSStyle.Icons.checkmark)
                                 .font(.system(size: 10, weight: .medium))
                                 .foregroundStyle(OPSStyle.Colors.successStatus)
                                 .frame(width: 14)
@@ -3061,7 +3061,7 @@ private struct CloseoutStackCard: View {
 
             if committed {
                 HStack(spacing: 6) {
-                    Image("ops.success")
+                    Image(OPSStyle.Icons.checkmarkCircleFill)
                         .font(.system(size: 14))
                     Text("CLOSED")
                         .font(.status)
@@ -3071,7 +3071,7 @@ private struct CloseoutStackCard: View {
                 .transition(.opacity)
             } else {
                 HStack(spacing: 6) {
-                    Image("ops.success")
+                    Image(OPSStyle.Icons.checkmarkCircleFill)
                         .font(.system(size: 14))
                     Text("PAID")
                         .font(.status)
@@ -3142,7 +3142,7 @@ private struct CloseoutSwipeHint: View {
                 .font(.custom("Mohave-Medium", size: 12))
                 .tracking(2)
 
-            Image("ops.chevron-right")
+            Image(OPSStyle.Icons.chevronRight)
                 .font(.system(size: 9, weight: .semibold))
         }
         .foregroundStyle(Color.white.opacity(glowActive ? 0.6 : 0.2))
@@ -3370,7 +3370,7 @@ private struct FlowCalendarWeekV2: View {
                         .fill(crew.color.opacity(0.3))
                         .frame(width: 16, height: 16)
                         .overlay(
-                            Image("ops.client")
+                            Image(OPSStyle.Icons.client)
                                 .font(.system(size: 7))
                                 .foregroundStyle(crew.color)
                         )
@@ -3380,7 +3380,7 @@ private struct FlowCalendarWeekV2: View {
                         .foregroundStyle(OPSStyle.Colors.successStatus)
                         .tracking(0.5)
 
-                    Image("ops.checkmark")
+                    Image(OPSStyle.Icons.checkmark)
                         .font(.system(size: 7, weight: .bold))
                         .foregroundStyle(OPSStyle.Colors.successStatus)
                 }
@@ -3467,7 +3467,7 @@ private struct FlowCalendarWeekV2: View {
                     .lineLimit(2)
 
                 HStack(spacing: 6) {
-                    Image("ops.project")
+                    Image(OPSStyle.Icons.project)
                         .font(.system(size: 11))
                     Text(card.project.uppercased())
                         .font(.caption)
@@ -3475,7 +3475,7 @@ private struct FlowCalendarWeekV2: View {
                 .foregroundStyle(.white.opacity(0.7))
 
                 HStack(spacing: 6) {
-                    Image("ops.team-member")
+                    Image(OPSStyle.Icons.teamMember)
                         .font(.system(size: 11))
                     Text(card.client.uppercased())
                         .font(.smallCaption)
@@ -3567,7 +3567,7 @@ private struct FlowReviewCardV2: View {
                     .lineLimit(2)
 
                 HStack(spacing: 6) {
-                    Image("ops.project")
+                    Image(OPSStyle.Icons.project)
                         .font(.system(size: 11))
                     Text(card.project.uppercased())
                         .font(.caption)
@@ -3575,7 +3575,7 @@ private struct FlowReviewCardV2: View {
                 .foregroundStyle(.white.opacity(0.7))
 
                 HStack(spacing: 6) {
-                    Image("ops.team-member")
+                    Image(OPSStyle.Icons.teamMember)
                         .font(.system(size: 11))
                     Text(card.client.uppercased())
                         .font(.smallCaption)

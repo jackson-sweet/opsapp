@@ -490,7 +490,7 @@ struct HomeContentView: View {
                     // Message card
                     VStack(spacing: 16) {
                         // Icon
-                        Image("ops.job-site")
+                        Image(OPSStyle.Icons.jobSite)
                             .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                         
@@ -514,7 +514,7 @@ struct HomeContentView: View {
                             }
                         }) {
                             HStack {
-                                Image("ops.nav-settings")
+                                Image(OPSStyle.Icons.gearshape)
                                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                                 
                                 Text("OPEN SETTINGS")

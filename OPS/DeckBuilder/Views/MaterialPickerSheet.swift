@@ -147,7 +147,7 @@ struct MaterialPickerSheet: View {
                     // nor area standards apply). Practically rare.
                     if filteredProducts.isEmpty && builtInDefaults.isEmpty {
                         VStack(spacing: OPSStyle.Layout.spacing2) {
-                            Image("ops.inventory-item")
+                            Image(OPSStyle.Icons.inventoryItem)
                                 .font(.system(size: 32))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text(isLinearMode ? "No linear materials" : "No surface materials")
@@ -178,7 +178,7 @@ struct MaterialPickerSheet: View {
                         Button {
                             showingHint = true
                         } label: {
-                            Image("ops.help")
+                            Image(OPSStyle.Icons.help)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                         .accessibilityLabel("Where do these materials come from?")
@@ -266,7 +266,7 @@ struct MaterialPickerSheet: View {
 
                 Spacer()
 
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -331,7 +331,7 @@ struct MaterialPickerSheet: View {
 
                 Spacer()
 
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

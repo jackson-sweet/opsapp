@@ -43,7 +43,7 @@ struct StockAlertsSection: View {
 
     private var sectionHeader: some View {
         HStack(spacing: 6) {
-            Image("ops.warning")
+            Image(OPSStyle.Icons.alert)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 

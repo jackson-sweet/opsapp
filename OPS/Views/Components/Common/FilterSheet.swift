@@ -190,7 +190,7 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
                     // Show sort if not default
                     if sortOptions != nil, let selectedSort = selectedSort, let getSortDisplay = getSortDisplay {
                         HStack {
-                            Image("ops.sort")
+                            Image(OPSStyle.Icons.sort)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 

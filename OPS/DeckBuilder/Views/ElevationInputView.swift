@@ -147,7 +147,7 @@ struct ElevationInputView: View {
                 showingARHeight = true
             } label: {
                 HStack {
-                    Image("ops.scan")
+                    Image(OPSStyle.Icons.scan)
                     Text("Measure with AR")
                 }
                 .font(OPSStyle.Typography.button)
@@ -207,7 +207,7 @@ struct ElevationInputView: View {
                 showingARHeight = true
             } label: {
                 HStack {
-                    Image("ops.scan")
+                    Image(OPSStyle.Icons.scan)
                     Text("Record with AR")
                 }
                 .font(OPSStyle.Typography.button)
@@ -270,7 +270,7 @@ struct ElevationInputView: View {
                         arHeightTargetVertexId = vertex.id
                         showingARHeight = true
                     } label: {
-                        Image("ops.scan")
+                        Image(OPSStyle.Icons.scan)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                 }

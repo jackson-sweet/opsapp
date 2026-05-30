@@ -148,7 +148,7 @@ struct InventoryInsightsView: View {
     private var thresholdSetupCTA: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
-                Image("ops.warning")
+                Image(OPSStyle.Icons.alert)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Text("STOCK ALERTS")
@@ -157,7 +157,7 @@ struct InventoryInsightsView: View {
             }
 
             VStack(spacing: 16) {
-                Image("ops.notification-bell")
+                Image(OPSStyle.Icons.bell)
                     .font(.system(size: 28))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 

@@ -184,7 +184,7 @@ struct IntegrationsSettingsView: View {
             VStack(spacing: 24) {
                 Spacer()
 
-                Image("ops.link")
+                Image(OPSStyle.Icons.link)
                     .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 

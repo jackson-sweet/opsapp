@@ -120,7 +120,7 @@ struct NavigationManeuverCard: View {
     private var destinationRow: some View {
         Button(action: toggleExpanded) {
             HStack(spacing: 8) {
-                Image("ops.address")
+                Image(OPSStyle.Icons.address)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(Color.white.opacity(0.55))
 
@@ -133,7 +133,7 @@ struct NavigationManeuverCard: View {
 
                 Spacer(minLength: 8)
 
-                Image("ops.chevron-down")
+                Image(OPSStyle.Icons.chevronDown)
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(Color.white.opacity(0.7))
                     .rotationEffect(.degrees(isExpanded ? 180 : 0))
@@ -239,7 +239,7 @@ struct NavigationManeuverCard: View {
 
     private var arrivedBanner: some View {
         HStack(spacing: 10) {
-            Image("ops.site-visit")
+            Image(OPSStyle.Icons.siteVisitPin)
                 .font(.system(size: 24, weight: .medium))
                 .foregroundColor(OPSStyle.Colors.successStatus)
 

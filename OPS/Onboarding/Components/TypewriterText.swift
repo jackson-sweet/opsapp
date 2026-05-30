@@ -476,7 +476,7 @@ struct PhasedPrimaryButton: View {
                         Spacer()
 
                         // Arrow icon
-                        Image("ops.arrow-right")
+                        Image(OPSStyle.Icons.arrowRight)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.invertedText)
                             .opacity(iconVisible ? 1 : 0)

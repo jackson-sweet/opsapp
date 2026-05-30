@@ -70,7 +70,7 @@ struct CrewExecutesStep: View {
                     Spacer()
 
                     if statuses[index] == .complete {
-                        Image("ops.success")
+                        Image(OPSStyle.Icons.checkmarkCircleFill)
                             .font(.system(size: 18))
                             .foregroundStyle(OPSStyle.Colors.successStatus)
                             .transition(.scale.combined(with: .opacity))

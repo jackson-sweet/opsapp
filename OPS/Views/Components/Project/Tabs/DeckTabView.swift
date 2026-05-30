@@ -260,7 +260,7 @@ struct DeckTabView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 12) {
-                    Image("ops.model-3d")
+                    Image(OPSStyle.Icons.model3d)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.wizardAccent)
 
@@ -288,7 +288,7 @@ struct DeckTabView: View {
 
                             Spacer()
 
-                            Image("ops.arrow-right")
+                            Image(OPSStyle.Icons.arrowRight)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                                 .foregroundColor(OPSStyle.Colors.buttonText)
                         }

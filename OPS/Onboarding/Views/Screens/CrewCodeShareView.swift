@@ -105,7 +105,7 @@ struct CrewCodeShareView: View {
                             showInviteSheet = true
                         } label: {
                             HStack(spacing: 8) {
-                                Image("ops.sub-client")
+                                Image(OPSStyle.Icons.subClient)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                                 Text("INVITE CREW")
                                     .font(OPSStyle.Typography.bodyBold)
@@ -144,7 +144,7 @@ struct CrewCodeShareView: View {
                             .overlay(
                                 HStack {
                                     Spacer()
-                                    Image("ops.arrow-right")
+                                    Image(OPSStyle.Icons.arrowRight)
                                         .foregroundColor(OPSStyle.Colors.invertedText)
                                         .font(OPSStyle.Typography.caption.weight(.semibold))
                                         .padding(.trailing, 20)

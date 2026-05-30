@@ -634,7 +634,7 @@ struct SheetCloseButton: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             action()
         } label: {
-            Image("ops.close")
+            Image(OPSStyle.Icons.close)
                 .font(.system(size: 20, weight: .regular))
                 .foregroundColor(OPSStyle.Colors.text2)
                 .frame(width: 44, height: 44)

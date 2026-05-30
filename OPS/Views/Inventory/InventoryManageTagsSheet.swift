@@ -173,7 +173,7 @@ struct InventoryManageTagsSheet: View {
 
     private var searchField: some View {
         HStack(spacing: 8) {
-            Image("ops.search")
+            Image(OPSStyle.Icons.search)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -183,7 +183,7 @@ struct InventoryManageTagsSheet: View {
 
             if !searchText.isEmpty {
                 Button(action: { searchText = "" }) {
-                    Image("ops.close")
+                    Image(OPSStyle.Icons.close)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }

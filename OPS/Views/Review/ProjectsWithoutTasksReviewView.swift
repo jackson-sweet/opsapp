@@ -151,7 +151,7 @@ struct ProjectsWithoutTasksReviewView: View {
                         .stroke(project.status.color, lineWidth: OPSStyle.Layout.Border.standard)
                 )
                 .overlay(
-                    Image("ops.project")
+                    Image(OPSStyle.Icons.project)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                         .foregroundColor(project.status.color)
                 )
@@ -211,7 +211,7 @@ struct ProjectsWithoutTasksReviewView: View {
     private var emptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
-            Image("ops.deal-won")
+            Image(OPSStyle.Icons.dealWon)
                 .font(OPSStyle.Typography.largeTitle)
                 .foregroundColor(OPSStyle.Colors.successStatus.opacity(0.7))
 

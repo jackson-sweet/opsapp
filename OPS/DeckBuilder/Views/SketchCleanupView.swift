@@ -155,7 +155,7 @@ struct SketchCleanupView: View {
             Button {
                 dismiss()
             } label: {
-                Image("ops.close")
+                Image(OPSStyle.Icons.close)
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(.white)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
@@ -361,7 +361,7 @@ struct SketchCleanupView: View {
                         confirmedDimensionIds.insert(label.textId)
                         rejectedDimensionIds.remove(label.textId)
                     } label: {
-                        Image("ops.success")
+                        Image(OPSStyle.Icons.checkmarkCircleFill)
                             .font(.system(size: 16))
                             .foregroundColor(OPSStyle.Colors.successStatus)
                     }
@@ -376,7 +376,7 @@ struct SketchCleanupView: View {
                     // Remove from associations
                     associations.removeAll { $0.textId == label.textId }
                 } label: {
-                    Image("ops.close")
+                    Image(OPSStyle.Icons.close)
                         .font(.system(size: 16))
                         .foregroundColor(OPSStyle.Colors.errorStatus.opacity(0.8))
                 }
@@ -407,7 +407,7 @@ struct SketchCleanupView: View {
     private var clientBanner: some View {
         if let clientName = scanResult.clientNameCandidate, !clientBannerDismissed {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image("ops.team-member")
+                Image(OPSStyle.Icons.teamMember)
                     .font(.system(size: 16))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
@@ -603,14 +603,14 @@ struct SketchCleanupView: View {
             Text(unitName)
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.successStatus)
-            Image("ops.success")
+            Image(OPSStyle.Icons.checkmarkCircleFill)
                 .font(.system(size: 12))
                 .foregroundColor(OPSStyle.Colors.successStatus)
         } else if activeScaleResult != nil {
             Text("Scale confirmed")
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.successStatus)
-            Image("ops.success")
+            Image(OPSStyle.Icons.checkmarkCircleFill)
                 .font(.system(size: 12))
                 .foregroundColor(OPSStyle.Colors.successStatus)
         } else {

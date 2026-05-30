@@ -180,7 +180,7 @@ struct DeckSettingsSheet: View {
                             viewModel.showingVinylOrderSheet = true
                         }
                     } label: {
-                        Label("ORDER ALL VINYL", image: "ops.inventory-item")
+                        Label("ORDER ALL VINYL", image: OPSStyle.Icons.inventoryItem)
                             .font(OPSStyle.Typography.buttonLabel)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }

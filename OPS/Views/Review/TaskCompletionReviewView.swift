@@ -179,7 +179,7 @@ struct TaskCompletionReviewView: View {
     private var header: some View {
         HStack {
             Button(action: { dismiss() }) {
-                Image("ops.close")
+                Image(OPSStyle.Icons.close)
                     .font(.system(size: 18, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: 44, height: 44)
@@ -256,7 +256,7 @@ struct TaskCompletionReviewView: View {
 
                     Spacer()
 
-                    Image("ops.arrow-right")
+                    Image(OPSStyle.Icons.arrowRight)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 }
                 .foregroundColor(OPSStyle.Colors.invertedText)
@@ -284,7 +284,7 @@ struct TaskCompletionReviewView: View {
                     .frame(width: 140, height: 140)
                     .scaleEffect(celebrationScale)
 
-                Image("ops.success")
+                Image(OPSStyle.Icons.checkmarkCircleFill)
                     .font(.system(size: 64, weight: .light))
                     .foregroundColor(OPSStyle.Colors.successStatus)
                     .scaleEffect(celebrationScale)
@@ -309,7 +309,7 @@ struct TaskCompletionReviewView: View {
 
                     Spacer()
 
-                    Image("ops.arrow-right")
+                    Image(OPSStyle.Icons.arrowRight)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 }
                 .foregroundColor(OPSStyle.Colors.invertedText)

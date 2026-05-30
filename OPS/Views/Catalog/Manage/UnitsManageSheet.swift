@@ -64,7 +64,7 @@ struct UnitsManageSheet: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showAddSheet = true } label: {
-                        Image("ops.add")
+                        Image(OPSStyle.Icons.plus)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                     }
@@ -114,7 +114,7 @@ private struct UnitRow: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             Button { onEdit(unit) } label: {
-                Image("ops.edit")
+                Image(OPSStyle.Icons.edit)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
             }

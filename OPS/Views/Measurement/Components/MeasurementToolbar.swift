@@ -182,7 +182,7 @@ public struct MeasurementToolbar: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             onUndo()
         } label: {
-            Image("ops.undo")
+            Image(OPSStyle.Icons.undo)
                 .font(.system(size: 18, weight: .regular))
                 .foregroundColor(config.canUndo ? OPSStyle.Colors.text : OPSStyle.Colors.textMute)
                 .frame(width: 44, height: 44)
@@ -197,7 +197,7 @@ public struct MeasurementToolbar: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             onRedo()
         } label: {
-            Image("ops.redo")
+            Image(OPSStyle.Icons.redo)
                 .font(.system(size: 18, weight: .regular))
                 .foregroundColor(config.canRedo ? OPSStyle.Colors.text : OPSStyle.Colors.textMute)
                 .frame(width: 44, height: 44)

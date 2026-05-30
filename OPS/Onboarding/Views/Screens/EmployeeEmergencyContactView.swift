@@ -143,7 +143,7 @@ struct EmployeeEmergencyContactView: View {
                                     Text("FINISH")
                                         .font(OPSStyle.Typography.bodyBold)
                                     Spacer()
-                                    Image("ops.checkmark")
+                                    Image(OPSStyle.Icons.checkmark)
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                                 }
                             }

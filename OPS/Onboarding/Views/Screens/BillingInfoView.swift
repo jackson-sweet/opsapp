@@ -233,7 +233,7 @@ struct BillingInfoView: View {
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                        Image("ops.chevron-right")
+                        Image(OPSStyle.Icons.chevronRight)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
@@ -361,7 +361,7 @@ struct BillingInfoView: View {
                                                 }
                                             } label: {
                                                 HStack(spacing: 6) {
-                                                    Image("ops.call")
+                                                    Image(OPSStyle.Icons.phone)
                                                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                                     Text("CALL")
                                                         .font(OPSStyle.Typography.captionBold)
@@ -381,7 +381,7 @@ struct BillingInfoView: View {
                                                 }
                                             } label: {
                                                 HStack(spacing: 6) {
-                                                    Image("ops.email")
+                                                    Image(OPSStyle.Icons.envelope)
                                                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                                     Text("EMAIL")
                                                         .font(OPSStyle.Typography.captionBold)

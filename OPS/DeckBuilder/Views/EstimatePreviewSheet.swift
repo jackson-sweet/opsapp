@@ -87,7 +87,7 @@ struct EstimatePreviewSheet: View {
                                 ProgressView()
                                     .tint(.white)
                             } else {
-                                Image("ops.document")
+                                Image(OPSStyle.Icons.documents)
                                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                             }
                             Text("Create Estimate")

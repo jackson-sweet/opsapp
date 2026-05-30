@@ -56,7 +56,7 @@ struct ListItem: View {
                 
                 // Chevron
                 if showChevron {
-                    Image("ops.chevron-right")
+                    Image(OPSStyle.Icons.chevronRight)
                         .font(OPSStyle.Typography.smallBody)
                         .foregroundColor(isDisabled ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
                 }
@@ -118,7 +118,7 @@ struct UserListItem: View {
                 
                 // Chevron
                 if showChevron {
-                    Image("ops.chevron-right")
+                    Image(OPSStyle.Icons.chevronRight)
                         .font(OPSStyle.Typography.smallBody)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
@@ -191,7 +191,7 @@ struct ProjectListItem: View {
                             Text("View Details")
                                 .font(OPSStyle.Typography.captionBold)
                             
-                            Image("ops.arrow-right")
+                            Image(OPSStyle.Icons.arrowRight)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         }
                         .foregroundColor(OPSStyle.Colors.primaryAccent)

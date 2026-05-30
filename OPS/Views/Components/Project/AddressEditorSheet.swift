@@ -56,7 +56,7 @@ struct AddressEditorSheet: View {
                                 selectCompletion(result)
                             }) {
                                 HStack(spacing: 10) {
-                                    Image("ops.site-visit")
+                                    Image(OPSStyle.Icons.siteVisitPin)
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
 

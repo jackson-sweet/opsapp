@@ -227,7 +227,7 @@ struct BundleCompositionEditSheet: View {
     private var drawer: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image("ops.search")
+                Image(OPSStyle.Icons.search)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 TextField("Search products…", text: $drawerSearch)
@@ -237,7 +237,7 @@ struct BundleCompositionEditSheet: View {
                     .textInputAutocapitalization(.never)
                 if !drawerSearch.isEmpty {
                     Button { drawerSearch = "" } label: {
-                        Image("ops.close")
+                        Image(OPSStyle.Icons.close)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                 }
@@ -293,7 +293,7 @@ struct BundleCompositionEditSheet: View {
                     .font(OPSStyle.Typography.metadata)
                     .monospacedDigit()
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Image("ops.add-circle")
+                Image(OPSStyle.Icons.add)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
@@ -354,7 +354,7 @@ struct BundleCompositionEditSheet: View {
             Button(role: .destructive) {
                 removeChild(draft)
             } label: {
-                Label("Remove", image: "ops.delete")
+                Label("Remove", image: OPSStyle.Icons.delete)
             }
         }
     }
@@ -392,7 +392,7 @@ struct BundleCompositionEditSheet: View {
                 guard let idx = workingChildren.firstIndex(where: { $0.id == draft.id }) else { return }
                 workingChildren[idx].quantity += 1
             } label: {
-                Image("ops.add")
+                Image(OPSStyle.Icons.plus)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: 36, height: 36)

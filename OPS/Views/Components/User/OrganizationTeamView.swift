@@ -48,7 +48,7 @@ struct OrganizationTeamView: View {
                             await dataController.triggerTeamMembersSync(companyId: company.id)
                         }
                     } label: {
-                        Label("Load Team Members", image: "ops.refresh")
+                        Label("Load Team Members", image: OPSStyle.Icons.arrowClockwise)
                             .font(OPSStyle.Typography.smallButton)
                     }
                     .padding(.vertical, 8)
@@ -163,7 +163,7 @@ struct OrganizationFullTeamView: View {
                             if searchText.isEmpty {
                                 // No team members at all
                                 // NOTE: person.3.sequence.fill does not have a semantic icon - using legacy
-                                Image("ops.crew")
+                                Image(OPSStyle.Icons.crew)
                                     .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.5))
                                 

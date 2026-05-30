@@ -30,7 +30,7 @@ struct OnboardingHeader: View {
                     onBack?()
                 } label: {
                     HStack(spacing: 6) {
-                        Image("ops.chevron-left")
+                        Image(OPSStyle.Icons.chevronLeft)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         Text("Back")
                             .font(OPSStyle.Typography.body)
@@ -45,7 +45,7 @@ struct OnboardingHeader: View {
                 onSignOut()
             } label: {
                 HStack(spacing: 6) {
-                    Image("ops.sign-out")
+                    Image(OPSStyle.Icons.signOut)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                     Text("Sign out")
                         .font(OPSStyle.Typography.caption)

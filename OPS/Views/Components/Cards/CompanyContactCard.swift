@@ -53,7 +53,7 @@ struct CompanyContactCard: View {
                 // Team member count
                 if showTeamCount {
                     HStack(spacing: 4) {
-                        Image("ops.sub-client")
+                        Image(OPSStyle.Icons.subClient)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Text("\(teamMemberCount) TEAM MEMBER\(teamMemberCount == 1 ? "" : "S")")
@@ -143,7 +143,7 @@ struct CompanyContactCard: View {
             .fill(OPSStyle.Colors.cardBackgroundDark)
             .frame(width: logoSize, height: logoSize)
             .overlay(
-                Image("ops.company")
+                Image(OPSStyle.Icons.company)
                     .font(.system(size: logoSize * 0.4))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             )

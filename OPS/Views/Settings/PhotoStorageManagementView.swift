@@ -262,7 +262,7 @@ struct PhotoStorageManagementView: View {
                     if isLoadingBreakdown {
                         ProgressView().tint(OPSStyle.Colors.primaryAccent)
                     } else {
-                        Image("ops.chevron-right")
+                        Image(OPSStyle.Icons.chevronRight)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
@@ -379,7 +379,7 @@ struct PhotoStorageManagementView: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         projectPendingLocalRemoval = item
                     }) {
-                        Image("ops.delete")
+                        Image(OPSStyle.Icons.delete)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                             .frame(width: 36, height: 36)

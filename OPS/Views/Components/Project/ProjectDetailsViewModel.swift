@@ -43,7 +43,6 @@ class ProjectDetailsViewModel: ObservableObject {
     @Published var showingPhotoViewer = false
     @Published var selectedPhotoIndex: Int = 0
     @Published var showingClientContact = false
-    @Published var showingScheduler = false
     @Published var showingAddressEditor = false
     @Published var showingAddTaskSheet = false
     @Published var showingDeleteAlert = false
@@ -608,26 +607,6 @@ class ProjectDetailsViewModel: ObservableObject {
     }
 
     // MARK: - Schedule
-
-    func handleScheduleUpdate(startDate: Date, endDate: Date) {
-        Task {
-            do {
-                try await dataController?.updateProjectDates(project: project, startDate: startDate, endDate: endDate)
-            } catch {
-                print("Failed to update schedule: \(error)")
-            }
-        }
-    }
-
-    func handleClearDates() {
-        Task {
-            do {
-                try await dataController?.updateProjectDates(project: project, startDate: nil, endDate: nil, clearDates: true)
-            } catch {
-                print("Failed to clear dates: \(error)")
-            }
-        }
-    }
 
     func handleTaskScheduleUpdate(startDate: Date, endDate: Date) {
         guard let task = selectedTask else { return }

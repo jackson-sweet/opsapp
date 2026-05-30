@@ -162,7 +162,7 @@ struct LoadingView: View {
                 }
             }
             .padding(24)
-            .background(Color(white: 0.1))
+            .background(OPSStyle.Colors.cardBackground)
             .cornerRadius(OPSStyle.Layout.largeCornerRadius)
         }
     }

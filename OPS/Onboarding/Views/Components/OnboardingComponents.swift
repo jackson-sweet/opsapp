@@ -49,7 +49,7 @@ struct OnboardingProgressIndicator: View {
         HStack(spacing: 4) {
             ForEach(1..<totalSteps+1, id: \.self) { step in
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
-                    .fill(step <= currentStep.rawValue ? OPSStyle.Colors.primaryAccent : Color.gray.opacity(0.3))
+                    .fill(step <= currentStep.rawValue ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.fillNeutral)
                     .frame(height: 4)
             }
         }

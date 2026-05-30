@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg height="600" width="800" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <style>
+        .cls-1 { fill: none }
+    </style>
+    <g id="Notes" font-family="LucidaGrande, 'Lucida Grande', sans-serif" font-size="13">
+        <rect fill="white" height="600.0" width="800.0" x="0.0" y="0.0" />
+        <g font-size="13">
+            <text x="18.0" y="176.0">Small</text>
+            <text x="18.0" y="376.0">Medium</text>
+            <text x="18.0" y="576.0">Large</text>
+        </g>
+        <g font-size="9">
+            <text x="250.0" y="30.0">Ultralight</text>
+            <text x="450.0" y="30.0">Regular</text>
+            <text x="650.0" y="30.0">Black</text>
+            <text id="template-version" fill="#505050" text-anchor="end" x="785.0" y="575.0">Template v.3.0</text>
+            <a href="https://github.com/swhitty/SwiftDraw">
+                <text fill="#505050" text-anchor="end" x="785.0" y="590.0">https://github.com/swhitty/SwiftDraw</text>
+            </a>
+        </g>
+    </g>
+    <g id="Guides" stroke="rgb(39, 170, 225)" stroke-width="0.5">
+        <path id="Capline-S" d="M18,76 l800,0" />
+        <path id="H-reference" d="M85,145.755 L87.685,145.755 L113.369,79.287 L114.052,79.287 L114.052,76 L112.148,76 L85,145.755 Z M95.693,121.536 L130.996,121.536 L130.263,119.313 L96.474,119.313 L95.693,121.536 Z M139.15,145.755 L141.787,145.755 L114.638,76 L113.466,76 L113.466,79.287 L139.15,145.755 Z" stroke="none" transform="translate(0,0)" />
+        <path id="Baseline-S" d="M18,146 l800,0" />
+        <path id="left-margin-Ultralight-S" d="M221,56 l0,110" />
+        <path id="right-margin-Ultralight-S" d="M309,56 l0,110" />
+        <path id="left-margin-Regular-S" d="M421,56 l0,110" />
+        <path id="right-margin-Regular-S" d="M509,56 l0,110" />
+        <path id="left-margin-Black-S" d="M621,56 l0,110" />
+        <path id="right-margin-Black-S" d="M709,56 l0,110" />
+        <path id="Capline-M" d="M18,276 l800,0" />
+        <path id="Baseline-M" d="M18,346 l800,0" />
+        <path id="Capline-L" d="M18,476 l800,0" />
+        <path id="Baseline-L" d="M18,546 l800,0" />
+    </g>
+    <g id="Symbols">
+        <g id="Ultralight-S" transform="translate(0,0)">
+            <path d="M283.333,100 L283.333,103.667 L270.5,103.667 L270.5,100 Z" />
+            <path d="M283.333,109.167 L283.333,112.833 L270.5,112.833 L270.5,109.167 Z" />
+            <path d="M283.333,118.333 L283.333,122 L270.5,122 L270.5,118.333 Z" />
+            <path d="M287,90.833 L243,90.833 C240.976,90.835 239.335,92.476 239.333,94.5 L239.333,127.5 C239.336,129.524 240.976,131.164 243,131.167 L287,131.167 C289.024,131.164 290.664,129.524 290.667,127.5 L290.667,94.5 C290.664,92.476 289.024,90.836 287,90.833 Z M243,94.5 L263.167,94.5 L263.167,127.5 L243,127.5 Z M266.833,127.5 L266.833,94.5 L287,94.5 L287.004,127.5 Z" />
+        </g>
+        <g id="Regular-S" transform="translate(0,0)">
+            <path d="M483.333,100 L483.333,103.667 L470.5,103.667 L470.5,100 Z" />
+            <path d="M483.333,109.167 L483.333,112.833 L470.5,112.833 L470.5,109.167 Z" />
+            <path d="M483.333,118.333 L483.333,122 L470.5,122 L470.5,118.333 Z" />
+            <path d="M487,90.833 L443,90.833 C440.976,90.835 439.335,92.476 439.333,94.5 L439.333,127.5 C439.336,129.524 440.976,131.164 443,131.167 L487,131.167 C489.024,131.164 490.664,129.524 490.667,127.5 L490.667,94.5 C490.664,92.476 489.024,90.836 487,90.833 Z M443,94.5 L463.167,94.5 L463.167,127.5 L443,127.5 Z M466.833,127.5 L466.833,94.5 L487,94.5 L487.004,127.5 Z" />
+        </g>
+        <g id="Black-S" transform="translate(0,0)">
+            <path d="M683.333,100 L683.333,103.667 L670.5,103.667 L670.5,100 Z" />
+            <path d="M683.333,109.167 L683.333,112.833 L670.5,112.833 L670.5,109.167 Z" />
+            <path d="M683.333,118.333 L683.333,122 L670.5,122 L670.5,118.333 Z" />
+            <path d="M687,90.833 L643,90.833 C640.976,90.835 639.335,92.476 639.333,94.5 L639.333,127.5 C639.336,129.524 640.976,131.164 643,131.167 L687,131.167 C689.024,131.164 690.664,129.524 690.667,127.5 L690.667,94.5 C690.664,92.476 689.024,90.836 687,90.833 Z M643,94.5 L663.167,94.5 L663.167,127.5 L643,127.5 Z M666.833,127.5 L666.833,94.5 L687,94.5 L687.004,127.5 Z" />
+        </g>
+    </g>
+</svg>

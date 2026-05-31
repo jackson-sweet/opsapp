@@ -78,10 +78,10 @@ struct ForecastCard: View {
                 BooksDrillTile(
                     label: "STALE",
                     value: "\(viewModel.staleLeadsCount)",
-                    sub: "> 14D IDLE",
+                    sub: "NO MOVEMENT",
                     valueColor: OPSStyle.Colors.warningStatus,
                     onTap: onTapStale,
-                    accessibilityLabelOverride: "Stale opportunities, \(viewModel.staleLeadsCount), over 14 days idle"
+                    accessibilityLabelOverride: "Stale opportunities, \(viewModel.staleLeadsCount), no recent movement"
                 )
             }
             .padding(.top, 22)
@@ -179,7 +179,7 @@ struct ForecastCard: View {
             }
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 BooksDrillTile(label: "CLOSE RATE", value: "—",  sub: "LAST 90D",   valueColor: OPSStyle.Colors.tertiaryText)
-                BooksDrillTile(label: "STALE",      value: "0",  sub: "> 14D IDLE", valueColor: OPSStyle.Colors.tertiaryText)
+                BooksDrillTile(label: "STALE",      value: "0",  sub: "NO MOVEMENT", valueColor: OPSStyle.Colors.tertiaryText)
             }
             .padding(.top, 22)
         }

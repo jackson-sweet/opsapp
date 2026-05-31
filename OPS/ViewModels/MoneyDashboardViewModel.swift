@@ -734,7 +734,10 @@ class MoneyDashboardViewModel: ObservableObject {
                       let d = SupabaseDate.parse(dStr),
                       d >= periodStart, d <= periodEnd,
                       !(payment.isVoid ?? false) else { continue }
-                revenuePerProject[pid, default: 0] += payment.amount ?? 0
+                // Normalize the join key: invoices.project_id is uuid, allocations
+                // .project_id is text. Lowercase both sides so a non-canonical uuid
+                // string can never silently drop a project's cost (Books review P3).
+                revenuePerProject[pid.lowercased(), default: 0] += payment.amount ?? 0
             }
         }
 
@@ -747,7 +750,7 @@ class MoneyDashboardViewModel: ObservableObject {
             let dateStr = expense.expenseDate ?? expense.createdAt
             guard let d = SupabaseDate.parse(dateStr), d >= periodStart, d <= periodEnd else { continue }
             let amount = alloc.amount ?? (expense.amount * alloc.percentage / 100.0)
-            costPerProject[alloc.projectId, default: 0] += amount
+            costPerProject[alloc.projectId.lowercased(), default: 0] += amount
         }
 
         let projectIds = Array(Set(revenuePerProject.keys).union(costPerProject.keys))
@@ -794,8 +797,8 @@ class MoneyDashboardViewModel: ObservableObject {
         do {
             let descriptor = FetchDescriptor<Project>()
             let allProjects = try context.fetch(descriptor)
-            for p in allProjects where projectIds.contains(p.id) {
-                result[p.id] = p.title
+            for p in allProjects where projectIds.contains(p.id.lowercased()) {
+                result[p.id.lowercased()] = p.title
             }
         } catch {
             print("[MoneyDashboard] Failed to fetch projects: \(error.localizedDescription)")

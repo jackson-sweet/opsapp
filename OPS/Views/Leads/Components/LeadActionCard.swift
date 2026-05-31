@@ -246,6 +246,7 @@ extension PipelineStage {
         case .negotiation: return "NEGOT"
         case .won:         return "WON"
         case .lost:        return "LOST"
+        case .discarded:   return "DISC"
         }
     }
 }

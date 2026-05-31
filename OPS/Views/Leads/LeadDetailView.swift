@@ -144,7 +144,7 @@ struct LeadDetailView: View {
         case .won:                                   return .olive
         case .lost:                                  return .rose
         case .quoted, .followUp, .negotiation:       return .tan
-        case .newLead, .qualifying, .quoting:        return .steel
+        case .newLead, .qualifying, .quoting, .discarded:  return .steel
         }
     }
 

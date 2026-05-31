@@ -222,7 +222,7 @@ private struct StageTag: View {
         case .won:                                   return OPSStyle.Colors.oliveFillM
         case .lost:                                  return OPSStyle.Colors.roseFillM
         case .quoted, .followUp, .negotiation:       return OPSStyle.Colors.tanFillM
-        case .newLead, .qualifying, .quoting:        return OPSStyle.Colors.surfaceHover
+        case .newLead, .qualifying, .quoting, .discarded:  return OPSStyle.Colors.surfaceHover
         }
     }
 
@@ -231,7 +231,7 @@ private struct StageTag: View {
         case .won:                                   return OPSStyle.Colors.oliveLineM
         case .lost:                                  return OPSStyle.Colors.roseLineM
         case .quoted, .followUp, .negotiation:       return OPSStyle.Colors.tanLineM
-        case .newLead, .qualifying, .quoting:        return OPSStyle.Colors.line
+        case .newLead, .qualifying, .quoting, .discarded:  return OPSStyle.Colors.line
         }
     }
 
@@ -240,7 +240,7 @@ private struct StageTag: View {
         case .won:                                   return OPSStyle.Colors.oliveTextM
         case .lost:                                  return OPSStyle.Colors.roseTextM
         case .quoted, .followUp, .negotiation:       return OPSStyle.Colors.tanTextM
-        case .newLead, .qualifying, .quoting:        return OPSStyle.Colors.text2
+        case .newLead, .qualifying, .quoting, .discarded:  return OPSStyle.Colors.text2
         }
     }
 }

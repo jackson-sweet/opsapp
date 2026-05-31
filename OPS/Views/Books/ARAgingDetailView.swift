@@ -34,16 +34,18 @@ struct ARAgingDetailView: View {
         for inv in invoices where inv.balanceDue > 0 && inv.status != .void {
             guard let due = inv.dueDate else { continue }
             let days = Int(today.timeIntervalSince(due) / 86400)
-            if days < 0 { continue }
+            // Match ARCard bucketing: not-yet-due (negative days) counts in the
+            // youngest bucket so this drill-down reconciles to the card's
+            // TOTAL OUTSTANDING hero (Books review D1).
             switch days {
-            case 0...30: b0_30 += inv.balanceDue
+            case ..<31: b0_30 += inv.balanceDue
             case 31...60: b31_60 += inv.balanceDue
             case 61...90: b61_90 += inv.balanceDue
             default: b90 += inv.balanceDue
             }
         }
         return [
-            Bucket(label: "0–30d", amount: b0_30, color: OPSStyle.Colors.accountingReceivables),
+            Bucket(label: "0–30d", amount: b0_30, color: OPSStyle.Colors.olive),
             Bucket(label: "31–60d", amount: b31_60, color: OPSStyle.Colors.accountingReceivables),
             Bucket(label: "61–90d", amount: b61_90, color: OPSStyle.Colors.warningStatus),
             Bucket(label: "90d+", amount: b90, color: OPSStyle.Colors.accountingOverdue)

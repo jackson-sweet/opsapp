@@ -67,7 +67,17 @@ struct LeadsTabView: View {
     private var buckets: PipelineViewModel.TriageBuckets { viewModel.triageBuckets }
     private var canManage: Bool { permissionStore.can("pipeline.manage") }
     private var bucket: PipelineViewModel.TriageBucket {
-        selectedBucket ?? viewModel.defaultBucket
+        // Fall back rather than strand the operator on an empty, non-tappable
+        // chip: if the selected bucket has emptied (e.g. they just cleared the
+        // last overdue item) drop the stale selection. When the whole pipeline
+        // is empty, anchor on .all so the empty copy reads "— NO OPEN LEADS"
+        // instead of a misleading per-bucket message. (review W-14, W-15)
+        let b = buckets
+        if let selected = selectedBucket, !b.leads(for: selected).isEmpty {
+            return selected
+        }
+        if b.all.isEmpty { return .all }
+        return viewModel.defaultBucket
     }
     private var stageCounts: [PipelineStage: Int] {
         Dictionary(uniqueKeysWithValues: PipelineStage.allCases.map {

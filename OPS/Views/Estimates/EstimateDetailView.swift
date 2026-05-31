@@ -56,6 +56,7 @@ struct EstimateDetailView: View {
         }
         .trackScreen("EstimateDetail")
         .navigationBarTitleDisplayMode(.inline)
+        .hidesGlobalTabBar()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showOverflowMenu = true } label: {

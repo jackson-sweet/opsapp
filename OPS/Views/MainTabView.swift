@@ -43,6 +43,10 @@ struct MainTabView: View {
     @State private var inFlightDeepLinkTask: Task<Void, Never>?
     // PermissionChangeOverlay moved to PINGatedView (ContentView.swift) so it sits above all sheets
     @StateObject private var imageSyncProgressManager = ImageSyncProgressManager()
+    // Drives the global tab-bar overlay's visibility. Pushed detail screens with a
+    // bottom action bar fade the tab bar out via `.hidesGlobalTabBar()` so their
+    // primary CTA isn't occluded by the 100pt overlay.
+    @StateObject private var tabBarVisibility = TabBarVisibilityController()
     @ObservedObject private var inProgressManager = InProgressManager.shared
     @State private var userRole: UserRole? = nil // Track user role changes explicitly
 
@@ -417,6 +421,8 @@ struct MainTabView: View {
             // keep their horizontal position.
             .environment(\.persistentHeaderNamespace, persistentHeaderNamespace)
             .environment(\.hostsPersistentSearchButton, selectedTab != 0)
+            // Pushed detail screens read this to fade the tab bar while on screen.
+            .environment(\.tabBarVisibility, tabBarVisibility)
             .transition(slideTransition)
             .animation(.spring(response: 0.3, dampingFraction: 0.85), value: selectedTab)
 
@@ -466,10 +472,12 @@ struct MainTabView: View {
             }
             .ignoresSafeArea(.all, edges: .bottom)
             .preferredColorScheme(.dark)
-            .opacity(keyboardIsShowing || dataController.isPerformingInitialSync || appState.isLoadingProjects ? 0 : 1)
+            .opacity(keyboardIsShowing || dataController.isPerformingInitialSync || appState.isLoadingProjects || tabBarVisibility.isHidden ? 0 : 1)
             .animation(OPSStyle.Animation.standard, value: keyboardIsShowing)
             .animation(OPSStyle.Animation.standard, value: dataController.isPerformingInitialSync)
             .animation(OPSStyle.Animation.standard, value: appState.isLoadingProjects)
+            .animation(OPSStyle.Animation.standard, value: tabBarVisibility.isHidden)
+            .allowsHitTesting(!tabBarVisibility.isHidden)
 
             // Floating action menu - visible across all tabs except Settings and during initial sync/loading
             // IMPORTANT: Always render to preserve @State (sheet presentation) when app goes to background

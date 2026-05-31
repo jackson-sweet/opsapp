@@ -94,6 +94,7 @@ enum EstimateApprovalUIState: Equatable {
 enum EstimateAcceptanceError: LocalizedError {
     case missingClient
     case rejected
+    case notSynced
 
     var errorDescription: String? {
         switch self {
@@ -101,6 +102,8 @@ enum EstimateAcceptanceError: LocalizedError {
             return "Estimate approval is not ready. Reopen the estimate and try again."
         case .rejected:
             return "Estimate acceptance did not complete."
+        case .notSynced:
+            return "This estimate is still syncing. Refresh and try again."
         }
     }
 }
@@ -310,6 +313,19 @@ class EstimateViewModel: ObservableObject {
     func markApproved(_ estimate: Estimate) async {
         let originalStatus = estimate.status
         let originalProjectId = estimate.projectId
+
+        // The accept RPC binds p_estimate_id as a Postgres uuid. A legacy/non-uuid
+        // local id (a pre-uuid Firebase/Bubble record that hasn't reconciled) would
+        // fail at the PostgREST boundary with a raw "invalid input syntax for type
+        // uuid" error. Block the doomed call and tell the operator to re-sync.
+        guard UUID(uuidString: estimate.id) != nil else {
+            approvalStateByEstimateId[estimate.id] = .failed(
+                EstimateAcceptanceError.notSynced.errorDescription ?? ""
+            )
+            error = EstimateAcceptanceError.notSynced.errorDescription
+            return
+        }
+
         let idempotencyKey = acceptanceIdempotencyStore.idempotencyKey(
             companyId: estimate.companyId,
             estimateId: estimate.id

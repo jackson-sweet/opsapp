@@ -83,6 +83,11 @@ struct LeadDetailView: View {
         ))
     }
 
+    /// Read-only operators (pipeline.view without pipeline.manage) get no
+    /// mutating affordances — the sticky action bar and convert card are
+    /// hidden, matching the queue/stage-list gating and design-intent §14 #11.
+    private var canManage: Bool { permissionStore.can("pipeline.manage") }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             OPSStyle.Colors.background.ignoresSafeArea()
@@ -101,7 +106,7 @@ struct LeadDetailView: View {
                         ContactCard(opportunity: opportunity)
                             .padding(.top, 4)
 
-                        if showWonNotConverted {
+                        if canManage && showWonNotConverted {
                             WonNotConvertedCard(onConvert: onMarkWon)
                                 .padding(.top, 22)
                         }
@@ -122,7 +127,7 @@ struct LeadDetailView: View {
                 .scrollIndicators(.hidden)
             }
 
-            if !opportunity.stage.isTerminal {
+            if canManage && !opportunity.stage.isTerminal {
                 StickyActionBar(
                     onMarkLost: onMarkLost,
                     onEdit:     onEdit,

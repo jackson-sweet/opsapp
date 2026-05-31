@@ -76,23 +76,35 @@ struct LeadActionCard: View {
     }
 
     var body: some View {
-        Button(action: {
+        VStack(alignment: .leading, spacing: 6) {
+            row1
+            row2
+            row3
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassSurface()
+        .contentShape(Rectangle())
+        .onTapGesture {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             onTap()
-        }) {
-            VStack(alignment: .leading, spacing: 6) {
-                row1
-                row2
-                row3
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .glassSurface()
         }
-        .buttonStyle(PlainButtonStyle())
+        // The row body is a tap target (not a Button) so the LOG/MORE/ADVANCE
+        // QuickGlyph Buttons in row3 are no longer nested inside a Button
+        // (ambiguous gesture ownership). For VoiceOver, combine the row into one
+        // element with the open-detail default action and expose the quick
+        // actions as custom actions — the old outer Button + .combine absorbed
+        // them, so LOG/MORE/ADVANCE were unreachable by VoiceOver. (review C-1)
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
         .accessibilityLabel(accessibilityLabel)
+        .accessibilityAction { onTap() }
+        .accessibilityActions {
+            if showsLog     { Button("Log activity")  { onLog() } }
+            if showsMore    { Button("More actions")  { onMore() } }
+            if showsAdvance { Button("Advance stage") { onAdvance() } }
+        }
     }
 
     // MARK: - Rows

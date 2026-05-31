@@ -130,8 +130,9 @@ struct ContactCard: View {
 // MARK: - CTAButton (private)
 
 /// One equal-weight contact CTA. Stroke + surfaceInput fill, text2 foreground.
-/// 44pt min height per MOBILE.md §1. Disabled appearance: 35% opacity,
-/// `accessibilityHidden` for screen readers.
+/// 44pt min height per MOBILE.md §1. Disabled appearance: 35% opacity; the
+/// button stays in the VoiceOver tree (announced "dimmed") so the action is
+/// discoverable even when no contact detail is on file.
 private struct CTAButton: View {
     let label: String
     let icon: String
@@ -164,7 +165,10 @@ private struct CTAButton: View {
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1.0 : 0.35)
         .accessibilityLabel(label)
-        .accessibilityHidden(!isEnabled)
+        // Keep disabled CTAs in the VoiceOver tree (announced "dimmed") rather
+        // than hiding them entirely — the operator should know the action
+        // exists but is unavailable. (review W-2)
+        .accessibilityHint(isEnabled ? "" : "Unavailable — no contact detail on file")
     }
 }
 

@@ -29,6 +29,21 @@ struct DetailHero: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            identityBlock
+
+            kpiStrip
+                .padding(.top, 18)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 4)
+        .padding(.bottom, 18)
+    }
+
+    /// Lead identity (id, days-in-stage, stage, win prob, name, title) grouped
+    /// into ONE VoiceOver element so it reads as a coherent unit instead of ~7
+    /// disjoint fragments. (review W-3)
+    private var identityBlock: some View {
+        VStack(alignment: .leading, spacing: 0) {
             idRow
                 .padding(.bottom, 10)
 
@@ -51,13 +66,21 @@ struct DetailHero: View {
                     .lineLimit(2)
                     .padding(.top, 6)
             }
-
-            kpiStrip
-                .padding(.top, 18)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 4)
-        .padding(.bottom, 18)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(identityLabel)
+    }
+
+    private var identityLabel: String {
+        var parts: [String] = [
+            "Lead \(displayId)",
+            opportunity.stage.displayName,
+            "\(winProbability) percent win probability",
+            displayName
+        ]
+        if let title = opportunity.title, !title.isEmpty { parts.append(title) }
+        parts.append("\(opportunity.daysInStage) days in stage")
+        return parts.joined(separator: ", ")
     }
 
     // MARK: - ID + days-in-stage row

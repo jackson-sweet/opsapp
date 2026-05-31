@@ -1708,6 +1708,7 @@ final class InboundProcessor {
         let dtos = try await estimateRepo.fetchAll(since: since)
         for dto in dtos {
             try mergeEstimate(dto: dto, context: context)
+            try mergeEstimateLineItems(dto: dto, context: context)
         }
 
         // Handle soft deletes for delta sync
@@ -1782,6 +1783,51 @@ final class InboundProcessor {
             } else {
                 spotlightTracker.markDirty(domain: SpotlightDomain.estimate, id: id)
             }
+        }
+
+        try context.save()
+    }
+
+    private func mergeEstimateLineItems(dto: EstimateDTO, context: ModelContext) throws {
+        let freshItems = dto.lineItems ?? []
+        let freshIds: Set<String> = Set(freshItems.map { $0.id })
+        let estimateId = dto.id
+
+        // Upsert: insert new, update existing
+        for liDTO in freshItems {
+            let liId = liDTO.id
+            let descriptor = FetchDescriptor<EstimateLineItem>(
+                predicate: #Predicate { $0.id == liId }
+            )
+            if let existing = try context.fetch(descriptor).first {
+                // Update server-owned fields. `estimateId` is immutable so not written.
+                let fresh = liDTO.toModel()
+                existing.name = fresh.name
+                existing.productId = fresh.productId
+                existing.quantity = fresh.quantity
+                existing.unit = fresh.unit
+                existing.unitPrice = fresh.unitPrice
+                existing.lineTotal = fresh.lineTotal
+                existing.type = fresh.type
+                existing.optional = fresh.optional
+                existing.displayOrder = fresh.displayOrder
+                existing.taskTypeId = fresh.taskTypeId
+                existing.parentLineItemId = fresh.parentLineItemId
+                existing.configuredOptionsJSON = fresh.configuredOptionsJSON
+                existing.resolvedUnitPrice = fresh.resolvedUnitPrice
+                existing.resolvedOptionsLabel = fresh.resolvedOptionsLabel
+            } else {
+                context.insert(liDTO.toModel())
+            }
+        }
+
+        // Delete: any local item for this estimate no longer on the server
+        let localDescriptor = FetchDescriptor<EstimateLineItem>(
+            predicate: #Predicate { $0.estimateId == estimateId }
+        )
+        let local = (try? context.fetch(localDescriptor)) ?? []
+        for item in local where !freshIds.contains(item.id) {
+            context.delete(item)
         }
 
         try context.save()

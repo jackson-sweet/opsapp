@@ -70,7 +70,7 @@ struct ContactCard: View {
 
             CTAButton(label: "EMAIL", icon: "envelope",
                       isEnabled: hasEmail,
-                      action: { open("mailto:\(opportunity.contactEmail ?? "")") })
+                      action: { open(mailtoURLString) })
 
             CTAButton(label: "MAP",   icon: "mappin.and.ellipse",
                       isEnabled: hasAddress,
@@ -118,6 +118,15 @@ struct ContactCard: View {
         let encoded = (opportunity.address ?? "")
             .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         return "https://maps.apple.com/?address=\(encoded)"
+    }
+
+    /// Percent-encodes the email so a malformed-but-present address degrades
+    /// gracefully (matching the map path) rather than silently yielding a nil
+    /// URL that drops the tap. (review I-11)
+    private var mailtoURLString: String {
+        let encoded = (opportunity.contactEmail ?? "")
+            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        return "mailto:\(encoded)"
     }
 
     private func open(_ urlString: String) {

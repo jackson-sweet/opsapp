@@ -227,6 +227,7 @@ private struct StageListNavBar: View {
                 .padding(.leading, 4)
                 .padding(.trailing, 10)
                 .padding(.vertical, 6)
+                .frame(minHeight: 44)   // meet the 44pt touch floor (review W-10)
                 .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())

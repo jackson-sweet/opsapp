@@ -257,6 +257,55 @@ struct UpdateOpportunityDTO: Codable {
     }
 }
 
+// MARK: - Edit-form patch
+
+/// Full-form edit patch for `EditLeadSheet`. Unlike `UpdateOpportunityDTO`
+/// (whose synthesized `Codable` omits nil keys — correct for the partial
+/// mark-won / mark-lost / archive patches), this ALWAYS emits its edit-managed
+/// fields, including explicit JSON `null`, so clearing a field in the edit form
+/// (e.g. deleting the phone number) actually persists instead of being silently
+/// dropped by `encodeIfPresent`. Scoped to the edit path so it cannot regress
+/// the partial updaters. (review I-12)
+struct EditOpportunityPatch: Encodable {
+    var title: String?
+    var contactName: String
+    var contactEmail: String?
+    var contactPhone: String?
+    var description: String?
+    var address: String?
+    var estimatedValue: Double?
+    var source: String?
+    var priority: String?
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case contactName    = "contact_name"
+        case contactEmail   = "contact_email"
+        case contactPhone   = "contact_phone"
+        case description
+        case address
+        case estimatedValue = "estimated_value"
+        case source
+        case priority
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        // `encode` (NOT `encodeIfPresent`) so a nil emits explicit JSON null and
+        // clears the column server-side. contactName is non-optional and the
+        // form requires it non-empty, so it is never sent as null.
+        try c.encode(title, forKey: .title)
+        try c.encode(contactName, forKey: .contactName)
+        try c.encode(contactEmail, forKey: .contactEmail)
+        try c.encode(contactPhone, forKey: .contactPhone)
+        try c.encode(description, forKey: .description)
+        try c.encode(address, forKey: .address)
+        try c.encode(estimatedValue, forKey: .estimatedValue)
+        try c.encode(source, forKey: .source)
+        try c.encode(priority, forKey: .priority)
+    }
+}
+
 // MARK: - Activity
 
 struct ActivityDTO: Codable, Identifiable {

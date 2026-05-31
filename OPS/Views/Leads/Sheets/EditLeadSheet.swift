@@ -179,18 +179,22 @@ struct EditLeadSheet: View {
         let companyId = opportunity.companyId
         let repository = OpportunityRepository(companyId: companyId)
 
-        var fields = UpdateOpportunityDTO()
-        fields.title = form.title.isEmpty ? nil : form.title
-        fields.contactName = trimmedName
-        fields.contactEmail = form.email.isEmpty ? nil : form.email
-        fields.contactPhone = form.phone.isEmpty ? nil : form.phone
-        fields.description = form.notes.isEmpty ? nil : form.notes
-        fields.address = form.address.isEmpty ? nil : form.address
-        fields.estimatedValue = form.estimatedValueDouble
-        fields.source = form.source
-        fields.priority = form.priority
+        // Full-form patch that emits explicit nulls so clearing a field (e.g.
+        // deleting the phone) actually persists. A plain UpdateOpportunityDTO
+        // would omit the nil key and silently keep the old value. (review I-12)
+        let patch = EditOpportunityPatch(
+            title:          form.title.isEmpty   ? nil : form.title,
+            contactName:    trimmedName,
+            contactEmail:   form.email.isEmpty   ? nil : form.email,
+            contactPhone:   form.phone.isEmpty   ? nil : form.phone,
+            description:    form.notes.isEmpty   ? nil : form.notes,
+            address:        form.address.isEmpty ? nil : form.address,
+            estimatedValue: form.estimatedValueDouble,
+            source:         form.source,
+            priority:       form.priority
+        )
 
-        let updatedDTO = try await repository.update(opportunity.id, fields: fields)
+        let updatedDTO = try await repository.update(opportunity.id, patch: patch)
 
         // Apply the field update to the local cache (the update() above
         // succeeded).

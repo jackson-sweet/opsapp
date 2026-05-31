@@ -192,17 +192,8 @@ struct EditLeadSheet: View {
 
         let updatedDTO = try await repository.update(opportunity.id, fields: fields)
 
-        // Stage change is a separate RPC — only fire when the operator
-        // actually moved the chip.
-        if form.stage != opportunity.stage {
-            _ = try? await repository.moveToStage(
-                opportunityId: opportunity.id,
-                to: form.stage,
-                userId: dataController.currentUser?.id
-            )
-        }
-
-        // Optimistic local cache update
+        // Apply the field update to the local cache (the update() above
+        // succeeded).
         let fresh = updatedDTO.toModel()
         opportunity.title = fresh.title
         opportunity.contactName = fresh.contactName
@@ -213,12 +204,25 @@ struct EditLeadSheet: View {
         opportunity.estimatedValue = fresh.estimatedValue
         opportunity.source = fresh.source
         opportunity.priority = fresh.priority
-        if form.stage != opportunity.stage {
+        opportunity.updatedAt = fresh.updatedAt
+
+        // Stage change is a separate RPC. Skip it entirely for a terminal
+        // (won/lost/discarded) lead: the STAGE chip group can't represent
+        // terminal stages, so LeadForm coerces them to .newLead and a diff is
+        // spurious — firing it would silently revive a closed deal (review
+        // C-11). For a genuine open-stage move, do NOT swallow the RPC error
+        // (review W-6): let it propagate so save() surfaces it and the local
+        // stage is left untouched on failure (never shows a false stage).
+        if !opportunity.stage.isTerminal && form.stage != opportunity.stage {
+            _ = try await repository.moveToStage(
+                opportunityId: opportunity.id,
+                to: form.stage,
+                userId: dataController.currentUser?.id
+            )
             opportunity.stage = form.stage
             opportunity.stageEnteredAt = Date()
             opportunity.stageManuallySet = true
         }
-        opportunity.updatedAt = fresh.updatedAt
     }
 
     // MARK: - Archive

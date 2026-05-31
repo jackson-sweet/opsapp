@@ -140,7 +140,7 @@ struct PipelineStageListView: View {
                         verb: verb(for: lead),
                         tone: tone(for: lead),
                         showsLog: canManage,
-                        showsMore: canManage,
+                        showsMore: canManage && !stage.isTerminal,
                         showsAdvance: canManage && !stage.isTerminal,
                         onTap:     { onLeadTap(lead) },
                         onLog:     { onRequestSheet(.log(lead)) },

@@ -289,7 +289,7 @@ struct CashFlowCard: View {
 
     private func compactCurrency(_ value: Double) -> String {
         let absV = Swift.abs(value)
-        let sign = value < 0 ? "-$" : "$"
+        let sign = value < 0 ? "\u{2212}$" : "$"  // U+2212 minus — matches PLCard/JobsCard, not ASCII hyphen
         if absV >= 1_000_000 {
             return "\(sign)\(String(format: "%.1f", absV / 1_000_000))M"
         } else if absV >= 1_000 {

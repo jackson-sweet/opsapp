@@ -547,7 +547,7 @@ A workflow-driven deep review (8 parallel dimension agents + adversarial per-fin
 
 ### Deferred fast-follows — DO NOT ship the naive fix
 
-- **W-5** (convert `VIEW →` deep-link briefly shows a loading spinner before recovering to LEADS): the converted `Project` isn't persisted locally. `Project` has no `@Attribute(.unique) id`, so a naive `context.insert` would **duplicate the row on next sync**. Fix via the project repository's upsert/sync path.
+- **W-5** (convert `VIEW →` deep-link briefly shows a loading spinner before recovering to LEADS): the converted `Project` isn't persisted locally. `Project.id` is **not** `@Attribute(.unique)`, so a naive `context.insert` would **duplicate the row on next sync**. Fix by routing the returned `Project` through the sync layer's upsert (`RealtimeProcessor.upsertProject(context:id:model:pendingFields:)`, which dedups by id and suppresses a remote echo within 60s of a local write) — or trigger a scoped project fetch — before posting `LeadConvertedSuccess`. NOT a sheet-level insert.
 - **I-12** (clearing an optional lead field doesn't persist): `UpdateOpportunityDTO` omits nil keys, and `markWon`/`markLost`/`archive` **depend** on that omission for partial updates. A naive always-emit-null would **null out unrelated fields on mark-won (data loss)**. Fix needs a tri-state field model scoped to the edit-only path.
 - **I-5** (lead value formatted three ways): add one money-compaction helper across LeadActionCard/DetailHero/WonConvert.
 

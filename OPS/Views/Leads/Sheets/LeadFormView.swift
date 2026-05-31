@@ -66,8 +66,12 @@ struct LeadForm {
         let stripped = estimatedValue
             .replacingOccurrences(of: ",", with: "")
             .trimmingCharacters(in: .whitespaces)
-        guard !stripped.isEmpty else { return nil }
-        return Double(stripped)
+        guard !stripped.isEmpty, let value = Double(stripped) else { return nil }
+        // Reject inf/nan and anything past the numeric(12,2) ceiling so an
+        // out-of-range entry can't 400 the create/update with a generic,
+        // unrecoverable save error. (review W-16)
+        guard value.isFinite, value >= 0, value < 10_000_000_000 else { return nil }
+        return value
     }
 
     /// Format a Double back into the input string. Whole numbers render without

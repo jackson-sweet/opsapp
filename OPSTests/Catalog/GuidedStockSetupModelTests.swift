@@ -63,4 +63,52 @@ final class GuidedStockSetupModelTests: XCTestCase {
         model.clearDraft()
         XCTAssertFalse(model.hasDraftToResume)
     }
+
+    // MARK: - seedGroupsFromCapture tests
+
+    func test_seed_clustersBecomeVersionedCandidates() {
+        let model = GuidedStockSetupModel(companyId: "c1", userId: "u1", draftStore: tempStore())
+        model.capturedItems = [
+            GuidedCapturedItem(name: "Vinyl black"),
+            GuidedCapturedItem(name: "Vinyl white"),
+            GuidedCapturedItem(name: "Vinyl grey")
+        ]
+        model.seedGroupsFromCapture(threshold: 0.5)
+
+        XCTAssertEqual(model.groups.count, 1, "Three vinyl colour variants should form exactly one cluster group")
+        let group = model.groups[0]
+        XCTAssertFalse(group.isSingleItem, "Clustered group must be versioned (isSingleItem == false)")
+        XCTAssertEqual(group.memberItemIds.count, 3, "All three members must be in the group")
+        let firstAttrValues = Set(group.attributes.first?.values ?? [])
+        XCTAssertEqual(firstAttrValues, ["black", "white", "grey"],
+                       "First attribute values must match the differing colour tokens")
+    }
+
+    func test_seed_distinctItemsBecomeSingleCandidates() {
+        let model = GuidedStockSetupModel(companyId: "c1", userId: "u1", draftStore: tempStore())
+        model.capturedItems = [
+            GuidedCapturedItem(name: "Hammer"),
+            GuidedCapturedItem(name: "Ladder")
+        ]
+        model.seedGroupsFromCapture(threshold: 0.5)
+
+        XCTAssertEqual(model.groups.count, 2, "Two distinct items must produce two single-item groups")
+        XCTAssertTrue(model.groups.allSatisfy { $0.isSingleItem }, "All groups must be single-item")
+    }
+
+    func test_seed_isIdempotent() {
+        let model = GuidedStockSetupModel(companyId: "c1", userId: "u1", draftStore: tempStore())
+        model.capturedItems = [
+            GuidedCapturedItem(name: "Vinyl black"),
+            GuidedCapturedItem(name: "Vinyl white")
+        ]
+        model.seedGroupsFromCapture(threshold: 0.5)
+        let firstGroupIds = model.groups.map(\.id)
+
+        model.seedGroupsFromCapture(threshold: 0.5)   // second call — must be a no-op
+        let secondGroupIds = model.groups.map(\.id)
+
+        XCTAssertEqual(firstGroupIds, secondGroupIds, "Calling seedGroupsFromCapture twice must not duplicate groups")
+        XCTAssertEqual(model.groups.count, firstGroupIds.count, "Group count must remain stable after second seed call")
+    }
 }

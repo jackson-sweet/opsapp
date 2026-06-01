@@ -220,6 +220,44 @@ final class GuidedStockSetupModel: ObservableObject {
         }
     }
 
+    // MARK: - Structure seeding
+
+    /// Build candidate groups from the captured list using deterministic clustering.
+    /// Idempotent: only seeds when `groups` is empty (so re-entering STRUCTURE keeps edits).
+    func seedGroupsFromCapture(threshold: Double = 0.5) {
+        guard groups.isEmpty else { return }
+        let items = capturableItems
+        let clusters = GuidedStockStructuring.cluster(items, threshold: threshold)
+        let clusteredIds = Set(clusters.flatMap { $0.memberItemIds })
+        var seeded: [GuidedStructuredGroup] = []
+
+        for cluster in clusters {
+            let stableId = "group::" + cluster.memberItemIds.sorted().joined(separator: ":")
+            let proposed = GuidedStockStructuring.proposeValues(for: cluster)
+            // Proposed as "comes in versions"; stash the differing tokens as the first attribute's prefill values.
+            seeded.append(GuidedStructuredGroup(
+                id: stableId,
+                familyName: cluster.stem,
+                memberItemIds: cluster.memberItemIds,
+                isSingleItem: false,
+                attributes: proposed.isEmpty ? [] : [GuidedAttribute(name: "", values: proposed)],
+                isConfirmed: false
+            ))
+        }
+        for item in items where !clusteredIds.contains(item.id) {
+            seeded.append(GuidedStructuredGroup(
+                id: "group::" + item.id,
+                familyName: item.name,
+                memberItemIds: [item.id],
+                isSingleItem: true,
+                attributes: [],
+                isConfirmed: false
+            ))
+        }
+        groups = seeded
+        persist()
+    }
+
     // MARK: - Draft persistence
 
     func persist() {

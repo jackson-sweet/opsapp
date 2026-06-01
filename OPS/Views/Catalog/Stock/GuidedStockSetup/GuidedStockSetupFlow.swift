@@ -197,7 +197,8 @@ struct GuidedStockSetupFlow: View {
     @ViewBuilder
     private var bottomBar: some View {
         switch model.stage {
-        case .prime, .done:
+        case .prime, .done, .structure:
+            // .structure owns its own BACK + CTA; the container suppresses its chrome entirely.
             EmptyView()
         default:
             VStack(spacing: OPSStyle.Layout.spacing2) {

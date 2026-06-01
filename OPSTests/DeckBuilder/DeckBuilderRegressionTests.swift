@@ -439,6 +439,186 @@ final class DeckBuilderRegressionTests: XCTestCase {
         )
     }
 
+    // MARK: - Marquee rectangle normalizes across a reversing drag (BUG 1)
+
+    func testUpdateMarquee_normalizesRectForReversingDrag() {
+        // Start at (100,100), drag up-left to (50,50), then reverse and drag
+        // down-right PAST the anchor to (150,150). The rect must always be the
+        // axis-aligned box between the FIXED anchor and the live point — i.e.
+        // (100,100)→(150,150). The pre-fix code reused the running rect's
+        // origin as the anchor, so once the drag reversed the origin stayed
+        // pinned at the minimized corner (50,50) and the box never tracked
+        // back, spuriously covering geometry the current box no longer bounds.
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: DeckDrawingData()))
+
+        viewModel.beginMarquee(at: CGPoint(x: 100, y: 100))
+        viewModel.updateMarquee(to: CGPoint(x: 50, y: 50))   // up-left
+        viewModel.updateMarquee(to: CGPoint(x: 150, y: 150)) // reverse past anchor
+
+        guard case .selecting(let rect) = viewModel.drawingMode else {
+            return XCTFail("expected .selecting mode after marquee updates")
+        }
+        XCTAssertEqual(rect, CGRect(x: 100, y: 100, width: 50, height: 50),
+                       "marquee rect must be the box from the fixed anchor to the live point, for any drag direction")
+    }
+
+    func testEndMarquee_selectsOnlyVerticesInsideForReversingDrag() {
+        // Reversing drag (100,100 → 50,50 → 150,150) must resolve to the final
+        // box [100,150]² — selecting the vertex inside it, not one only swept
+        // through. (70,70) is inside the transient (50,50)→(100,100) box but
+        // outside the correct final box. Vertices carry edges so fromJSON's
+        // orphan-pruning keeps them on the deckDesign round-trip.
+        var data = DeckDrawingData()
+        data.config.snappingEnabled = false
+        data.vertices = [
+            DeckVertex(id: "inside", position: CGPoint(x: 120, y: 120)),
+            DeckVertex(id: "swept", position: CGPoint(x: 70, y: 70)),
+            DeckVertex(id: "far", position: CGPoint(x: 300, y: 300)),
+        ]
+        data.edges = [
+            DeckEdge(id: "e1", startVertexId: "inside", endVertexId: "swept"),
+            DeckEdge(id: "e2", startVertexId: "swept", endVertexId: "far"),
+        ]
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        viewModel.activeTool = .select
+
+        viewModel.beginMarquee(at: CGPoint(x: 100, y: 100))
+        viewModel.updateMarquee(to: CGPoint(x: 50, y: 50))
+        viewModel.updateMarquee(to: CGPoint(x: 150, y: 150))
+        viewModel.endMarquee()
+
+        XCTAssertTrue(viewModel.selection.selectedVertexIds.contains("inside"),
+                      "vertex inside the final box must be selected; got \(viewModel.selection.selectedVertexIds)")
+        XCTAssertFalse(viewModel.selection.selectedVertexIds.contains("swept"),
+                       "a vertex the final marquee box does not contain must not be selected")
+    }
+
+    // MARK: - Stair tap respects additive/toggle semantics (BUG 2)
+
+    func testHandleTap_stairTapInAdditiveModePreservesExistingSelection() {
+        // Unit square (scale 1.0) with a stair on the bottom edge e1 (v1→v2).
+        // The stair projects to the outward perpendicular (y < 0), spanning
+        // x∈[0,100], y∈[-30,0] (width 100, 3 treads × 10" run = 30 depth).
+        var data = DeckDrawingData()
+        data.scaleFactor = 1.0
+        data.config.snappingEnabled = false
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 100, y: 0)),
+            DeckVertex(id: "v3", position: CGPoint(x: 100, y: 100)),
+            DeckVertex(id: "v4", position: CGPoint(x: 0, y: 100)),
+        ]
+        var stairEdge = DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")
+        stairEdge.stairConfig = StairConfig(width: 100, treadCount: 3, alignment: .center)
+        data.edges = [
+            stairEdge,
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4"),
+            DeckEdge(id: "e4", startVertexId: "v4", endVertexId: "v1"),
+        ]
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+
+        let stairTapPoint = CGPoint(x: 50, y: -15)
+
+        // Sanity: a non-additive tap on the stair selects exactly that edge,
+        // confirming the tap point lands inside the stair geometry.
+        viewModel.activeTool = .draw
+        viewModel.handleTap(at: stairTapPoint)
+        XCTAssertEqual(viewModel.selection.selectedEdgeIds, ["e1"],
+                       "stair tap point must hit the stair rectangle")
+
+        // Additive mode: pre-seed a multi-selection, then tap the stair. An
+        // edge tap toggles/adds; the stair tap must do the same — NOT replace
+        // the whole set. Pre-fix it did `selectedEdgeIds = [stairEdgeId]`,
+        // wiping e2 and e3.
+        viewModel.activeTool = .tapSelect
+        viewModel.selection.selectedEdgeIds = ["e2", "e3"]
+        viewModel.handleTap(at: stairTapPoint)
+
+        XCTAssertEqual(viewModel.selection.selectedEdgeIds, ["e1", "e2", "e3"],
+                       "stair tap in additive mode must add to the selection, not clobber it")
+
+        // And a second additive stair tap toggles it OFF (edge-tap parity).
+        viewModel.handleTap(at: stairTapPoint)
+        XCTAssertEqual(viewModel.selection.selectedEdgeIds, ["e2", "e3"],
+                       "a second additive stair tap must toggle the stair edge off")
+    }
+
+    // MARK: - Marquee / lasso honor the element-type filter (BUG 3)
+
+    func testEndMarquee_honorsTapSelectFilter() {
+        // Filter set to faces only — a marquee drag must add neither vertices
+        // nor edges, mirroring how tap selection respects the filter.
+        var data = DeckDrawingData()
+        data.config.snappingEnabled = false
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 10, y: 10)),
+            DeckVertex(id: "v2", position: CGPoint(x: 90, y: 10)),
+        ]
+        data.edges = [DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")]
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        viewModel.activeTool = .select
+        viewModel.tapSelectFilter = [.face]
+
+        viewModel.beginMarquee(at: CGPoint(x: 0, y: 0))
+        viewModel.updateMarquee(to: CGPoint(x: 100, y: 100))
+        viewModel.endMarquee()
+
+        XCTAssertTrue(viewModel.selection.selectedVertexIds.isEmpty,
+                      "marquee must not add vertices when .vertex is filtered out")
+        XCTAssertTrue(viewModel.selection.selectedEdgeIds.isEmpty,
+                      "marquee must not add edges when .edge is filtered out")
+    }
+
+    func testEndMarquee_edgeOnlyFilterSkipsVertexSelection() {
+        // Filter excludes vertices but includes edges. Both endpoints fall in
+        // the box, so the edge must still be selected — via its endpoints —
+        // without leaving the vertices selected.
+        var data = DeckDrawingData()
+        data.config.snappingEnabled = false
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 10, y: 10)),
+            DeckVertex(id: "v2", position: CGPoint(x: 90, y: 10)),
+        ]
+        data.edges = [DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")]
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        viewModel.activeTool = .select
+        viewModel.tapSelectFilter = [.edge]
+
+        viewModel.beginMarquee(at: CGPoint(x: 0, y: 0))
+        viewModel.updateMarquee(to: CGPoint(x: 100, y: 100))
+        viewModel.endMarquee()
+
+        XCTAssertEqual(viewModel.selection.selectedEdgeIds, ["e1"],
+                       "edge fully inside the marquee must be selected when .edge is allowed")
+        XCTAssertTrue(viewModel.selection.selectedVertexIds.isEmpty,
+                      "marquee must not leave vertices selected when .vertex is filtered out")
+    }
+
+    func testEndLasso_honorsTapSelectFilter() {
+        var data = DeckDrawingData()
+        data.config.snappingEnabled = false
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 10, y: 10)),
+            DeckVertex(id: "v2", position: CGPoint(x: 90, y: 10)),
+        ]
+        data.edges = [DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")]
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        viewModel.activeTool = .lasso
+        viewModel.tapSelectFilter = [.face]
+
+        viewModel.beginLasso(at: CGPoint(x: 0, y: 0))
+        viewModel.updateLasso(to: CGPoint(x: 100, y: 0))
+        viewModel.updateLasso(to: CGPoint(x: 100, y: 100))
+        viewModel.updateLasso(to: CGPoint(x: 0, y: 100))
+        viewModel.endLasso()
+
+        XCTAssertTrue(viewModel.selection.selectedVertexIds.isEmpty,
+                      "lasso must not add vertices when .vertex is filtered out")
+        XCTAssertTrue(viewModel.selection.selectedEdgeIds.isEmpty,
+                      "lasso must not add edges when .edge is filtered out")
+    }
+
     private func deckDesign(drawingData: DeckDrawingData) -> DeckDesign {
         DeckDesign(
             companyId: "company-1",

@@ -1,5 +1,16 @@
 # BOOKS — Mission Deck Visual Rebuild Implementation Spec
 
+> **⚠️ PARTIALLY SUPERSEDED (2026-06-01).** The hero-carousel pattern in §5 (full
+> rich cards rendered inline, variable height) has been replaced by **condensed
+> cards + expand-to-sheet** (uniform height; each lens is a compact L2 glance tile
+> that taps to open its full content in a half-sheet). The full card layouts in
+> §5.1–5.5 live on as the *expanded sheet* content. The below-picker area is now a
+> single-scroll page with a pinned section header, and the in-view expense FAB is
+> removed in favour of the global FAB. See
+> [`2026-06-01-books-condensed-cards-ux-overhaul-design.md`](2026-06-01-books-condensed-cards-ux-overhaul-design.md)
+> for the current design. Everything else in this spec (tokens, sync banner,
+> skeletons, drill tiles, scope badges, A/R detents, VoiceOver) remains accurate.
+
 |   |   |
 |---|---|
 | **Date** | 2026-05-19 |

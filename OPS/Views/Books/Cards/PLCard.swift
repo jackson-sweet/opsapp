@@ -13,6 +13,8 @@ import SwiftUI
 
 struct PLCard: View {
     @ObservedObject var viewModel: MoneyDashboardViewModel
+    var style: BooksCardStyle = .full
+    var onExpand: () -> Void = {}
     var onTapOutstanding: () -> Void
     var onTapForecast: () -> Void
 
@@ -68,6 +70,16 @@ struct PLCard: View {
     // MARK: - Body
 
     var body: some View {
+        switch style {
+        case .full:      fullBody
+        case .condensed: condensedBody
+        }
+    }
+
+    // MARK: - Full body (expand-to-sheet detail)
+
+    @ViewBuilder
+    private var fullBody: some View {
         if isSkeleton {
             skeletonView.padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .accessibilityElement(children: .ignore)
@@ -81,6 +93,40 @@ struct PLCard: View {
         }
     }
 
+    // MARK: - Condensed face (paging strip glance)
+
+    @ViewBuilder
+    private var condensedBody: some View {
+        if isSkeleton {
+            CondensedHeroCard<EmptyView, EmptyView>.skeleton()
+        } else if viewModel.cardError(.pl) {
+            BooksCardError(onRetry: { Task { await viewModel.retry(.pl) } })
+                .frame(height: BooksCondensedMetrics.cardHeight)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        } else {
+            CondensedHeroCard(
+                caption: "NET CASH",
+                heroText: isEmpty ? "$0" : currencyString(viewModel.netCash),
+                heroColor: isEmpty
+                    ? OPSStyle.Colors.tertiaryText
+                    : (viewModel.netCash >= 0 ? OPSStyle.Colors.primaryText : OPSStyle.Colors.rose),
+                onExpand: onExpand,
+                viz: { CondensedMeter(fraction: isEmpty ? 0 : meterFraction) },
+                subStat: {
+                    Text(isEmpty ? "// NO ACTIVITY" : "\(marginPctSigned)% MARGIN")
+                        .font(.custom("JetBrainsMono-Medium", size: 11))
+                        .tracking(isEmpty ? 1.76 : 0.44)
+                        .foregroundColor(isEmpty ? OPSStyle.Colors.inactiveText : marginColor)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                }
+            )
+            .accessibilityLabel(isEmpty
+                ? "P and L. No activity this period."
+                : accessibilityCardLabel)
+        }
+    }
+
     // MARK: - Normal body
 
     private var normalBody: some View {
@@ -90,7 +136,7 @@ struct PLCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 heroBlock
                 marginMeter.padding(.top, OPSStyle.Layout.spacing2)
-                inOutRow.padding(.top, 10)
+                inOutRow.padding(.top, OPSStyle.Layout.spacing2_5)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilityCardLabel)
@@ -250,7 +296,7 @@ struct PLCard: View {
                     BooksSkeleton.bar(width: 110, height: 14)
                 }
             }
-            .padding(.top, 10)
+            .padding(.top, OPSStyle.Layout.spacing2_5)
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 BooksSkeleton.tile()
                 BooksSkeleton.tile()

@@ -61,7 +61,7 @@ struct CollapsedCarouselStrip: View {
             HStack(spacing: 4) {
                 ForEach(visibleCards) { card in
                     Capsule()
-                        .fill(card == activeCard ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder)
+                        .fill(card == activeCard ? OPSStyle.Colors.primaryText : OPSStyle.Colors.textMute.opacity(0.5))
                         .frame(width: card == activeCard ? 12 : 4, height: 4)
                 }
             }

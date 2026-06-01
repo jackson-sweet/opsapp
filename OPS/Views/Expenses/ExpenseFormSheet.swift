@@ -1192,6 +1192,13 @@ struct ExpenseFormSheet: View {
             }
         }
 
+        if viewModel.error == nil {
+            // Broadcast so every visible expense list (My Expenses, review
+            // batches) refreshes. The global FAB no longer shares the list's
+            // view model, so this is what keeps a create reflected without a
+            // manual pull-to-refresh.
+            NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
+        }
         return viewModel.error == nil
     }
 
@@ -1226,6 +1233,14 @@ struct ExpenseFormSheet: View {
         // Run OCR on next receipt
         Task { await runOCR() }
     }
+}
+
+extension Notification.Name {
+    /// Posted after any expense is created / updated / submitted so visible
+    /// expense lists (My Expenses, review batches) can refresh. The app-wide
+    /// global FAB doesn't share their view models, so this notification is the
+    /// refresh bridge.
+    static let opsExpensesDidChange = Notification.Name("OPSExpensesDidChange")
 }
 
 // MARK: - Project Picker Sheet

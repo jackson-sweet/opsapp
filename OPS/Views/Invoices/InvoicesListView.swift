@@ -78,38 +78,26 @@ struct InvoicesListView: View {
                 .background(OPSStyle.Colors.separator)
                 .padding(.top, OPSStyle.Layout.spacing2)
 
-            // Content
+            // Content — when embedded in Books the rows render inline so the
+            // Books page owns a single scroll (no nested ScrollViews); standalone
+            // keeps its own ScrollView + pull-to-refresh.
             if viewModel.isLoading && viewModel.invoices.isEmpty {
-                Spacer()
-                TacticalLoadingBarAnimated()
-                Spacer()
+                if embedded {
+                    TacticalLoadingBarAnimated()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, OPSStyle.Layout.spacing5)
+                } else {
+                    Spacer()
+                    TacticalLoadingBarAnimated()
+                    Spacer()
+                }
             } else if viewModel.filteredInvoices.isEmpty {
                 emptyState
+            } else if embedded {
+                invoiceRows
             } else {
                 ScrollView {
-                    LazyVStack(spacing: OPSStyle.Layout.spacing2) {
-                        ForEach(viewModel.filteredInvoices) { invoice in
-                            InvoiceCard(
-                                invoice: invoice,
-                                onTap: { selectedInvoice = invoice },
-                                onSwipeRight: {
-                                    paymentInvoice = invoice
-                                    showPaymentSheet = true
-                                },
-                                onSwipeLeft: {
-                                    voidTarget = invoice
-                                    showVoidConfirm = true
-                                },
-                                onWriteOff: {
-                                    writeOffTarget = invoice
-                                    showWriteOffConfirm = true
-                                }
-                            )
-                        }
-                    }
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .padding(.top, OPSStyle.Layout.spacing2)
-                    .padding(.bottom, OPSStyle.Layout.spacing4)
+                    invoiceRows
                 }
                 .refreshable { await viewModel.loadInvoices() }
             }
@@ -193,6 +181,32 @@ struct InvoicesListView: View {
                 )
         }
         .buttonStyle(PlainButtonStyle())
+    }
+
+    private var invoiceRows: some View {
+        LazyVStack(spacing: OPSStyle.Layout.spacing2) {
+            ForEach(viewModel.filteredInvoices) { invoice in
+                InvoiceCard(
+                    invoice: invoice,
+                    onTap: { selectedInvoice = invoice },
+                    onSwipeRight: {
+                        paymentInvoice = invoice
+                        showPaymentSheet = true
+                    },
+                    onSwipeLeft: {
+                        voidTarget = invoice
+                        showVoidConfirm = true
+                    },
+                    onWriteOff: {
+                        writeOffTarget = invoice
+                        showWriteOffConfirm = true
+                    }
+                )
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.top, OPSStyle.Layout.spacing2)
+        .padding(.bottom, OPSStyle.Layout.spacing4)
     }
 
     private var emptyState: some View {

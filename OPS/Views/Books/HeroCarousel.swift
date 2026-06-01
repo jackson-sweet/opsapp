@@ -2,13 +2,16 @@
 //  HeroCarousel.swift
 //  OPS
 //
-//  Books Phase 2 — 5-card swipeable financial carousel.
-//  Uses ScrollView(.horizontal) + scrollTargetBehavior(.paging) (iOS 17+)
-//  instead of TabView(.page) so we keep the OPS canonical easing curve
-//  and avoid spring physics per the design system motion rule.
+//  Books P6 — 5-card swipeable financial carousel, condensed-card edition.
+//  Each lens renders a uniform CONDENSED tile (headline metric + signature
+//  mini-viz); tapping expands the lens's full content into a half-sheet
+//  (`ExpandedCardSheet`). Uses ScrollView(.horizontal) + scrollTargetBehavior
+//  (.paging) (iOS 17+) instead of TabView(.page) so we keep the OPS canonical
+//  easing curve and avoid spring physics per the design system motion rule.
 //
-//  Cards are permission-filtered; the last-viewed card persists across
-//  app launches via @AppStorage. Reduced-motion skips fill/count-up.
+//  The shared header (active label + scope badge + period pill) and dot
+//  pagination sit outside the paging strip and reflect the active card. The
+//  last-viewed card persists across launches via @AppStorage.
 //
 
 import SwiftUI
@@ -16,19 +19,17 @@ import SwiftUI
 struct HeroCarousel: View {
     @ObservedObject var viewModel: MoneyDashboardViewModel
     @EnvironmentObject private var permissionStore: PermissionStore
+    @EnvironmentObject private var dataController: DataController
 
     @AppStorage("books.lastViewedCard") private var lastViewedRaw: String = CardID.pl.rawValue
     @State private var scrollPosition: CardID?
+    @State private var expandedCard: CardID?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// P&L OUTSTANDING tile → Invoices/overdue (fired from inside the sheet).
     var onDrillOutstanding: () -> Void
+    /// P&L FORECAST tile → Estimates/sent (fired from inside the sheet).
     var onDrillForecast: () -> Void
-    var onDrillCashFlowDays: (() -> Void)? = nil
-    var onDrillTopChase: () -> Void
-    var onDrillCloseRate: (() -> Void)? = nil
-    var onDrillStale: (() -> Void)? = nil
-    var onDrillProfitable: (() -> Void)? = nil
-    var onDrillLosers: (() -> Void)? = nil
 
     enum CardID: String, CaseIterable, Identifiable {
         case pl, cashFlow, ar, forecast, jobs
@@ -58,7 +59,10 @@ struct HeroCarousel: View {
                     HStack(spacing: OPSStyle.Layout.spacing3) {
                         ForEach(visibleCards) { card in
                             cardView(for: card)
-                                .containerRelativeFrame(.horizontal)
+                                // Paging width must account for the inter-card
+                                // gap, otherwise every page accumulates a
+                                // `spacing3` rightward drift (P6 bleed fix).
+                                .containerRelativeFrame(.horizontal, count: 1, span: 1, spacing: OPSStyle.Layout.spacing3)
                                 .id(card)
                         }
                     }
@@ -88,6 +92,19 @@ struct HeroCarousel: View {
                 if let next {
                     lastViewedRaw = next.rawValue
                 }
+            }
+            // Tap a condensed card → expand its full content into the reused
+            // half-sheet (mirrors the A/R aging detail presentation).
+            .sheet(item: $expandedCard) { card in
+                ExpandedCardSheet(
+                    card: card,
+                    viewModel: viewModel,
+                    onDrillOutstanding: onDrillOutstanding,
+                    onDrillForecast: onDrillForecast
+                )
+                .environmentObject(dataController)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
             }
             // § 8.1 — carousel container: heading-rotor entry + orientation label.
             // `.contain` keeps every card, tile, and chrome control individually
@@ -142,17 +159,19 @@ struct HeroCarousel: View {
 
     @ViewBuilder
     private func cardView(for card: CardID) -> some View {
+        let expand = { expandedCard = card }
         switch card {
         case .pl:
-            PLCard(viewModel: viewModel, onTapOutstanding: onDrillOutstanding, onTapForecast: onDrillForecast)
+            PLCard(viewModel: viewModel, style: .condensed, onExpand: expand,
+                   onTapOutstanding: onDrillOutstanding, onTapForecast: onDrillForecast)
         case .cashFlow:
-            CashFlowCard(viewModel: viewModel, onTapDays: onDrillCashFlowDays)
+            CashFlowCard(viewModel: viewModel, style: .condensed, onExpand: expand)
         case .ar:
-            ARCard(viewModel: viewModel, onTapTopChase: onDrillTopChase)
+            ARCard(viewModel: viewModel, style: .condensed, onExpand: expand, onTapTopChase: {})
         case .forecast:
-            ForecastCard(viewModel: viewModel, onTapCloseRate: onDrillCloseRate, onTapStale: onDrillStale)
+            ForecastCard(viewModel: viewModel, style: .condensed, onExpand: expand)
         case .jobs:
-            JobsCard(viewModel: viewModel, onTapProfitable: onDrillProfitable, onTapLosers: onDrillLosers)
+            JobsCard(viewModel: viewModel, style: .condensed, onExpand: expand)
         }
     }
 
@@ -184,10 +203,10 @@ struct HeroCarousel: View {
 #Preview("HeroCarousel — Owner (all 5 cards)") {
     HeroCarousel(
         viewModel: .previewStub(),
-        onDrillOutstanding: {}, onDrillForecast: {},
-        onDrillTopChase: {}
+        onDrillOutstanding: {}, onDrillForecast: {}
     )
     .environmentObject(PermissionStore.previewOwner())
+    .environmentObject(DataController())
     .padding(.vertical, 24)
     .background(OPSStyle.Colors.background)
     .preferredColorScheme(.dark)
@@ -196,10 +215,10 @@ struct HeroCarousel: View {
 #Preview("HeroCarousel — empty data") {
     HeroCarousel(
         viewModel: .previewEmpty(),
-        onDrillOutstanding: {}, onDrillForecast: {},
-        onDrillTopChase: {}
+        onDrillOutstanding: {}, onDrillForecast: {}
     )
     .environmentObject(PermissionStore.previewOwner())
+    .environmentObject(DataController())
     .padding(.vertical, 24)
     .background(OPSStyle.Colors.background)
     .preferredColorScheme(.dark)

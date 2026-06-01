@@ -406,6 +406,10 @@ struct SketchCaptureView: View {
     let projectId: String?
     let companyId: String
     let userId: String?
+    /// The drawing's units. Forwarded to the scan pipeline so a grid-only sketch
+    /// (no dimension annotations) falls back to the right grid square: imperial →
+    /// 1 square = 1 foot, metric → 1 square = 10 cm.
+    var measurementSystem: MeasurementSystem = .imperial
     let onComplete: (SketchScanResult) -> Void
 
     // MARK: - State
@@ -697,7 +701,7 @@ struct SketchCaptureView: View {
                     lightImpact.impactOccurred()
                     hasUserConfirmedCapture = true
                     guard let image = capturedImage else { return }
-                    Task { await pipeline.process(image: image) }
+                    Task { await pipeline.process(image: image, measurementSystem: measurementSystem) }
                 } label: {
                     Text("Use This Scan")
                         .font(OPSStyle.Typography.button)

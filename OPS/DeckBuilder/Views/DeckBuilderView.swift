@@ -343,7 +343,8 @@ struct DeckBuilderView: View {
             SketchCaptureView(
                 projectId: viewModel.deckDesign.projectId,
                 companyId: viewModel.deckDesign.companyId,
-                userId: viewModel.deckDesign.createdBy
+                userId: viewModel.deckDesign.createdBy,
+                measurementSystem: viewModel.drawingData.config.measurementSystem
             ) { scanResult in
                 let drawingData = scanResult.toDeckDrawingData(
                     canvasWidth: 600,

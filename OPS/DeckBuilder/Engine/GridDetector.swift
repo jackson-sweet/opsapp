@@ -142,8 +142,19 @@ struct GridDetector {
 
     // MARK: - Morphological Open (Erode + Dilate)
 
-    /// Apply morphological open: erode (CIMorphologyMinimum) then dilate (CIMorphologyMaximum).
-    /// This removes small features while preserving structures that match the kernel shape.
+    /// Apply a morphological open with a *rectangular* structuring element:
+    /// erode (`CIMorphologyRectangleMinimum`) then dilate (`CIMorphologyRectangleMaximum`).
+    ///
+    /// A rectangular kernel is required to isolate a single axis. Callers pass an
+    /// asymmetric kernel — wide-and-short `(horizontalKernelWidth, 1)` to keep only
+    /// long horizontal structures, or tall-and-narrow `(1, verticalKernelHeight)` to
+    /// keep only long vertical structures. A circular disk kernel (the previous
+    /// `CIMorphologyMinimum`/`Maximum`) erodes and dilates the same disk in both
+    /// passes, so it cannot isolate an axis and corrupts grid-line separation.
+    ///
+    /// `CIMorphologyRectangle*` exposes `inputWidth`/`inputHeight` (each rounded to the
+    /// nearest odd integer by the filter). We round explicitly to odd integers first so
+    /// the opening is deterministic and the kernel never collapses below 1 pixel.
     /// - Parameters:
     ///   - input: The binary CIImage to process
     ///   - kernelWidth: Width of the structuring element in pixels
@@ -156,19 +167,30 @@ struct GridDetector {
         kernelHeight: Double,
         context: CIContext
     ) -> CIImage? {
-        let radius = max(kernelWidth, kernelHeight) / 2.0
+        let widthOdd = oddKernelDimension(kernelWidth)
+        let heightOdd = oddKernelDimension(kernelHeight)
 
-        // Erode: shrink bright regions → removes thin structures
-        guard let erodeFilter = CIFilter(name: "CIMorphologyMinimum") else { return nil }
+        // Erode: shrink bright regions → removes structures that don't span the kernel
+        guard let erodeFilter = CIFilter(name: "CIMorphologyRectangleMinimum") else { return nil }
         erodeFilter.setValue(input, forKey: kCIInputImageKey)
-        erodeFilter.setValue(radius, forKey: kCIInputRadiusKey)
+        erodeFilter.setValue(widthOdd, forKey: "inputWidth")
+        erodeFilter.setValue(heightOdd, forKey: "inputHeight")
         guard let eroded = erodeFilter.outputImage else { return nil }
 
         // Dilate: expand bright regions back → restores structures that survived erosion
-        guard let dilateFilter = CIFilter(name: "CIMorphologyMaximum") else { return nil }
+        guard let dilateFilter = CIFilter(name: "CIMorphologyRectangleMaximum") else { return nil }
         dilateFilter.setValue(eroded, forKey: kCIInputImageKey)
-        dilateFilter.setValue(radius, forKey: kCIInputRadiusKey)
+        dilateFilter.setValue(widthOdd, forKey: "inputWidth")
+        dilateFilter.setValue(heightOdd, forKey: "inputHeight")
         return dilateFilter.outputImage
+    }
+
+    /// Round a kernel dimension to the nearest positive odd integer (minimum 1).
+    /// `CIMorphologyRectangle*` requires odd integer dimensions; rounding here keeps
+    /// the structuring element symmetric about its center and never below 1 pixel.
+    private static func oddKernelDimension(_ value: Double) -> Int {
+        let rounded = max(1, Int(value.rounded()))
+        return rounded % 2 == 0 ? rounded + 1 : rounded
     }
 
     // MARK: - Step 4: Measure Line Spacing

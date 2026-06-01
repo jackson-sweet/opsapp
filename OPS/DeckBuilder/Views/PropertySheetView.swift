@@ -55,11 +55,19 @@ struct PropertySheetView: View {
 
     @ViewBuilder
     private var edgeProperties: some View {
+        let selectedIds = Array(viewModel.selection.selectedEdgeIds)
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             sectionHeader("Edge Properties", icon: "line.diagonal")
 
-            // Edge type picker
-            ForEach(Array(viewModel.selection.selectedEdgeIds), id: \.self) { edgeId in
+            // Bulk edge-type control — when more than one edge is selected a
+            // single Type toggle applies to the WHOLE selection in one action,
+            // so "mark these as house edge" lands on all of them, not just one.
+            // The per-edge cards below own Type in single-select.
+            if selectedIds.count > 1 {
+                bulkEdgeTypeControl(edgeIds: selectedIds)
+            }
+
+            ForEach(selectedIds, id: \.self) { edgeId in
                 // Multi-level-aware lookup. The plain `drawingData.edge(byId:)`
                 // only inspects the top-level edges array, which is empty in
                 // multi-level mode — so the section rendered nothing for the
@@ -79,21 +87,24 @@ struct PropertySheetView: View {
                             }
                         }
 
-                        // Edge type
-                        HStack {
-                            Text("Type")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                            Spacer()
-                            Picker("", selection: Binding(
-                                get: { edge.edgeType },
-                                set: { viewModel.setEdgeType(edgeId, type: $0) }
-                            )) {
-                                Text("Deck Edge").tag(EdgeType.deckEdge)
-                                Text("House Edge").tag(EdgeType.houseEdge)
+                        // Edge type — single-select only; the bulk control
+                        // above owns Type when multiple edges are selected.
+                        if selectedIds.count == 1 {
+                            HStack {
+                                Text("Type")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                Spacer()
+                                Picker("", selection: Binding(
+                                    get: { edge.edgeType },
+                                    set: { viewModel.setEdgeType(edgeId, type: $0) }
+                                )) {
+                                    Text("Deck Edge").tag(EdgeType.deckEdge)
+                                    Text("House Edge").tag(EdgeType.houseEdge)
+                                }
+                                .pickerStyle(.segmented)
+                                .frame(width: 200)
                             }
-                            .pickerStyle(.segmented)
-                            .frame(width: 200)
                         }
 
                         // House cladding picker — only shown for house edges.
@@ -128,6 +139,39 @@ struct PropertySheetView: View {
                 }
             }
         }
+    }
+
+    /// Single Type toggle shown above the per-edge cards when more than one
+    /// edge is selected. Setting it applies the chosen type to every selected
+    /// edge in one atomic action. Shows the common type when the selection is
+    /// uniform, otherwise defaults the toggle to Deck Edge.
+    @ViewBuilder
+    private func bulkEdgeTypeControl(edgeIds: [String]) -> some View {
+        let types = Set(edgeIds.compactMap { viewModel.findEdge(byId: $0)?.edgeType })
+        let common: EdgeType = types.count == 1 ? (types.first ?? .deckEdge) : .deckEdge
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            HStack {
+                Text("Type")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Spacer()
+                Picker("", selection: Binding(
+                    get: { common },
+                    set: { viewModel.setEdgeType(edgeIds, type: $0) }
+                )) {
+                    Text("Deck Edge").tag(EdgeType.deckEdge)
+                    Text("House Edge").tag(EdgeType.houseEdge)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 200)
+            }
+            Text("Applies to \(edgeIds.count) selected edges")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.cardBackground)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 
     @ViewBuilder

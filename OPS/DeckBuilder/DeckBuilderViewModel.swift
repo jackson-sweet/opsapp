@@ -1867,19 +1867,39 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Edge Properties
 
     func setEdgeType(_ edgeId: String, type: EdgeType) {
-        guard var edge = activeEdge(byId: edgeId) else { return }
+        setEdgeType([edgeId], type: type)
+    }
+
+    /// Apply an edge type to every edge in `edgeIds` as ONE atomic action — a
+    /// single undo snapshot and a single save, mirroring
+    /// `assignItemToSelectedEdges`. The assignment wheel and the Properties
+    /// sheet both route multi-edge type changes here so "mark these as house
+    /// edge" lands on the whole selection, not just one edge.
+    func setEdgeType(_ edgeIds: [String], type: EdgeType) {
+        let ids = edgeIds.filter { activeEdge(byId: $0) != nil }
+        guard !ids.isEmpty else { return }
         pushUndo("set edge type")
-        edge.edgeType = type
-        // House edge and deck-edge railing are mutually exclusive. House
-        // edges carry house cladding only; deck edges may carry railing/
-        // parapet configuration. Clearing the invalid side here keeps old
-        // saved payloads from leaking into renderers and estimates.
-        if type == .houseEdge {
-            edge.railingConfig = nil
-        } else {
-            edge.houseEdgeMaterial = nil
+        for id in ids {
+            guard var edge = activeEdge(byId: id) else { continue }
+            edge.edgeType = type
+            // House edge and deck-edge railing are mutually exclusive. House
+            // edges carry house cladding only; deck edges may carry railing/
+            // parapet configuration. Clearing the invalid side here keeps old
+            // saved payloads from leaking into renderers and estimates.
+            if type == .houseEdge {
+                edge.railingConfig = nil
+            } else {
+                edge.houseEdgeMaterial = nil
+            }
+            activeUpdateEdge(edge)
         }
-        activeUpdateEdge(edge)
+        hapticMedium()
+        // Confirm multi-edge applies hit the whole selection — single-edge
+        // changes are self-evident on the canvas and stay quiet.
+        if ids.count > 1 {
+            let label = type == .houseEdge ? "House edge" : "Deck edge"
+            showAssignmentConfirmation("\(label) applied to \(ids.count) edges")
+        }
         save()
     }
 

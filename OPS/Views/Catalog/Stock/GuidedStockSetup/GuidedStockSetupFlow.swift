@@ -3,9 +3,9 @@ import SwiftUI
 // MARK: - GuidedStockSetupFlow
 //
 // Full-screen flow container for the guided stock setup wizard.
-// Presented via .fullScreenCover by entry points (wired in a later task).
+// Presented via .fullScreenCover by entry points.
 // Owns: progress indicator, offline banner, stage routing, bottom CTA bar,
-//       draft-resume confirmation dialog, and haptic orchestration.
+//       draft-resume confirmation dialog, haptic orchestration, and commit wiring (P6).
 
 struct GuidedStockSetupFlow: View {
 
@@ -13,10 +13,12 @@ struct GuidedStockSetupFlow: View {
 
     @EnvironmentObject private var dataController: DataController
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reducedMotion
     @ObservedObject private var permissionStore = PermissionStore.shared
     @StateObject private var model: GuidedStockSetupModel
     @State private var showResumePrompt = false
+    @State private var isBuilding = false
 
     // MARK: - Init
 
@@ -53,6 +55,15 @@ struct GuidedStockSetupFlow: View {
             }
         } message: {
             Text("You have an unfinished stock setup.")
+        }
+        .onChange(of: model.commitProgress) { _, newValue in
+            if case .complete(let summary) = newValue {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                postCompletionNotification(summary)
+                withAnimation(flowAnimation) {
+                    model.stage = .done
+                }
+            }
         }
     }
 
@@ -188,7 +199,28 @@ struct GuidedStockSetupFlow: View {
         case .blueprint:
             GuidedStockBlueprintView(model: model)
         case .done:
-            GuidedStockDoneView(model: model, onClose: { dismiss() })
+            let summary: GuidedStockSummary = {
+                if case .complete(let s) = model.commitProgress { return s }
+                return GuidedStockSummary()
+            }()
+            GuidedStockDoneView(
+                summary: summary,
+                onDone: {
+                    dismiss()
+                },
+                onRefineInAdvanced: {
+                    dismiss()
+                    NotificationCenter.default.post(
+                        name: Notification.Name("OpenCatalogSetup"),
+                        object: nil
+                    )
+                },
+                onAddMore: {
+                    withAnimation(flowAnimation) {
+                        model.resetForAddMore()
+                    }
+                }
+            )
         }
     }
 
@@ -200,19 +232,36 @@ struct GuidedStockSetupFlow: View {
         case .prime, .done, .structure:
             // .structure owns its own BACK + CTA; the container suppresses its chrome entirely.
             EmptyView()
+        case .blueprint:
+            blueprintBottomBar
         default:
-            VStack(spacing: OPSStyle.Layout.spacing2) {
-                // Reason line (shown when CTA is disabled)
-                if let reasonText = ctaDisabledReason {
-                    Text(reasonText)
-                        .font(OPSStyle.Typography.metadata)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, OPSStyle.Layout.spacing3)
-                }
+            standardBottomBar
+        }
+    }
 
-                HStack(spacing: OPSStyle.Layout.spacing3) {
-                    // BACK button
+    // MARK: Blueprint bottom bar (commit-aware)
+
+    @ViewBuilder
+    private var blueprintBottomBar: some View {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
+            // Partial error line
+            if case .partial(let failedIds) = model.commitProgress {
+                Text("// ERROR — COULDN'T BUILD \(failedIds.count) \(failedIds.count == 1 ? "FAMILY" : "FAMILIES")")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.errorText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+            } else if let reasonText = blueprintDisabledReason {
+                Text(reasonText)
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+            }
+
+            HStack(spacing: OPSStyle.Layout.spacing3) {
+                // BACK button — hidden while building
+                if !isBuildRunning {
                     Button {
                         withFlowAnimation { model.back() }
                     } label: {
@@ -223,43 +272,126 @@ struct GuidedStockSetupFlow: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Go back to previous step")
-
-                    // Primary CTA
-                    Button {
-                        ctaAction()
-                    } label: {
-                        Text(ctaLabel)
-                    }
-                    .buttonStyle(GuidedFlowCTAButtonStyle(isEnabled: ctaEnabled))
-                    .disabled(!ctaEnabled)
-                    .accessibilityLabel(ctaLabel)
-                    .accessibilityValue(ctaEnabled ? "Ready" : "Locked")
                 }
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
+
+                // Primary CTA — adapts to commit state
+                if case .partial = model.commitProgress {
+                    // RETRY button (rose/error tint)
+                    Button {
+                        runBuild()
+                    } label: {
+                        Text("RETRY")
+                    }
+                    .buttonStyle(GuidedFlowCTAButtonStyle(isEnabled: true, tint: OPSStyle.Colors.rose))
+                    .accessibilityLabel("Retry failed families")
+                } else {
+                    Button {
+                        if !isBuildRunning {
+                            runBuild()
+                        }
+                    } label: {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            if isBuildRunning, case .running(let done, let total) = model.commitProgress {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.tertiaryText))
+                                    .scaleEffect(0.75)
+                                Text("BUILDING… \(done) OF \(total)")
+                            } else {
+                                Text("BUILD IT →")
+                            }
+                        }
+                    }
+                    .buttonStyle(GuidedFlowCTAButtonStyle(isEnabled: buildCTAEnabled))
+                    .disabled(!buildCTAEnabled)
+                    .accessibilityLabel(isBuildRunning ? "Building" : "Build it")
+                    .accessibilityValue(buildCTAEnabled ? "Ready" : "Locked")
+                }
             }
-            .padding(.vertical, OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.backgroundGradient.ignoresSafeArea())
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
+        .padding(.vertical, OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.backgroundGradient.ignoresSafeArea())
     }
 
-    // MARK: - CTA configuration per stage
+    private var isBuildRunning: Bool {
+        if case .running = model.commitProgress { return true }
+        return isBuilding
+    }
+
+    private var buildCTAEnabled: Bool {
+        guard !isBuildRunning else { return false }
+        guard case .partial = model.commitProgress else {
+            return !model.groups.isEmpty && dataController.isConnected
+        }
+        return false // partial uses RETRY button, not BUILD IT
+    }
+
+    private var blueprintDisabledReason: String? {
+        guard !isBuildRunning else { return nil }
+        if case .partial = model.commitProgress { return nil } // handled by error line
+        if model.groups.isEmpty { return "// NOTHING TO BUILD YET" }
+        if !dataController.isConnected { return "// OFFLINE — BUILD HELD" }
+        return nil
+    }
+
+    // MARK: Standard bottom bar (capture stage)
+
+    private var standardBottomBar: some View {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
+            if let reasonText = ctaDisabledReason {
+                Text(reasonText)
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+            }
+
+            HStack(spacing: OPSStyle.Layout.spacing3) {
+                Button {
+                    withFlowAnimation { model.back() }
+                } label: {
+                    Text("BACK")
+                        .font(OPSStyle.Typography.buttonLabel)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .frame(minWidth: 72, minHeight: OPSStyle.Layout.touchTargetMin)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Go back to previous step")
+
+                Button {
+                    ctaAction()
+                } label: {
+                    Text(ctaLabel)
+                }
+                .buttonStyle(GuidedFlowCTAButtonStyle(isEnabled: ctaEnabled))
+                .disabled(!ctaEnabled)
+                .accessibilityLabel(ctaLabel)
+                .accessibilityValue(ctaEnabled ? "Ready" : "Locked")
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+        }
+        .padding(.vertical, OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.backgroundGradient.ignoresSafeArea())
+    }
+
+    // MARK: - CTA configuration (non-blueprint stages)
 
     private var ctaLabel: String {
         switch model.stage {
-        case .prime:  return ""
-        case .capture: return "ORGANIZE →"
+        case .prime:     return ""
+        case .capture:   return "ORGANIZE →"
         case .structure: return "REVIEW →"
         case .blueprint: return "BUILD IT →"
-        case .done:   return ""
+        case .done:      return ""
         }
     }
 
     private var ctaEnabled: Bool {
         switch model.stage {
-        case .prime, .done: return false
-        case .capture: return model.capturableItemCount > 0
-        case .structure: return true
-        case .blueprint: return !model.groups.isEmpty && dataController.isConnected
+        case .prime, .done:  return false
+        case .capture:       return model.capturableItemCount > 0
+        case .structure:     return true
+        case .blueprint:     return !model.groups.isEmpty && dataController.isConnected
         }
     }
 
@@ -268,14 +400,6 @@ struct GuidedStockSetupFlow: View {
         switch model.stage {
         case .capture:
             return "// ADD AT LEAST ONE ITEM"
-        case .blueprint:
-            if model.groups.isEmpty {
-                return "// NOTHING TO BUILD YET"
-            }
-            if !dataController.isConnected {
-                return "// OFFLINE — BUILD HELD"
-            }
-            return nil
         default:
             return nil
         }
@@ -283,6 +407,55 @@ struct GuidedStockSetupFlow: View {
 
     private func ctaAction() {
         withFlowAnimation { model.advance() }
+    }
+
+    // MARK: - Commit orchestration
+
+    private func runBuild() {
+        guard !isBuilding else { return }
+        isBuilding = true
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Task {
+            let capabilities = await CatalogSchemaCapabilityGate.refresh(companyId: model.companyId)
+            let service = CatalogSetupCommitService(
+                companyId: model.companyId,
+                modelContext: modelContext,
+                capabilities: capabilities,
+                requestCatalogResync: { [dataController] in
+                    Task { await dataController.syncEngine.triggerSync() }
+                }
+            )
+            let resolver = GuidedStockUnitResolver(companyId: model.companyId, modelContext: modelContext)
+            await model.commitAll(
+                service: service,
+                resolveUnitId: { try await resolver.resolveUnitId(for: $0) },
+                isOnline: dataController.isConnected
+            )
+            isBuilding = false
+        }
+    }
+
+    // MARK: - §14 completion notification
+
+    private func postCompletionNotification(_ summary: GuidedStockSummary) {
+        let userId = dataController.currentUser?.id ?? ""
+        let companyId = model.companyId
+        guard !userId.isEmpty, !companyId.isEmpty else { return }
+        let body = GuidedStockSetupModel.summaryLine(summary)
+        Task {
+            try? await NotificationRepository.shared.createNotification(.init(
+                userId: userId,
+                companyId: companyId,
+                type: "standard",
+                title: "STOCK SYSTEM BUILT",
+                body: body,
+                deepLinkType: "catalog_stock",
+                persistent: false,
+                actionUrl: "/catalog?segment=stock",
+                actionLabel: "VIEW STOCK"
+            ))
+            NotificationCenter.default.post(name: .notificationReceived, object: nil)
+        }
     }
 
     // MARK: - Animation helpers
@@ -312,11 +485,12 @@ struct GuidedStockSetupFlow: View {
 
 // MARK: - GuidedFlowCTAButtonStyle
 //
-// Full-width primary CTA: primaryAccent fill, white text, buttonRadius corner.
+// Full-width primary CTA: primaryAccent fill (or custom tint), white text, buttonRadius corner.
 // Used exclusively in the guided flow bottom bar.
 
 private struct GuidedFlowCTAButtonStyle: ButtonStyle {
     let isEnabled: Bool
+    var tint: Color = OPSStyle.Colors.primaryAccent
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -326,14 +500,14 @@ private struct GuidedFlowCTAButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity)
             .frame(height: 52)
             .background(isEnabled
-                ? OPSStyle.Colors.primaryAccent.opacity(configuration.isPressed ? 0.80 : 1.0)
+                ? tint.opacity(configuration.isPressed ? 0.80 : 1.0)
                 : OPSStyle.Colors.cardBackground
             )
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                     .stroke(
-                        isEnabled ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.separator,
+                        isEnabled ? tint : OPSStyle.Colors.separator,
                         lineWidth: OPSStyle.Layout.Border.standard
                     )
             )

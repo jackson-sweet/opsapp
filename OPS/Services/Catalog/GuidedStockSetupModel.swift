@@ -302,6 +302,32 @@ final class GuidedStockSetupModel: ObservableObject {
         return (try? draftStore.load(context: context)) != nil
     }
 
+    // MARK: - Summary formatting (P6)
+
+    /// "2 families · 6 variants · 7 rolls · 1 offcut · 1 product · 1 bundle" — only non-zero parts, singular/plural correct.
+    static func summaryLine(_ s: GuidedStockSummary) -> String {
+        func part(_ n: Int, _ singular: String, _ plural: String) -> String? { n > 0 ? "\(n) \(n == 1 ? singular : plural)" : nil }
+        let parts = [
+            part(s.familyCount,  "family",  "families"),
+            part(s.variantCount, "variant", "variants"),
+            part(s.rollCount,    "roll",    "rolls"),
+            part(s.offcutCount,  "offcut",  "offcuts"),
+            part(s.productCount, "product", "products"),
+            part(s.bundleCount,  "bundle",  "bundles")
+        ].compactMap { $0 }
+        return parts.isEmpty ? "Nothing built" : parts.joined(separator: " · ")
+    }
+
+    /// Start a fresh capture for additional items after a successful build.
+    func resetForAddMore() {
+        capturedItems = []
+        groups = []
+        committedGroupIds = []
+        commitProgress = .idle
+        stage = .capture
+        persist()
+    }
+
     // MARK: - Commit orchestration (P6)
 
     /// Build one family's full catalog_setup_save payload (stock core via makeSavePayload +

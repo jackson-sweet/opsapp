@@ -16,7 +16,7 @@ struct DeckSceneBuilder {
     private static let deckSurfaceColor = UIColor(red: 196/255, green: 149/255, blue: 106/255, alpha: 1)  // #C4956A cedar
     private static let postColor = UIColor(red: 139/255, green: 108/255, blue: 74/255, alpha: 1)           // #8B6C4A dark wood
     private static let railPostColor = UIColor(red: 136/255, green: 136/255, blue: 136/255, alpha: 1)      // #888888 aluminum
-    private static let glassPanelColor = UIColor(red: 160/255, green: 200/255, blue: 232/255, alpha: 0.2)  // #A0C8E8 at 20%
+    private static let glassPanelColor = UIColor(red: 160/255, green: 200/255, blue: 232/255, alpha: 1)    // #A0C8E8 — opacity comes from the call-site transparency (0.2); stacking a 0.2 color alpha too rendered it at 4% (invisible)
     private static let picketColor = UIColor.white                                                          // #FFFFFF
     private static let cableColor = UIColor(red: 102/255, green: 102/255, blue: 102/255, alpha: 1)         // #666666
     private static let topRailColor = UIColor(red: 136/255, green: 136/255, blue: 136/255, alpha: 1)       // #888888
@@ -136,7 +136,7 @@ struct DeckSceneBuilder {
             }
             // Level connections (stairs between levels)
             for connection in drawingData.levelConnections {
-                buildLevelConnection(parent: scene.rootNode, connection: connection, drawingData: drawingData, scaleFactor: scaleFactor)
+                buildLevelConnection(parent: scene.rootNode, connection: connection, drawingData: drawingData, scaleFactor: scaleFactor, center: sharedCenter)
             }
         } else {
             // DECK-NEW-1 — same multi-surface treatment for single-level designs.
@@ -272,7 +272,7 @@ struct DeckSceneBuilder {
                 )
             }
             for connection in drawingData.levelConnections {
-                buildLevelConnection(parent: rootNode, connection: connection, drawingData: drawingData, scaleFactor: scaleFactor)
+                buildLevelConnection(parent: rootNode, connection: connection, drawingData: drawingData, scaleFactor: scaleFactor, center: sharedCenter)
             }
         } else if drawingData.isClosed {
             let metersVerts = convertToMeters(vertices: drawingData.orderedPositions, scaleFactor: scaleFactor)
@@ -959,7 +959,8 @@ struct DeckSceneBuilder {
         parent: SCNNode,
         connection: LevelConnection,
         drawingData: DeckDrawingData,
-        scaleFactor: Double
+        scaleFactor: Double,
+        center: CGPoint
     ) {
         // Resolve each level's height through the same ladder the surfaces use
         // (explicit → per-vertex → stair → staggered) rather than raw
@@ -970,22 +971,24 @@ struct DeckSceneBuilder {
               let upperElev = drawingData.resolvedElevationFeet(forLevelId: connection.upperLevelId),
               let lowerElev = drawingData.resolvedElevationFeet(forLevelId: connection.lowerLevelId) else { return }
 
-        guard let upperEdge = upperLevel.edge(byId: connection.upperEdgeId) else { return }
-
-        let upperVertices = convertToMeters(vertices: upperLevel.orderedPositions, scaleFactor: scaleFactor)
-        guard let startIdx = upperLevel.vertices.firstIndex(where: { $0.id == upperEdge.startVertexId }),
-              let endIdx = upperLevel.vertices.firstIndex(where: { $0.id == upperEdge.endVertexId }),
-              startIdx < upperVertices.count, endIdx < upperVertices.count else { return }
+        guard let upperEdge = upperLevel.edge(byId: connection.upperEdgeId),
+              let startV = upperLevel.vertex(byId: upperEdge.startVertexId),
+              let endV = upperLevel.vertex(byId: upperEdge.endVertexId) else { return }
 
         let upperElevM = Float(upperElev) * feetToMeters
         let lowerElevM = Float(lowerElev) * feetToMeters
         let riseDiffM = upperElevM - lowerElevM
         guard riseDiffM > 0 else { return }
 
-        let startPt = upperVertices[startIdx]
-        let endPt = upperVertices[endIdx]
-        let start3D = SCNVector3(Float(startPt.x), upperElevM, Float(startPt.y))
-        let end3D = SCNVector3(Float(endPt.x), upperElevM, Float(endPt.y))
+        // Convert the edge endpoints against the SHARED scene center (the same
+        // one the level surfaces use) and look them up by id. The old path
+        // self-centered `orderedPositions` to its own bbox — detaching the
+        // stair from both decks — and indexed that polygon-ordered array with
+        // a position from the `vertices` array, which need not share ordering.
+        let startConv = convertPointToMeters(startV.position, scaleFactor: scaleFactor, center: center)
+        let endConv = convertPointToMeters(endV.position, scaleFactor: scaleFactor, center: center)
+        let start3D = SCNVector3(Float(startConv.x), upperElevM, Float(startConv.y))
+        let end3D = SCNVector3(Float(endConv.x), upperElevM, Float(endConv.y))
 
         // Build stairs for this connection using the stair config
         let connectionGroup = SCNNode()

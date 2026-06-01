@@ -314,18 +314,51 @@ git -C ops-ios commit OPS/Views/Expenses/MyExpensesView.swift -m "feat(expenses)
 
 ---
 
-## Task 6: Office review hub — confirm `open` stays out of review
+## Task 6: Office review hub — `open` out of review, auto-approved into History
 
 **Files:**
-- Modify (verify): `OPS/Views/Expenses/ExpensesListView.swift`
+- Modify: `OPS/Views/Expenses/ExpensesListView.swift:397-437`
 
-- [ ] **Step 1: Confirm `open` batches don't surface as needing review**
+- [ ] **Step 1: Confirm `open` stays out of "Needs Review"**
 
-`needsReviewBatches` (`:44-46`) filters `batchStatus($0).needsReview`. With Task 1, `open.needsReview == false`, so filling envelopes never appear in the office "NEEDS REVIEW" list. No code change needed — assert by reading. The orphan-recovery banner (`:138-189`) stays as defense-in-depth; with the Phase 1 safety net it should report `0` and stay hidden.
+`needsReviewBatches` (`:44-46`) filters `batchStatus($0).needsReview`; with Task 1 `open.needsReview == false`, so filling envelopes never appear under "NEEDS REVIEW". The orphan-recovery banner (`:138-189`) stays as defense-in-depth; with the Phase 1 safety net it should report `0` and stay hidden.
 
-- [ ] **Step 2: Build** (no-op build to confirm nothing regressed) → `BUILD SUCCEEDED`.
+- [ ] **Step 2: Move auto-approved batches to History (consistency with web)**
 
-(No commit if no change. If you optionally added an `open` "still filling" peek section, commit it here.)
+Auto-approved batches don't need review → they belong under HISTORY. In `needsReviewContent` (`:397-418`) drop the `autoApprovedBatches` section + its empty-check; in `historyContent` (`:422-437`) add it:
+```swift
+    private var needsReviewContent: some View {
+        Group {
+            if needsReviewBatches.isEmpty {
+                emptyState
+            } else {
+                batchSection(title: "\(needsReviewBatches.count) NEED REVIEW", batches: needsReviewBatches)
+            }
+        }
+    }
+
+    private var historyContent: some View {
+        Group {
+            if approvedBatches.isEmpty && rejectedBatches.isEmpty && autoApprovedBatches.isEmpty {
+                emptyState
+            } else {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
+                    if !approvedBatches.isEmpty { batchSection(title: "APPROVED", batches: approvedBatches) }
+                    if !autoApprovedBatches.isEmpty { batchSection(title: "AUTO-APPROVED", batches: autoApprovedBatches) }
+                    if !rejectedBatches.isEmpty { batchSection(title: "REJECTED", batches: rejectedBatches) }
+                }
+            }
+        }
+    }
+```
+
+- [ ] **Step 3: Build** → `BUILD SUCCEEDED`.
+
+- [ ] **Step 4: Commit**
+```bash
+git -C ops-ios add OPS/Views/Expenses/ExpensesListView.swift
+git -C ops-ios commit OPS/Views/Expenses/ExpensesListView.swift -m "feat(expenses): auto-approved batches move to History (not Needs Review)"
+```
 
 ---
 
@@ -357,6 +390,7 @@ git -C ops-software-bible commit 09_FINANCIAL_SYSTEM.md -m "docs(bible): iOS sin
 - **Spec §3 `open` phase recognized** → Task 1. ✔
 - **Spec §5.1 card states (pending)** → Task 4. ✔
 - **Manual-submit removed** → Tasks 3, 4, 5. ✔
+- **Auto-approved → History (consistency with web)** → Task 6. ✔
 - **Server owns placement** → `submitExpense` replaced by `updateExpense(status:submitted)` (Task 3). ✔
 - **No client double-placing** → the app no longer calls `get_or_create_open_batch`/`assignExpensesToBatch`; the trigger is the only placer. ✔
 - **Placeholder scan:** the one judgment step (optional `open` peek section, Task 6) is explicitly optional, not a gap. ✔

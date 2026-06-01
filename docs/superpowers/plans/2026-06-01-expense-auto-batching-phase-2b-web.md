@@ -99,7 +99,15 @@ git -C OPS-Web add src/components/expenses/expense-review-list-popover.tsx
 git -C OPS-Web commit src/components/expenses/expense-review-list-popover.tsx -m "fix(expenses): keep filling envelopes out of the review-list History tab"
 ```
 
-> **Decision to confirm with the user (does not block):** the review-list popover buckets `auto_approved` into History, while the main dashboard (`expense-review-dashboard.tsx:86-89`) shows `auto_approved` under Review. Pick one and make both consistent.
+- [ ] **Step 4: Dashboard — move `auto_approved` into History (confirmed decision)**
+
+Auto-approved batches don't need review, so they belong in **History** on every surface. The popover already buckets them there (via `!isBatchNeedsReview`). Fix the dashboard: in `expense-review-dashboard.tsx:57-89`, move `autoApprovedBatches` out of the Review-tab array into the History-tab array — Review tab = `reviewBatches` only; History tab = `[...approvedBatches, ...rejectedBatches, ...autoApprovedBatches]`. (Read `:57-89` first to match the exact variable/tab names.) `open` is already excluded from all four arrays by omission.
+
+- [ ] **Step 5: type-check + lint + commit**
+```bash
+git -C OPS-Web add src/components/expenses/expense-review-list-popover.tsx src/components/expenses/expense-review-dashboard.tsx
+git -C OPS-Web commit src/components/expenses/expense-review-list-popover.tsx src/components/expenses/expense-review-dashboard.tsx -m "fix(expenses): filling out of History; auto-approved into History"
+```
 
 ---
 
@@ -208,15 +216,18 @@ git -C OPS-Web commit src/lib/api/services/expense-approval-service.ts src/lib/a
 export function useApproveExpense() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ expenseId, approvedBy }: { expenseId: string; approvedBy: string }) =>
-      ExpenseApprovalService.approveExpense(expenseId, approvedBy),
-    onSuccess: () => {
+    mutationFn: ({ expenseId, approvedBy }: {
+      expenseId: string; approvedBy: string;
+      companyId: string; submittedBy: string; merchant: string; amount: number;
+    }) => ExpenseApprovalService.approveExpense(expenseId, approvedBy),
+    onSuccess: (_d, { companyId, submittedBy, merchant, amount }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.expenseBatches.all });
+      dispatchExpenseLineCleared({ companyId, userId: submittedBy, merchant, amount });
     },
   });
 }
 ```
-(Early-clear notification to the submitter is optional; defer unless the user wants it — the batch-level `dispatchExpenseApproved` is batch-worded and would mis-describe a single line.)
+**Notify the submitter (confirmed):** add a line-level `dispatchExpenseLineCleared` to `notification-dispatch.ts`, mirroring the existing `dispatch*` helpers (POST `/api/notifications/dispatch`, which auto-excludes the caller). The body names merchant + amount ("Your $X expense at <merchant> was approved") — route the exact wording through `ops-copywriter`. Don't reuse the batch-worded `dispatchExpenseApproved` for a single line.
 
 - [ ] **Step 2: type-check** → clean. **Commit**
 ```bash
@@ -260,7 +271,18 @@ Beside the flag UI, shown when `canReview && expense.status !== "approved"`:
 ```
 The status pill (`:135-151`) already renders `APPROVED` for `expense.status === "approved"`, so a cleared line reflects immediately after invalidation.
 
-- [ ] **Step 3: Wire it in `invoice-detail-panel.tsx`** — add `const approveLine = useApproveExpense();` near `handleFlag` (`:96`) and pass `onApproveLine={(id) => approveLine.mutate({ expenseId: id, approvedBy: currentUserId })}` to `<ExpenseLineItemTable />`. (Use the same `currentUserId` the panel already passes to `useApproveBatch` at `:122`.)
+- [ ] **Step 3: Wire it in `invoice-detail-panel.tsx`** — add `const approveLine = useApproveExpense();` near `handleFlag` (`:96`) and pass the handler (with submitter-notification context) to `<ExpenseLineItemTable />`:
+```tsx
+onApproveLine={(id) => {
+  const e = expenses.find((x) => x.id === id);
+  approveLine.mutate({
+    expenseId: id, approvedBy: currentUserId,
+    companyId, submittedBy: batch.submittedBy,
+    merchant: e?.merchantName ?? "expense", amount: e?.amount ?? 0,
+  });
+}}
+```
+(Reuse the `currentUserId` / `companyId` / `batch` the panel already passes to `useApproveBatch` at `:122`.)
 
 - [ ] **Step 4: type-check + lint + runtime** — clear one line in a `pending_review` batch; confirm only that line flips to APPROVED, the batch stays pending, and the running total is unchanged (early-cleared line stays counted).
 
@@ -270,7 +292,13 @@ git -C OPS-Web add src/components/expenses/expense-line-item-table.tsx src/compo
 git -C OPS-Web commit src/components/expenses/expense-line-item-table.tsx src/components/expenses/invoice-detail-panel.tsx -m "feat(expenses): early-clear a single line from the review detail"
 ```
 
-> If early-clear must also work from the floating `expense-batch-popover.tsx` (its own `ExpenseRow` at `:81-214`), mirror Steps 2–3 there. Confirm with the user whether the popover needs it.
+- [ ] **Step 6: Mirror early-clear in the floating batch popover (confirmed)**
+
+`expense-batch-popover.tsx` renders lines with its own `ExpenseRow` (`:81-214`), independent of `ExpenseLineItemTable`. Add the same "Approve line" control there, wired to `useApproveExpense` with the popover's current user, `batch.submittedBy`, and the row's merchant/amount. Commit:
+```bash
+git -C OPS-Web add src/components/ops/expense-batch-popover.tsx
+git -C OPS-Web commit src/components/ops/expense-batch-popover.tsx -m "feat(expenses): early-clear control in the floating batch popover"
+```
 
 ---
 
@@ -352,9 +380,9 @@ Phase 1 Task 6 adds a RESTRICTIVE policy gating `expense_batches` updates-to-`ap
 - **Spec §5.2 one notification per envelope → reactive queue** → Task 7 (server inserts via Phase 1; web reacts via realtime). ✔
 - **Spec §9 additive / no DB migration on web** → status is unconstrained `text`; `open` is app-only. ✔
 - **RLS compatibility** → Task 8 cross-checks Phase 1 Task 6. ✔
-- **Placeholder scan:** "confirm prop names" (Task 3) and "mirror in popover if needed" (Task 6) are explicit verify/optional steps; the realtime hook ships concrete code aligned to an existing pattern. ✔
+- **Placeholder scan:** the "confirm prop names" (Task 3) verify step and the concrete realtime hook (Task 7) are explicit/real; the popover early-clear (Task 6 Step 6) and submitter notification (Task 5) are now required steps, not deferrals. ✔
 - **Type consistency:** `isBatchOpen`, `approveExpense`, `useApproveExpense`, `useExpenseBatchesRealtime`, `onApproveLine` used identically across tasks. ✔
 
-**Open questions for the user (non-blocking):** (1) `auto_approved` bucketing consistency (Task 2); (2) whether early-clear also belongs in the floating batch popover (Task 6); (3) whether early-clear should notify the submitter (Task 5).
+**Decisions folded in (2026-06-01):** auto-approved batches bucket to **History** on every surface (Task 2, Step 4); early-clear is **mirrored in the floating batch popover** (Task 6, Step 6); early-clear **notifies the submitter** (Task 5). Matching iOS change: auto-approved moves to History in `ExpensesListView` (Phase 2a, Task 6).
 
 **Depends on:** Phase 1 (server) live. **Pairs with:** Phase 2a (iOS).

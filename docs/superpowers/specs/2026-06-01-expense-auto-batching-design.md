@@ -107,7 +107,8 @@ A scheduled job (pg_cron; no per-invocation cost) runs daily and does three jobs
 
 - **Peek** — open anyone's filling envelope anytime: live total, read-only, no approve.
 - **Review** — a sent envelope lands in the review queue with one notification; approve the envelope, or reject/flag individual lines (existing line-item review).
-- **Early-clear** — from the peek, approve a single line before the deadline; it is paid on its own and stays counted in the month.
+- **Early-clear** — from the peek, approve a single line before the deadline; it is paid on its own, stays counted in the month, and **notifies the submitter**. Available both in the review detail and the floating batch popover.
+- **Auto-approved batches live in History** on both surfaces (web + iOS) — they need no review.
 - Net: one notification per envelope (not per expense); peek + early-clear are new.
 
 ---

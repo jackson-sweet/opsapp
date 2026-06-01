@@ -961,10 +961,14 @@ struct DeckSceneBuilder {
         drawingData: DeckDrawingData,
         scaleFactor: Double
     ) {
+        // Resolve each level's height through the same ladder the surfaces use
+        // (explicit → per-vertex → stair → staggered) rather than raw
+        // `level.elevation`. Saved multi-level designs leave `elevation` nil on
+        // every level, which previously made the connecting stairs vanish even
+        // though the level surfaces still rendered at their resolved heights.
         guard let upperLevel = drawingData.level(byId: connection.upperLevelId),
-              let lowerLevel = drawingData.level(byId: connection.lowerLevelId),
-              let upperElev = upperLevel.elevation,
-              let lowerElev = lowerLevel.elevation else { return }
+              let upperElev = drawingData.resolvedElevationFeet(forLevelId: connection.upperLevelId),
+              let lowerElev = drawingData.resolvedElevationFeet(forLevelId: connection.lowerLevelId) else { return }
 
         guard let upperEdge = upperLevel.edge(byId: connection.upperEdgeId) else { return }
 

@@ -233,4 +233,41 @@ final class MultiLevelTests: XCTestCase {
 
         XCTAssertEqual(data.renderElevationFeet(for: level, levelIndex: 0), 6.0, accuracy: 0.0001)
     }
+
+    // MARK: - Resolved elevation by level id (level-connection stairs)
+
+    // Connecting stairs must render even when the levels carry no explicit
+    // elevation — the connection resolves each level's height through the same
+    // ladder the surfaces use (explicit → per-vertex → stair → staggered),
+    // instead of vanishing when `level.elevation` is nil.
+
+    func testResolvedElevationFeet_staggeredFallbackWhenLevelElevationNil() throws {
+        let lower = DeckLevel(name: "L0")
+        let upper = DeckLevel(name: "L1")
+        var data = DeckDrawingData()
+        data.levels = [lower, upper]
+
+        XCTAssertEqual(try XCTUnwrap(data.resolvedElevationFeet(forLevelId: lower.id)), 2.5, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(data.resolvedElevationFeet(forLevelId: upper.id)), 5.0, accuracy: 0.0001)
+    }
+
+    func testResolvedElevationFeet_adoptsStairRiseOverStaggered() throws {
+        var upper = DeckLevel(name: "Upper")
+        upper.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 144, y: 0)),
+        ]
+        var edge = DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")
+        edge.stairConfig = StairConfig(width: 48, totalRiseInches: 84)  // 7' — distinct from the 5' staggered value at index 1
+        upper.edges = [edge]
+        var data = DeckDrawingData()
+        data.levels = [DeckLevel(name: "L0"), upper]
+
+        XCTAssertEqual(try XCTUnwrap(data.resolvedElevationFeet(forLevelId: upper.id)), 7.0, accuracy: 0.0001)
+    }
+
+    func testResolvedElevationFeet_nilForUnknownLevel() {
+        let data = DeckDrawingData()
+        XCTAssertNil(data.resolvedElevationFeet(forLevelId: "missing"))
+    }
 }

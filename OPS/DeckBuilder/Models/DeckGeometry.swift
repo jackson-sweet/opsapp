@@ -1043,6 +1043,17 @@ struct DeckDrawingData: Codable {
         return baseFeet + Double(levelIndex) * 2.5
     }
 
+    /// Resolved uniform render elevation (feet) for the level with the given
+    /// id, or nil when no such level exists. Wraps `renderElevationFeet` so
+    /// callers that only hold a level id — e.g. level-connection stairs —
+    /// resolve height through the same explicit → per-vertex → stair →
+    /// staggered ladder the level surfaces use, instead of reading raw
+    /// `level.elevation` and disappearing when it is nil.
+    func resolvedElevationFeet(forLevelId id: String) -> Double? {
+        guard let index = levels.firstIndex(where: { $0.id == id }) else { return nil }
+        return renderElevationFeet(for: levels[index], levelIndex: index)
+    }
+
     /// Uniform render elevation (in feet) for a single-level design.
     /// Priority: `overallElevation` → average of per-vertex elevations →
     /// an attached stair's total rise → the 2.5' default — so single-level

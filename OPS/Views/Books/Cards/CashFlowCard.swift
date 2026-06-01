@@ -13,6 +13,8 @@ import SwiftUI
 
 struct CashFlowCard: View {
     @ObservedObject var viewModel: MoneyDashboardViewModel
+    var style: BooksCardStyle = .full
+    var onExpand: () -> Void = {}
     var onTapDays: (() -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -61,6 +63,16 @@ struct CashFlowCard: View {
     // MARK: - Body
 
     var body: some View {
+        switch style {
+        case .full:      fullBody
+        case .condensed: condensedBody
+        }
+    }
+
+    // MARK: - Full body (expand-to-sheet detail)
+
+    @ViewBuilder
+    private var fullBody: some View {
         if isSkeleton {
             skeletonView.padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .accessibilityElement(children: .ignore)
@@ -74,6 +86,51 @@ struct CashFlowCard: View {
         }
     }
 
+    // MARK: - Condensed face (paging strip glance)
+
+    @ViewBuilder
+    private var condensedBody: some View {
+        if isSkeleton {
+            CondensedHeroCard<EmptyView, EmptyView>.skeleton()
+        } else if viewModel.cardError(.cashFlow) {
+            BooksCardError(onRetry: { Task { await viewModel.retry(.cashFlow) } })
+                .frame(height: BooksCondensedMetrics.cardHeight)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        } else {
+            CondensedHeroCard(
+                caption: isEmpty ? "NET CASH" : "NET CASH · \(weeks.count)W",
+                heroText: isEmpty
+                    ? "$0"
+                    : viewModel.netCash.formatted(.currency(code: "USD").precision(.fractionLength(0))),
+                heroColor: isEmpty
+                    ? OPSStyle.Colors.tertiaryText
+                    : (viewModel.netCash >= 0 ? OPSStyle.Colors.primaryText : OPSStyle.Colors.rose),
+                onExpand: onExpand,
+                viz: {
+                    if isEmpty {
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
+                            .fill(OPSStyle.Colors.fillNeutralDim)
+                            .frame(height: 1.5)
+                            .frame(maxHeight: .infinity, alignment: .center)
+                    } else {
+                        sparklineCanvas
+                    }
+                },
+                subStat: {
+                    Text(isEmpty ? "// NO PAYMENTS" : "\(compactCurrency(avgPerWeek))/WK AVG")
+                        .font(.custom("JetBrainsMono-Medium", size: 11))
+                        .tracking(isEmpty ? 1.76 : 1.1)
+                        .foregroundColor(isEmpty ? OPSStyle.Colors.inactiveText : OPSStyle.Colors.olive)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                }
+            )
+            .accessibilityLabel(isEmpty
+                ? "Cash flow. No payments this period."
+                : accessibilityCardLabel)
+        }
+    }
+
     // MARK: - Normal body
 
     private var normalBody: some View {
@@ -82,7 +139,7 @@ struct CashFlowCard: View {
             // card summary). The drill tiles below stay individually navigable.
             VStack(alignment: .leading, spacing: 0) {
                 heroBlock
-                sparkline.padding(.top, 22)
+                sparkline.padding(.top, OPSStyle.Layout.spacing4)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilityCardLabel)
@@ -275,7 +332,7 @@ struct CashFlowCard: View {
                 BooksSkeleton.bar(width: 150, height: 10)
                 BooksSkeleton.bar(width: 220, height: 60)
             }
-            BooksSkeleton.bar(width: nil, height: 84).padding(.top, 22)
+            BooksSkeleton.bar(width: nil, height: 84).padding(.top, OPSStyle.Layout.spacing4)
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 BooksSkeleton.tile()
                 BooksSkeleton.tile()

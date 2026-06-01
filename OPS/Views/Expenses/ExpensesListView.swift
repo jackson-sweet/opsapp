@@ -83,7 +83,9 @@ struct ExpensesListView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.background.ignoresSafeArea()
+            if !embedded {
+                OPSStyle.Colors.background.ignoresSafeArea()
+            }
 
             VStack(spacing: 0) {
                 if !embedded { header }
@@ -94,18 +96,26 @@ struct ExpensesListView: View {
                 batchList
             }
 
-            // FAB
-            VStack {
-                Spacer()
-                HStack {
+            // FAB — hidden when embedded in Books (global FAB handles creation),
+            // matching InvoicesListView / EstimatesListView.
+            if !embedded {
+                VStack {
                     Spacer()
-                    addExpenseFAB
-                        .padding(.trailing, OPSStyle.Layout.spacing3)
-                        .padding(.bottom, OPSStyle.Layout.spacing3)
+                    HStack {
+                        Spacer()
+                        addExpenseFAB
+                            .padding(.trailing, OPSStyle.Layout.spacing3)
+                            .padding(.bottom, OPSStyle.Layout.spacing3)
+                    }
                 }
             }
         }
         .trackScreen("Expenses")
+        // Refresh review batches when an expense is created/submitted anywhere
+        // (e.g. the global FAB), since that flow no longer shares this model.
+        .onReceive(NotificationCenter.default.publisher(for: .opsExpensesDidChange)) { _ in
+            Task { await viewModel.loadBatchesForReview() }
+        }
         .navigationBarBackButtonHidden(true)
         .navigationDestination(isPresented: $showExpenseSettings) {
             ExpenseSettingsView(viewModel: viewModel)
@@ -377,19 +387,31 @@ struct ExpensesListView: View {
     // MARK: - Batch List
 
     private var batchList: some View {
-        ScrollView {
-            VStack(spacing: OPSStyle.Layout.spacing3) {
-                switch selectedTab {
-                case .needsReview:
-                    needsReviewContent
-                case .history:
-                    historyContent
-                }
-
+        // Embedded in Books renders inline so the Books page owns the single
+        // scroll; standalone keeps its own ScrollView.
+        Group {
+            if embedded {
+                batchListContent
+            } else {
+                ScrollView { batchListContent }
             }
-            .padding(.top, OPSStyle.Layout.spacing3)
-            .padding(.bottom, 120)
         }
+    }
+
+    private var batchListContent: some View {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
+            switch selectedTab {
+            case .needsReview:
+                needsReviewContent
+            case .history:
+                historyContent
+            }
+        }
+        .padding(.top, OPSStyle.Layout.spacing3)
+        // Standalone clears the in-view FAB + tab bar; embedded only needs rhythm.
+        .padding(.bottom, embedded
+                 ? OPSStyle.Layout.spacing4
+                 : OPSStyle.Layout.touchTargetLarge + OPSStyle.Layout.spacing5 + OPSStyle.Layout.spacing4)
     }
 
     // MARK: - Needs Review Content

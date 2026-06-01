@@ -13,6 +13,8 @@ import SwiftUI
 
 struct JobsCard: View {
     @ObservedObject var viewModel: MoneyDashboardViewModel
+    var style: BooksCardStyle = .full
+    var onExpand: () -> Void = {}
     var onTapProfitable: (() -> Void)? = nil
     var onTapLosers: (() -> Void)? = nil
 
@@ -43,6 +45,16 @@ struct JobsCard: View {
     // MARK: - Body
 
     var body: some View {
+        switch style {
+        case .full:      fullBody
+        case .condensed: condensedBody
+        }
+    }
+
+    // MARK: - Full body (expand-to-sheet detail)
+
+    @ViewBuilder
+    private var fullBody: some View {
         if isSkeleton {
             skeletonView.padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .accessibilityElement(children: .ignore)
@@ -53,6 +65,59 @@ struct JobsCard: View {
             emptyView.padding(.horizontal, OPSStyle.Layout.spacing3_5)
         } else {
             normalBody.padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        }
+    }
+
+    // MARK: - Condensed face (paging strip glance)
+
+    private var avgMarginPct: Int { Int((viewModel.avgProjectMargin * 100).rounded()) }
+
+    @ViewBuilder
+    private var condensedBody: some View {
+        if isSkeleton {
+            CondensedHeroCard<EmptyView, EmptyView>.skeleton()
+        } else if viewModel.cardError(.jobs) {
+            BooksCardError(onRetry: { Task { await viewModel.retry(.jobs) } })
+                .frame(height: BooksCondensedMetrics.cardHeight)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        } else {
+            CondensedHeroCard(
+                caption: "AVG MARGIN",
+                heroText: isEmpty ? "—" : "\(avgMarginPct)%",
+                heroColor: isEmpty
+                    ? OPSStyle.Colors.tertiaryText
+                    : (avgMarginPct >= 0 ? OPSStyle.Colors.olive : OPSStyle.Colors.rose),
+                onExpand: onExpand,
+                viz: {
+                    if isEmpty {
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
+                            .fill(OPSStyle.Colors.fillNeutralDim)
+                            .frame(height: 8)
+                            .frame(maxHeight: .infinity, alignment: .center)
+                    } else {
+                        CondensedSegmentBar(
+                            segments: [
+                                .init(id: 0, value: Double(viewModel.profitableProjectCount), color: OPSStyle.Colors.olive),
+                                .init(id: 1, value: Double(viewModel.losersProjectCount), color: OPSStyle.Colors.rose),
+                            ],
+                            barHeight: 8
+                        )
+                    }
+                },
+                subStat: {
+                    Text(isEmpty
+                        ? "// NO COMPLETE JOBS"
+                        : "\(viewModel.profitableProjectCount) PROFITABLE · \(viewModel.losersProjectCount) LOSING")
+                        .font(.custom("JetBrainsMono-Medium", size: 11))
+                        .tracking(1.32)
+                        .foregroundColor(isEmpty ? OPSStyle.Colors.inactiveText : OPSStyle.Colors.secondaryText)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                }
+            )
+            .accessibilityLabel(isEmpty
+                ? "Jobs. No complete jobs this period."
+                : accessibilityCardLabel)
         }
     }
 
@@ -68,12 +133,12 @@ struct JobsCard: View {
                     .tracking(2.0)  // 0.20em at 10pt
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                VStack(spacing: 14) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     ForEach(viewModel.topProjectsByNet) { job in
                         jobRow(job)
                     }
                 }
-                .padding(.top, 18)
+                .padding(.top, OPSStyle.Layout.spacing3_5)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilityCardLabel)
@@ -102,7 +167,7 @@ struct JobsCard: View {
                     accessibilityLabelOverride: "Loss-making jobs, \(viewModel.losersProjectCount)"
                 )
             }
-            .padding(.top, 22)
+            .padding(.top, OPSStyle.Layout.spacing4)
         }
     }
 
@@ -185,7 +250,7 @@ struct JobsCard: View {
                     valueColor: OPSStyle.Colors.tertiaryText
                 )
             }
-            .padding(.top, 22)
+            .padding(.top, OPSStyle.Layout.spacing4)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Jobs. No complete jobs this period.")
@@ -196,7 +261,7 @@ struct JobsCard: View {
     private var skeletonView: some View {
         VStack(alignment: .leading, spacing: 0) {
             BooksSkeleton.bar(width: 180, height: 10)
-            VStack(spacing: 14) {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
                 ForEach(0..<5, id: \.self) { _ in
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
@@ -209,13 +274,13 @@ struct JobsCard: View {
                     }
                 }
             }
-            .padding(.top, 18)
+            .padding(.top, OPSStyle.Layout.spacing3_5)
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 BooksSkeleton.tile()
                 BooksSkeleton.tile()
                 BooksSkeleton.tile()
             }
-            .padding(.top, 22)
+            .padding(.top, OPSStyle.Layout.spacing4)
         }
     }
 

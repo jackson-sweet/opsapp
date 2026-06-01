@@ -275,6 +275,11 @@ enum OPSStyle {
         /// Tracking (-0.025em) and tabular-nums applied at call site, not here.
         static let heroNumber = Font.custom("Mohave-Light", size: 60)
 
+        /// Hero number on CONDENSED carousel cards — Mohave Light 38pt.
+        /// Compact glance variant of `heroNumber`; full 60pt lives in the
+        /// expand-to-sheet detail. Tracking + tabular-nums applied at call site.
+        static let heroNumberCondensed = Font.custom("Mohave-Light", size: 38)
+
         /// Page title — Cake Mono Light 22pt (TopBar H1, root-route page heading)
         static let pageTitle = Font.pageTitle
 

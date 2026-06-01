@@ -468,19 +468,73 @@ struct StockView: View {
     @ViewBuilder
     private var emptyState: some View {
         let hasAnyData = totalVariantCount > 0
-        VStack(spacing: OPSStyle.Layout.spacing2) {
-            Spacer()
-            Text(hasAnyData ? "// NO VARIANTS MATCH FILTERS" : "// NO STOCK YET")
-                .font(OPSStyle.Typography.panelTitle)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Text(hasAnyData
-                 ? "Adjust the filters above."
-                 : "Add a family from the + button to start tracking stock.")
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Spacer()
+        if hasAnyData {
+            // NO VARIANTS MATCH FILTERS — filters are active but nothing matches.
+            VStack(spacing: OPSStyle.Layout.spacing2) {
+                Spacer()
+                Text("// NO VARIANTS MATCH FILTERS")
+                    .font(OPSStyle.Typography.panelTitle)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Text("Adjust the filters above.")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            // NO STOCK YET — stock system is empty.
+            let canManage = PermissionStore.shared.can("catalog.manage")
+            VStack(spacing: OPSStyle.Layout.spacing3) {
+                Spacer()
+                Text("// NO STOCK YET")
+                    .font(OPSStyle.Typography.panelTitle)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Text("Let's build your stock system.")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                if canManage {
+                    VStack(spacing: OPSStyle.Layout.spacing2) {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            NotificationCenter.default.post(
+                                name: Notification.Name("OpenGuidedStockSetup"),
+                                object: nil
+                            )
+                        } label: {
+                            Text("SET UP STOCK")
+                                .font(OPSStyle.Typography.buttonLabel)
+                                .foregroundColor(OPSStyle.Colors.buttonText)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 52)
+                                .background(OPSStyle.Colors.primaryAccent)
+                                .cornerRadius(OPSStyle.Layout.buttonRadius)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, OPSStyle.Layout.spacing4)
+                        .accessibilityLabel("Set up stock")
+                        .accessibilityHint("Opens the guided stock setup flow.")
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            NotificationCenter.default.post(
+                                name: Notification.Name("OpenCatalogSetup"),
+                                object: nil
+                            )
+                        } label: {
+                            Text("// ADVANCED")
+                                .font(OPSStyle.Typography.metadata)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .frame(height: OPSStyle.Layout.touchTargetMin)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Advanced stock setup")
+                        .accessibilityHint("Opens the advanced catalog setup sheet.")
+                    }
+                }
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

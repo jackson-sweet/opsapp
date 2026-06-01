@@ -430,6 +430,22 @@ struct CatalogSetupFlowSheet: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }
 
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                dismiss()
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenGuidedStockSetup"),
+                    object: nil
+                )
+            } label: {
+                Text("GUIDED")
+                    .font(OPSStyle.Typography.buttonLabel)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+            }
+            .accessibilityLabel("Switch to guided setup")
+            .accessibilityHint("Closes this sheet and opens the guided stock setup flow.")
+        }
+
         ToolbarItem(placement: .topBarTrailing) {
             commitButton
         }

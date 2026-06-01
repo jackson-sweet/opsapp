@@ -453,6 +453,20 @@ struct FloatingActionMenu: View {
             if isCatalogTab && segment == .stock {
                 catalogItems = [
                     FABMenuItem(
+                        id: "catalog-guided-setup",
+                        icon: "wand.and.stars",
+                        label: "Guided Setup",
+                        permission: "catalog.manage",
+                        disabledInTutorial: true,
+                        action: {
+                            showCreateMenu = false
+                            NotificationCenter.default.post(
+                                name: Notification.Name("OpenGuidedStockSetup"),
+                                object: nil
+                            )
+                        }
+                    ),
+                    FABMenuItem(
                         id: "catalog-stock-setup",
                         icon: "square.grid.3x3",
                         label: "Stock Setup",

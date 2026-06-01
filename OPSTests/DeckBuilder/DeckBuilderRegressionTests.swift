@@ -8,6 +8,7 @@
 
 import CoreGraphics
 import SceneKit
+import simd
 import XCTest
 @testable import OPS
 
@@ -304,6 +305,74 @@ final class DeckBuilderRegressionTests: XCTestCase {
         XCTAssertEqual(viewModel.findVertex(byId: "b2")?.position, CGPoint(x: 384, y: 300))
         XCTAssertEqual(viewModel.findVertex(byId: "b3")?.position, CGPoint(x: 384, y: 384))
         XCTAssertEqual(viewModel.findVertex(byId: "b4")?.position, CGPoint(x: 300, y: 384))
+    }
+
+    // MARK: - Multi-edge edge-type application (bug: only one edge changed)
+
+    func testSetEdgeType_batchAppliesToAllSelectedEdgesWithSingleUndo() {
+        var data = DeckDrawingData()
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 120, y: 0)),
+            DeckVertex(id: "v3", position: CGPoint(x: 120, y: 120)),
+            DeckVertex(id: "v4", position: CGPoint(x: 0, y: 120)),
+        ]
+        data.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2"),
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4"),
+        ]
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        viewModel.selection.selectedEdgeIds = ["e1", "e2", "e3"]
+
+        viewModel.setEdgeType(["e1", "e2", "e3"], type: .houseEdge)
+
+        XCTAssertEqual(viewModel.findEdge(byId: "e1")?.edgeType, .houseEdge)
+        XCTAssertEqual(viewModel.findEdge(byId: "e2")?.edgeType, .houseEdge)
+        XCTAssertEqual(viewModel.findEdge(byId: "e3")?.edgeType, .houseEdge)
+
+        // The whole batch is one undo snapshot — a single undo restores all
+        // three, not just the last edge touched.
+        viewModel.undo()
+        XCTAssertEqual(viewModel.findEdge(byId: "e1")?.edgeType, .deckEdge)
+        XCTAssertEqual(viewModel.findEdge(byId: "e2")?.edgeType, .deckEdge)
+        XCTAssertEqual(viewModel.findEdge(byId: "e3")?.edgeType, .deckEdge)
+    }
+
+    // MARK: - 3D stringer orientation (bug: skewed for non-world-X edges)
+
+    func testStringerOrientation_followsSlopeForEdgeNotAlignedToWorldX() {
+        // Edge runs along world +Z — the orientation the old dual-`eulerAngles`
+        // path skewed because it pitched about the world X axis.
+        let q = DeckSceneBuilder.stringerOrientation(
+            tangent: SIMD2<Float>(0, 1),         // box width → along the +Z edge
+            outwardNormal: SIMD2<Float>(-1, 0),  // stair runs out toward -X
+            slopeAngle: Float.pi / 4             // 45°: equal rise and run
+        )
+        let lengthAxis = q.act(SIMD3<Float>(0, 0, 1))  // box length → down the slope
+        let widthAxis = q.act(SIMD3<Float>(1, 0, 0))   // box width → along the edge
+        let r2 = Float(2).squareRoot() / 2
+
+        XCTAssertEqual(lengthAxis.x, -r2, accuracy: 0.0001)
+        XCTAssertEqual(lengthAxis.y, -r2, accuracy: 0.0001)
+        XCTAssertEqual(lengthAxis.z, 0, accuracy: 0.0001)
+
+        XCTAssertEqual(widthAxis.x, 0, accuracy: 0.0001)
+        XCTAssertEqual(widthAxis.y, 0, accuracy: 0.0001)
+        XCTAssertEqual(widthAxis.z, 1, accuracy: 0.0001)
+    }
+
+    func testStringerOrientation_lengthDescendsAndStaysUnitLength() {
+        let q = DeckSceneBuilder.stringerOrientation(
+            tangent: SIMD2<Float>(1, 0),        // +X edge
+            outwardNormal: SIMD2<Float>(0, 1),  // outward +Z
+            slopeAngle: Float.pi / 6            // 30°
+        )
+        let lengthAxis = q.act(SIMD3<Float>(0, 0, 1))
+
+        XCTAssertEqual(simd_length(lengthAxis), 1, accuracy: 0.0001)
+        XCTAssertEqual(lengthAxis.y, -sin(Float.pi / 6), accuracy: 0.0001)  // descends
+        XCTAssertEqual(lengthAxis.z, cos(Float.pi / 6), accuracy: 0.0001)   // runs outward
     }
 
     private func deckDesign(drawingData: DeckDrawingData) -> DeckDesign {

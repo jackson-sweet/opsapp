@@ -37,9 +37,9 @@ struct LeadForm {
     var address: String = ""
     var title: String = ""                 // job description → Opportunity.title
     var estimatedValue: String = ""        // string for input handling; parsed on save
-    var source: String = "web_form"
+    var source: String = "website"
     var stage: PipelineStage = .newLead
-    var priority: String = "med"
+    var priority: String = "medium"
     var notes: String = ""
 
     /// Hydrate from an existing opportunity for the Edit path.
@@ -53,9 +53,9 @@ struct LeadForm {
         if let v = opportunity.estimatedValue {
             estimatedValue = LeadForm.formatValueInput(v)
         }
-        source = opportunity.source ?? "web_form"
+        source = opportunity.source ?? "website"
         stage = opportunity.stage.isTerminal ? .newLead : opportunity.stage
-        priority = opportunity.priority ?? "med"
+        priority = opportunity.priority ?? "medium"
         notes = opportunity.descriptionText ?? ""
     }
 
@@ -66,8 +66,12 @@ struct LeadForm {
         let stripped = estimatedValue
             .replacingOccurrences(of: ",", with: "")
             .trimmingCharacters(in: .whitespaces)
-        guard !stripped.isEmpty else { return nil }
-        return Double(stripped)
+        guard !stripped.isEmpty, let value = Double(stripped) else { return nil }
+        // Reject inf/nan and anything past the numeric(12,2) ceiling so an
+        // out-of-range entry can't 400 the create/update with a generic,
+        // unrecoverable save error. (review W-16)
+        guard value.isFinite, value >= 0, value < 10_000_000_000 else { return nil }
+        return value
     }
 
     /// Format a Double back into the input string. Whole numbers render without
@@ -195,12 +199,16 @@ struct LeadFormView: View {
 
     // MARK: - Chip option sets
 
+    // Chip `id`s MUST be members of the Postgres `opportunities_source_check`
+    // constraint (referral/website/email/phone/walk_in/social_media/
+    // repeat_client/voice_log/other). The form stores the id verbatim and the
+    // DTO sends it unmodified, so an off-constraint id is rejected on save.
     static let sourceOptions: [LeadChipOption] = [
-        .init(id: "manual",       label: "MANUAL"),
-        .init(id: "web_form",     label: "WEB FORM"),
-        .init(id: "referral",     label: "REFERRAL"),
-        .init(id: "inbound_call", label: "INBOUND CALL"),
-        .init(id: "email",        label: "EMAIL"),
+        .init(id: "other",    label: "MANUAL"),
+        .init(id: "website",  label: "WEB FORM"),
+        .init(id: "referral", label: "REFERRAL"),
+        .init(id: "phone",    label: "INBOUND CALL"),
+        .init(id: "email",    label: "EMAIL"),
     ]
 
     static let stageOptions: [LeadChipOption] = [
@@ -210,10 +218,12 @@ struct LeadFormView: View {
         LeadChipOption(id: stage.rawValue, label: stage.displayName)
     }
 
+    // Chip `id`s MUST match the Postgres `opportunities_priority_check`
+    // constraint (low/medium/high) — sent verbatim by the DTO on save.
     static let priorityOptions: [LeadChipOption] = [
-        .init(id: "low",  label: "LOW"),
-        .init(id: "med",  label: "MEDIUM"),
-        .init(id: "high", label: "HIGH"),
+        .init(id: "low",    label: "LOW"),
+        .init(id: "medium", label: "MEDIUM"),
+        .init(id: "high",   label: "HIGH"),
     ]
 
     // MARK: - Danger zone

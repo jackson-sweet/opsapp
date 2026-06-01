@@ -16,6 +16,7 @@ enum PipelineStage: String, Codable, CaseIterable, Identifiable {
     case negotiation  = "negotiation"
     case won          = "won"
     case lost         = "lost"
+    case discarded    = "discarded"   // server-only junk state (migration 045); terminal, never in the triage queue
 
     var id: String { rawValue }
 
@@ -29,11 +30,12 @@ enum PipelineStage: String, Codable, CaseIterable, Identifiable {
         case .negotiation: return "NEGOTIATION"
         case .won:         return "WON"
         case .lost:        return "LOST"
+        case .discarded:   return "DISCARDED"
         }
     }
 
     var isTerminal: Bool {
-        self == .won || self == .lost
+        self == .won || self == .lost || self == .discarded
     }
 
     var next: PipelineStage? {
@@ -44,7 +46,7 @@ enum PipelineStage: String, Codable, CaseIterable, Identifiable {
         case .quoted:      return .followUp
         case .followUp:    return .negotiation
         case .negotiation: return .won
-        case .won, .lost:  return nil
+        case .won, .lost, .discarded:  return nil
         }
     }
 
@@ -58,6 +60,7 @@ enum PipelineStage: String, Codable, CaseIterable, Identifiable {
         case .negotiation: return 75
         case .won:         return 100
         case .lost:        return 0
+        case .discarded:   return 0
         }
     }
 
@@ -69,7 +72,7 @@ enum PipelineStage: String, Codable, CaseIterable, Identifiable {
         case .quoted:      return 7
         case .followUp:    return 3
         case .negotiation: return 2
-        case .won, .lost:  return Int.max
+        case .won, .lost, .discarded:  return Int.max
         }
     }
 }

@@ -116,6 +116,10 @@ struct WonConvertCard: View {
                 }
                 Spacer(minLength: 0)
             }
+            // Read the card header as one element; CONVERT / LATER remain
+            // separate focusable buttons below. (review W-4)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Won lead, \(lead.contactName.isEmpty ? (lead.title ?? "Unnamed lead") : lead.contactName), ready to convert to a project")
 
             HStack(spacing: 8) {
                 Button(action: {
@@ -133,6 +137,7 @@ struct WonConvertCard: View {
                         )
                 }
                 .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("Convert to project")
 
                 Button(action: {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -150,6 +155,7 @@ struct WonConvertCard: View {
                         )
                 }
                 .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("View later")
             }
             .padding(.top, 14)
         }

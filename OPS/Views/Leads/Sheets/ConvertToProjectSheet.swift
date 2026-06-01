@@ -812,8 +812,12 @@ struct ConvertToProjectSheet: View {
             .replacingOccurrences(of: ",", with: "")
             .replacingOccurrences(of: "$", with: "")
             .trimmingCharacters(in: .whitespaces)
-        guard !stripped.isEmpty else { return nil }
-        return Double(stripped)
+        guard !stripped.isEmpty, let value = Double(stripped) else { return nil }
+        // Reject inf/nan and anything past the numeric(12,2) ceiling: an
+        // out-of-range or non-finite value otherwise reaches the convert RPC and
+        // 400s with an unrecoverable generic save error. (review W-16)
+        guard value.isFinite, value >= 0, value < 10_000_000_000 else { return nil }
+        return value
     }
 
     private func relativeText(for date: Date) -> String {

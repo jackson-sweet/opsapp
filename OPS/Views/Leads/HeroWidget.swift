@@ -43,31 +43,62 @@ struct HeroWidget: View {
     var onForecastTap: (() -> Void)? = nil
 
     var body: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            onForecastTap?()
-        } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                eyebrowRow
-                Text(forecastDisplay)
-                    .font(.custom("Mohave-Light", size: 38))
-                    .foregroundColor(OPSStyle.Colors.text)
-                    .monospacedDigit()
-                    .padding(.top, 6)
-
-                hairline
-                    .padding(.top, 14)
-
-                metaRow
-                    .padding(.top, 12)
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .glassSurface()
+        if let onForecastTap {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onForecastTap()
+            } label: { cardContent }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint("Opens the forecast breakdown")
+        } else {
+            // No tap handler in the shipped LEADS tab — render as a plain
+            // container, not a no-op Button, so VoiceOver doesn't announce a
+            // dead "button" and reads the hero as one stat line. (review W-1)
+            cardContent
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(accessibilityLabel)
         }
-        .buttonStyle(PlainButtonStyle())
-        .allowsHitTesting(onForecastTap != nil)
+    }
+
+    private var cardContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            eyebrowRow
+            Text(forecastDisplay)
+                .font(.custom("Mohave-Light", size: 38))
+                .foregroundColor(OPSStyle.Colors.text)
+                .monospacedDigit()
+                .padding(.top, 6)
+
+            hairline
+                .padding(.top, 14)
+
+            metaRow
+                .padding(.top, 12)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassSurface()
+    }
+
+    /// Composed VoiceOver label so the hero reads as one coherent stat line
+    /// rather than ~8 disjoint fragments (forecast, delta, each sub-metric
+    /// label/value/hint read separately). (review W-1)
+    private var accessibilityLabel: String {
+        var parts: [String] = ["Weighted forecast, 30 days, \(forecastDisplay)"]
+        if let delta = forecastDeltaPct {
+            let pct = Int(delta.rounded())
+            if pct > 0      { parts.append("up \(pct) percent versus prior") }
+            else if pct < 0 { parts.append("down \(abs(pct)) percent versus prior") }
+            else            { parts.append("flat versus prior") }
+        }
+        parts.append("\(overdueCount) overdue")
+        parts.append("\(dueTodayCount) due today")
+        parts.append("\(openLeadCount) open, \(waitingCount) waiting")
+        if let velocity = avgVelocityDays { parts.append("velocity \(velocity) days") }
+        return parts.joined(separator: ", ")
     }
 
     // MARK: - Pieces

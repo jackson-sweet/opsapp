@@ -140,7 +140,7 @@ struct PipelineStageListView: View {
                         verb: verb(for: lead),
                         tone: tone(for: lead),
                         showsLog: canManage,
-                        showsMore: canManage,
+                        showsMore: canManage && !stage.isTerminal,
                         showsAdvance: canManage && !stage.isTerminal,
                         onTap:     { onLeadTap(lead) },
                         onLog:     { onRequestSheet(.log(lead)) },
@@ -197,7 +197,7 @@ struct PipelineStageListView: View {
         case .won:                              return .olive
         case .lost:                             return .rose
         case .quoted, .followUp, .negotiation:  return .tan
-        case .newLead, .qualifying, .quoting:   return .steel
+        case .newLead, .qualifying, .quoting, .discarded:  return .steel
         }
     }
 }
@@ -227,6 +227,7 @@ private struct StageListNavBar: View {
                 .padding(.leading, 4)
                 .padding(.trailing, 10)
                 .padding(.vertical, 6)
+                .frame(minHeight: 44)   // meet the 44pt touch floor (review W-10)
                 .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())

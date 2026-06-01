@@ -251,6 +251,7 @@ enum OPSStyle {
             case .negotiation: return Color(hex: "#CA9670")! // terracotta
             case .won:         return Color(hex: "#9DB582")! // = olive
             case .lost:        return Color(hex: "#B58289")! // = rose
+            case .discarded:   return Color(hex: "#5A5E66")! // muted graphite (discarded)
             }
         }
 

@@ -238,7 +238,7 @@ class PipelineViewModel: ObservableObject {
     }
 
     /// Bucketize every open lead. Won leads route to `unconvertedWon`; lost
-    /// leads are excluded entirely.
+    /// and discarded leads are excluded entirely (all terminal stages).
     var triageBuckets: TriageBuckets {
         var overdue: [Opportunity]       = []
         var dueToday: [Opportunity]      = []
@@ -257,7 +257,10 @@ class PipelineViewModel: ObservableObject {
                 if opp.projectId == nil { unconvertedWon.append(opp) }
                 continue
             }
-            if opp.stage == .lost { continue }
+            // Drop every terminal stage from the triage queue. .won is handled
+            // above (it can surface in the convert carousel); .lost and the
+            // server-only .discarded state are excluded entirely.
+            if opp.stage.isTerminal { continue }
 
             if let due = opp.nextFollowUpAt {
                 if due < startOfToday {

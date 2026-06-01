@@ -56,9 +56,15 @@ struct OPSApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema(versionedSchema: OPSSchemaV6.self)
 
+        // Under a hosted XCTest run the on-disk store migration aborts the test
+        // host before it can connect (no real container env in the sim) — force
+        // an in-memory store so the app launches cleanly and view-snapshot tests
+        // can render. Mirrors the same guard on `main`. No production effect:
+        // `isHostedXCTest` is false outside the test bundle.
+        let isHostedXCTest = ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil
         let modelConfiguration = ModelConfiguration(
             schema: schema,
-            isStoredInMemoryOnly: false,
+            isStoredInMemoryOnly: isHostedXCTest,
             allowsSave: true
         )
 

@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - GuidedStockStructureView
 //
-// STRUCTURE stage — the conversational grouping + attributes + measurement + stock engine.
+// STRUCTURE stage — the conversational grouping + attributes + measurement + stock + products engine.
 // Owns its own sub-flow state, BACK affordance, and CONTINUE/finalize CTA.
 // GuidedStockSetupFlow suppresses its generic bottom bar for this stage.
 //
@@ -14,9 +14,8 @@ import SwiftUI
 //   substep .measurement  — iterates ALL groups via measurementIndex; captures how stock is counted.
 //   substep .stock        — iterates groups × variants via (stockGroupIndex, stockVariantIndex);
 //                           captures on-hand quantities for every variant.
-//
-// P5 can append new cases (e.g. .products) after .stock and before finalize()
-// by inserting the new case handling in the switch and extending stepBack() accordingly.
+//   substep .products     — iterates only selling groups via productsCursor (capability-gated);
+//                           captures sell mode, recipe link, and bundle composition.
 
 struct GuidedStockStructureView: View {
 
@@ -30,6 +29,7 @@ struct GuidedStockStructureView: View {
         case attributes
         case measurement
         case stock
+        case products
     }
 
     @State private var substep: Substep = .grouping
@@ -38,12 +38,51 @@ struct GuidedStockStructureView: View {
     @State private var measurementIndex: Int = 0 // cursor through ALL groups (measurement phase)
     @State private var stockGroupIndex: Int = 0  // cursor through groups (stock phase)
     @State private var stockVariantIndex: Int = 0 // cursor through variants within stockGroupIndex group
+    @State private var productsCursor: Int = 0   // cursor through sellingGroupIndices (products phase)
 
     // MARK: - Computed helpers
 
     private var currentGroup: GuidedStructuredGroup? {
         guard model.groups.indices.contains(groupIndex) else { return nil }
         return model.groups[groupIndex]
+    }
+
+    /// Permission gate for the products substep.
+    private var canManageProducts: Bool {
+        PermissionStore.shared.can("catalog.products.manage")
+    }
+
+    /// Whether any member captured item of a group has a selling kind.
+    private func groupSells(_ g: GuidedStructuredGroup) -> Bool {
+        model.capturedItems.contains { item in
+            g.memberItemIds.contains(item.id) && (item.kind == .sell || item.kind == .both)
+        }
+    }
+
+    /// Whether any member captured item of a group has a stock kind.
+    private func groupStocks(_ g: GuidedStructuredGroup) -> Bool {
+        model.capturedItems.contains { item in
+            g.memberItemIds.contains(item.id) && (item.kind == .stock || item.kind == .both)
+        }
+    }
+
+    /// Indices into model.groups where the group sells (used by the products substep).
+    private var sellingGroupIndices: [Int] {
+        model.groups.indices.filter { groupSells(model.groups[$0]) }
+    }
+
+    /// The group currently under review in the products substep.
+    private var currentProductsGroup: GuidedStructuredGroup? {
+        guard sellingGroupIndices.indices.contains(productsCursor) else { return nil }
+        let idx = sellingGroupIndices[productsCursor]
+        guard model.groups.indices.contains(idx) else { return nil }
+        return model.groups[idx]
+    }
+
+    /// The model.groups index for the current products group.
+    private var currentProductsGroupModelIndex: Int? {
+        guard sellingGroupIndices.indices.contains(productsCursor) else { return nil }
+        return sellingGroupIndices[productsCursor]
     }
 
     /// Indices of groups where isSingleItem == false (need attribute collection).
@@ -148,6 +187,20 @@ struct GuidedStockStructureView: View {
                             .transition(cardTransition)
                             .animation(pageAnimation, value: stockGroupIndex * 1000 + stockVariantIndex)
                         }
+
+                    case .products:
+                        if let group = currentProductsGroup,
+                           let mIdx = currentProductsGroupModelIndex {
+                            ProductsCard(
+                                group: productsGroupBinding(for: mIdx),
+                                allCapturedItems: model.capturedItems,
+                                isStocked: groupStocks(group),
+                                onContinue: { handleProductsContinue() }
+                            )
+                            .id("products-\(group.id)-\(productsCursor)")
+                            .transition(cardTransition)
+                            .animation(pageAnimation, value: productsCursor)
+                        }
                     }
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -167,6 +220,7 @@ struct GuidedStockStructureView: View {
             measurementIndex = 0
             stockGroupIndex = 0
             stockVariantIndex = 0
+            productsCursor = 0
         }
     }
 
@@ -248,6 +302,18 @@ struct GuidedStockStructureView: View {
                 // First stock question — go back to last measurement.
                 substep = .measurement
                 measurementIndex = max(0, model.groups.count - 1)
+            }
+            model.persist()
+
+        case .products:
+            if productsCursor > 0 {
+                productsCursor -= 1
+            } else {
+                // First products question — back to last stock (last variant of last group).
+                substep = .stock
+                stockGroupIndex = max(0, model.groups.count - 1)
+                let lastVariants = GuidedStockDraftBuilder.variantDrafts(for: model.groups[max(0, model.groups.count - 1)])
+                stockVariantIndex = max(0, lastVariants.count - 1)
             }
             model.persist()
         }
@@ -399,7 +465,33 @@ struct GuidedStockStructureView: View {
                 stockVariantIndex = 0
                 ensureStockEntries(for: stockGroupIndex)
             } else {
-                // All groups × variants complete.
+                // All groups × variants complete — route to products or finalize.
+                startProductsOrFinalize()
+            }
+        }
+    }
+
+    /// Transitions to .products if the operator has the permission AND there are selling groups;
+    /// otherwise calls finalize() immediately (stock-only path).
+    private func startProductsOrFinalize() {
+        let selling = sellingGroupIndices
+        if canManageProducts && !selling.isEmpty {
+            substep = .products
+            productsCursor = 0
+        } else {
+            finalize()
+        }
+    }
+
+    // MARK: - Products handlers
+
+    private func handleProductsContinue() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        model.persist()
+        withAnimation(pageAnimation) {
+            if productsCursor + 1 < sellingGroupIndices.count {
+                productsCursor += 1
+            } else {
                 finalize()
             }
         }
@@ -426,6 +518,14 @@ struct GuidedStockStructureView: View {
     }
 
     private func groupBinding(for gIdx: Int) -> Binding<GuidedStructuredGroup> {
+        Binding(
+            get: { model.groups.indices.contains(gIdx) ? model.groups[gIdx] : GuidedStructuredGroup() },
+            set: { if model.groups.indices.contains(gIdx) { model.groups[gIdx] = $0 } }
+        )
+    }
+
+    /// Binding for a selling group's product answers inside the products substep.
+    private func productsGroupBinding(for gIdx: Int) -> Binding<GuidedStructuredGroup> {
         Binding(
             get: { model.groups.indices.contains(gIdx) ? model.groups[gIdx] : GuidedStructuredGroup() },
             set: { if model.groups.indices.contains(gIdx) { model.groups[gIdx] = $0 } }
@@ -1116,6 +1216,410 @@ private struct StockCard: View {
             return String(Int(value))
         }
         return String(value)
+    }
+}
+
+// MARK: - ProductsCard
+//
+// Substep 2e — Products / Bundles / Recipes (capability-gated, §7.2e).
+// One selling group per screen. Scrollable when Q1 + Q2 + Q3 all appear.
+// Answers are written into `group.product`.
+//
+// Q1 (always):          How do you sell this family?  → sellMode
+// Q2 (stocked + own/both): Does selling one use stock? → sellingUsesStock
+// Q3 (package/both):   What goes in the package?       → bundleChildren
+
+private struct ProductsCard: View {
+
+    @Binding var group: GuidedStructuredGroup
+    let allCapturedItems: [GuidedCapturedItem]
+    let isStocked: Bool
+    let onContinue: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reducedMotion
+
+    // MARK: - Derived
+
+    /// Items that are NOT members of this group — candidates for bundle children.
+    private var bundleCandidates: [GuidedCapturedItem] {
+        allCapturedItems.filter { item in
+            !group.memberItemIds.contains(item.id)
+        }
+    }
+
+    /// Whether Q2 (recipe link) should be shown.
+    private var showQ2: Bool {
+        guard isStocked, let mode = group.product.sellMode else { return false }
+        return mode == .onItsOwn || mode == .both
+    }
+
+    /// Whether Q3 (bundle builder) should be shown.
+    private var showQ3: Bool {
+        guard let mode = group.product.sellMode else { return false }
+        return mode == .inPackage || mode == .both
+    }
+
+    /// The CONTINUE button is enabled once sellMode is set.
+    private var canContinue: Bool {
+        group.product.sellMode != nil
+    }
+
+    private var pageAnimation: Animation {
+        reducedMotion ? .linear(duration: 0.15) : OPSStyle.Animation.page
+    }
+
+    // MARK: - Body
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+
+            // Q1 — Sell mode
+            sellModeSection
+
+            // Q2 — Recipe link (stocked + sells on own or both)
+            if showQ2 {
+                Divider().background(OPSStyle.Colors.separator)
+                recipeLinkSection
+            }
+
+            // Q3 — Bundle builder (sells in package or both)
+            if showQ3 {
+                Divider().background(OPSStyle.Colors.separator)
+                bundleSection
+            }
+
+            // CONTINUE
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onContinue()
+            }) {
+                Text("CONTINUE →")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(StructureCTAButtonStyle(isEnabled: canContinue))
+            .disabled(!canContinue)
+            .frame(height: 52)
+            .padding(.top, OPSStyle.Layout.spacing2)
+            .accessibilityLabel("Continue")
+            .accessibilityValue(canContinue ? "Ready" : "Choose how you sell this item")
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
+    }
+
+    // MARK: - Q1: Sell mode
+
+    private var sellModeSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+
+            // Question — emphasise the family name
+            Group {
+                Text("Do you sell ")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                + Text(group.familyName.isEmpty ? "this item" : group.familyName)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                + Text(" on its own, or as part of a package?")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+
+            // Three option rows — ≥48pt each
+            VStack(spacing: OPSStyle.Layout.spacing2) {
+                SellModeRow(
+                    label: "ON ITS OWN",
+                    isSelected: group.product.sellMode == .onItsOwn,
+                    onTap: {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(pageAnimation) {
+                            group.product.sellMode = .onItsOwn
+                            // Clear package children when package mode is deselected.
+                            group.product.bundleChildren = []
+                        }
+                    }
+                )
+                SellModeRow(
+                    label: "IN A PACKAGE",
+                    isSelected: group.product.sellMode == .inPackage,
+                    onTap: {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(pageAnimation) {
+                            group.product.sellMode = .inPackage
+                            // Clear recipe link when own-sell mode is deselected.
+                            group.product.sellingUsesStock = nil
+                        }
+                    }
+                )
+                SellModeRow(
+                    label: "BOTH",
+                    isSelected: group.product.sellMode == .both,
+                    onTap: {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(pageAnimation) {
+                            group.product.sellMode = .both
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    // MARK: - Q2: Recipe link
+
+    private var recipeLinkSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+
+            Text("Does selling one use up your stock?")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            VStack(spacing: OPSStyle.Layout.spacing2) {
+                SellModeRow(
+                    label: "YES",
+                    isSelected: group.product.sellingUsesStock == true,
+                    onTap: {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(pageAnimation) {
+                            group.product.sellingUsesStock = true
+                        }
+                    }
+                )
+                SellModeRow(
+                    label: "NO",
+                    isSelected: group.product.sellingUsesStock == false,
+                    onTap: {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(pageAnimation) {
+                            group.product.sellingUsesStock = false
+                        }
+                    }
+                )
+            }
+
+            // Teach line — verbatim from spec
+            Text("// IN OPS: a recipe link — selling draws down inventory")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
+    }
+
+    // MARK: - Q3: Bundle builder
+
+    private var bundleSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+
+            Text("What goes in the package?")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            if bundleCandidates.isEmpty {
+                Text("No other items available.")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            } else {
+                VStack(spacing: OPSStyle.Layout.spacing1) {
+                    ForEach(bundleCandidates) { candidate in
+                        BundleChildRow(
+                            candidate: candidate,
+                            bundleChildren: $group.product.bundleChildren
+                        )
+                    }
+                }
+            }
+
+            // Teach line — verbatim from spec
+            Text("// IN OPS: a Bundle with required + suggested add-ons")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
+    }
+}
+
+// MARK: - SellModeRow
+//
+// ≥48pt option row shared by Q1 and Q2 inside ProductsCard.
+// Selected: primaryAccent fill + checkmark. Unselected: surfaceInput outline.
+
+private struct SellModeRow: View {
+
+    let label: String
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack {
+                Text(label)
+                    .font(OPSStyle.Typography.buttonLabel)
+                    .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .frame(minHeight: 48)
+            .background(
+                isSelected
+                    ? OPSStyle.Colors.primaryAccent.opacity(0.10)
+                    : OPSStyle.Colors.surfaceInput
+            )
+            .cornerRadius(OPSStyle.Layout.buttonRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                    .stroke(
+                        isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.40) : OPSStyle.Colors.line,
+                        lineWidth: OPSStyle.Layout.Border.standard
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .animation(OPSStyle.Animation.hover, value: isSelected)
+    }
+}
+
+// MARK: - BundleChildRow
+//
+// One tappable row in the Q3 pick-list. Toggles membership in bundleChildren.
+// When selected, shows a REQUIRED · SUGGESTED 2-way chip toggling isRequired.
+
+private struct BundleChildRow: View {
+
+    let candidate: GuidedCapturedItem
+    @Binding var bundleChildren: [GuidedBundleChild]
+
+    @Environment(\.accessibilityReduceMotion) private var reducedMotion
+
+    private var isSelected: Bool {
+        bundleChildren.contains { $0.capturedItemId == candidate.id }
+    }
+
+    private var isRequired: Bool {
+        bundleChildren.first { $0.capturedItemId == candidate.id }?.isRequired ?? true
+    }
+
+    private var pageAnimation: Animation {
+        reducedMotion ? .linear(duration: 0.15) : OPSStyle.Animation.hover
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Main row — tapping toggles inclusion
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(pageAnimation) {
+                    if isSelected {
+                        bundleChildren.removeAll { $0.capturedItemId == candidate.id }
+                    } else {
+                        bundleChildren.append(GuidedBundleChild(capturedItemId: candidate.id, isRequired: true))
+                    }
+                }
+            } label: {
+                HStack {
+                    Text(candidate.name)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
+                    Spacer()
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .frame(minHeight: 48)
+                .background(
+                    isSelected
+                        ? OPSStyle.Colors.primaryAccent.opacity(0.08)
+                        : OPSStyle.Colors.surfaceInput
+                )
+            }
+            .buttonStyle(.plain)
+
+            // REQUIRED · SUGGESTED chip row — only visible when selected
+            if isSelected {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    RequiredChip(
+                        label: "REQUIRED",
+                        isActive: isRequired,
+                        onTap: {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(pageAnimation) {
+                                setRequired(true)
+                            }
+                        }
+                    )
+                    RequiredChip(
+                        label: "SUGGESTED",
+                        isActive: !isRequired,
+                        onTap: {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(pageAnimation) {
+                                setRequired(false)
+                            }
+                        }
+                    )
+                    Spacer()
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
+                .background(OPSStyle.Colors.primaryAccent.opacity(0.05))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .cornerRadius(OPSStyle.Layout.buttonRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                .stroke(
+                    isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.30) : OPSStyle.Colors.line,
+                    lineWidth: OPSStyle.Layout.Border.standard
+                )
+        )
+        .animation(pageAnimation, value: isSelected)
+    }
+
+    private func setRequired(_ required: Bool) {
+        if let idx = bundleChildren.firstIndex(where: { $0.capturedItemId == candidate.id }) {
+            bundleChildren[idx].isRequired = required
+        }
+    }
+}
+
+// MARK: - RequiredChip
+//
+// Two-way toggle chip for REQUIRED / SUGGESTED inside BundleChildRow.
+
+private struct RequiredChip: View {
+    let label: String
+    let isActive: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            Text(label)
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(isActive ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                .frame(height: 32)
+                .background(
+                    isActive
+                        ? OPSStyle.Colors.primaryAccent.opacity(0.14)
+                        : OPSStyle.Colors.surfaceInput
+                )
+                .cornerRadius(OPSStyle.Layout.chipRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                        .stroke(
+                            isActive ? OPSStyle.Colors.primaryAccent.opacity(0.40) : OPSStyle.Colors.line,
+                            lineWidth: OPSStyle.Layout.Border.standard
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .animation(OPSStyle.Animation.hover, value: isActive)
     }
 }
 

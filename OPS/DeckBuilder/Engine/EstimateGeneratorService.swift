@@ -640,7 +640,14 @@ struct EstimateGeneratorService {
         let startElev = startInfo.vertex.elevation ?? startInfo.levelElev ?? drawingData.overallElevation
         let endElev = endInfo.vertex.elevation ?? endInfo.levelElev ?? drawingData.overallElevation
         guard let s = startElev, let e = endElev else { return nil }
-        return max(s, e) * 12.0  // feet to inches
+        // A stair is centered on its edge, so its representative rise is the
+        // edge MIDPOINT height — the AVERAGE of the two endpoint elevations,
+        // not the higher one. On a LEVEL edge (the common case) s == e, so this
+        // is identical to before. On a SLOPED edge (per-vertex elevation, or a
+        // multi-level edge bridging heights) `max` over-counted by biasing to
+        // the taller endpoint, inflating tread/riser/stringer quantities; the
+        // mid-edge average is the physically correct rise the stair sits at.
+        return (s + e) / 2.0 * 12.0  // feet to inches
     }
 
     private static func edgeDescription(_ edge: DeckEdge, drawingData: DeckDrawingData) -> String? {

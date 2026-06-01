@@ -697,6 +697,86 @@ final class DeckBuilderRegressionTests: XCTestCase {
                       "lasso must not add edges when .edge is filtered out")
     }
 
+    // MARK: - Stair total rise uses the edge midpoint, not the higher endpoint
+
+    func testCalculateTotalRise_slopedEdgeUsesMidpointNotMax() throws {
+        // A stair sits CENTERED on its edge, so its rise is the edge midpoint
+        // height. On a sloped edge (endpoints at different per-vertex
+        // elevations — 4.0 ft and 2.0 ft) the representative rise is the
+        // average: (4 + 2) / 2 = 3 ft = 36". The pre-fix code returned
+        // max(4, 2) * 12 = 48", over-counting tread/riser/stringer quantities.
+        //
+        // Unit square; the stair rides edge e1 (v1→v2). Per-vertex elevations
+        // live on v1/v2. Both vertices carry edges, so fromJSON's two-pass
+        // orphan-pruning keeps them across the deckDesign round-trip — proving
+        // the elevations survive JSON serialization, not just in-memory state.
+        var data = DeckDrawingData()
+        data.scaleFactor = 1.0
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0), elevation: 4.0),
+            DeckVertex(id: "v2", position: CGPoint(x: 100, y: 0), elevation: 2.0),
+            DeckVertex(id: "v3", position: CGPoint(x: 100, y: 100)),
+            DeckVertex(id: "v4", position: CGPoint(x: 0, y: 100)),
+        ]
+        var stairEdge = DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")
+        stairEdge.stairConfig = StairConfig(width: 100, treadCount: 4, alignment: .center)
+        data.edges = [
+            stairEdge,
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4"),
+            DeckEdge(id: "e4", startVertexId: "v4", endVertexId: "v1"),
+        ]
+
+        // Round-trip through the persisted JSON path (toJSON → fromJSON).
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        let restored = viewModel.drawingData
+
+        // Per-vertex elevations must survive the round-trip for the math to mean anything.
+        XCTAssertEqual(restored.vertex(byId: "v1")?.elevation, 4.0)
+        XCTAssertEqual(restored.vertex(byId: "v2")?.elevation, 2.0)
+
+        guard let edge = restored.edge(byId: "e1") else {
+            return XCTFail("stair edge e1 must survive the round-trip")
+        }
+        let rise = try XCTUnwrap(EstimateGeneratorService.calculateTotalRise(edge: edge, drawingData: restored))
+        XCTAssertEqual(rise, 36.0, accuracy: 0.0001,
+                       "sloped stair edge rise must be the midpoint average (4+2)/2*12 = 36\", not max*12 = 48\"")
+        XCTAssertNotEqual(rise, 48.0,
+                          "pre-fix max(s,e)*12 = 48\" must no longer be returned")
+    }
+
+    func testCalculateTotalRise_levelEdgeUnchanged() throws {
+        // Regression guard for the common case: both endpoints at the same
+        // elevation (3.0 ft). Average == max == 3 ft = 36" — the fix must be a
+        // no-op here so existing level-edge estimates don't shift.
+        var data = DeckDrawingData()
+        data.scaleFactor = 1.0
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0), elevation: 3.0),
+            DeckVertex(id: "v2", position: CGPoint(x: 100, y: 0), elevation: 3.0),
+            DeckVertex(id: "v3", position: CGPoint(x: 100, y: 100)),
+            DeckVertex(id: "v4", position: CGPoint(x: 0, y: 100)),
+        ]
+        var stairEdge = DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")
+        stairEdge.stairConfig = StairConfig(width: 100, treadCount: 4, alignment: .center)
+        data.edges = [
+            stairEdge,
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4"),
+            DeckEdge(id: "e4", startVertexId: "v4", endVertexId: "v1"),
+        ]
+
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        let restored = viewModel.drawingData
+
+        guard let edge = restored.edge(byId: "e1") else {
+            return XCTFail("stair edge e1 must survive the round-trip")
+        }
+        let rise = try XCTUnwrap(EstimateGeneratorService.calculateTotalRise(edge: edge, drawingData: restored))
+        XCTAssertEqual(rise, 36.0, accuracy: 0.0001,
+                       "level stair edge rise (both 3.0 ft) must stay 3*12 = 36\" — unchanged by the fix")
+    }
+
     private func deckDesign(drawingData: DeckDrawingData) -> DeckDesign {
         DeckDesign(
             companyId: "company-1",

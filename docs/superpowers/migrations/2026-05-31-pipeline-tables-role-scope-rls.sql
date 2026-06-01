@@ -2,7 +2,11 @@
 -- MIGRATION (leads-review C-7) — defense-in-depth, latent today
 -- Make pipeline.manage a real SERVER-SIDE write boundary on the pipeline-owned
 -- tables, mirroring the proven projects/clients role_scope_* pattern.
--- Authored 2026-05-31 by the LEADS pre-merge review. NOT YET APPLIED.
+-- Authored 2026-05-31 by the LEADS pre-merge review. APPLIED to prod 2026-05-31
+-- (migration: pipeline_tables_role_scope_write_rls) with explicit PM authorization
+-- once leads work was confirmed solo. Verified live: opportunities + stage_transitions
+-- now carry role_scope_insert/update/delete alongside company_isolation (and the
+-- pre-existing role_scope_read on opportunities). Mirror into OPS-Web/supabase/migrations.
 --
 -- !! COORDINATE BEFORE APPLYING !!
 -- `opportunities` is the hot table of the active, push-held lead-lifecycle

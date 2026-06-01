@@ -157,4 +157,80 @@ final class MultiLevelTests: XCTestCase {
         let spec = StairCalculator.calculate(totalRise: diff, width: 48)
         XCTAssertEqual(spec.treadCount, 5) // 36" / 7.5" = 4.8 -> ceil = 5
     }
+
+    // MARK: - Stair-derived elevation fallback
+
+    // When no elevation is set explicitly (no per-level, no per-vertex, no
+    // overall), the deck adopts its height from an attached stair's total
+    // rise — a stair spanning 36" means the deck sits 3' off grade.
+    // `StairConfig.totalRiseInches` is inches, so the fallback divides by 12.
+
+    func testRenderElevationSingleLevel_adoptsStairTotalRiseWhenNoExplicitElevation() {
+        var data = DeckDrawingData()
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 144, y: 0)),
+        ]
+        var edge = DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")
+        edge.stairConfig = StairConfig(width: 48, totalRiseInches: 36)
+        data.edges = [edge]
+
+        XCTAssertEqual(data.renderElevationFeetSingleLevel, 3.0, accuracy: 0.0001)
+    }
+
+    func testRenderElevationSingleLevel_explicitOverallElevationWinsOverStair() {
+        var data = DeckDrawingData()
+        data.overallElevation = 5.0
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 144, y: 0)),
+        ]
+        var edge = DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")
+        edge.stairConfig = StairConfig(width: 48, totalRiseInches: 36)
+        data.edges = [edge]
+
+        XCTAssertEqual(data.renderElevationFeetSingleLevel, 5.0, accuracy: 0.0001)
+    }
+
+    func testRenderElevationSingleLevel_fallsBackToDefaultWithoutStairOrElevation() {
+        var data = DeckDrawingData()
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 144, y: 0)),
+        ]
+        data.edges = [DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")]
+
+        XCTAssertEqual(data.renderElevationFeetSingleLevel, 2.5, accuracy: 0.0001)
+    }
+
+    func testRenderElevationMultiLevel_adoptsStairTotalRiseWhenLevelElevationNil() {
+        var level = DeckLevel(name: "Deck")
+        level.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 144, y: 0)),
+        ]
+        var edge = DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")
+        edge.stairConfig = StairConfig(width: 48, totalRiseInches: 48)
+        level.edges = [edge]
+        var data = DeckDrawingData()
+        data.levels = [level]
+
+        XCTAssertEqual(data.renderElevationFeet(for: level, levelIndex: 0), 4.0, accuracy: 0.0001)
+    }
+
+    func testRenderElevationMultiLevel_explicitLevelElevationWinsOverStair() {
+        var level = DeckLevel(name: "Deck")
+        level.elevation = 6.0
+        level.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 144, y: 0)),
+        ]
+        var edge = DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")
+        edge.stairConfig = StairConfig(width: 48, totalRiseInches: 48)
+        level.edges = [edge]
+        var data = DeckDrawingData()
+        data.levels = [level]
+
+        XCTAssertEqual(data.renderElevationFeet(for: level, levelIndex: 0), 6.0, accuracy: 0.0001)
+    }
 }

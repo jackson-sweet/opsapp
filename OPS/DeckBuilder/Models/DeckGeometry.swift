@@ -437,10 +437,13 @@ struct StairConfig: Codable, Equatable {
     var offset: Double = 0          // inches from alignment side
     var railingConfig: RailingConfig?
     var assignedItems: [AssignedItem] = []
-    /// Stair elevation in feet — captured in StairConfigView when no per-vertex
-    /// or overall elevation is set. Once stored, the user can edit this on
-    /// subsequent passes through the stair editor (instead of being trapped by
-    /// the read-only "Total Rise" card). Bug bfbc4068.
+    /// Stair total rise in INCHES — captured in StairConfigView (which stores
+    /// the user's feet entry × 12) when no per-vertex or overall elevation is
+    /// set. Once stored, the user can edit this on subsequent passes through
+    /// the stair editor (instead of being trapped by the read-only "Total
+    /// Rise" card). Bug bfbc4068. Also the value the deck adopts as its render
+    /// elevation when none was entered explicitly — see
+    /// `DeckDrawingData.stairDerivedElevationFeet`.
     var totalRiseInches: Double?
     /// When true, render stairs on the OPPOSITE perpendicular from the deck
     /// fill. Default `false` means stairs run AWAY from the deck surface, which
@@ -1016,7 +1019,10 @@ struct DeckDrawingData: Codable {
     /// 1. `level.elevation` — the explicit uniform per-level height.
     /// 2. The average of the level's per-vertex `elevation` values — the
     ///    "sloped" elevation mode and single-vertex height edits write here.
-    /// 3. A staggered height — `base + levelIndex × 2.5'` — so levels never
+    /// 3. An attached stair's total rise — a stair spans grade up to the deck
+    ///    surface, so its rise IS this level's elevation when the user never
+    ///    entered one. Adopt it before the arbitrary staggered default.
+    /// 4. A staggered height — `base + levelIndex × 2.5'` — so levels never
     ///    collapse onto one another when no per-level height was recorded.
     ///    `base` is `overallElevation` when set: in multi-level mode the
     ///    elevation editor only exposes a single overall-height field, so
@@ -1030,21 +1036,43 @@ struct DeckDrawingData: Codable {
         if !vertexElevations.isEmpty {
             return vertexElevations.reduce(0, +) / Double(vertexElevations.count)
         }
+        if let stairFeet = stairDerivedElevationFeet(edges: level.edges) {
+            return stairFeet
+        }
         let baseFeet = overallElevation ?? 2.5
         return baseFeet + Double(levelIndex) * 2.5
     }
 
     /// Uniform render elevation (in feet) for a single-level design.
     /// Priority: `overallElevation` → average of per-vertex elevations →
-    /// the 2.5' default — so single-level designs resolve height with the
-    /// same per-vertex fallback as `renderElevationFeet(for:levelIndex:)`.
+    /// an attached stair's total rise → the 2.5' default — so single-level
+    /// designs resolve height with the same fallbacks as
+    /// `renderElevationFeet(for:levelIndex:)`.
     var renderElevationFeetSingleLevel: Double {
         if let overall = overallElevation { return overall }
         let vertexElevations = vertices.compactMap { $0.elevation }
         if !vertexElevations.isEmpty {
             return vertexElevations.reduce(0, +) / Double(vertexElevations.count)
         }
+        if let stairFeet = stairDerivedElevationFeet(edges: edges) {
+            return stairFeet
+        }
         return 2.5
+    }
+
+    /// Highest stair total rise (in feet) among the given edges that carry a
+    /// configured stair, or nil when none do. A stair's `totalRiseInches` is
+    /// the vertical span it covers — grade up to the deck surface — so it
+    /// equals the deck's elevation when no elevation was entered explicitly.
+    /// `totalRiseInches` is inches; convert to feet. When several stairs carry
+    /// a rise the tallest wins — a deck can't sit lower than its highest stair.
+    private func stairDerivedElevationFeet(edges: [DeckEdge]) -> Double? {
+        edges
+            .compactMap { edge -> Double? in
+                guard let inches = edge.stairConfig?.totalRiseInches, inches > 0 else { return nil }
+                return inches / 12.0
+            }
+            .max()
     }
 
     /// Vertical gap (in feet) from a level's surface up to the bottom of the

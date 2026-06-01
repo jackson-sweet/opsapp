@@ -939,9 +939,15 @@ struct DeckSceneBuilder {
                 let topRailY1 = p1.y + railHeightM - topRailThicknessM / 2
                 let topRailY2 = p2.y + railHeightM - topRailThicknessM / 2
                 let railMidY = (topRailY1 + topRailY2) / 2
+                // Pass the TRUE per-post rail heights as the span endpoints so
+                // the rail slopes with the stairs. Previously both endpoints
+                // were flattened to `railMidY`, which made the rail horizontal
+                // and ~cos(pitch) too short. `yCenter` stays the midpoint —
+                // the natural vertical center of a span tilted symmetrically
+                // between its two posts.
                 let topRailNode = buildSpanningBox(
-                    from: SCNVector3(p1.x, railMidY, p1.z),
-                    to: SCNVector3(p2.x, railMidY, p2.z),
+                    from: SCNVector3(p1.x, topRailY1, p1.z),
+                    to: SCNVector3(p2.x, topRailY2, p2.z),
                     yCenter: railMidY,
                     width: railPostSizeM,
                     height: topRailThicknessM,
@@ -1508,7 +1514,31 @@ struct DeckSceneBuilder {
 
     // MARK: - Spanning Box Helper
 
-    /// Create a box that spans between two 3D points at a given Y center
+    /// Orientation for a box spanning between two points, modelled as an
+    /// `SCNBox` (local axes: X = width, Y = height, Z = length). Maps the box's
+    /// length axis along the 3D `direction` (`p2 - p1`), keeps its width
+    /// horizontal (perpendicular to the span's ground track), and tilts its
+    /// height to stay normal to the length — built from an explicit orthonormal
+    /// basis like `stringerOrientation` so it is correct for any bearing AND any
+    /// slope. For a level span (`direction.y == 0`) this reduces exactly to the
+    /// historic `eulerAngles.y = atan2(dx, dz)` (length along the edge, width
+    /// the horizontal perpendicular, height world-up) — no regression for the
+    /// many horizontal callers. For a sloped span (stair handrail) the length
+    /// follows the pitch instead of floating flat across the posts.
+    /// - Parameter direction: span vector `p2 - p1` in world space (need not be
+    ///   unit length; only its direction is used). Must be non-zero.
+    static func spanningBoxOrientation(direction: SCNVector3) -> simd_quatf {
+        let zAxis = simd_normalize(SIMD3<Float>(direction.x, direction.y, direction.z))  // length → along the span
+        // Width lies along the horizontal perpendicular to the span's ground
+        // track (matches the legacy euler-Y width direction). Guard the
+        // degenerate purely-vertical span (no rail is vertical) by falling back
+        // to world X so the basis stays well-defined.
+        let horizPerp = SIMD3<Float>(direction.z, 0, -direction.x)
+        let xAxis = simd_length(horizPerp) > 1e-6 ? simd_normalize(horizPerp) : SIMD3<Float>(1, 0, 0)
+        let yAxis = simd_normalize(simd_cross(zAxis, xAxis))                              // height → normal to the span
+        return simd_quatf(simd_float3x3(columns: (xAxis, yAxis, zAxis)))
+    }
+
     private static func buildSpanningBox(
         from p1: SCNVector3,
         to p2: SCNVector3,
@@ -1517,22 +1547,28 @@ struct DeckSceneBuilder {
         height: Float,
         material: SCNMaterial
     ) -> SCNNode {
-        let dx = p2.x - p1.x
-        let dz = p2.z - p1.z
-        let length = sqrt(dx * dx + dz * dz)
+        // Span the TRUE 3D distance between the endpoints. For a level span
+        // (dy == 0) this equals the old XZ distance `sqrt(dx*dx + dz*dz)`; for a
+        // sloped stair handrail it includes the rise so the rail is no longer
+        // ~cos(pitch) too short.
+        let delta = SCNVector3(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z)
+        let length = sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z)
 
         let box = SCNBox(width: CGFloat(width), height: CGFloat(height), length: CGFloat(length), chamferRadius: 0)
         box.firstMaterial = material
 
         let node = SCNNode(geometry: box)
+        // `yCenter` remains the vertical center of the box. Horizontal callers
+        // pass the exact rail/cable/joist height here; the sloped stair rail
+        // passes the endpoint midpoint, which is the natural center of a span
+        // tilted symmetrically between its two posts. The XZ center is always
+        // the endpoint midpoint, as before.
         node.position = SCNVector3(
             (p1.x + p2.x) / 2,
             yCenter,
             (p1.z + p2.z) / 2
         )
-
-        let angle = atan2(dx, dz)
-        node.eulerAngles.y = angle
+        node.simdOrientation = spanningBoxOrientation(direction: delta)
 
         return node
     }

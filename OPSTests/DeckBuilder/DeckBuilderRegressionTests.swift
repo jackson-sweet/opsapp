@@ -375,6 +375,84 @@ final class DeckBuilderRegressionTests: XCTestCase {
         XCTAssertEqual(lengthAxis.z, cos(Float.pi / 6), accuracy: 0.0001)   // runs outward
     }
 
+    // MARK: - 3D spanning-box orientation (bug: stair top rail rendered flat)
+
+    func testSpanningBoxOrientation_horizontalSpanMatchesLegacyEulerY() {
+        // A level rail (dy == 0) running diagonally in XZ. The fix must be a
+        // no-op for every horizontal caller: length lies along the edge, width
+        // is the horizontal perpendicular, height is world-up — exactly what
+        // the old `eulerAngles.y = atan2(dx, dz)` produced.
+        let dx: Float = 3
+        let dz: Float = 4
+        let q = DeckSceneBuilder.spanningBoxOrientation(
+            direction: SCNVector3(dx, 0, dz)
+        )
+        let lengthAxis = q.act(SIMD3<Float>(0, 0, 1))  // box length → along the span
+        let widthAxis = q.act(SIMD3<Float>(1, 0, 0))   // box width → horizontal perpendicular
+        let heightAxis = q.act(SIMD3<Float>(0, 1, 0))  // box height → world up
+
+        // Length axis equals the normalized horizontal direction (no tilt).
+        let len = (dx * dx + dz * dz).squareRoot()
+        XCTAssertEqual(lengthAxis.x, dx / len, accuracy: 0.0001)
+        XCTAssertEqual(lengthAxis.y, 0, accuracy: 0.0001)  // dead flat — no slope
+        XCTAssertEqual(lengthAxis.z, dz / len, accuracy: 0.0001)
+
+        // Reference orientation from the legacy euler-Y path.
+        let ref = SCNNode()
+        ref.eulerAngles.y = atan2(dx, dz)
+        let refLength = ref.simdOrientation.act(SIMD3<Float>(0, 0, 1))
+        let refWidth = ref.simdOrientation.act(SIMD3<Float>(1, 0, 0))
+        XCTAssertEqual(lengthAxis.x, refLength.x, accuracy: 0.0001)
+        XCTAssertEqual(lengthAxis.y, refLength.y, accuracy: 0.0001)
+        XCTAssertEqual(lengthAxis.z, refLength.z, accuracy: 0.0001)
+        XCTAssertEqual(widthAxis.x, refWidth.x, accuracy: 0.0001)
+        XCTAssertEqual(widthAxis.y, refWidth.y, accuracy: 0.0001)
+        XCTAssertEqual(widthAxis.z, refWidth.z, accuracy: 0.0001)
+
+        // Height stays world-up for a level span.
+        XCTAssertEqual(heightAxis.x, 0, accuracy: 0.0001)
+        XCTAssertEqual(heightAxis.y, 1, accuracy: 0.0001)
+        XCTAssertEqual(heightAxis.z, 0, accuracy: 0.0001)
+    }
+
+    func testSpanningBoxOrientation_slopedSpanFollowsPitchAndKeepsWidthHorizontal() {
+        // A stair top rail descending as it runs outward: equal rise and run
+        // along +X (45° pitch), endpoint p2 below and outward from p1. The old
+        // path flattened both endpoints to one Y, so the rail floated flat; the
+        // fix must tilt the length axis down the slope.
+        let q = DeckSceneBuilder.spanningBoxOrientation(
+            direction: SCNVector3(1, -1, 0)  // out +X, down -Y, equal magnitude
+        )
+        let lengthAxis = q.act(SIMD3<Float>(0, 0, 1))
+        let widthAxis = q.act(SIMD3<Float>(1, 0, 0))
+        let r2 = Float(2).squareRoot() / 2
+
+        // Length axis is unit and points down the 45° slope toward +X / -Y.
+        XCTAssertEqual(simd_length(lengthAxis), 1, accuracy: 0.0001)
+        XCTAssertEqual(lengthAxis.x, r2, accuracy: 0.0001)
+        XCTAssertEqual(lengthAxis.y, -r2, accuracy: 0.0001)   // descends with the stairs
+        XCTAssertEqual(lengthAxis.z, 0, accuracy: 0.0001)
+
+        // Width stays horizontal (Y == 0) — the rail's cross-section does not
+        // bank — and is perpendicular to the span's ground track (+X ⇒ ∓Z).
+        XCTAssertEqual(widthAxis.y, 0, accuracy: 0.0001)
+        XCTAssertEqual(abs(widthAxis.z), 1, accuracy: 0.0001)
+        XCTAssertEqual(widthAxis.x, 0, accuracy: 0.0001)
+    }
+
+    func testSpanningBoxOrientation_slopedSpanIsLongerThanItsGroundTrack() {
+        // The TRUE 3D length the box now uses must exceed the XZ-only length the
+        // old code computed for any span with rise — the ~cos(pitch) shortfall.
+        let dx: Float = 11   // run
+        let dy: Float = -7   // rise (descending)
+        let dz: Float = 0
+        let trueLength = (dx * dx + dy * dy + dz * dz).squareRoot()
+        let groundTrack = (dx * dx + dz * dz).squareRoot()
+        XCTAssertGreaterThan(trueLength, groundTrack)
+        // A 7"/11" stair: the old rail was ~cos(pitch) ≈ 84% of true length.
+        XCTAssertEqual(groundTrack / trueLength, cos(atan2(abs(dy), dx)), accuracy: 0.0001)
+    }
+
     // MARK: - Area sums detected surfaces (not the outer perimeter)
 
     func testCalculateAreaSqFt_sumsDetectedSurfacesAcrossDisconnectedShapes() {

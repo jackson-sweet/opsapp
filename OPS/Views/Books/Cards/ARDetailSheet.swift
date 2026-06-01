@@ -5,8 +5,9 @@
 //  Books P6 — UX overhaul. The merged A/R detail shown when the A/R condensed
 //  card expands. One rich sheet (owner decision 2026-06-01): the full A/R card
 //  (hero + aging ramp + bucket grid + top-chase) on top, the per-client
-//  top-outstanding list below — folding in `ARAgingDetailView`'s unique content
-//  so TOP CHASE scrolls in-place instead of stacking a second sheet.
+//  top-outstanding list below — folding in the unique content of the former
+//  standalone AR aging detail so TOP CHASE scrolls in-place instead of stacking
+//  a second sheet.
 //
 //  Spec: docs/superpowers/specs/2026-06-01-books-condensed-cards-ux-overhaul-design.md
 //

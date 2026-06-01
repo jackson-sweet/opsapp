@@ -3,7 +3,7 @@
 //  OPS
 //
 //  Books P6 — UX overhaul. The half-sheet a condensed hero card expands into.
-//  Reuses the `ARAgingDetailView` sheet pattern (NavigationStack + inline title
+//  Reuses the established half-sheet pattern (NavigationStack + inline title
 //  + DONE, presented with `.presentationDetents([.medium, .large])` +
 //  `.presentationDragIndicator(.visible)` at the call site). Renders the lens's
 //  FULL content; the in-card drill actions live here now (decision 2026-06-01),

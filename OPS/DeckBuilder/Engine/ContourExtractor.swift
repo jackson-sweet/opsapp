@@ -143,7 +143,9 @@ struct ContourExtractor {
     // MARK: - Step 2: Contour Simplification
 
     /// Create line segments from contour points, filter short segments, and merge near-collinear ones.
-    private static func simplifyContour(_ points: [CGPoint], imageSize: CGSize) -> [DetectedLineSegment] {
+    /// Internal (not private) so the segment-merge geometry — including the start/end seam
+    /// wraparound merge — is unit-testable via `@testable import OPS`.
+    static func simplifyContour(_ points: [CGPoint], imageSize: CGSize) -> [DetectedLineSegment] {
         guard points.count >= 2 else { return [] }
 
         let diagonal = sqrt(imageSize.width * imageSize.width + imageSize.height * imageSize.height)
@@ -185,8 +187,21 @@ struct ContourExtractor {
             }
         }
 
-        // Check if the first and last segments should also merge (wraparound)
-        if merged.count >= 2 {
+        // Check if the first and last segments should also merge (wraparound seam).
+        //
+        // The contour walk wraps last.end → first.start, so when `last` and `first`
+        // are near-collinear they are the two halves of one edge straddling the
+        // start/end seam. The merged edge must therefore span the OUTER endpoints:
+        //   last.startPoint → first.endPoint
+        // (`first` is fully absorbed into `last`, then removed). After removeFirst the
+        // new merged[0] is the old merged[1], whose start equals first.endPoint — so
+        // the terminal segment still connects back with no gap and no truncation.
+        //
+        // Require >= 3 segments: removing `first` must still leave a closeable polygon
+        // (>= 2 edges → >= 3 before removal). With only 2 segments the pair is a
+        // degenerate digon and last.startPoint == first.endPoint, which would collapse
+        // the terminal segment to zero length and corrupt vertex building.
+        if merged.count >= 3 {
             let last = merged[merged.count - 1]
             let first = merged[0]
             let angleDiff = abs(last.angleDegrees - first.angleDegrees)

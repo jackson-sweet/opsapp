@@ -375,6 +375,70 @@ final class DeckBuilderRegressionTests: XCTestCase {
         XCTAssertEqual(lengthAxis.z, cos(Float.pi / 6), accuracy: 0.0001)   // runs outward
     }
 
+    // MARK: - Area sums detected surfaces (not the outer perimeter)
+
+    func testCalculateAreaSqFt_sumsDetectedSurfacesAcrossDisconnectedShapes() {
+        // Two disconnected rectangles on one level: 144x144 (144 sq ft) +
+        // 72x72 (36 sq ft) = 180. The old isClosed/orderedPositions path
+        // shoelaced the two-loop graph as one perimeter (or rejected it);
+        // the surface-aware area sums each detected face.
+        var data = DeckDrawingData()
+        data.scaleFactor = 1.0
+        data.vertices = [
+            DeckVertex(id: "a1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "a2", position: CGPoint(x: 144, y: 0)),
+            DeckVertex(id: "a3", position: CGPoint(x: 144, y: 144)),
+            DeckVertex(id: "a4", position: CGPoint(x: 0, y: 144)),
+            DeckVertex(id: "b1", position: CGPoint(x: 240, y: 0)),
+            DeckVertex(id: "b2", position: CGPoint(x: 312, y: 0)),
+            DeckVertex(id: "b3", position: CGPoint(x: 312, y: 72)),
+            DeckVertex(id: "b4", position: CGPoint(x: 240, y: 72)),
+        ]
+        data.edges = [
+            DeckEdge(id: "ae1", startVertexId: "a1", endVertexId: "a2"),
+            DeckEdge(id: "ae2", startVertexId: "a2", endVertexId: "a3"),
+            DeckEdge(id: "ae3", startVertexId: "a3", endVertexId: "a4"),
+            DeckEdge(id: "ae4", startVertexId: "a4", endVertexId: "a1"),
+            DeckEdge(id: "be1", startVertexId: "b1", endVertexId: "b2"),
+            DeckEdge(id: "be2", startVertexId: "b2", endVertexId: "b3"),
+            DeckEdge(id: "be3", startVertexId: "b3", endVertexId: "b4"),
+            DeckEdge(id: "be4", startVertexId: "b4", endVertexId: "b1"),
+        ]
+
+        XCTAssertEqual(EstimateGeneratorService.calculateAreaSqFt(drawingData: data), 180.0, accuracy: 0.5)
+    }
+
+    // MARK: - Selection is pruned when undo/redo removes the selected element
+
+    func testRedo_prunesSelectionOfRemovedEdge() {
+        var data = DeckDrawingData()
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 120, y: 0)),
+            DeckVertex(id: "v3", position: CGPoint(x: 120, y: 120)),
+        ]
+        data.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2"),
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"),
+        ]
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+
+        viewModel.selection.selectedEdgeIds = ["e1"]
+        viewModel.deleteSelectedEdges()                 // removes e1 (+ orphaned v1), pushes undo
+        XCTAssertNil(viewModel.findEdge(byId: "e1"))
+
+        viewModel.undo()                                // e1 restored
+        XCTAssertNotNil(viewModel.findEdge(byId: "e1"))
+
+        viewModel.selection.selectedEdgeIds = ["e1"]    // re-select, then redo removes it again
+        viewModel.redo()
+        XCTAssertNil(viewModel.findEdge(byId: "e1"))
+        XCTAssertFalse(
+            viewModel.selection.selectedEdgeIds.contains("e1"),
+            "selection must drop the id of an edge the redo removed"
+        )
+    }
+
     private func deckDesign(drawingData: DeckDrawingData) -> DeckDesign {
         DeckDesign(
             companyId: "company-1",

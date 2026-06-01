@@ -180,6 +180,21 @@ class OpportunityRepository {
             .value
     }
 
+    /// Update via an arbitrary Encodable patch. Used by the edit form's
+    /// `EditOpportunityPatch`, whose custom encoder emits explicit nulls so
+    /// cleared fields persist. The `fields:` overload (UpdateOpportunityDTO)
+    /// stays the partial-update path for mark-won / mark-lost / archive. (review I-12)
+    func update<Patch: Encodable>(_ opportunityId: String, patch: Patch) async throws -> OpportunityDTO {
+        try await client
+            .from("opportunities")
+            .update(patch)
+            .eq("id", value: opportunityId)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
     // MARK: - Soft Delete + Archive
 
     /// Soft-delete via deleted_at. Replaces the prior HARD delete.

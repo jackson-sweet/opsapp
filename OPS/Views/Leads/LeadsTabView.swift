@@ -67,7 +67,17 @@ struct LeadsTabView: View {
     private var buckets: PipelineViewModel.TriageBuckets { viewModel.triageBuckets }
     private var canManage: Bool { permissionStore.can("pipeline.manage") }
     private var bucket: PipelineViewModel.TriageBucket {
-        selectedBucket ?? viewModel.defaultBucket
+        // Fall back rather than strand the operator on an empty, non-tappable
+        // chip: if the selected bucket has emptied (e.g. they just cleared the
+        // last overdue item) drop the stale selection. When the whole pipeline
+        // is empty, anchor on .all so the empty copy reads "— NO OPEN LEADS"
+        // instead of a misleading per-bucket message. (review W-14, W-15)
+        let b = buckets
+        if let selected = selectedBucket, !b.leads(for: selected).isEmpty {
+            return selected
+        }
+        if b.all.isEmpty { return .all }
+        return viewModel.defaultBucket
     }
     private var stageCounts: [PipelineStage: Int] {
         Dictionary(uniqueKeysWithValues: PipelineStage.allCases.map {
@@ -98,7 +108,11 @@ struct LeadsTabView: View {
                         .padding(.horizontal, 20)
                         .padding(.top, 4)
 
-                        if !buckets.unconvertedWon.isEmpty {
+                        // Carousel CONVERT → ConvertToProjectSheet mutates
+                        // (marks won, creates a project) and its onDisappear
+                        // silently commits, so gate the whole surface on
+                        // pipeline.manage. (review C-9)
+                        if canManage && !buckets.unconvertedWon.isEmpty {
                             WonConvertCarousel(
                                 leads: buckets.unconvertedWon,
                                 onConvert: { activeSheet = .convert($0) },
@@ -228,18 +242,23 @@ struct LeadsTabView: View {
             // No filter icon (plan §2.1 Q4 = delete entirely). Search is
             // provided by the persistent overlay button in MainTabView
             // (Bug 706a4d32), so we don't render one here either.
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                activeSheet = .add
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 18, weight: .regular))
-                    .foregroundColor(OPSStyle.Colors.text2)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+            // Gated on pipeline.manage — read-only operators get no create
+            // affordance, matching the FAB's gating and design-intent §14 #11.
+            // (review C-8 / W-12)
+            if canManage {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    activeSheet = .add
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundColor(OPSStyle.Colors.text2)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("New lead")
             }
-            .buttonStyle(PlainButtonStyle())
-            .accessibilityLabel("New lead")
         }
         .padding(.horizontal, 20)
         .padding(.top, 4)

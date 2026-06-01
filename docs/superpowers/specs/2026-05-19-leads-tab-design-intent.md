@@ -520,3 +520,56 @@ The audit doc merged via `97cf26e`. MOBILE.md §1/§4.3 were reconciled directly
 - `GlassSurfaceModifier` internal opacity literals — shared app-wide component; needs a design-system call.
 - `PipelineStage.color` possible dead code — needs a usage check.
 - Wave 2 feature backlog — per-task selection in Convert, multi-filter triage, per-lead push notifications.
+
+---
+
+## 25 · REVIEW 3 — FINAL PRE-MERGE DEEP REVIEW (2026-05-31)
+
+A workflow-driven deep review (8 parallel dimension agents + adversarial per-finding verification + completeness critic) produced **40 confirmed findings** (12 CRITICAL / 16 WARNING / 12 INFO) and refuted 5 preliminary leads. Branch `feat/leads-review-3` (off `feat/leads-tab-rebuild` @ `6043b7c5`). `xcodebuild … generic/platform=iOS` green after every commit.
+
+### Fixed in code (22 findings, 8 commits)
+
+| Commit | Findings | Summary |
+|---|---|---|
+| `36c6f8a2` | C-3, C-4 | Lead-form `priority`/`source` chip ids + defaults sent values rejected by the Postgres CHECK constraints — **the default Add-Lead flow failed 100%**. Remapped to valid constraint members. |
+| `9cb3928f` | C-5 | Added the `discarded` `PipelineStage` case; excluded all terminal stages from triage so the 54 server `discarded` opps stop surfacing as fresh leads + inflating counts/forecast. |
+| `76e13cff` | C-2, C-8, C-9, W-11, W-12 | Gated the `+`, WON-CONVERT carousel, and detail StickyActionBar/WonNotConverted card on `pipeline.manage`. |
+| `64676b37` | C-10, C-11, W-6 | Terminal-stage MORE no longer offers re-close; editing a won/lost lead no longer silently revives it to NEW LEAD; stage-move RPC error no longer swallowed. |
+| `b41e5b44` | C-1, W-1, W-2, W-3, W-4 | VoiceOver: triage-card quick-actions reachable (removed Button-in-Button + `.combine` absorption); hero/contact/detail/carousel grouping + labels. |
+| `71ba81cc` | W-14, W-15 | Triage bucket selection stays valid on empty/cleared states. |
+| `7b69ce44` | W-9, W-10, I-11 | Toast on the single OPS curve; 44pt back buttons; percent-encoded `mailto:`. |
+| `eb35dd62` | W-16 | Reject non-finite / over-`numeric(12,2)` money input before the RPC. |
+
+### Server migrations — authored in `docs/superpowers/migrations/`, NOT applied
+
+- **`…-harden-convert-lead-to-project-authz.sql` (C-6/C-12, SHIP-BLOCKER):** the convert RPC trusted client `p_user_id` and was anon-executable. Fix authorizes the JWT-derived caller + requires `pipeline.manage`. **APPLIED to prod 2026-05-31 and verified to absolute confidence** — the deployed body carries both gates, and all four auth paths were exercised against live data: a real manager (`manage='all'`) passes both gates; anon (no JWT) → NULL company → rejected; a different-company user → company mismatch → rejected; `current_user_has_permission` returns true for managers / false for non-holders. Backward-compatible (only Admin/Office/Owner touch pipeline, all `manage='all'`, zero overrides; JWT path proven by 124 recent `stage_transitions`). A device smoke test (convert one real lead) is the optional belt-and-suspenders confirmation. NB: mirror this file into `OPS-Web/supabase/migrations` so repo history matches the live DB.
+
+- **Test suite repaired:** the `OPSTests` target did not compile at the branch base (orphaned tests referenced rebuild-removed `PipelineViewModel` in-court members + a non-existent project-photo `deleteTarget` API) — so no prior audit ran the unit tests. Both are now fixed; the target compiles clean. The tests execute on a dev/CI host (the app can't bootstrap in a headless sandbox, so they can't be run from the review environment).
+- **`…-pipeline-tables-role-scope-rls.sql` (C-7):** gates `opportunities` + `stage_transitions` writes on `pipeline.manage` (latent gap — no live view-without-manage role). `activities`/`follow_ups` deliberately excluded (shared tables). **Coordinate with the active lead-lifecycle initiative before applying — it owns the `opportunities` schema.**
+
+### Deferred fast-follows — DO NOT ship the naive fix
+
+- **W-5** (convert `VIEW →` deep-link briefly shows a loading spinner before recovering to LEADS): the converted `Project` isn't persisted locally. `Project.id` is **not** `@Attribute(.unique)`, so a naive `context.insert` would **duplicate the row on next sync**. Fix by routing the returned `Project` through the sync layer's upsert (`RealtimeProcessor.upsertProject(context:id:model:pendingFields:)`, which dedups by id and suppresses a remote echo within 60s of a local write) — or trigger a scoped project fetch — before posting `LeadConvertedSuccess`. NOT a sheet-level insert.
+- **I-12** (clearing an optional lead field doesn't persist): `UpdateOpportunityDTO` omits nil keys, and `markWon`/`markLost`/`archive` **depend** on that omission for partial updates. A naive always-emit-null would **null out unrelated fields on mark-won (data loss)**. Fix needs a tri-state field model scoped to the edit-only path.
+- **I-5** (lead value formatted three ways): add one money-compaction helper across LeadActionCard/DetailHero/WonConvert.
+
+### Design-call rulings (PM, 2026-05-31)
+
+| # | Item | Ruling |
+|---|---|---|
+| W-8 / I-10 | `waitingOnYou` ("REPLY DUE") renders verb/due-chip/dot in steel accent | **KEEP** — reaffirms the §23 #2 / audit-B1 semantic exception ("the ball is in your court → act"); the one sanctioned accent-as-attention use on this surface. |
+| I-4 | `SubMetric.Tone.steel` → accent (dead, preview-only) | **KEEP** — accepted in audit B1; latent/harmless. |
+| I-7 | StickyActionBar buttons 48pt vs 52pt bottom-CTA floor | **KEEP 48pt** — accepted component-cohesion divergence; the three-button bar is a unit. |
+| I-2 | `Color.white.opacity(0.18/0.05)` literals | **ACCEPT** as commented exceptions (no exact token; a 2-use token is over-engineering). |
+| I-6 | Raw `.font(.custom(...))` proliferation | **DEFER** to the existing `Typography.Mobile` token task (§24 A2). |
+| I-8 | Section-header hint sub-44pt | **ACCEPT** — redundant with the 44pt stage rows below; growing the header row is undesirable. |
+| I-9 | No internal permission guard in VM/sheets | **SUPERSEDED** by client gating (`76e13cff`) + the C-7 RLS migration once applied. |
+| I-3 | DUPLICATE `LeadLinkedProjectSuccess` has no toast | **BY DESIGN** — navigation to the project is the feedback. |
+
+### Refuted (verified NOT defects)
+
+R-1 dual `navigationDestination` (well-defined on iOS 17+; never both non-nil) · R-2 win-prob override · R-3 convert `onDisappear` double-mark race · R-4 console PII · R-5 `LeadLinkedProjectSuccess` no-toast by-design.
+
+### Merge gate
+
+Apply the convert-RPC migration + run a conversion smoke test; everything else in code is merge-ready. The bible still describes the pre-rebuild pipeline — a dedicated sync pass (incl. the new `discarded` stage) remains outstanding.

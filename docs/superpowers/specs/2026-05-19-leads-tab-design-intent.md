@@ -540,12 +540,12 @@ A workflow-driven deep review (8 parallel dimension agents + adversarial per-fin
 | `7b69ce44` | W-9, W-10, I-11 | Toast on the single OPS curve; 44pt back buttons; percent-encoded `mailto:`. |
 | `eb35dd62` | W-16 | Reject non-finite / over-`numeric(12,2)` money input before the RPC. |
 
-### Server migrations — authored in `docs/superpowers/migrations/`, NOT applied
+### Server migrations — authored in `docs/superpowers/migrations/`, both APPLIED to prod
 
 - **`…-harden-convert-lead-to-project-authz.sql` (C-6/C-12, SHIP-BLOCKER):** the convert RPC trusted client `p_user_id` and was anon-executable. Fix authorizes the JWT-derived caller + requires `pipeline.manage`. **APPLIED to prod 2026-05-31 and verified to absolute confidence** — the deployed body carries both gates, and all four auth paths were exercised against live data: a real manager (`manage='all'`) passes both gates; anon (no JWT) → NULL company → rejected; a different-company user → company mismatch → rejected; `current_user_has_permission` returns true for managers / false for non-holders. Backward-compatible (only Admin/Office/Owner touch pipeline, all `manage='all'`, zero overrides; JWT path proven by 124 recent `stage_transitions`). A device smoke test (convert one real lead) is the optional belt-and-suspenders confirmation. NB: mirror this file into `OPS-Web/supabase/migrations` so repo history matches the live DB.
 
 - **Test suite repaired:** the `OPSTests` target did not compile at the branch base (orphaned tests referenced rebuild-removed `PipelineViewModel` in-court members + a non-existent project-photo `deleteTarget` API) — so no prior audit ran the unit tests. Both are now fixed; the target compiles clean. The tests execute on a dev/CI host (the app can't bootstrap in a headless sandbox, so they can't be run from the review environment).
-- **`…-pipeline-tables-role-scope-rls.sql` (C-7):** gates `opportunities` + `stage_transitions` writes on `pipeline.manage` (latent gap — no live view-without-manage role). `activities`/`follow_ups` deliberately excluded (shared tables). **Coordinate with the active lead-lifecycle initiative before applying — it owns the `opportunities` schema.**
+- **`…-pipeline-tables-role-scope-rls.sql` (C-7) — APPLIED to prod 2026-05-31:** gates `opportunities` + `stage_transitions` writes (insert/update/delete) on `pipeline.manage`, composing with the lead-lifecycle initiative's existing `role_scope_read` so `opportunities` is now fully role-scoped like projects/clients. `activities`/`follow_ups` deliberately excluded (shared tables). Verified the live policy set + the predicate (managers pass; anon/non-holders blocked). Applied with explicit PM authorization after confirming no parallel leads work. Mirror both migration files into `OPS-Web/supabase/migrations` for repo↔DB parity.
 
 ### Deferred fast-follows — DO NOT ship the naive fix
 

@@ -301,4 +301,150 @@ final class GuidedStockSetupModel: ObservableObject {
         guard let context = draftContext else { return false }
         return (try? draftStore.load(context: context)) != nil
     }
+
+    // MARK: - Commit orchestration (P6)
+
+    /// Build one family's full catalog_setup_save payload (stock core via makeSavePayload +
+    /// guided product section). `resolveUnitId` maps the group's measurement to a catalog_units
+    /// id (creating one if needed). `childProductIdByItemId` carries resolved SERVER product ids
+    /// from already-committed groups (for bundle children).
+    private func buildPayload(
+        for group: GuidedStructuredGroup,
+        resolveUnitId: (GuidedMeasurement) async throws -> String,
+        childProductIdByItemId: [String: String]
+    ) async throws -> CatalogSetupSavePayload {
+        let attributes = GuidedStockDraftBuilder.attributeDrafts(for: group)
+        var variants = GuidedStockDraftBuilder.variantDrafts(for: group).map { variant -> CatalogSetupVariantDraft in
+            var v = variant
+            if let entry = group.stockEntries.first(where: { $0.variantKey == v.id }) {
+                v.stockUnits = GuidedStockDraftBuilder.stockUnitDrafts(for: group, entry: entry)
+            }
+            return v
+        }
+        try CatalogSetupWorkflow.validateStockQuantities(variants: variants)
+
+        var unitId: String? = nil
+        if let measurement = group.measurement {
+            unitId = try await resolveUnitId(measurement)
+        }
+
+        var payload = CatalogSetupWorkflow.makeSavePayload(
+            mode: "create",
+            draftId: group.id,
+            familyName: group.familyName,
+            familyDescription: "",
+            familyImageUrl: "",
+            selectedCategoryId: nil,
+            selectedUnitId: unitId,
+            defaultWarningThreshold: nil,
+            defaultCriticalThreshold: nil,
+            attributes: attributes,
+            variants: variants,
+            selectedProduct: nil,
+            productOptionSelectionByAttributeId: [:],
+            productValueSelectionByCatalogValueId: [:],
+            productOptions: [],
+            productOptionValues: []
+        )
+        payload.products = GuidedStockProductBuilder.productPayloads(
+            for: group,
+            companyId: companyId,
+            familyClientId: payload.family.clientId,
+            recipeVariantClientId: nil,
+            childProductIdByItemId: childProductIdByItemId
+        )
+        return payload
+    }
+
+    /// Summarise what was committed across all successfully committed groups.
+    private func buildSummary(committed: [GuidedStructuredGroup]) -> GuidedStockSummary {
+        var s = GuidedStockSummary()
+        s.familyCount = committed.count
+        for g in committed {
+            s.variantCount += GuidedStockDraftBuilder.variantCount(for: g)
+            for entry in g.stockEntries {
+                for draft in GuidedStockDraftBuilder.stockUnitDrafts(for: g, entry: entry) {
+                    if draft.unitKind == .offcut {
+                        s.offcutCount += 1
+                    } else if draft.unitKind == .roll {
+                        s.rollCount += 1
+                    }
+                }
+            }
+            if g.product.sellMode != nil { s.productCount += 1 }
+            if g.product.sellMode == .inPackage { s.bundleCount += 1 }
+        }
+        return s
+    }
+
+    /// Commit every confirmed group through the atomic per-family RPC.
+    ///
+    /// Resumable (skips ids already in committedGroupIds), idempotent (SaveAttempt per
+    /// family), offline-safe (no calls when offline → stays .idle / held).
+    /// Bundles commit AFTER non-bundle groups so their children are resolvable by server id.
+    func commitAll(
+        service: CatalogSetupCommitting,
+        resolveUnitId: @escaping (GuidedMeasurement) async throws -> String,
+        isOnline: Bool
+    ) async {
+        guard isOnline else { commitProgress = .idle; return }
+
+        let committable = groups.filter { $0.isConfirmed }
+        // Non-package groups first; package (bundle) groups last so child product ids resolve.
+        let ordered = committable.sorted { a, b in
+            (a.product.sellMode == .inPackage ? 1 : 0) < (b.product.sellMode == .inPackage ? 1 : 0)
+        }
+        guard !ordered.isEmpty else { commitProgress = .complete(GuidedStockSummary()); return }
+
+        var childProductIdByItemId: [String: String] = [:]
+        var failed: [String] = []
+        var done = 0
+        commitProgress = .running(done: 0, total: ordered.count)
+
+        for group in ordered {
+            if committedGroupIds.contains(group.id) {
+                done += 1
+                commitProgress = .running(done: done, total: ordered.count)
+                continue
+            }
+            do {
+                let payload = try await buildPayload(
+                    for: group,
+                    resolveUnitId: resolveUnitId,
+                    childProductIdByItemId: childProductIdByItemId
+                )
+                let attempt = try CatalogSetupSaveAttempt.resolve(payload: payload, existingAttempt: nil)
+                let outcome = try await service.commit(payload: payload, saveAttempt: attempt)
+                switch outcome {
+                case .committed(let response):
+                    _ = service.reconcile(payload: payload, response: response)
+                    if !committedGroupIds.contains(group.id) {
+                        committedGroupIds.append(group.id)
+                    }
+                    // Expose this group's server product id for downstream bundle children.
+                    let productClientId = GuidedStockProductBuilder.productClientId(for: group)
+                    if let pid = response.idMap[productClientId], !pid.isEmpty {
+                        for itemId in group.memberItemIds {
+                            childProductIdByItemId[itemId] = pid
+                        }
+                    }
+                    done += 1
+                case .rejected:
+                    failed.append(group.id)
+                }
+            } catch {
+                failed.append(group.id)
+            }
+            persist()
+            commitProgress = .running(done: done, total: ordered.count)
+        }
+
+        if failed.isEmpty {
+            let committedGroups = ordered.filter { committedGroupIds.contains($0.id) }
+            commitProgress = .complete(buildSummary(committed: committedGroups))
+            clearDraft()
+        } else {
+            commitProgress = .partial(failedGroupIds: failed)
+        }
+    }
 }

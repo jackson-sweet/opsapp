@@ -1132,6 +1132,22 @@ enum CatalogSetupCommitPreflightError: LocalizedError, Equatable {
     }
 }
 
+/// Thrown when a guided-flow commit encounters a stock unit with a non-positive quantity.
+///
+/// The advanced flow uses the lenient `max(0, quantityValue)` coercion in
+/// `makeSavePayload`; the guided flow routes through `validateStockQuantities`
+/// first and surfaces this error to the user before any payload is built.
+enum CatalogSetupStockValidationError: LocalizedError, Equatable {
+    case nonPositiveStockQuantity(stockUnitClientId: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .nonPositiveStockQuantity(let id):
+            return "Stock unit \(id) must have a quantity greater than zero before it can be built."
+        }
+    }
+}
+
 enum CatalogSetupWorkflow {
     static func generateVariantDrafts(
         attributes: [CatalogSetupAttributeDraft],
@@ -1181,6 +1197,31 @@ enum CatalogSetupWorkflow {
             lhs.id < rhs.id
         }
     }
+
+    // MARK: - Guided-flow stock quantity guard
+
+    /// Validates that every enabled variant's stock units have a strictly positive
+    /// quantity before building a guided-flow save payload.
+    ///
+    /// The advanced flow uses the lenient `max(0, quantityValue)` coercion in
+    /// `makeSavePayload` for back-compat; the guided flow calls this first so the
+    /// user sees a clear error rather than silently saving a zero-quantity unit.
+    ///
+    /// - Parameter variants: The variant drafts to inspect. Disabled variants
+    ///   (`isEnabled == false`) are skipped entirely.
+    /// - Throws: `CatalogSetupStockValidationError.nonPositiveStockQuantity` for
+    ///   the first offending stock unit encountered.
+    static func validateStockQuantities(variants: [CatalogSetupVariantDraft]) throws {
+        for variant in variants where variant.isEnabled {
+            for stockUnit in variant.stockUnits where stockUnit.quantityValue <= 0 {
+                throw CatalogSetupStockValidationError.nonPositiveStockQuantity(
+                    stockUnitClientId: stockUnit.id
+                )
+            }
+        }
+    }
+
+    // MARK: - Variant identity validation
 
     static func validate(
         variants: [CatalogSetupVariantDraft],

@@ -2,6 +2,7 @@
 
 import Foundation
 import SceneKit
+import simd
 import UIKit
 
 struct DeckSceneBuilder {
@@ -671,6 +672,31 @@ struct DeckSceneBuilder {
 
     // MARK: - Stairs
 
+    /// Orientation for a stair stringer modelled as an `SCNBox` (local axes:
+    /// X = 2" width, Y = 10" depth, Z = slope length). Maps the box's length
+    /// down the rise/run slope and its width along the stair edge, built from
+    /// an explicit orthonormal basis so it is correct for ANY edge bearing and
+    /// any `flipDirection`/polygon-aware outward normal. The previous approach
+    /// set `eulerAngles.y` then `eulerAngles.x`, which pitched the slope about
+    /// the world X axis and only lined up when the edge ran along world X —
+    /// every rotated stair came out skewed.
+    /// - Parameters:
+    ///   - tangent: unit edge tangent (x, z) — where the box width lands.
+    ///   - outwardNormal: unit outward direction (x, z) the stair runs toward.
+    ///   - slopeAngle: stair pitch from horizontal, `atan2(totalRise, totalRun)`.
+    static func stringerOrientation(
+        tangent: SIMD2<Float>,
+        outwardNormal: SIMD2<Float>,
+        slopeAngle: Float
+    ) -> simd_quatf {
+        let c = cos(slopeAngle)
+        let s = sin(slopeAngle)
+        let xAxis = SIMD3<Float>(tangent.x, 0, tangent.y)                       // width → along edge
+        let zAxis = SIMD3<Float>(outwardNormal.x * c, -s, outwardNormal.y * c)  // length → down the slope
+        let yAxis = simd_normalize(simd_cross(zAxis, xAxis))                    // depth → slope-face normal
+        return simd_quatf(simd_float3x3(columns: (xAxis, yAxis, zAxis)))
+    }
+
     private static func buildStairs(
         parent: SCNNode,
         start: SCNVector3,
@@ -783,15 +809,31 @@ struct DeckSceneBuilder {
         let stringerWidthM: Float = 2.0 * inchesToMeters  // 2" wide stringer
         let stringerDepthM: Float = 10.0 * inchesToMeters  // 10" deep stringer
 
+        // One orientation for every stringer on this run: length follows the
+        // rise/run slope, width lies along the stair edge — correct for any
+        // edge bearing (see `stringerOrientation`).
+        let stringerQ = stringerOrientation(
+            tangent: SIMD2<Float>(tx, tz),
+            outwardNormal: SIMD2<Float>(nx, nz),
+            slopeAngle: stringerAngle
+        )
+        // Seat each board so its top face meets the tread nosing line instead
+        // of straddling it: drop the center half a board-depth down the
+        // slope-face normal (local +Y).
+        let stringerUp = stringerQ.act(SIMD3<Float>(0, 1, 0))
+        let seatOffset = -stringerDepthM / 2
+
         for s in 0..<stringerCount {
             let t = Float(s) / Float(max(stringerCount - 1, 1))
             let lateralOffset = stairWidthLimited * (t - 0.5)
 
-            // Stringer center point
+            // Midway down the slope, offset to its side of the stair, seated
+            // under the treads.
             let centerOutward = totalRunM / 2
             let centerY = deckElevationM - totalRiseMFromConfig / 2
-            let sx = midX + nx * centerOutward + tx * lateralOffset
-            let sz = midZ + nz * centerOutward + tz * lateralOffset
+            let sx = midX + nx * centerOutward + tx * lateralOffset + stringerUp.x * seatOffset
+            let sy = centerY + stringerUp.y * seatOffset
+            let sz = midZ + nz * centerOutward + tz * lateralOffset + stringerUp.z * seatOffset
 
             let stringerNode = SCNNode(geometry: SCNBox(
                 width: CGFloat(stringerWidthM),
@@ -800,12 +842,8 @@ struct DeckSceneBuilder {
                 chamferRadius: 0
             ))
             stringerNode.geometry?.firstMaterial = makeMaterial(color: stringerColor)
-            stringerNode.position = SCNVector3(sx, centerY, sz)
-
-            // Rotate to follow stair angle + edge direction
-            let edgeAngle = atan2(edgeDz, edgeDx)
-            stringerNode.eulerAngles.y = -edgeAngle
-            stringerNode.eulerAngles.x = stringerAngle
+            stringerNode.position = SCNVector3(sx, sy, sz)
+            stringerNode.simdOrientation = stringerQ
             stringerNode.name = "stringer_\(s)"
             stairGroup.addChildNode(stringerNode)
         }
@@ -1001,14 +1039,25 @@ struct DeckSceneBuilder {
         let stringerDepthM: Float = 10.0 * inchesToMeters
         let stringerCountVal = StairConfig.stringerCount(width: connection.stairConfig.width)
 
+        // Same correct, edge-bearing-independent orientation + seating as
+        // edge-attached stairs (see `buildStairs`).
+        let stringerQ = stringerOrientation(
+            tangent: SIMD2<Float>(tx, tz),
+            outwardNormal: SIMD2<Float>(nx, nz),
+            slopeAngle: stringerAngle
+        )
+        let stringerUp = stringerQ.act(SIMD3<Float>(0, 1, 0))
+        let seatOffset = -stringerDepthM / 2
+
         for s in 0..<stringerCountVal {
             let t = Float(s) / Float(max(stringerCountVal - 1, 1))
             let lateralOffset = stairWidthM * (t - 0.5)
 
             let centerOutward = totalRunM / 2
             let centerY = upperElevM - riseDiffM / 2
-            let sx = midX + nx * centerOutward + tx * lateralOffset
-            let sz = midZ + nz * centerOutward + tz * lateralOffset
+            let sx = midX + nx * centerOutward + tx * lateralOffset + stringerUp.x * seatOffset
+            let sy = centerY + stringerUp.y * seatOffset
+            let sz = midZ + nz * centerOutward + tz * lateralOffset + stringerUp.z * seatOffset
 
             let stringerNode = SCNNode(geometry: SCNBox(
                 width: CGFloat(stringerWidthM),
@@ -1017,11 +1066,8 @@ struct DeckSceneBuilder {
                 chamferRadius: 0
             ))
             stringerNode.geometry?.firstMaterial = makeMaterial(color: stringerColor)
-            stringerNode.position = SCNVector3(sx, centerY, sz)
-
-            let edgeAngle = atan2(edgeDz, edgeDx)
-            stringerNode.eulerAngles.y = -edgeAngle
-            stringerNode.eulerAngles.x = stringerAngle
+            stringerNode.position = SCNVector3(sx, sy, sz)
+            stringerNode.simdOrientation = stringerQ
             stringerNode.name = "connStringer_\(s)"
             connectionGroup.addChildNode(stringerNode)
         }

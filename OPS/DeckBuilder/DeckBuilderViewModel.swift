@@ -703,6 +703,7 @@ class DeckBuilderViewModel: ObservableObject {
 
         redoStack.append(DrawingSnapshot(drawingData: drawingData, description: "redo"))
         drawingData = snapshot.drawingData
+        pruneSelectionToGeometry()
         hapticLight()
         save()
     }
@@ -711,8 +712,21 @@ class DeckBuilderViewModel: ObservableObject {
         guard let snapshot = redoStack.popLast() else { return }
         undoStack.append(DrawingSnapshot(drawingData: drawingData, description: "undo"))
         drawingData = snapshot.drawingData
+        pruneSelectionToGeometry()
         hapticLight()
         save()
+    }
+
+    /// Drop selected edge/vertex ids the current geometry no longer contains.
+    /// undo()/redo() swap in a snapshot whose graph may not include what was
+    /// selected; without this the toolbar shows context actions for elements
+    /// that were just undone away and those actions fire against dead ids.
+    /// (Surface ids are pruned separately by `save()` → `reconcileSurfaces`.)
+    private func pruneSelectionToGeometry() {
+        let liveEdgeIds = Set(drawingData.allEdges.map { $0.id })
+        let liveVertexIds = Set(drawingData.allVertices.map { $0.id })
+        selection.selectedEdgeIds.formIntersection(liveEdgeIds)
+        selection.selectedVertexIds.formIntersection(liveVertexIds)
     }
 
     // MARK: - Level Management

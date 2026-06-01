@@ -187,8 +187,24 @@ final class GuidedStockSetupModel: ObservableObject {
         return CatalogSetupDraftContext(companyId: base.companyId, userId: base.userId, scope: "guided")
     }
 
-    // Navigation — clamped to the valid stage range; persists after every move.
+    // MARK: - Capture helpers
+
+    /// Captured items with a real (non-blank) name.
+    var capturableItems: [GuidedCapturedItem] {
+        capturedItems.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    var capturableItemCount: Int { capturableItems.count }
+
+    /// Drop blank rows (called when leaving CAPTURE).
+    func pruneEmptyCapturedItems() {
+        capturedItems.removeAll { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    // MARK: - Navigation — clamped to the valid stage range; persists after every move.
+
     func advance() {
+        if stage == .capture { pruneEmptyCapturedItems() }
         let all = GuidedStockStage.allCases
         if let idx = all.firstIndex(of: stage), idx + 1 < all.count {
             stage = all[idx + 1]

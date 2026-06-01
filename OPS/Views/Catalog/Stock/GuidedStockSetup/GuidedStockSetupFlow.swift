@@ -256,7 +256,7 @@ struct GuidedStockSetupFlow: View {
     private var ctaEnabled: Bool {
         switch model.stage {
         case .prime, .done: return false
-        case .capture: return !model.capturedItems.isEmpty
+        case .capture: return model.capturableItemCount > 0
         case .structure: return true
         case .blueprint: return !model.groups.isEmpty && dataController.isConnected
         }

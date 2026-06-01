@@ -10,7 +10,7 @@ import SwiftUI
 struct EstimatesListView: View {
     var embedded: Bool = false
 
-    @StateObject private var viewModel = EstimateViewModel()
+    @StateObject private var viewModel: EstimateViewModel
     @EnvironmentObject private var dataController: DataController
     @Environment(\.modelContext) private var modelContext
     @State private var showNewEstimateSheet = false
@@ -18,6 +18,18 @@ struct EstimatesListView: View {
     @State private var searchText = ""
     @State private var showConvertConfirm = false
     @State private var estimateToConvert: Estimate? = nil
+
+    @MainActor
+    init(embedded: Bool = false) {
+        self.embedded = embedded
+        _viewModel = StateObject(wrappedValue: EstimateViewModel())
+    }
+
+    @MainActor
+    init(embedded: Bool = false, viewModel: EstimateViewModel) {
+        self.embedded = embedded
+        _viewModel = StateObject(wrappedValue: viewModel)
+    }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {

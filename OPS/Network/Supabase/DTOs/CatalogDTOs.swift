@@ -203,6 +203,30 @@ struct CatalogVariantOptionValueDTO: Codable {
     }
 }
 
+struct CreateCatalogOptionDTO: Codable {
+    let catalogItemId: String
+    let name: String
+    let sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case catalogItemId  = "catalog_item_id"
+        case name
+        case sortOrder      = "sort_order"
+    }
+}
+
+struct CreateCatalogOptionValueDTO: Codable {
+    let optionId: String
+    let value: String
+    let sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case optionId   = "option_id"
+        case value
+        case sortOrder  = "sort_order"
+    }
+}
+
 struct CatalogTagDTO: Codable, Identifiable {
     let id: String
     let companyId: String
@@ -245,6 +269,16 @@ struct CatalogItemTagDTO: Codable, Identifiable {
 
     func toModel() -> CatalogItemTag {
         CatalogItemTag(id: id, catalogItemId: catalogItemId, tagId: tagId)
+    }
+}
+
+struct CreateCatalogItemTagDTO: Codable {
+    let catalogItemId: String
+    let tagId: String
+
+    enum CodingKeys: String, CodingKey {
+        case catalogItemId  = "catalog_item_id"
+        case tagId          = "tag_id"
     }
 }
 
@@ -377,6 +411,7 @@ struct CreateCatalogItemDTO: Codable {
     let defaultWarningThreshold: Double?
     let defaultCriticalThreshold: Double?
     let defaultUnitId: String?
+    var imageUrl: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case companyId                  = "company_id"
@@ -388,6 +423,7 @@ struct CreateCatalogItemDTO: Codable {
         case defaultWarningThreshold    = "default_warning_threshold"
         case defaultCriticalThreshold   = "default_critical_threshold"
         case defaultUnitId              = "default_unit_id"
+        case imageUrl                   = "image_url"
     }
 }
 
@@ -486,16 +522,17 @@ struct UpdateCatalogVariantDTO: Codable {
 }
 
 struct UpdateCatalogItemDTO: Codable {
-    var name: String?
-    var categoryId: String?
-    var description: String?
-    var defaultPrice: Double?
-    var defaultUnitCost: Double?
-    var defaultWarningThreshold: Double?
-    var defaultCriticalThreshold: Double?
-    var defaultUnitId: String?
-    var notes: String?
-    var isActive: Bool?
+    var name: String? = nil
+    var categoryId: String? = nil
+    var description: String? = nil
+    var defaultPrice: Double? = nil
+    var defaultUnitCost: Double? = nil
+    var defaultWarningThreshold: Double? = nil
+    var defaultCriticalThreshold: Double? = nil
+    var defaultUnitId: String? = nil
+    var imageUrl: String? = nil
+    var notes: String? = nil
+    var isActive: Bool? = nil
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -506,6 +543,7 @@ struct UpdateCatalogItemDTO: Codable {
         case defaultWarningThreshold    = "default_warning_threshold"
         case defaultCriticalThreshold   = "default_critical_threshold"
         case defaultUnitId              = "default_unit_id"
+        case imageUrl                   = "image_url"
         case notes
         case isActive                   = "is_active"
     }
@@ -524,6 +562,7 @@ struct UpdateCatalogItemDTO: Codable {
         try c.encodeIfPresent(defaultWarningThreshold, forKey: .defaultWarningThreshold)
         try c.encodeIfPresent(defaultCriticalThreshold, forKey: .defaultCriticalThreshold)
         try c.encodeIfPresent(defaultUnitId, forKey: .defaultUnitId)
+        try c.encodeIfPresent(imageUrl, forKey: .imageUrl)
         try c.encodeIfPresent(notes, forKey: .notes)
         try c.encodeIfPresent(isActive, forKey: .isActive)
     }
@@ -565,9 +604,8 @@ struct CreateInventoryDeductionDTO: Codable {
 }
 
 // Additional Create/Update DTOs follow the same pattern. They are added on
-// demand by callers (e.g., CatalogRepository) — most catalog write paths from
-// iOS are quantity adjustments on variants, which use UpdateCatalogVariantDTO
-// above. Authoring options/values/tags is read-only on iOS for now (web-only).
+// demand by callers (e.g., CatalogRepository) while keeping partial updates
+// nil-safe so unrelated columns are not clobbered.
 
 struct UpsertCatalogVariantOptionValueDTO: Codable {
     let variantId: String

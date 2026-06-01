@@ -13,6 +13,13 @@ import Supabase
 struct TaskDetailsView: View {
     @State var task: ProjectTask
     let project: Project
+
+    private enum MaterialHistoryLoadState: Equatable {
+        case idle
+        case loading
+        case loaded
+        case failed
+    }
     
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -40,6 +47,14 @@ struct TaskDetailsView: View {
     @State private var showingScheduler = false
     @State private var refreshTrigger = false  // Toggle to force view refresh
     @State private var showingDeleteConfirmation = false
+    @State private var materialHistory: TaskMaterialHistory = .empty
+    @State private var materialHistoryLoadState: MaterialHistoryLoadState = .idle
+    /// Company inventory operating mode. The Material History card only exists
+    /// for tracked companies; off-mode companies must not see an empty em-dash
+    /// card. Resolved from `company_inventory_settings`, never inferred from the
+    /// absence of demand rows. Defaults to `.off` until the real value loads so
+    /// the card stays hidden rather than flashing for off-mode companies.
+    @State private var companyInventoryMode: InventoryMode = .off
 
     init(task: ProjectTask, project: Project) {
         self._task = State(initialValue: task)
@@ -153,7 +168,14 @@ struct TaskDetailsView: View {
                         
                         // Task info sections - matching ProjectDetailsView card style
                         infoSection
-                        
+
+                        // Material History is meaningless when the company
+                        // doesn't track inventory — hide the whole card rather
+                        // than render an empty em-dash for off-mode companies.
+                        if companyInventoryMode.isTracked {
+                            materialHistorySection
+                        }
+
                         // Team members section - matching ProjectDetailsView
                         teamSection
                         
@@ -185,6 +207,10 @@ struct TaskDetailsView: View {
 
             loadTaskTeamMembers()
             logTaskTeamMemberData()
+            loadMaterialHistory()
+        }
+        .onChange(of: task.id) { _, _ in
+            loadMaterialHistory()
         }
         .sheet(isPresented: $showingTeamMemberDetails) {
             if let selectedMember = selectedTeamMember {
@@ -331,6 +357,125 @@ struct TaskDetailsView: View {
             }
         }
         .padding(.horizontal)
+    }
+
+    private var materialHistorySection: some View {
+        SectionCard(
+            icon: OPSStyle.Icons.productTag,
+            title: "Material History"
+        ) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+                switch materialHistoryLoadState {
+                case .idle, .loading:
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        ProgressView()
+                            .tint(OPSStyle.Colors.primaryAccent)
+                        Text("SYS :: LOADING")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                case .failed:
+                    Text("SYS :: MATERIAL HISTORY FAILED")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.errorStatus)
+                case .loaded:
+                    if materialHistory.isEmpty {
+                        Text("—")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    } else {
+                        materialHistorySummary
+                        materialHistoryLines
+                    }
+                }
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    private var materialHistorySummary: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            materialMetric(
+                label: "BOOKED",
+                value: materialQuantityText(materialHistory.totalBookedQuantity),
+                color: OPSStyle.Colors.primaryText
+            )
+            materialMetric(
+                label: "CONSUMED",
+                value: materialQuantityText(materialHistory.totalConsumedQuantity),
+                color: OPSStyle.Colors.successStatus
+            )
+            materialMetric(
+                label: materialHistory.hasOverrun ? "OVER" : "SHORT",
+                value: materialQuantityText(materialHistory.totalOverrunQuantity),
+                color: materialHistory.hasOverrun ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.tertiaryText
+            )
+        }
+    }
+
+    private var materialHistoryLines: some View {
+        // Render EVERY evidence line. The card lives inside the screen's
+        // ScrollView, so a long allocation history scrolls naturally — never
+        // silently drop rows past the fourth, which would hide real stock the
+        // crew consumed.
+        VStack(spacing: OPSStyle.Layout.spacing2) {
+            ForEach(materialHistory.lines) { line in
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
+                        Text(materialLineTitle(line))
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .lineLimit(1)
+
+                        Spacer()
+
+                        Text(materialLineUsageText(line))
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(line.overrunQuantity > 0 ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.secondaryText)
+                    }
+
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Text("BOOKED \(materialQuantityText(line.bookedQuantity))")
+                        if line.overrunQuantity > 0 {
+                            Text("OVER \(materialQuantityText(line.overrunQuantity))")
+                                .foregroundColor(OPSStyle.Colors.warningStatus)
+                        }
+                        Text("STOCK \(line.stockLabel)")
+                    }
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .lineLimit(1)
+
+                    if line.stockLocation != nil || line.stockStatus != nil || line.stockQuantity != nil {
+                        Text(materialStockEvidence(line))
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .lineLimit(1)
+                    }
+                }
+                .padding(.vertical, OPSStyle.Layout.spacing2)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+            }
+        }
+    }
+
+    private func materialMetric(label: String, value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            Text(label)
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+            Text(value)
+                .font(OPSStyle.Typography.dataValue)
+                .monospacedDigit()
+                .foregroundColor(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var clientField: some View {
@@ -526,6 +671,67 @@ struct TaskDetailsView: View {
         }
     }
 
+    private func loadMaterialHistory() {
+        let companyId = dataController.currentUser?.companyId ?? task.companyId
+        guard !companyId.isEmpty else {
+            materialHistory = .empty
+            materialHistoryLoadState = .loaded
+            return
+        }
+
+        let taskId = task.id
+        let projectId = task.projectId.isEmpty ? project.id : task.projectId
+        materialHistoryLoadState = .loading
+
+        Task {
+            // Resolve the company operating mode first. Off-mode companies hide
+            // the card entirely, so there's no reason to fetch the heavier
+            // demand/allocation/snapshot history for them.
+            let mode = await resolveInventoryMode(companyId: companyId)
+            await MainActor.run {
+                guard self.task.id == taskId else { return }
+                self.companyInventoryMode = mode
+            }
+
+            guard mode.isTracked else {
+                await MainActor.run {
+                    guard self.task.id == taskId else { return }
+                    self.materialHistory = .empty
+                    self.materialHistoryLoadState = .loaded
+                }
+                return
+            }
+
+            do {
+                let repository = TaskMaterialHistoryRepository(companyId: companyId)
+                let history = try await repository.fetchTaskHistory(projectId: projectId, taskId: taskId)
+                await MainActor.run {
+                    guard self.task.id == taskId else { return }
+                    self.materialHistory = history
+                    self.materialHistoryLoadState = .loaded
+                }
+            } catch {
+                print("[TASK_MATERIAL_HISTORY] Failed to load task material history: \(error)")
+                await MainActor.run {
+                    guard self.task.id == taskId else { return }
+                    self.materialHistory = .empty
+                    self.materialHistoryLoadState = .failed
+                }
+            }
+        }
+    }
+
+    /// Reads the company inventory mode. On failure, falls back to `.off` so a
+    /// transient read error never flashes an empty Material History card.
+    private func resolveInventoryMode(companyId: String) async -> InventoryMode {
+        do {
+            return try await CompanyInventoryModeRepository(companyId: companyId).fetchInventoryMode()
+        } catch {
+            print("[TASK_MATERIAL_HISTORY] Failed to resolve company inventory mode: \(error)")
+            return .off
+        }
+    }
+
     private func saveTeamChanges() {
         let currentIds = Set(task.getTeamMemberIds())
         guard selectedTeamMemberIds != currentIds else {
@@ -677,6 +883,7 @@ struct TaskDetailsView: View {
             withAnimation(OPSStyle.Animation.standard) {
                 self.task = newTask
                 loadTaskTeamMembers()
+                loadMaterialHistory()
             }
         }) {
             HStack(spacing: 8) {
@@ -1108,6 +1315,62 @@ struct TaskDetailsView: View {
             return "\(formatter.string(from: start)) - \(formatter.string(from: end))"
         }
     }
+
+    private func materialQuantityText(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = value.rounded() == value ? 0 : 1
+        return formatter.string(from: NSNumber(value: value)) ?? "0"
+    }
+
+    private func materialLineTitle(_ line: TaskMaterialHistory.Line) -> String {
+        if let variantId = line.catalogVariantId, !variantId.isEmpty {
+            return "VARIANT \(shortMaterialId(variantId))"
+        }
+        return shortMaterialDemandKey(line.demandKey)
+    }
+
+    private func materialLineUsageText(_ line: TaskMaterialHistory.Line) -> String {
+        if line.consumedQuantity > 0 {
+            return "USED \(materialQuantityText(line.consumedQuantity))"
+        }
+        if line.overrunQuantity > 0 {
+            return "OVER \(materialQuantityText(line.overrunQuantity))"
+        }
+        if let stockQuantity = line.stockQuantity {
+            return "QTY \(materialQuantityText(stockQuantity))"
+        }
+        return "USED 0"
+    }
+
+    private func materialStockEvidence(_ line: TaskMaterialHistory.Line) -> String {
+        [
+            line.stockLocation.map { "LOC \($0.uppercased())" },
+            line.stockStatus.map { "STATUS \($0.uppercased())" },
+            materialStockQuantityEvidence(line)
+        ]
+        .compactMap { $0 }
+        .joined(separator: "  ")
+    }
+
+    private func materialStockQuantityEvidence(_ line: TaskMaterialHistory.Line) -> String? {
+        guard let stockQuantity = line.stockQuantity else { return nil }
+        let unit = line.stockQuantityUnit.map { " \($0.uppercased())" } ?? ""
+        return "QTY \(materialQuantityText(stockQuantity))\(unit)"
+    }
+
+    private func shortMaterialDemandKey(_ demandKey: String) -> String {
+        demandKey
+            .split(separator: ":")
+            .suffix(2)
+            .joined(separator: " ")
+            .uppercased()
+    }
+
+    private func shortMaterialId(_ value: String) -> String {
+        String(value.prefix(8)).uppercased()
+    }
     
     private func openInMaps() {
         guard let lat = project.latitude, let lon = project.longitude else { return }
@@ -1276,4 +1539,3 @@ private struct StatusChip: View {
         .buttonStyle(PlainButtonStyle())
     }
 }
-

@@ -77,7 +77,7 @@ struct SecuritySettingsView: View {
                                             }
                                         }
                                     ))
-                                    .tint(OPSStyle.Colors.primaryAccent)
+                                    .tint(OPSStyle.Colors.text)
                                 }
                                 .padding(16)
                                 .wizardTarget("enable_pin", style: .row)

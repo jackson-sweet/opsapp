@@ -144,7 +144,7 @@ struct DeckCanvasView: View {
         edgePan.maxSpeed = Self.edgePanMaxSpeed
         edgePan.isDragActive = {
             switch viewModel.drawingMode {
-            case .drawing, .draggingVertex, .selecting, .lassoing: return true
+            case .drawing, .draggingVertex, .selecting, .lassoing, .movingSelection: return true
             case .idle: return false
             }
         }
@@ -164,6 +164,8 @@ struct DeckCanvasView: View {
                 viewModel.updateMarquee(to: canvasPt)
             case .lassoing:
                 viewModel.updateLasso(to: canvasPt)
+            case .movingSelection:
+                viewModel.updateSelectionMove(to: canvasPt)
             case .idle:
                 break
             }
@@ -1386,14 +1388,18 @@ struct DeckCanvasView: View {
                     || (viewModel.activeTool == .tapSelect && viewModel.marqueeShape == .lasso)
                 if !drawingStarted {
                     drawingStarted = true
-                    if useLasso {
+                    if viewModel.isSelectionMoveArmed && !viewModel.selection.isEmpty {
+                        viewModel.beginSelectionMove(at: startPoint)
+                    } else if useLasso {
                         viewModel.beginLasso(at: startPoint)
                     } else {
                         viewModel.beginMarquee(at: startPoint)
                     }
                     edgePan.startTracking(location: value.location)
                 }
-                if useLasso {
+                if case .movingSelection = viewModel.drawingMode {
+                    viewModel.updateSelectionMove(to: point)
+                } else if useLasso {
                     viewModel.updateLasso(to: point)
                 } else {
                     viewModel.updateMarquee(to: point)
@@ -1403,7 +1409,9 @@ struct DeckCanvasView: View {
             .onEnded { _ in
                 let useLasso = (viewModel.activeTool == .lasso)
                     || (viewModel.activeTool == .tapSelect && viewModel.marqueeShape == .lasso)
-                if useLasso {
+                if case .movingSelection = viewModel.drawingMode {
+                    viewModel.endSelectionMove()
+                } else if useLasso {
                     viewModel.endLasso()
                 } else {
                     viewModel.endMarquee()

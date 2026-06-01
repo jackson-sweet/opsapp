@@ -36,11 +36,12 @@
 //  V5 → V6 stage: lightweight additive — PaymentMilestone (iOS parity for
 //  the existing server table) and RecurringExpense (new) for the Cashflow
 //  Forecast feature. Spec at docs/superpowers/specs/2026-05-11-cashflow-forecast-design.md.
-//  The new model types in `v6ForecastModels` are also what gives V6 a real
-//  checksum differentiator from V5 — see the OPSSchemaV6.swift docblock for
-//  why that matters when a sibling property change (PhotoAnnotation.
-//  renderedPhotoURL, commit 6b62f40) lands on a live @Model class referenced
-//  by every historical schema.
+//
+//  V6 → V7 stage: lightweight additive — ProjectVinylOrderMarker, a local
+//  projection of the project-level vinyl order marker fields.
+//
+//  V7 → V8 stage: lightweight additive — catalog stock units and
+//  catalog-product option mappings for Phase 4 Catalog Setup.
 //
 
 import Foundation
@@ -48,12 +49,44 @@ import SwiftData
 
 enum OPSMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [OPSSchemaV1.self, OPSSchemaV2.self, OPSSchemaV3.self, OPSSchemaV4.self, OPSSchemaV5.self, OPSSchemaV6.self]
+        [
+            OPSSchemaV1.self,
+            OPSSchemaV2.self,
+            OPSSchemaV3.self,
+            OPSSchemaV4.self,
+            OPSSchemaV5.self,
+            OPSSchemaV6.self,
+            OPSSchemaV7.self,
+            OPSSchemaV8.self
+        ]
     }
 
     static var stages: [MigrationStage] {
-        [migrateWizardStateIdV1toV2, migrateInventoryToCatalogV2toV3, migrateAddTaskRemindersV3toV4, addCalendarMirrorMapV4toV5, addForecastModelsV5toV6]
+        [
+            migrateWizardStateIdV1toV2,
+            migrateInventoryToCatalogV2toV3,
+            migrateAddTaskRemindersV3toV4,
+            addCalendarMirrorMapV4toV5,
+            addForecastModelsV5toV6,
+            addVinylOrderMarkerV6toV7,
+            addCatalogSetupModelsV7toV8
+        ]
     }
+
+    /// V7 → V8: purely additive — stock units and product-option mappings are
+    /// new local projections of existing live catalog setup tables.
+    static let addCatalogSetupModelsV7toV8 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV7.self,
+        toVersion: OPSSchemaV8.self
+    )
+
+    /// V6 → V7: purely additive — `ProjectVinylOrderMarker` is a local
+    /// projection of server columns on `projects`, with no rows to transform
+    /// before the next project sync hydrates it.
+    static let addVinylOrderMarkerV6toV7 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV6.self,
+        toVersion: OPSSchemaV7.self
+    )
 
     /// V5 → V6: purely additive — `PaymentMilestone` and `RecurringExpense` are
     /// new models with no pre-existing rows to transform. SwiftData lightweight
@@ -74,8 +107,7 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
     /// V3 → V4 adds the TaskTypeReminder and TaskReminder entities plus inverse
     /// `reminderTemplates` / `reminders` arrays on TaskType and ProjectTask.
     /// Purely additive — no destructive transforms — so SwiftData lightweight
-    /// migration handles the schema diff transparently. We use `.lightweight`
-    /// to be explicit about the no-op nature of the V3 → V4 step.
+    /// migration handles the schema diff transparently.
     static let migrateAddTaskRemindersV3toV4 = MigrationStage.lightweight(
         fromVersion: OPSSchemaV3.self,
         toVersion: OPSSchemaV4.self

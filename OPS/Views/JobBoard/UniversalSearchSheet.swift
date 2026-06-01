@@ -27,6 +27,15 @@ struct UniversalSearchSheet: View {
     @Query private var allClients: [Client]
     @Query private var allUsers: [User]
     @Query private var allInventoryItems: [InventoryItem]
+    @Query private var allCatalogVariants: [CatalogVariant]
+    @Query private var allCatalogFamilies: [CatalogItem]
+    @Query private var allCatalogCategories: [CatalogCategory]
+    @Query private var allCatalogUnits: [CatalogUnit]
+    @Query private var allCatalogTags: [CatalogTag]
+    @Query private var allCatalogItemTags: [CatalogItemTag]
+    @Query private var allCatalogOptions: [CatalogOption]
+    @Query private var allCatalogOptionValues: [CatalogOptionValue]
+    @Query private var allCatalogVariantOptionValues: [CatalogVariantOptionValue]
     @Query(filter: #Predicate<Invoice> { $0.deletedAt == nil }) private var allLocalInvoices: [Invoice]
     @Query(filter: #Predicate<Estimate> { $0.deletedAt == nil }) private var allLocalEstimates: [Estimate]
 
@@ -43,6 +52,7 @@ struct UniversalSearchSheet: View {
     @State private var selectedInvoice: Invoice?
     @State private var selectedEstimate: Estimate?
     @State private var selectedInventoryItem: InventoryItem?
+    @State private var selectedCatalogRow: EnrichedVariantRow?
 
     // Collapsed-by-default inactive folders (bug f2f87911). Closed/archived
     // projects and completed/cancelled tasks live behind a disclosure so the
@@ -51,8 +61,8 @@ struct UniversalSearchSheet: View {
     @State private var showInactiveTasks: Bool = false
 
     // Quick-action sheet state (bug 62f9f1f0)
-    @State private var schedulingProject: Project?
     @State private var schedulingTask: ProjectTask?
+    @State private var schedulingTaskPickerProject: Project?
     @State private var addingTaskForProjectId: String?
     @State private var addingProjectForClient: Client?
     @State private var showingNewProject: Bool = false
@@ -115,6 +125,54 @@ struct UniversalSearchSheet: View {
     private var availableInventoryItems: [InventoryItem] {
         guard let companyId = dataController.currentUser?.companyId else { return [] }
         return allInventoryItems.filter { $0.deletedAt == nil && $0.companyId == companyId }
+    }
+
+    private var availableCatalogRows: [EnrichedVariantRow] {
+        guard let companyId = dataController.currentUser?.companyId else { return [] }
+
+        let categories = allCatalogCategories.filter { $0.companyId == companyId && $0.deletedAt == nil }
+        let categoriesById = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+        let unitsById = Dictionary(uniqueKeysWithValues: allCatalogUnits
+            .filter { $0.companyId == companyId && $0.deletedAt == nil }
+            .map { ($0.id, $0) })
+        let familiesById = Dictionary(uniqueKeysWithValues: allCatalogFamilies
+            .filter { $0.companyId == companyId && $0.deletedAt == nil && $0.isActive }
+            .map { ($0.id, $0) })
+        let optionsByItemId = Dictionary(grouping: allCatalogOptions, by: \.catalogItemId)
+        let optionValuesById = Dictionary(uniqueKeysWithValues: allCatalogOptionValues.map { ($0.id, $0) })
+        let variantOptionValuesByVariantId = Dictionary(grouping: allCatalogVariantOptionValues, by: \.variantId)
+        let tagIdsByItemId = Dictionary(grouping: allCatalogItemTags, by: \.catalogItemId)
+            .mapValues { Set($0.map(\.tagId)) }
+
+        let rows = allCatalogVariants
+            .filter { $0.companyId == companyId && $0.deletedAt == nil && $0.isActive }
+            .compactMap { variant -> EnrichedVariantRow? in
+                guard let family = familiesById[variant.catalogItemId] else { return nil }
+                let category = family.categoryId.flatMap { categoriesById[$0] }
+                let unit = (variant.unitId ?? family.defaultUnitId).flatMap { unitsById[$0] }
+                let familyOptions = (optionsByItemId[family.id] ?? [])
+                    .sorted { $0.sortOrder < $1.sortOrder }
+                let variantOptionValueIds = Set((variantOptionValuesByVariantId[variant.id] ?? [])
+                    .map(\.optionValueId))
+                var optionPairs: [(option: CatalogOption, value: CatalogOptionValue)] = []
+                for option in familyOptions {
+                    if let pair = variantOptionValueIds
+                        .compactMap({ optionValuesById[$0] })
+                        .first(where: { $0.optionId == option.id }) {
+                        optionPairs.append((option: option, value: pair))
+                    }
+                }
+                return EnrichedVariantRow(
+                    variant: variant,
+                    family: family,
+                    category: category,
+                    unit: unit,
+                    tagIds: tagIdsByItemId[family.id] ?? [],
+                    optionPairs: optionPairs
+                )
+            }
+
+        return StockRowOrdering.sorted(rows, mode: .family)
     }
 
     // MARK: - Search Results
@@ -188,6 +246,14 @@ struct UniversalSearchSheet: View {
         }
     }
 
+    private var matchingCatalogRows: [EnrichedVariantRow] {
+        guard !query.isEmpty else { return [] }
+        let q = query
+        return availableCatalogRows.filter {
+            $0.searchText.localizedCaseInsensitiveContains(q)
+        }
+    }
+
     private var matchingInvoices: [Invoice] {
         guard !query.isEmpty else { return [] }
         let q = query
@@ -209,7 +275,7 @@ struct UniversalSearchSheet: View {
     private var hasResults: Bool {
         !matchingProjects.isEmpty || !matchingTasks.isEmpty ||
         !matchingClients.isEmpty || !matchingUsers.isEmpty ||
-        !matchingInventoryItems.isEmpty || !matchingInvoices.isEmpty ||
+        !matchingCatalogRows.isEmpty || !matchingInventoryItems.isEmpty || !matchingInvoices.isEmpty ||
         !matchingEstimates.isEmpty
     }
 
@@ -298,27 +364,23 @@ struct UniversalSearchSheet: View {
             InventoryFormSheet(item: item)
                 .environmentObject(dataController)
         }
+        .sheet(item: $selectedCatalogRow) { row in
+            VariantDetailView(row: row)
+                .environmentObject(dataController)
+        }
         // Quick-action sheets — scheduler
-        .sheet(item: $schedulingProject) { project in
-            CalendarSchedulerSheet(
-                isPresented: Binding(
-                    get: { schedulingProject != nil },
-                    set: { if !$0 { schedulingProject = nil } }
-                ),
-                itemType: .project(project),
-                currentStartDate: project.startDate,
-                currentEndDate: project.endDate,
-                onScheduleUpdate: { start, end in
-                    Task {
-                        try? await dataController.updateProjectDates(
-                            project: project,
-                            startDate: start,
-                            endDate: end
-                        )
+        .sheet(item: $schedulingTaskPickerProject) { project in
+            UniversalSearchTaskSchedulePickerSheet(
+                project: project,
+                tasks: UniversalSearchScheduleTargeting.schedulableTasks(forProject: project),
+                onSelect: { task in
+                    schedulingTaskPickerProject = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        schedulingTask = task
                     }
-                }
+                },
+                onCancel: { schedulingTaskPickerProject = nil }
             )
-            .environmentObject(dataController)
         }
         .sheet(item: $schedulingTask) { task in
             CalendarSchedulerSheet(
@@ -524,9 +586,27 @@ struct UniversalSearchSheet: View {
                     }
                 }
 
-                // Inventory
-                if !matchingInventoryItems.isEmpty {
-                    searchSection("INVENTORY", icon: "shippingbox.fill", count: matchingInventoryItems.count) {
+                // Inventory / Catalog stock
+                if !matchingCatalogRows.isEmpty || !matchingInventoryItems.isEmpty {
+                    searchSection(
+                        "INVENTORY",
+                        icon: "shippingbox.fill",
+                        count: matchingCatalogRows.count + matchingInventoryItems.count
+                    ) {
+                        ForEach(matchingCatalogRows) { row in
+                            SearchResultRow(
+                                icon: "shippingbox.fill",
+                                accentColor: row.thresholdStatus.color,
+                                title: row.family.name,
+                                subtitle: catalogSubtitle(row),
+                                pill: SearchPill(
+                                    text: catalogQuantityText(row),
+                                    color: row.thresholdStatus.color
+                                ),
+                                quickActions: [],
+                                onTap: { selectedCatalogRow = row }
+                            )
+                        }
                         ForEach(matchingInventoryItems) { item in
                             SearchResultRow(
                                 icon: "shippingbox.fill",
@@ -553,15 +633,27 @@ struct UniversalSearchSheet: View {
 
     private func projectRow(_ project: Project) -> some View {
         var actions: [QuickActionSpec] = []
-        if canEditProjects {
-            actions.append(QuickActionSpec(
-                id: "schedule",
-                icon: OPSStyle.Icons.schedule,
-                accessibilityLabel: "Schedule project",
-                tint: OPSStyle.Colors.primaryAccent
-            ) {
-                schedulingProject = project
-            })
+        if canEditTasks {
+            let scheduleTarget = UniversalSearchScheduleTargeting.target(forProject: project)
+            if scheduleTarget != .unavailable {
+                actions.append(QuickActionSpec(
+                    id: "schedule",
+                    icon: OPSStyle.Icons.schedule,
+                    accessibilityLabel: UniversalSearchScheduleTargeting.accessibilityLabel(forProject: project),
+                    tint: OPSStyle.Colors.primaryAccent
+                ) {
+                    switch scheduleTarget {
+                    case .task(let taskId):
+                        if let task = project.tasks.first(where: { $0.id == taskId }) {
+                            schedulingTask = task
+                        }
+                    case .chooseTask:
+                        schedulingTaskPickerProject = project
+                    case .unavailable:
+                        break
+                    }
+                })
+            }
         }
         if canCreateTasks {
             actions.append(QuickActionSpec(
@@ -586,6 +678,22 @@ struct UniversalSearchSheet: View {
             quickActions: actions,
             onTap: { navigateToProject(project) }
         )
+    }
+
+    private func catalogSubtitle(_ row: EnrichedVariantRow) -> String? {
+        var parts: [String] = []
+        if !row.variantLabel.isEmpty { parts.append(row.variantLabel) }
+        if let sku = row.variant.sku, !sku.isEmpty { parts.append("SKU: \(sku)") }
+        if let category = row.category?.name { parts.append(category) }
+        return parts.isEmpty ? row.family.itemDescription : parts.joined(separator: " · ")
+    }
+
+    private func catalogQuantityText(_ row: EnrichedVariantRow) -> String {
+        let qty = StockNumberFormatter.quantity(row.variant.quantity)
+        if let unit = row.unit?.display {
+            return "\(qty) \(unit)".uppercased()
+        }
+        return qty
     }
 
     private func taskRow(_ task: ProjectTask) -> some View {
@@ -1078,6 +1186,100 @@ struct UniversalSearchSheet: View {
         let cleaned = phone.filter { "0123456789+".contains($0) }
         guard let url = URL(string: "sms:\(cleaned)") else { return }
         UIApplication.shared.open(url)
+    }
+}
+
+// MARK: - Task Schedule Picker
+
+private struct UniversalSearchTaskSchedulePickerSheet: View {
+    let project: Project
+    let tasks: [ProjectTask]
+    let onSelect: (ProjectTask) -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                OPSStyle.Colors.background.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("// SELECT TASK")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                        Text(project.title.uppercased())
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .lineLimit(2)
+
+                        VStack(spacing: 8) {
+                            ForEach(tasks, id: \.id) { task in
+                                Button {
+                                    onSelect(task)
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Circle()
+                                            .fill(Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent)
+                                            .frame(width: 12, height: 12)
+
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(task.displayTitle.uppercased())
+                                                .font(OPSStyle.Typography.bodyBold)
+                                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                                .lineLimit(1)
+
+                                            Text(scheduleLabel(for: task))
+                                                .font(OPSStyle.Typography.smallCaption)
+                                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                                .monospacedDigit()
+                                        }
+
+                                        Spacer(minLength: 0)
+
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    }
+                                    .frame(minHeight: 52)
+                                    .padding(.horizontal, 14)
+                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Schedule \(task.displayTitle)")
+                            }
+                        }
+                    }
+                    .padding(16)
+                }
+            }
+            .navigationTitle("SELECT TASK")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("CANCEL", action: onCancel)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+            }
+        }
+    }
+
+    private func scheduleLabel(for task: ProjectTask) -> String {
+        switch (task.startDate, task.endDate) {
+        case let (start?, end?):
+            return "\(DateHelper.simpleDateString(from: start)) - \(DateHelper.simpleDateString(from: end))"
+        case let (start?, nil):
+            return DateHelper.simpleDateString(from: start)
+        case let (nil, end?):
+            return "- \(DateHelper.simpleDateString(from: end))"
+        case (nil, nil):
+            return "NOT SCHEDULED"
+        }
     }
 }
 

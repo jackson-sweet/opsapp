@@ -7,6 +7,11 @@ import Supabase
 import UIKit
 import Combine
 
+enum VinylOrderSurfaceScope: Equatable {
+    case selectedSurfaces
+    case allSurfaces
+}
+
 @MainActor
 class DeckBuilderViewModel: ObservableObject {
 
@@ -31,11 +36,26 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var drawingData: DeckDrawingData
     @Published var drawingMode: DrawingMode = .idle
     @Published var activeTool: DrawingTool = .draw
-    @Published var selection: SelectionState = SelectionState()
+    @Published var selection: SelectionState = SelectionState() {
+        didSet {
+            // Move-XY is a sticky toggle (see toggleSelectionMove); it has no
+            // meaning without a selection. Drop the armed flag when the
+            // selection empties so the toolbar button doesn't reappear
+            // pre-activated next time something is selected.
+            if isSelectionMoveArmed && selection.isEmpty {
+                isSelectionMoveArmed = false
+            }
+        }
+    }
     @Published var alignmentGuides: [AlignmentGuide] = []
     @Published var tapSelectFilter: Set<SelectableElementType> = Set(SelectableElementType.allCases)
     /// Drag-shape sub-mode while `activeTool == .tapSelect`. DECK-NEW-4.
     @Published var marqueeShape: MarqueeShape = .rect
+    /// Arms the next selection drag as an XY move instead of marquee/lasso.
+    /// The flag is reset when the move commits or is cancelled.
+    @Published var isSelectionMoveArmed: Bool = false
+    private var selectionMoveStart: CGPoint?
+    private var selectionMoveOriginalVertices: [String: CGPoint] = [:]
 
     // MARK: - UI State
 
@@ -44,6 +64,15 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var showingStairConfig: Bool = false
     @Published var showingAssignmentWheel: Bool = false
     @Published var showingMaterialPicker: Bool = false
+    @Published var showingVinylOrderSheet: Bool = false
+    @Published var vinylOrderSurfaceScope: VinylOrderSurfaceScope = .selectedSurfaces
+    /// Properties sheet (PropertySheetView). Opens full edit controls for
+    /// the current selection — edge type, house cladding, railing config,
+    /// stair config, surface metadata, vertex elevation, etc. Previously
+    /// orphaned with no UI entry point (bug ee787f29 — "no way to change
+    /// the type of siding on a house edge"); now reachable from a
+    /// "Properties" button on every selection toolbar.
+    @Published var showingPropertySheet: Bool = false
     var taskTypes: [TaskType] = []
     @Published var showingSettings: Bool = false
     @Published var showingClearConfirm: Bool = false
@@ -393,7 +422,7 @@ class DeckBuilderViewModel: ObservableObject {
     var isClosed: Bool { activeIsClosed }
 
     var totalArea: Double? {
-        guard let scale = drawingData.scaleFactor, scale > 0 else { return nil }
+        let scale = drawingData.effectiveScaleFactor
         if isMultiLevel {
             // DECK-NEW-1 — sum every detected face on every level, not the
             // single all-vertices polygon. Falls back to the legacy
@@ -434,7 +463,7 @@ class DeckBuilderViewModel: ObservableObject {
     }
 
     var totalPerimeter: Double? {
-        guard let scale = drawingData.scaleFactor, scale > 0 else { return nil }
+        let scale = drawingData.effectiveScaleFactor
         if isMultiLevel {
             let totalPts = drawingData.levels.reduce(0.0) { total, level in
                 total + PolygonMath.perimeter(vertices: level.orderedPositions)
@@ -642,6 +671,12 @@ class DeckBuilderViewModel: ObservableObject {
         } else {
             stopAutosaveTimer()
         }
+    }
+
+    func setVinylCatalogItemId(_ itemId: String?) {
+        let trimmed = itemId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        drawingData.config.vinylCatalogItemId = trimmed.isEmpty ? nil : trimmed
+        save()
     }
 
     // MARK: - Undo/Redo
@@ -1367,6 +1402,389 @@ class DeckBuilderViewModel: ObservableObject {
         save()
     }
 
+    // MARK: - Selection XY Move
+
+    /// Sticky toggle for the Move-XY mode. The Move-XY toolbar buttons
+    /// route through this so a tap flips the mode on; while on, every
+    /// canvas selection drag translates the selection (begin/update/
+    /// endSelectionMove). Sticky across moves — was previously one-shot
+    /// (endSelectionMove auto-disarmed) so the user had to re-tap the
+    /// toolbar before every move.
+    func toggleSelectionMove() {
+        if isSelectionMoveArmed {
+            disarmSelectionMove()
+        } else {
+            armSelectionMove()
+        }
+    }
+
+    func armSelectionMove() {
+        guard !selection.isEmpty else { return }
+        activeTool = .tapSelect
+        drawingMode = .idle
+        alignmentGuides = []
+        isSelectionMoveArmed = true
+        hapticLight()
+    }
+
+    /// Turn the sticky Move-XY mode off. Cancels any in-flight move and
+    /// clears the move scratch state. Safe to call when not armed.
+    func disarmSelectionMove() {
+        if case .movingSelection = drawingMode {
+            drawingMode = .idle
+        }
+        selectionMoveStart = nil
+        selectionMoveOriginalVertices.removeAll()
+        alignmentGuides = []
+        isSelectionMoveArmed = false
+        hapticLight()
+    }
+
+    func beginSelectionMove(at point: CGPoint) {
+        let vertexIds = selectedMoveVertexIds()
+        guard !vertexIds.isEmpty else {
+            isSelectionMoveArmed = false
+            return
+        }
+
+        pushUndo("move selection on XY")
+        selectionMoveStart = point
+        selectionMoveOriginalVertices = Dictionary(
+            activeVertices
+                .filter { vertexIds.contains($0.id) }
+                .map { ($0.id, $0.position) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        drawingMode = .movingSelection
+        alignmentGuides = []
+    }
+
+    func updateSelectionMove(to point: CGPoint) {
+        guard case .movingSelection = drawingMode,
+              let start = selectionMoveStart,
+              !selectionMoveOriginalVertices.isEmpty else { return }
+
+        let rawDelta = CGSize(width: point.x - start.x, height: point.y - start.y)
+        let resolved = resolveSelectionMoveDelta(rawDelta)
+        applySelectionMove(delta: resolved.delta)
+        alignmentGuides = resolved.guides
+    }
+
+    func endSelectionMove() {
+        guard case .movingSelection = drawingMode else { return }
+        let movedIds = Set(selectionMoveOriginalVertices.keys)
+        for vertexId in movedIds {
+            recalculateEdgeDimensions(connectedTo: vertexId)
+        }
+        drawingMode = .idle
+        // isSelectionMoveArmed intentionally NOT cleared — Move-XY is a sticky
+        // toggle, so a follow-up drag in the canvas can start another move
+        // without the user re-tapping the toolbar.
+        selectionMoveStart = nil
+        selectionMoveOriginalVertices.removeAll()
+        alignmentGuides = []
+        hapticMedium()
+        save()
+    }
+
+    private func selectedMoveVertexIds() -> Set<String> {
+        var ids = selection.selectedVertexIds
+        for edge in activeEdges where selection.selectedEdgeIds.contains(edge.id) {
+            ids.insert(edge.startVertexId)
+            ids.insert(edge.endVertexId)
+        }
+        for surface in activePersistedSurfaces where selection.selectedSurfaceIds.contains(surface.id) {
+            ids.formUnion(surface.vertexIds)
+        }
+        return ids
+    }
+
+    private func applySelectionMove(delta: CGSize) {
+        for (vertexId, original) in selectionMoveOriginalVertices {
+            guard var vertex = activeVertex(byId: vertexId) else { continue }
+            vertex.position = CGPoint(
+                x: original.x + delta.width,
+                y: original.y + delta.height
+            )
+            activeUpdateVertex(vertex)
+        }
+        for vertexId in selectionMoveOriginalVertices.keys {
+            recalculateEdgeDimensions(connectedTo: vertexId)
+        }
+    }
+
+    /// A single snap proposal evaluated during a selection move — a 1-DOF
+    /// linear constraint pinning `delta · normal == offset`. Snaps used to be
+    /// picked one-at-a-time (the resolver applied grid → parallel → ONE-OF
+    /// vertex-OR-edge); this struct lets the resolver collect candidates
+    /// from every snap path and apply each compatible one in turn so a
+    /// moved selection can lock two independent alignment constraints at
+    /// once — e.g. left edge colinear with one wall AND top edge colinear
+    /// with another → corner snap.
+    private struct SelectionMoveConstraint {
+        /// Unit vector. `delta · normal == offset` is the constraint.
+        let normal: CGVector
+        /// Target value along `normal` for the constrained `delta`.
+        let offset: CGFloat
+        /// Proximity metric — closest candidates apply first in the resolver.
+        let sortDistance: CGFloat
+        /// Rendered guide line for the constraint.
+        let guide: AlignmentGuide
+    }
+
+    private func resolveSelectionMoveDelta(_ rawDelta: CGSize) -> (delta: CGSize, guides: [AlignmentGuide]) {
+        guard drawingData.config.snappingEnabled else {
+            return (rawDelta, [])
+        }
+
+        // Baseline — snap the anchor vertex to grid. Constraints below
+        // refine the axes they lock; any axis left free keeps this value.
+        var delta = gridSnappedSelectionDelta(rawDelta)
+
+        var candidates: [SelectionMoveConstraint] = []
+        candidates.append(contentsOf: vertexSnappedSelectionDelta(baseline: delta))
+        candidates.append(contentsOf: edgeSnappedSelectionDelta(baseline: delta))
+        candidates.append(contentsOf: parallelSnappedSelectionDelta(rawDelta: rawDelta))
+        candidates.sort { $0.sortDistance < $1.sortDistance }
+
+        // Two independent 1-DOF locks fully pin the 2D delta (solved via a
+        // 2x2 system below). Further candidates whose normal is parallel to
+        // an existing lock are redundant if consistent or conflicting if
+        // not — either way the closer one already applied, so skip them.
+        var locks: [(normal: CGVector, offset: CGFloat)] = []
+        var guides: [AlignmentGuide] = []
+        for candidate in candidates {
+            if locks.count >= 2 { break }
+            if Self.isParallelToAnyLock(candidate.normal, locks: locks) { continue }
+            delta = Self.applySelectionMoveConstraint(
+                currentDelta: delta,
+                locks: locks,
+                newNormal: candidate.normal,
+                newOffset: candidate.offset
+            )
+            locks.append((candidate.normal, candidate.offset))
+            guides.append(candidate.guide)
+        }
+
+        return (delta, guides)
+    }
+
+    private func gridSnappedSelectionDelta(_ rawDelta: CGSize) -> CGSize {
+        guard let anchor = selectionMoveOriginalVertices
+            .sorted(by: { $0.key < $1.key })
+            .first?.value else { return rawDelta }
+        let movedAnchor = CGPoint(x: anchor.x + rawDelta.width, y: anchor.y + rawDelta.height)
+        let snapped = SnapEngine.snapToGrid(movedAnchor, gridSpacing: lengthSnapInCanvasPoints())
+        return CGSize(width: snapped.x - anchor.x, height: snapped.y - anchor.y)
+    }
+
+    /// Constraints proposing that the move is parallel to one of the
+    /// drawing's edges — `delta` perpendicular component to the edge
+    /// direction must be zero. One candidate per qualifying edge so the
+    /// accumulator can pick the closest and (if independent normals)
+    /// compound a second on a different free axis.
+    private func parallelSnappedSelectionDelta(rawDelta: CGSize) -> [SelectionMoveConstraint] {
+        let length = hypot(rawDelta.width, rawDelta.height)
+        guard length > 0 else { return [] }
+        let threshold = CGFloat(max(8.0, drawingData.config.endpointSnapRadius * 0.35))
+
+        var results: [SelectionMoveConstraint] = []
+        for edge in activeEdges {
+            guard let start = activeVertex(byId: edge.startVertexId),
+                  let end = activeVertex(byId: edge.endVertexId) else { continue }
+            let dx = end.position.x - start.position.x
+            let dy = end.position.y - start.position.y
+            let edgeLen = hypot(dx, dy)
+            guard edgeLen > 0 else { continue }
+            // Unit perpendicular to the edge — the move's component along
+            // this normal is what we want to zero out.
+            let nx = -dy / edgeLen
+            let ny =  dx / edgeLen
+            let residual = abs(rawDelta.width * nx + rawDelta.height * ny)
+            guard residual <= threshold else { continue }
+            results.append(SelectionMoveConstraint(
+                normal: CGVector(dx: nx, dy: ny),
+                offset: 0,
+                sortDistance: residual,
+                guide: AlignmentGuide(
+                    from: start.position,
+                    to: end.position,
+                    type: .parallel,
+                    referenceLabel: "\u{2225}"
+                )
+            ))
+        }
+        return results
+    }
+
+    /// Constraints from the closest moved-vertex ↔ static-vertex pair in
+    /// snap range. Returned as TWO axis-decomposed 1-DOF constraints (one
+    /// for X-align, one for Y-align) — the resolver applies both when
+    /// nothing else has locked the axes (= exact landing on the static
+    /// vertex), or just the free axis when an edge snap has already locked
+    /// the other (= the moved vertex aligns to the static one on one axis,
+    /// to whatever the edge snap dictates on the other).
+    private func vertexSnappedSelectionDelta(baseline: CGSize) -> [SelectionMoveConstraint] {
+        let movingIds = Set(selectionMoveOriginalVertices.keys)
+        let staticVertices = activeVertices.filter { !movingIds.contains($0.id) }
+        guard !staticVertices.isEmpty else { return [] }
+
+        var best: (distance: Double, original: CGPoint, moved: CGPoint, target: CGPoint)?
+        for original in selectionMoveOriginalVertices.values {
+            let moved = CGPoint(x: original.x + baseline.width, y: original.y + baseline.height)
+            for target in staticVertices {
+                let distance = SnapEngine.distance(moved, target.position)
+                guard distance <= drawingData.config.endpointSnapRadius else { continue }
+                if best == nil || distance < best!.distance {
+                    best = (distance, original, moved, target.position)
+                }
+            }
+        }
+        guard let best else { return [] }
+
+        let dist = CGFloat(best.distance)
+        let xGuide = AlignmentGuide(
+            from: CGPoint(x: best.target.x, y: min(best.target.y, best.moved.y) - 20),
+            to:   CGPoint(x: best.target.x, y: max(best.target.y, best.moved.y) + 20),
+            type: .vertical,
+            referenceLabel: nil
+        )
+        let yGuide = AlignmentGuide(
+            from: CGPoint(x: min(best.target.x, best.moved.x) - 20, y: best.target.y),
+            to:   CGPoint(x: max(best.target.x, best.moved.x) + 20, y: best.target.y),
+            type: .horizontal,
+            referenceLabel: nil
+        )
+        return [
+            SelectionMoveConstraint(
+                normal: CGVector(dx: 1, dy: 0),
+                offset: best.target.x - best.original.x,
+                sortDistance: dist,
+                guide: xGuide
+            ),
+            SelectionMoveConstraint(
+                normal: CGVector(dx: 0, dy: 1),
+                offset: best.target.y - best.original.y,
+                sortDistance: dist,
+                guide: yGuide
+            ),
+        ]
+    }
+
+    /// Constraints proposing that a moved vertex lands on the infinite
+    /// line of a static edge. Gated by proximity to the rendered SEGMENT
+    /// (so we don't snap to a static edge's invisible extension way off
+    /// canvas), but the constraint itself snaps to the line so a moved
+    /// edge can be exactly colinear with the static edge even past its
+    /// endpoints. One candidate per (moving vertex, static edge) pair in
+    /// range — the resolver compounds two independent-normal candidates
+    /// for the bug's stated "two edges colinear simultaneously" case.
+    private func edgeSnappedSelectionDelta(baseline: CGSize) -> [SelectionMoveConstraint] {
+        let movingIds = Set(selectionMoveOriginalVertices.keys)
+        var results: [SelectionMoveConstraint] = []
+        for (_, original) in selectionMoveOriginalVertices {
+            let moved = CGPoint(
+                x: original.x + baseline.width,
+                y: original.y + baseline.height
+            )
+            for edge in activeEdges {
+                guard !movingIds.contains(edge.startVertexId),
+                      !movingIds.contains(edge.endVertexId),
+                      let start = activeVertex(byId: edge.startVertexId),
+                      let end = activeVertex(byId: edge.endVertexId) else { continue }
+                let dx = end.position.x - start.position.x
+                let dy = end.position.y - start.position.y
+                let edgeLen = hypot(dx, dy)
+                guard edgeLen > 0 else { continue }
+                let projection = Self.closestPoint(
+                    onSegmentFrom: start.position,
+                    to: end.position,
+                    point: moved
+                )
+                let segmentDistance = SnapEngine.distance(moved, projection)
+                guard segmentDistance <= drawingData.config.endpointSnapRadius else { continue }
+                let nx = -dy / edgeLen
+                let ny =  dx / edgeLen
+                let offset = (start.position.x - original.x) * nx
+                           + (start.position.y - original.y) * ny
+                results.append(SelectionMoveConstraint(
+                    normal: CGVector(dx: nx, dy: ny),
+                    offset: offset,
+                    sortDistance: CGFloat(segmentDistance),
+                    guide: AlignmentGuide(
+                        from: start.position,
+                        to: end.position,
+                        type: .parallel,
+                        referenceLabel: nil
+                    )
+                ))
+            }
+        }
+        return results
+    }
+
+    /// Apply one 1-DOF constraint `(newNormal, newOffset)` to `currentDelta`
+    /// given the already-applied `locks`. With zero locks, shift along
+    /// `newNormal` to satisfy the new constraint. With one lock, solve the
+    /// 2x2 system so BOTH the prior and the new constraint hold — this is
+    /// the compounding step that pins the corner. Two locks already pin
+    /// `delta` fully; further refinement is a no-op.
+    private static func applySelectionMoveConstraint(
+        currentDelta: CGSize,
+        locks: [(normal: CGVector, offset: CGFloat)],
+        newNormal: CGVector,
+        newOffset: CGFloat
+    ) -> CGSize {
+        let n = newNormal
+        let c = newOffset
+        switch locks.count {
+        case 0:
+            let current = currentDelta.width * n.dx + currentDelta.height * n.dy
+            let shift = c - current
+            return CGSize(
+                width: currentDelta.width + shift * n.dx,
+                height: currentDelta.height + shift * n.dy
+            )
+        case 1:
+            let n0 = locks[0].normal
+            let c0 = locks[0].offset
+            let det = n0.dx * n.dy - n.dx * n0.dy
+            // Caller filters parallel constraints upstream so this is a
+            // numeric safety net for floating-point-degenerate cases.
+            guard abs(det) > 1e-6 else { return currentDelta }
+            let dx = (c0 * n.dy - c * n0.dy) / det
+            let dy = (n0.dx * c - n.dx * c0) / det
+            return CGSize(width: dx, height: dy)
+        default:
+            return currentDelta
+        }
+    }
+
+    /// True when `normal` is parallel to any already-applied lock. Two
+    /// unit normals are parallel when their cross product magnitude is
+    /// near zero — the 1e-3 threshold catches numerical degeneracies
+    /// without rejecting genuinely independent directions.
+    private static func isParallelToAnyLock(
+        _ normal: CGVector,
+        locks: [(normal: CGVector, offset: CGFloat)]
+    ) -> Bool {
+        for lock in locks {
+            let cross = normal.dx * lock.normal.dy - normal.dy * lock.normal.dx
+            if abs(cross) < 1e-3 { return true }
+        }
+        return false
+    }
+
+    private static func closestPoint(onSegmentFrom start: CGPoint, to end: CGPoint, point: CGPoint) -> CGPoint {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let lengthSquared = dx * dx + dy * dy
+        guard lengthSquared > 0 else { return start }
+        let rawT = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared
+        let t = min(max(rawT, 0), 1)
+        return CGPoint(x: start.x + dx * t, y: start.y + dy * t)
+    }
+
     /// Recalculate dimension values for edges connected to a vertex (after drag/move).
     /// `.scale` edges are recomputed automatically. Manual / laser / AR edges
     /// preserve their user-typed value but are flagged `dimensionStale = true`
@@ -1452,10 +1870,15 @@ class DeckBuilderViewModel: ObservableObject {
         guard var edge = activeEdge(byId: edgeId) else { return }
         pushUndo("set edge type")
         edge.edgeType = type
-        // Clearing the house cladding when an edge is demoted back to a
-        // regular deck edge keeps the stored material from leaking back into
-        // the renderer if the user flips the toggle a second time. Bug 3d72ce0b.
-        if type != .houseEdge { edge.houseEdgeMaterial = nil }
+        // House edge and deck-edge railing are mutually exclusive. House
+        // edges carry house cladding only; deck edges may carry railing/
+        // parapet configuration. Clearing the invalid side here keeps old
+        // saved payloads from leaking into renderers and estimates.
+        if type == .houseEdge {
+            edge.railingConfig = nil
+        } else {
+            edge.houseEdgeMaterial = nil
+        }
         activeUpdateEdge(edge)
         save()
     }
@@ -1473,8 +1896,21 @@ class DeckBuilderViewModel: ObservableObject {
 
     func setRailing(_ edgeId: String, config: RailingConfig?) {
         guard var edge = activeEdge(byId: edgeId) else { return }
+        guard config == nil || edge.edgeType == .deckEdge else { return }
         pushUndo("set railing")
         edge.railingConfig = config
+        activeUpdateEdge(edge)
+        save()
+    }
+
+    func setRailingWallMaterial(_ edgeId: String, material: HouseEdgeMaterial) {
+        guard var edge = activeEdge(byId: edgeId),
+              edge.edgeType == .deckEdge,
+              var railing = edge.railingConfig,
+              railing.railingType == .parapetWall else { return }
+        pushUndo("set parapet finish")
+        railing.wallMaterial = material
+        edge.railingConfig = railing
         activeUpdateEdge(edge)
         save()
     }
@@ -1580,6 +2016,157 @@ class DeckBuilderViewModel: ObservableObject {
             return nil
         }
         return drawingData.surfaces.first(where: { $0.id == id })
+    }
+
+    /// Converts the current face selection into measured vinyl inputs.
+    /// The order sheet should not re-detect or infer geometry on its own:
+    /// it gets the same reconciled persisted surfaces the canvas and
+    /// material tools use, matched back to current detected face polygons.
+    func selectedVinylOrderSurfaceInputs() -> [VinylOrderSurfaceInput] {
+        vinylOrderSurfaceInputs(scope: .selectedSurfaces)
+    }
+
+    func allVinylOrderSurfaceInputs() -> [VinylOrderSurfaceInput] {
+        vinylOrderSurfaceInputs(scope: .allSurfaces)
+    }
+
+    func vinylOrderSurfaceInputs(scope: VinylOrderSurfaceScope) -> [VinylOrderSurfaceInput] {
+        reconcileSurfaces()
+        guard let scale = vinylOrderEffectiveScale else { return [] }
+        let selectedIds = selection.selectedSurfaceIds
+        if scope == .selectedSurfaces, selectedIds.isEmpty { return [] }
+
+        if isMultiLevel {
+            return drawingData.levels.flatMap { level in
+                vinylOrderInputs(
+                    persisted: level.surfaces,
+                    detected: level.detectedSurfaces,
+                    edges: level.edges,
+                    selectedIds: scope == .selectedSurfaces ? selectedIds : nil,
+                    scale: scale,
+                    levelName: level.name
+                )
+            }
+        }
+
+        return vinylOrderInputs(
+            persisted: drawingData.surfaces,
+            detected: drawingData.detectedSurfaces,
+            edges: drawingData.edges,
+            selectedIds: scope == .selectedSurfaces ? selectedIds : nil,
+            scale: scale,
+            levelName: nil
+        )
+    }
+
+    private func vinylOrderInputs(
+        persisted: [DeckSurface],
+        detected: [DetectedSurface],
+        edges: [DeckEdge],
+        selectedIds: Set<String>?,
+        scale: Double,
+        levelName: String?
+    ) -> [VinylOrderSurfaceInput] {
+        persisted.enumerated().compactMap { index, surface in
+            if let selectedIds, !selectedIds.contains(surface.id) { return nil }
+            guard let face = detectedSurface(for: surface, in: detected) else { return nil }
+            let trimmedLabel = surface.label?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let label = trimmedLabel.flatMap { $0.isEmpty ? nil : $0 } ?? "Surface \(index + 1)"
+            return VinylOrderSurfaceInput(
+                id: surface.id,
+                label: label,
+                levelName: levelName,
+                positions: face.positions,
+                scaleFactor: scale,
+                edges: vinylOrderSurfaceEdges(for: face, edges: edges)
+            )
+        }
+    }
+
+    private func vinylOrderSurfaceEdges(
+        for face: DetectedSurface,
+        edges: [DeckEdge]
+    ) -> [VinylOrderSurfaceEdge] {
+        guard face.vertexIds.count == face.positions.count, face.vertexIds.count >= 2 else { return [] }
+
+        return face.vertexIds.indices.map { index in
+            let nextIndex = (index + 1) % face.vertexIds.count
+            let startId = face.vertexIds[index]
+            let endId = face.vertexIds[nextIndex]
+            let matchingEdge = edges.first {
+                ($0.startVertexId == startId && $0.endVertexId == endId) ||
+                    ($0.startVertexId == endId && $0.endVertexId == startId)
+            }
+
+            return VinylOrderSurfaceEdge(
+                id: matchingEdge?.id ?? "\(startId)-\(endId)",
+                start: face.positions[index],
+                end: face.positions[nextIndex],
+                edgeType: matchingEdge?.edgeType ?? .deckEdge,
+                label: matchingEdge?.label
+            )
+        }
+    }
+
+    private func detectedSurface(for persisted: DeckSurface, in detected: [DetectedSurface]) -> DetectedSurface? {
+        if let exact = detected.first(where: { Set($0.vertexIds) == persisted.vertexIds }) {
+            return exact
+        }
+
+        var best: (surface: DetectedSurface, jaccard: Double)?
+        for face in detected {
+            let faceIds = Set(face.vertexIds)
+            let intersection = faceIds.intersection(persisted.vertexIds).count
+            let union = faceIds.union(persisted.vertexIds).count
+            guard union > 0 else { continue }
+            let score = Double(intersection) / Double(union)
+            if score > (best?.jaccard ?? -1) {
+                best = (face, score)
+            }
+        }
+        guard let best, best.jaccard >= SurfaceReconciler.rebindThreshold else { return nil }
+        return best.surface
+    }
+
+    /// Scale used for vinyl ordering. Vinyl is a stricter consumer than the
+    /// editor's area/perimeter readout or estimate generation: a cut-to-size
+    /// order can't tolerate a drawing whose typed dimensions disagree with the
+    /// drawn geometry. So any stale edge blocks the order, and — before the
+    /// user has calibrated `scaleFactor` — the prescale fallback is trusted
+    /// only while every edge is still scale-derived (no user-typed override in
+    /// play). Once the drawing clears those bars the scale is simply
+    /// `drawingData.effectiveScaleFactor` (the calibrated factor, or the
+    /// prescale fallback the canvas already draws every edge at).
+    var vinylOrderEffectiveScale: Double? {
+        guard !drawingData.allEdges.contains(where: \.dimensionStale) else { return nil }
+        if (drawingData.scaleFactor ?? 0) <= 0, !canUsePrescaleFallbackForVinylOrder {
+            return nil
+        }
+        return drawingData.effectiveScaleFactor
+    }
+
+    private var canUsePrescaleFallbackForVinylOrder: Bool {
+        let edges = drawingData.allEdges
+        guard !edges.isEmpty else { return false }
+        return edges.allSatisfy { edge in
+            edge.dimensionSource == .scale && !edge.dimensionStale
+        }
+    }
+
+    /// Public, multi-level-aware accessor for a vertex by id. Mirrors
+    /// `findEdge` / `findSurface` — checks the active level first, then any
+    /// other level, then the top-level array. Used by PropertySheet so the
+    /// vertex-properties section actually renders in multi-level designs
+    /// (the top-level vertices array is empty there). Bug 6d1c0a2a.
+    func findVertex(byId id: String) -> DeckVertex? {
+        if isMultiLevel {
+            if let active = activeLevel, let v = active.vertex(byId: id) { return v }
+            for level in drawingData.levels {
+                if let v = level.vertex(byId: id) { return v }
+            }
+            return nil
+        }
+        return drawingData.vertex(byId: id)
     }
 
     // MARK: - Vertex Properties
@@ -1694,6 +2281,50 @@ class DeckBuilderViewModel: ObservableObject {
         save()
     }
 
+    /// Creates a fresh level (migrating from single-level if needed) and
+    /// hands the current surface selection to it in one atomic step. Wraps
+    /// addLevel + moveSelectedSurfacesToLevel because addLevel clears
+    /// selection — calling the two in sequence at the UI layer would lose
+    /// the surface ids mid-flight. Capped at 3 levels per existing addLevel
+    /// constraint; no-op when at the cap. Bug ee787f29 follow-up.
+    func moveSelectedSurfacesToNewLevel() {
+        let targetIds = selection.selectedSurfaceIds
+        guard !targetIds.isEmpty else { return }
+        guard drawingData.levels.count < 3 || !drawingData.isMultiLevel else { return }
+
+        pushUndo("split to new level")
+        if !drawingData.isMultiLevel {
+            drawingData.migrateToMultiLevel()
+        }
+        let usedColors = drawingData.levels.map { $0.displayColor }
+        let newLevel = DeckLevel(
+            name: "Level \(drawingData.levels.count + 1)",
+            displayColor: LevelColor.nextAvailable(excluding: usedColors),
+            sortOrder: drawingData.levels.count
+        )
+        drawingData.levels.append(newLevel)
+        let destinationIndex = drawingData.levels.count - 1
+
+        var moved: [DeckSurface] = []
+        for li in drawingData.levels.indices where li != destinationIndex {
+            var surfaces = drawingData.levels[li].surfaces
+            let migrated = surfaces.filter { targetIds.contains($0.id) }
+            if !migrated.isEmpty {
+                surfaces.removeAll { targetIds.contains($0.id) }
+                drawingData.levels[li].surfaces = surfaces
+                moved.append(contentsOf: migrated)
+            }
+        }
+        if !moved.isEmpty {
+            drawingData.levels[destinationIndex].surfaces.append(contentsOf: moved)
+        }
+
+        activeLevelIndex = destinationIndex
+        selection.clear()
+        hapticMedium()
+        save()
+    }
+
     /// Reassigns every currently-selected surface to a different level.
     /// Used by DECK-NEW-4 (selection overhaul). Detected surfaces are
     /// identified by their stable persisted id; the persisted record is
@@ -1725,6 +2356,112 @@ class DeckBuilderViewModel: ObservableObject {
         save()
     }
 
+    /// Moves every selected edge (and its bounding vertices) to a different
+    /// level. The user explicitly called out that this should invalidate any
+    /// surface on the source level whose perimeter is broken by the move —
+    /// done here by dropping every surface that referenced any vertex we
+    /// migrated. Bug 6d1c0a2a follow-up.
+    ///
+    /// Vertices are migrated when no remaining edge on the source level
+    /// references them. If a vertex is still bounded by another edge on the
+    /// source level (it sits at a fork between moved + non-moved edges) it
+    /// stays put, and the moved edge ends up with a phantom endpoint —
+    /// rejected up front so we don't leave broken geometry behind.
+    func moveSelectedEdgesToLevel(at destinationIndex: Int) {
+        guard isMultiLevel,
+              destinationIndex >= 0,
+              destinationIndex < drawingData.levels.count else { return }
+        let edgeIds = selection.selectedEdgeIds
+        guard !edgeIds.isEmpty else { return }
+        pushUndo("move edges to level")
+        performEdgeLevelMigration(edgeIds: edgeIds, destinationIndex: destinationIndex)
+        selection.clear()
+        hapticMedium()
+        save()
+    }
+
+    /// Combined add-level + move-edges-there. Same atomic pattern as
+    /// `moveSelectedSurfacesToNewLevel` so the selection survives the
+    /// level-clear inside `addLevel`. Capped at 3 levels.
+    func moveSelectedEdgesToNewLevel() {
+        let edgeIds = selection.selectedEdgeIds
+        guard !edgeIds.isEmpty else { return }
+        guard drawingData.levels.count < 3 || !drawingData.isMultiLevel else { return }
+
+        pushUndo("split edges to new level")
+        if !drawingData.isMultiLevel {
+            drawingData.migrateToMultiLevel()
+        }
+        let usedColors = drawingData.levels.map { $0.displayColor }
+        let newLevel = DeckLevel(
+            name: "Level \(drawingData.levels.count + 1)",
+            displayColor: LevelColor.nextAvailable(excluding: usedColors),
+            sortOrder: drawingData.levels.count
+        )
+        drawingData.levels.append(newLevel)
+        let destinationIndex = drawingData.levels.count - 1
+
+        performEdgeLevelMigration(edgeIds: edgeIds, destinationIndex: destinationIndex)
+
+        activeLevelIndex = destinationIndex
+        selection.clear()
+        hapticMedium()
+        save()
+    }
+
+    /// Worker for both edge-level migration entry points. Walks every level
+    /// (except destination), peels off the selected edges + any vertex that
+    /// only those edges referenced, then drops surfaces whose vertexIds are
+    /// no longer fully present in the source level. Surfaces with a broken
+    /// perimeter cease to exist as DeckSurface rows — the underlying edges
+    /// at the destination still form whatever loop the operator now intends.
+    private func performEdgeLevelMigration(edgeIds: Set<String>, destinationIndex: Int) {
+        for li in drawingData.levels.indices where li != destinationIndex {
+            var level = drawingData.levels[li]
+            let movedEdges = level.edges.filter { edgeIds.contains($0.id) }
+            guard !movedEdges.isEmpty else { continue }
+
+            let movedEdgeIds = Set(movedEdges.map { $0.id })
+            let remainingEdges = level.edges.filter { !movedEdgeIds.contains($0.id) }
+
+            // Vertex IDs referenced by any moved edge.
+            var touchedVertexIds: Set<String> = []
+            for e in movedEdges {
+                touchedVertexIds.insert(e.startVertexId)
+                touchedVertexIds.insert(e.endVertexId)
+            }
+
+            // A vertex migrates ONLY when no remaining edge still references
+            // it on the source level. Shared-vertex edges (one moves, one
+            // stays) leave the vertex behind so the staying edge keeps its
+            // anchor — the moved edge's payload still carries its endpoint
+            // ids and SurfaceDetector at the destination will treat them as
+            // a fresh disconnected segment until the operator wires them up.
+            let stillReferencedVertexIds: Set<String> = Set(
+                remainingEdges.flatMap { [$0.startVertexId, $0.endVertexId] }
+            )
+            let migratingVertexIds = touchedVertexIds.subtracting(stillReferencedVertexIds)
+            let migratingVertices = level.vertices.filter { migratingVertexIds.contains($0.id) }
+
+            // Drop any surface whose perimeter touches a vertex we just
+            // migrated — its bounding cycle is broken. The operator's
+            // intended surface (if any) is whatever the destination level's
+            // edges + vertices now enclose.
+            let invalidatedSurfaceIds = level.surfaces
+                .filter { !$0.vertexIds.allSatisfy(stillReferencedVertexIds.contains) }
+                .map { $0.id }
+            let invalidatedSet = Set(invalidatedSurfaceIds)
+
+            level.edges = remainingEdges
+            level.vertices = level.vertices.filter { !migratingVertexIds.contains($0.id) }
+            level.surfaces = level.surfaces.filter { !invalidatedSet.contains($0.id) }
+            drawingData.levels[li] = level
+
+            drawingData.levels[destinationIndex].edges.append(contentsOf: movedEdges)
+            drawingData.levels[destinationIndex].vertices.append(contentsOf: migratingVertices)
+        }
+    }
+
     // MARK: - Edge Item Assignment
 
     func assignItemToEdge(_ edgeId: String, item: AssignedItem) {
@@ -1744,7 +2481,13 @@ class DeckBuilderViewModel: ObservableObject {
     /// callers reported only the first selected edge receiving the material;
     /// taking a deterministic snapshot here makes the batch atomic.
     func assignItemToSelectedEdges(_ item: AssignedItem) {
-        let edgeIds = Array(selection.selectedEdgeIds)
+        let edgeIds = selection.selectedEdgeIds.filter { edgeId in
+            guard let edge = activeEdge(byId: edgeId) else {
+                print("[DeckBuilder] assignItemToSelectedEdges: edge \(edgeId) not found, skipping")
+                return false
+            }
+            return edge.edgeType == .deckEdge
+        }
         let count = edgeIds.count
         guard count > 0 else { return }
         pushUndo("batch assign")

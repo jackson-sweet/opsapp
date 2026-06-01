@@ -58,7 +58,7 @@ struct PersonalEventSheet: View {
                         // All day toggle
                         sectionLabel("ALL DAY")
                         Toggle("", isOn: $allDay)
-                            .tint(OPSStyle.Colors.primaryAccent)
+                            .tint(OPSStyle.Colors.text)
                             .padding(.horizontal, 20)
                             .padding(.bottom, 20)
 

@@ -155,6 +155,62 @@ struct CreateProductOptionDTO: Codable {
     }
 }
 
+struct UpdateProductOptionDTO: Codable {
+    let name: String
+    let kind: String
+    let affectsPrice: Bool
+    let affectsRecipe: Bool
+    let required: Bool
+    let defaultValue: String?
+    let optionDefaultSource: String?
+    let sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case kind
+        case affectsPrice         = "affects_price"
+        case affectsRecipe        = "affects_recipe"
+        case required
+        case defaultValue         = "default_value"
+        case optionDefaultSource  = "option_default_source"
+        case sortOrder            = "sort_order"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(name, forKey: .name)
+        try c.encode(kind, forKey: .kind)
+        try c.encode(affectsPrice, forKey: .affectsPrice)
+        try c.encode(affectsRecipe, forKey: .affectsRecipe)
+        try c.encode(required, forKey: .required)
+        try c.encode(defaultValue, forKey: .defaultValue)
+        try c.encode(optionDefaultSource, forKey: .optionDefaultSource)
+        try c.encode(sortOrder, forKey: .sortOrder)
+    }
+}
+
+struct CreateProductOptionValueDTO: Codable {
+    let optionId: String
+    let value: String
+    let sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case optionId   = "option_id"
+        case value
+        case sortOrder  = "sort_order"
+    }
+}
+
+struct UpdateProductOptionValueDTO: Codable {
+    let value: String
+    let sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case value
+        case sortOrder = "sort_order"
+    }
+}
+
 struct CreateProductPricingModifierDTO: Codable {
     let productId: String
     let optionId: String
@@ -172,6 +228,34 @@ struct CreateProductPricingModifierDTO: Codable {
         case triggerIntMax   = "trigger_int_max"
         case modifierKind    = "modifier_kind"
         case amount
+    }
+}
+
+struct UpdateProductPricingModifierDTO: Codable {
+    let optionId: String
+    let triggerValueId: String?
+    let triggerIntMin: Int?
+    let triggerIntMax: Int?
+    let modifierKind: String
+    let amount: Double
+
+    enum CodingKeys: String, CodingKey {
+        case optionId        = "option_id"
+        case triggerValueId  = "trigger_value_id"
+        case triggerIntMin   = "trigger_int_min"
+        case triggerIntMax   = "trigger_int_max"
+        case modifierKind    = "modifier_kind"
+        case amount
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(optionId, forKey: .optionId)
+        try c.encode(triggerValueId, forKey: .triggerValueId)
+        try c.encode(triggerIntMin, forKey: .triggerIntMin)
+        try c.encode(triggerIntMax, forKey: .triggerIntMax)
+        try c.encode(modifierKind, forKey: .modifierKind)
+        try c.encode(amount, forKey: .amount)
     }
 }
 

@@ -3,6 +3,53 @@
 import Foundation
 import SwiftUI
 
+extension KeyedDecodingContainer {
+    func decodeLegacyBoolIfPresent(forKey key: Key) throws -> Bool? {
+        guard contains(key) else { return nil }
+        if try decodeNil(forKey: key) { return nil }
+        if let value = try? decode(Bool.self, forKey: key) { return value }
+        if let value = try? decode(Int.self, forKey: key) {
+            switch value {
+            case 0: return false
+            case 1: return true
+            default:
+                throw DecodingError.dataCorruptedError(
+                    forKey: key,
+                    in: self,
+                    debugDescription: "Expected legacy numeric Bool to be 0 or 1."
+                )
+            }
+        }
+        if let value = try? decode(Double.self, forKey: key) {
+            switch value {
+            case 0: return false
+            case 1: return true
+            default:
+                throw DecodingError.dataCorruptedError(
+                    forKey: key,
+                    in: self,
+                    debugDescription: "Expected legacy numeric Bool to be 0 or 1."
+                )
+            }
+        }
+        if let value = try? decode(String.self, forKey: key) {
+            switch value.lowercased() {
+            case "false", "0": return false
+            case "true", "1": return true
+            default: break
+            }
+        }
+
+        throw DecodingError.typeMismatch(
+            Bool.self,
+            DecodingError.Context(
+                codingPath: codingPath + [key],
+                debugDescription: "Expected Bool-compatible value."
+            )
+        )
+    }
+}
+
 // MARK: - Units & Configuration
 
 enum MeasurementSystem: String, Codable {
@@ -17,6 +64,46 @@ struct DrawingConfig: Codable {
     var snappingEnabled: Bool = true
     var endpointSnapRadius: Double = 20.0      // points (screen distance for magnetic snap)
     var gridVisible: Bool = true
+    var vinylCatalogItemId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case measurementSystem
+        case angleSnapIncrement
+        case lengthSnapIncrement
+        case snappingEnabled
+        case endpointSnapRadius
+        case gridVisible
+        case vinylCatalogItemId
+    }
+
+    init(
+        measurementSystem: MeasurementSystem = .imperial,
+        angleSnapIncrement: Double = 15.0,
+        lengthSnapIncrement: Double = 6.0,
+        snappingEnabled: Bool = true,
+        endpointSnapRadius: Double = 20.0,
+        gridVisible: Bool = true,
+        vinylCatalogItemId: String? = nil
+    ) {
+        self.measurementSystem = measurementSystem
+        self.angleSnapIncrement = angleSnapIncrement
+        self.lengthSnapIncrement = lengthSnapIncrement
+        self.snappingEnabled = snappingEnabled
+        self.endpointSnapRadius = endpointSnapRadius
+        self.gridVisible = gridVisible
+        self.vinylCatalogItemId = vinylCatalogItemId
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.measurementSystem = try c.decodeIfPresent(MeasurementSystem.self, forKey: .measurementSystem) ?? .imperial
+        self.angleSnapIncrement = try c.decodeIfPresent(Double.self, forKey: .angleSnapIncrement) ?? 15.0
+        self.lengthSnapIncrement = try c.decodeIfPresent(Double.self, forKey: .lengthSnapIncrement) ?? 6.0
+        self.snappingEnabled = try c.decodeLegacyBoolIfPresent(forKey: .snappingEnabled) ?? true
+        self.endpointSnapRadius = try c.decodeIfPresent(Double.self, forKey: .endpointSnapRadius) ?? 20.0
+        self.gridVisible = try c.decodeLegacyBoolIfPresent(forKey: .gridVisible) ?? true
+        self.vinylCatalogItemId = try c.decodeIfPresent(String.self, forKey: .vinylCatalogItemId)
+    }
 }
 
 // MARK: - Core Geometry
@@ -29,10 +116,39 @@ struct DeckVertex: Identifiable, Codable, Equatable {
     var footingType: FootingType?
     var postType: String?           // product reference
 
-    init(id: String = UUID().uuidString, position: CGPoint, elevation: Double? = nil) {
+    enum CodingKeys: String, CodingKey {
+        case id
+        case position
+        case elevation
+        case elevationSource
+        case footingType
+        case postType
+    }
+
+    init(
+        id: String = UUID().uuidString,
+        position: CGPoint,
+        elevation: Double? = nil,
+        elevationSource: ElevationSource = .manual,
+        footingType: FootingType? = nil,
+        postType: String? = nil
+    ) {
         self.id = id
         self.position = position
         self.elevation = elevation
+        self.elevationSource = elevationSource
+        self.footingType = footingType
+        self.postType = postType
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.position = try c.decode(CGPoint.self, forKey: .position)
+        self.elevation = try c.decodeIfPresent(Double.self, forKey: .elevation)
+        self.elevationSource = try c.decodeIfPresent(ElevationSource.self, forKey: .elevationSource) ?? .manual
+        self.footingType = try c.decodeIfPresent(FootingType.self, forKey: .footingType)
+        self.postType = try c.decodeIfPresent(String.self, forKey: .postType)
     }
 }
 
@@ -74,14 +190,72 @@ struct DeckEdge: Identifiable, Codable, Equatable {
     /// Bug 3d72ce0b.
     var houseEdgeMaterial: HouseEdgeMaterial?
 
+    enum CodingKeys: String, CodingKey {
+        case id
+        case startVertexId
+        case endVertexId
+        case edgeType
+        case dimension
+        case dimensionSource
+        case railingConfig
+        case stairConfig
+        case assignedItems
+        case accuracyPercent
+        case dimensionStale
+        case label
+        case houseEdgeMaterial
+    }
+
     init(
         id: String = UUID().uuidString,
         startVertexId: String,
-        endVertexId: String
+        endVertexId: String,
+        edgeType: EdgeType = .deckEdge,
+        dimension: Double? = nil,
+        dimensionSource: DimensionSource = .manual,
+        railingConfig: RailingConfig? = nil,
+        stairConfig: StairConfig? = nil,
+        assignedItems: [AssignedItem] = [],
+        accuracyPercent: Double? = nil,
+        dimensionStale: Bool = false,
+        label: String? = nil,
+        houseEdgeMaterial: HouseEdgeMaterial? = nil
     ) {
         self.id = id
         self.startVertexId = startVertexId
         self.endVertexId = endVertexId
+        self.edgeType = edgeType
+        self.dimension = dimension
+        self.dimensionSource = dimensionSource
+        self.railingConfig = railingConfig
+        self.stairConfig = stairConfig
+        self.assignedItems = assignedItems
+        self.accuracyPercent = accuracyPercent
+        self.dimensionStale = dimensionStale
+        self.label = label
+        self.houseEdgeMaterial = houseEdgeMaterial
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.startVertexId = try c.decode(String.self, forKey: .startVertexId)
+        self.endVertexId = try c.decode(String.self, forKey: .endVertexId)
+        self.edgeType = try c.decodeIfPresent(EdgeType.self, forKey: .edgeType) ?? .deckEdge
+        self.dimension = try c.decodeIfPresent(Double.self, forKey: .dimension)
+        self.dimensionSource = try c.decodeIfPresent(DimensionSource.self, forKey: .dimensionSource) ?? .manual
+        self.railingConfig = try c.decodeIfPresent(RailingConfig.self, forKey: .railingConfig)
+        self.stairConfig = try c.decodeIfPresent(StairConfig.self, forKey: .stairConfig)
+        self.assignedItems = try c.decodeIfPresent([AssignedItem].self, forKey: .assignedItems) ?? []
+        self.accuracyPercent = try c.decodeIfPresent(Double.self, forKey: .accuracyPercent)
+        self.dimensionStale = try c.decodeLegacyBoolIfPresent(forKey: .dimensionStale) ?? false
+        self.label = try c.decodeIfPresent(String.self, forKey: .label)
+        self.houseEdgeMaterial = try c.decodeIfPresent(HouseEdgeMaterial.self, forKey: .houseEdgeMaterial)
+        if edgeType == .houseEdge {
+            self.railingConfig = nil
+        } else {
+            self.houseEdgeMaterial = nil
+        }
     }
 }
 
@@ -97,14 +271,25 @@ enum EdgeType: String, Codable, CaseIterable {
 /// fill/normal in the 3D scene.
 enum HouseEdgeMaterial: String, Codable, CaseIterable {
     case stucco
-    case hardie         // Hardie board / fiber cement plank
-    case woodVertical   // Vertical board-and-batten / shiplap
+    case hardie             // Hardie board / fiber cement plank
+    case woodVertical       // Vertical board-and-batten / shiplap
+    case brick              // Brick veneer / clay masonry
+    case stone              // Stone veneer / natural stone cladding
+    case vinyl              // Vinyl siding
+    case parapet            // Low capped wall — half-height masonry, used on
+                            // rooftop decks and modern flat-faced builds.
+                            // Bug ee787f29 — explicitly requested as a
+                            // cladding option for high-end residential.
 
     var displayName: String {
         switch self {
         case .stucco:       return "Stucco"
         case .hardie:       return "Hardie Plank"
         case .woodVertical: return "Wood Vertical"
+        case .brick:        return "Brick"
+        case .stone:        return "Stone Veneer"
+        case .vinyl:        return "Vinyl Siding"
+        case .parapet:      return "Parapet Wall"
         }
     }
 
@@ -116,6 +301,10 @@ enum HouseEdgeMaterial: String, Codable, CaseIterable {
         case .stucco:       return "#D6CFC2"   // warm off-white
         case .hardie:       return "#A6A8A3"   // light gray-green
         case .woodVertical: return "#8B6F4F"   // walnut brown
+        case .brick:        return "#8C5A4F"   // muted brick red
+        case .stone:        return "#7A7466"   // weathered limestone
+        case .vinyl:        return "#C2C5C0"   // cool gray-beige
+        case .parapet:      return "#9A8F7E"   // sand-toned masonry cap
         }
     }
 }
@@ -144,10 +333,11 @@ struct RailingConfig: Codable, Equatable {
     var mountType: String = "Topmount"      // Topmount | Sidemount | Surface
     var mountSurface: String = "Surface"    // Surface | Concrete | other
     var postHeight: Double = 36.0           // inches; drives post_set.height (IRC R312 minimum)
+    var wallMaterial: HouseEdgeMaterial = .parapet
 
     enum CodingKeys: String, CodingKey {
         case railingType, maxPostSpacing, assignedItems
-        case color, mountType, mountSurface, postHeight
+        case color, mountType, mountSurface, postHeight, wallMaterial
     }
 
     init(
@@ -157,7 +347,8 @@ struct RailingConfig: Codable, Equatable {
         color: String = "Black",
         mountType: String = "Topmount",
         mountSurface: String = "Surface",
-        postHeight: Double = 36.0
+        postHeight: Double = 36.0,
+        wallMaterial: HouseEdgeMaterial = .parapet
     ) {
         self.railingType = railingType
         self.maxPostSpacing = maxPostSpacing
@@ -166,6 +357,7 @@ struct RailingConfig: Codable, Equatable {
         self.mountType = mountType
         self.mountSurface = mountSurface
         self.postHeight = postHeight
+        self.wallMaterial = wallMaterial
     }
 
     init(from decoder: Decoder) throws {
@@ -181,18 +373,25 @@ struct RailingConfig: Codable, Equatable {
         self.mountType = try c.decodeIfPresent(String.self, forKey: .mountType) ?? "Topmount"
         self.mountSurface = try c.decodeIfPresent(String.self, forKey: .mountSurface) ?? "Surface"
         self.postHeight = try c.decodeIfPresent(Double.self, forKey: .postHeight) ?? 36.0
+        self.wallMaterial = try c.decodeIfPresent(HouseEdgeMaterial.self, forKey: .wallMaterial) ?? .parapet
     }
 }
 
 enum RailingType: String, Codable, CaseIterable {
+    case parapetWall = "parapet_wall"
     case glass
     case picket
     case cable
     case horizontal
     case wood
 
+    static var assignableDefaultTypes: [RailingType] {
+        [.parapetWall]
+    }
+
     var defaultMaxPostSpacing: Double {
         switch self {
+        case .parapetWall: return 96.0
         case .glass:      return 60.0   // 5 feet
         case .picket:     return 84.0   // 7 feet
         case .cable:      return 48.0   // 4 feet
@@ -203,6 +402,7 @@ enum RailingType: String, Codable, CaseIterable {
 
     var displayName: String {
         switch self {
+        case .parapetWall: return "Parapet Wall"
         case .glass:      return "Glass"
         case .picket:     return "Picket"
         case .cable:      return "Cable"
@@ -304,7 +504,7 @@ struct StairConfig: Codable, Equatable {
         self.railingConfig = try c.decodeIfPresent(RailingConfig.self, forKey: .railingConfig)
         self.assignedItems = try c.decodeIfPresent([AssignedItem].self, forKey: .assignedItems) ?? []
         self.totalRiseInches = try c.decodeIfPresent(Double.self, forKey: .totalRiseInches)
-        self.flipDirection = try c.decodeIfPresent(Bool.self, forKey: .flipDirection) ?? false
+        self.flipDirection = try c.decodeLegacyBoolIfPresent(forKey: .flipDirection) ?? false
         self.color = try c.decodeIfPresent(String.self, forKey: .color) ?? "Black"
         self.mountType = try c.decodeIfPresent(String.self, forKey: .mountType) ?? "Surface"
     }
@@ -377,7 +577,7 @@ struct AssignedItem: Identifiable, Codable, Equatable {
         self.unitPrice = try c.decodeIfPresent(Double.self, forKey: .unitPrice)
         self.taskTypeId = try c.decodeIfPresent(String.self, forKey: .taskTypeId)
         self.taskTypeColor = try c.decodeIfPresent(String.self, forKey: .taskTypeColor)
-        self.isGate = try c.decodeIfPresent(Bool.self, forKey: .isGate) ?? false
+        self.isGate = try c.decodeLegacyBoolIfPresent(forKey: .isGate) ?? false
     }
 }
 
@@ -405,6 +605,29 @@ struct DeckFootprint: Codable, Equatable {
     /// (e.g. "BBQ Area", "Hot Tub Pad"). Trimmed to nil when blank.
     /// Bug 4a03f507.
     var label: String?
+
+    enum CodingKeys: String, CodingKey {
+        case assignedItems
+        case isClosed
+        case label
+    }
+
+    init(
+        assignedItems: [AssignedItem] = [],
+        isClosed: Bool = false,
+        label: String? = nil
+    ) {
+        self.assignedItems = assignedItems
+        self.isClosed = isClosed
+        self.label = label
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.assignedItems = try c.decodeIfPresent([AssignedItem].self, forKey: .assignedItems) ?? []
+        self.isClosed = try c.decodeLegacyBoolIfPresent(forKey: .isClosed) ?? false
+        self.label = try c.decodeIfPresent(String.self, forKey: .label)
+    }
 }
 
 // MARK: - Surfaces (Multi-Polygon)
@@ -495,6 +718,39 @@ struct DeckDrawingData: Codable {
     /// for rendering. Absent on legacy JSON; backfilled on first load
     /// (deck-catalog integration spec § 3.2 + § 4.2).
     var components: [DesignComponentRow]? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case vertices
+        case edges
+        case footprint
+        case surfaces
+        case config
+        case overallElevation
+        case scaleFactor
+        case poolDiameter
+        case photoOverlay
+        case levels
+        case levelConnections
+        case components
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.vertices = try c.decodeIfPresent([DeckVertex].self, forKey: .vertices) ?? []
+        self.edges = try c.decodeIfPresent([DeckEdge].self, forKey: .edges) ?? []
+        self.footprint = try c.decodeIfPresent(DeckFootprint.self, forKey: .footprint) ?? DeckFootprint()
+        self.surfaces = try c.decodeIfPresent([DeckSurface].self, forKey: .surfaces) ?? []
+        self.config = try c.decodeIfPresent(DrawingConfig.self, forKey: .config) ?? DrawingConfig()
+        self.overallElevation = try c.decodeIfPresent(Double.self, forKey: .overallElevation)
+        self.scaleFactor = try c.decodeIfPresent(Double.self, forKey: .scaleFactor)
+        self.poolDiameter = try c.decodeIfPresent(Double.self, forKey: .poolDiameter)
+        self.photoOverlay = try c.decodeIfPresent(PhotoOverlayState.self, forKey: .photoOverlay)
+        self.levels = try c.decodeIfPresent([DeckLevel].self, forKey: .levels) ?? []
+        self.levelConnections = try c.decodeIfPresent([LevelConnection].self, forKey: .levelConnections) ?? []
+        self.components = try c.decodeIfPresent([DesignComponentRow].self, forKey: .components)
+    }
 
     // MARK: - Vertex Helpers
 
@@ -646,12 +902,24 @@ struct DeckDrawingData: Codable {
         SurfaceDetector.detect(vertices: vertices, edges: edges)
     }
 
-    /// True when the drawing has at least one closed surface. More permissive
-    /// than `isClosed`, which requires every vertex to be on the perimeter
-    /// of one Hamiltonian cycle. Use this when you want to know "is there
-    /// any fillable shape on screen yet".
+    /// True when the drawing has at least one closed surface — anywhere.
+    /// More permissive than `isClosed`, which requires every vertex to be
+    /// on the perimeter of one Hamiltonian cycle (so two disjoint deck
+    /// footprints, or two separate levels each with their own footprint,
+    /// both register as "not closed" via the single-loop walk). Use this
+    /// to gate UI that should appear as soon as ANY closed shape exists —
+    /// 3D preview, area/perimeter badges, estimate eligibility.
+    /// Multi-level aware: in multi-level mode the top-level vertices/edges
+    /// arrays are empty (all geometry lives on the levels), so we ask each
+    /// level for its own detected surfaces. Bug ee787f29 follow-up — the
+    /// DeckTabView 3D viewer was gating on `isClosed`, which always
+    /// returned false in multi-level mode and falsely shows the "close the
+    /// polygon" empty state.
     var hasAnyClosedSurface: Bool {
-        !detectedSurfaces.isEmpty
+        if isMultiLevel {
+            return levels.contains(where: { !$0.detectedSurfaces.isEmpty })
+        }
+        return !detectedSurfaces.isEmpty
     }
 
     // MARK: - Multi-Level Helpers
@@ -670,14 +938,46 @@ struct DeckDrawingData: Codable {
         isMultiLevel ? levels.flatMap { $0.edges } : edges
     }
 
+    /// The scale every real-world measurement on this drawing should use:
+    /// the calibrated `scaleFactor` once the user has confirmed a dimension
+    /// (or AR / sketch scan / template set it), otherwise the prescale
+    /// fallback the canvas already draws, snaps and dimensions every edge at.
+    /// A freehand-drawn deck has `scaleFactor == nil` yet is still at a
+    /// sound, internally-consistent scale — every edge already carries a
+    /// real `dimension` derived from this same fallback. Gating measurement
+    /// on `scaleFactor != nil` wrongly treated every un-recalibrated deck as
+    /// unmeasurable. Always > 0.
+    var effectiveScaleFactor: Double {
+        if let scaleFactor, scaleFactor > 0 { return scaleFactor }
+        return DeckBuilderViewModel.prescaleFallbackScale
+    }
+
     /// Total area across all levels in square inches
     func totalRealWorldArea(scaleFactor: Double) -> Double {
         if isMultiLevel {
             return levels.reduce(0) { total, level in
-                total + PolygonMath.realWorldArea(vertices: level.orderedPositions, scaleFactor: scaleFactor)
+                let surfaces = level.detectedSurfaces
+                if surfaces.isEmpty {
+                    guard level.isClosed,
+                          !PolygonMath.isSelfIntersecting(vertices: level.orderedPositions) else { return total }
+                    return total + PolygonMath.realWorldArea(vertices: level.orderedPositions, scaleFactor: scaleFactor)
+                }
+                return total + surfaces.reduce(0) { surfaceTotal, surface in
+                    guard !PolygonMath.isSelfIntersecting(vertices: surface.positions) else { return surfaceTotal }
+                    return surfaceTotal + PolygonMath.realWorldArea(vertices: surface.positions, scaleFactor: scaleFactor)
+                }
             }
         }
-        return PolygonMath.realWorldArea(vertices: orderedPositions, scaleFactor: scaleFactor)
+        let surfaces = detectedSurfaces
+        if surfaces.isEmpty {
+            guard isClosed,
+                  !PolygonMath.isSelfIntersecting(vertices: orderedPositions) else { return 0 }
+            return PolygonMath.realWorldArea(vertices: orderedPositions, scaleFactor: scaleFactor)
+        }
+        return surfaces.reduce(0) { total, surface in
+            guard !PolygonMath.isSelfIntersecting(vertices: surface.positions) else { return total }
+            return total + PolygonMath.realWorldArea(vertices: surface.positions, scaleFactor: scaleFactor)
+        }
     }
 
     /// Get a level by ID
@@ -697,6 +997,69 @@ struct DeckDrawingData: Codable {
         guard let upper = level(byId: upperLevelId)?.elevation,
               let lower = level(byId: lowerLevelId)?.elevation else { return nil }
         return (upper - lower) * 12.0  // feet to inches
+    }
+
+    // MARK: - Render Elevation Resolution
+
+    /// Uniform render elevation (in feet) for one level of a multi-level
+    /// design. The 3D scene draws each level's surface as a single flat
+    /// polygon, so it needs ONE representative height per level — and the
+    /// deck builder stores that height in more than one place depending on
+    /// how the user entered it. Reading `level.elevation` alone is the bug:
+    /// it is only ever written by `migrateToMultiLevel` (level 0) and
+    /// `LevelConnectionSheet` (stair wiring), so any level the user never
+    /// connected stays nil and the renderer collapses it onto a flat 2.5'.
+    /// Live data confirms this — every saved multi-level design has
+    /// `elevation: null` on every level.
+    ///
+    /// Resolution order:
+    /// 1. `level.elevation` — the explicit uniform per-level height.
+    /// 2. The average of the level's per-vertex `elevation` values — the
+    ///    "sloped" elevation mode and single-vertex height edits write here.
+    /// 3. A staggered height — `base + levelIndex × 2.5'` — so levels never
+    ///    collapse onto one another when no per-level height was recorded.
+    ///    `base` is `overallElevation` when set: in multi-level mode the
+    ///    elevation editor only exposes a single overall-height field, so
+    ///    the user's typed height lands there rather than on any level.
+    ///    Staggering off that base — instead of using it flat for every
+    ///    level — is what both honors the user's input AND keeps the levels
+    ///    visually separated.
+    func renderElevationFeet(for level: DeckLevel, levelIndex: Int) -> Double {
+        if let elevation = level.elevation { return elevation }
+        let vertexElevations = level.vertices.compactMap { $0.elevation }
+        if !vertexElevations.isEmpty {
+            return vertexElevations.reduce(0, +) / Double(vertexElevations.count)
+        }
+        let baseFeet = overallElevation ?? 2.5
+        return baseFeet + Double(levelIndex) * 2.5
+    }
+
+    /// Uniform render elevation (in feet) for a single-level design.
+    /// Priority: `overallElevation` → average of per-vertex elevations →
+    /// the 2.5' default — so single-level designs resolve height with the
+    /// same per-vertex fallback as `renderElevationFeet(for:levelIndex:)`.
+    var renderElevationFeetSingleLevel: Double {
+        if let overall = overallElevation { return overall }
+        let vertexElevations = vertices.compactMap { $0.elevation }
+        if !vertexElevations.isEmpty {
+            return vertexElevations.reduce(0, +) / Double(vertexElevations.count)
+        }
+        return 2.5
+    }
+
+    /// Vertical gap (in feet) from a level's surface up to the bottom of the
+    /// next level above it, or nil when no level sits higher. A house wall on
+    /// a level must stop at the deck above rather than spear through it, so
+    /// the 3D renderers cap the wall at this gap (bug fb007839). Uses the
+    /// same resolved heights as `renderElevationFeet(for:levelIndex:)`.
+    func heightToNextLevelFeet(aboveLevelAt levelIndex: Int) -> Double? {
+        guard levelIndex >= 0, levelIndex < levels.count else { return nil }
+        let thisElevation = renderElevationFeet(for: levels[levelIndex], levelIndex: levelIndex)
+        let higherElevations = levels.enumerated()
+            .map { renderElevationFeet(for: $0.element, levelIndex: $0.offset) }
+            .filter { $0 > thisElevation }
+        guard let nextElevation = higherElevations.min() else { return nil }
+        return nextElevation - thisElevation
     }
 
     /// Migrate single-level data to multi-level (called when adding a second level)

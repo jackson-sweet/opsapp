@@ -507,3 +507,73 @@ final class Project: Identifiable {
     }
 }
 
+enum ProjectVinylOrderFields {
+    static let status = "vinyl_order_status"
+    static let orderedAt = "vinyl_ordered_at"
+    static let orderedBy = "vinyl_ordered_by"
+}
+
+enum ProjectVinylOrderStatus: String, Codable, CaseIterable {
+    case notOrdered = "not_ordered"
+    case ordered
+
+    var displayLabel: String {
+        switch self {
+        case .notOrdered: return "NOT ORDERED"
+        case .ordered: return "ORDERED"
+        }
+    }
+}
+
+/// Local projection for the project-level vinyl order marker.
+///
+/// The server source of truth is still `projects.vinyl_order_*`; this separate
+/// SwiftData model avoids changing the long-lived `Project` schema while giving
+/// the Details tab and Vinyl Order sheet an offline-readable status row.
+@Model
+final class ProjectVinylOrderMarker: Identifiable {
+    @Attribute(.unique) var id: String
+    var statusRaw: String
+    var orderedAt: Date?
+    var orderedBy: String?
+    var sourceProjectUpdatedAt: Date?
+    var lastSyncedAt: Date?
+
+    init(
+        projectId: String,
+        status: ProjectVinylOrderStatus = .notOrdered,
+        orderedAt: Date? = nil,
+        orderedBy: String? = nil,
+        sourceProjectUpdatedAt: Date? = nil
+    ) {
+        self.id = projectId
+        self.statusRaw = status.rawValue
+        self.orderedAt = orderedAt
+        self.orderedBy = orderedBy
+        self.sourceProjectUpdatedAt = sourceProjectUpdatedAt
+        self.lastSyncedAt = nil
+    }
+
+    var projectId: String { id }
+
+    var status: ProjectVinylOrderStatus {
+        get { ProjectVinylOrderStatus(rawValue: statusRaw) ?? .notOrdered }
+        set { statusRaw = newValue.rawValue }
+    }
+
+    var isOrdered: Bool {
+        status == .ordered
+    }
+
+    func markOrdered(at date: Date, by userId: String?) {
+        status = .ordered
+        orderedAt = date
+        orderedBy = userId
+    }
+
+    func clearOrdered() {
+        status = .notOrdered
+        orderedAt = nil
+        orderedBy = nil
+    }
+}

@@ -21,12 +21,14 @@ struct StairCalculator {
     ///   - width: Stair width in inches
     ///   - risePerStep: Max rise per step (IRC R311.7: 7.75" max, default 7.5")
     ///   - runPerTread: Min run per tread (IRC R311.7: 10" min)
+    ///   - treadCountOverride: Optional user-entered tread count.
     /// - Returns: Complete stair specification
     static func calculate(
         totalRise: Double,
         width: Double,
         risePerStep: Double = 7.5,
-        runPerTread: Double = 10.0
+        runPerTread: Double = 10.0,
+        treadCountOverride: Int? = nil
     ) -> StairSpec {
         guard totalRise > 0, width > 0 else {
             print("[DeckBuilder] StairCalculator: invalid inputs (rise: \(totalRise), width: \(width))")
@@ -37,9 +39,12 @@ struct StairCalculator {
             )
         }
 
-        let treadCount = StairConfig.calculateTreadCount(
-            totalRise: totalRise,
-            risePerStep: risePerStep
+        let treadCount = max(
+            1,
+            treadCountOverride ?? StairConfig.calculateTreadCount(
+                totalRise: totalRise,
+                risePerStep: risePerStep
+            )
         )
 
         // Adjust actual rise per step to be uniform

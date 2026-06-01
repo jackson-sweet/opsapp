@@ -9,6 +9,102 @@
 import SwiftUI
 import SwiftData
 
+final class EstimateAcceptanceIdempotencyStore {
+    static let shared = EstimateAcceptanceIdempotencyStore()
+
+    private let userDefaults: UserDefaults
+    private let namespace: String
+
+    init(
+        userDefaults: UserDefaults = .standard,
+        namespace: String = "ops.estimate.acceptance"
+    ) {
+        self.userDefaults = userDefaults
+        self.namespace = namespace
+    }
+
+    func idempotencyKey(companyId: String, estimateId: String) -> String {
+        let storageKey = "\(namespace).\(companyId).\(estimateId)"
+        if let existing = userDefaults.string(forKey: storageKey), !existing.isEmpty {
+            return existing
+        }
+
+        let generated = "estimate-acceptance:\(companyId):\(estimateId):\(UUID().uuidString)"
+        userDefaults.set(generated, forKey: storageKey)
+        return generated
+    }
+}
+
+struct EstimateAcceptanceOverrunDetail: Equatable {
+    let demandKey: String?
+    let catalogVariantId: String?
+    let requiredQuantity: Double?
+    let availableQuantityAtBooking: Double?
+    let projectedOverrunQuantity: Double?
+    let availabilityBasis: String?
+
+    init(
+        demandKey: String?,
+        catalogVariantId: String?,
+        requiredQuantity: Double?,
+        availableQuantityAtBooking: Double?,
+        projectedOverrunQuantity: Double?,
+        availabilityBasis: String?
+    ) {
+        self.demandKey = demandKey
+        self.catalogVariantId = catalogVariantId
+        self.requiredQuantity = requiredQuantity
+        self.availableQuantityAtBooking = availableQuantityAtBooking
+        self.projectedOverrunQuantity = projectedOverrunQuantity
+        self.availabilityBasis = availabilityBasis
+    }
+
+    init(overrun: AcceptEstimateOverrunDTO) {
+        self.init(
+            demandKey: overrun.demandKey,
+            catalogVariantId: overrun.catalogVariantId,
+            requiredQuantity: overrun.requiredQuantity,
+            availableQuantityAtBooking: overrun.availableQuantityAtBooking,
+            projectedOverrunQuantity: overrun.projectedOverrunQuantity,
+            availabilityBasis: overrun.availabilityBasis
+        )
+    }
+}
+
+enum EstimateApprovalUIState: Equatable {
+    case idle
+    case submitting
+    case accepted(
+        projectId: String?,
+        inventoryMode: String?,
+        warningCount: Int,
+        missingMappingCount: Int,
+        overrunCount: Int,
+        overrunDetails: [EstimateAcceptanceOverrunDetail],
+        idempotentReplay: Bool
+    )
+    case failed(String)
+
+    var isSubmitting: Bool {
+        if case .submitting = self { return true }
+        return false
+    }
+}
+
+enum EstimateAcceptanceError: LocalizedError {
+    case missingClient
+    case rejected
+
+    var errorDescription: String? {
+        switch self {
+        case .missingClient:
+            return "Estimate approval is not ready. Reopen the estimate and try again."
+        case .rejected:
+            return "Estimate acceptance did not complete."
+        }
+    }
+}
+
 @MainActor
 class EstimateViewModel: ObservableObject {
     @Published var estimates: [Estimate] = []
@@ -16,9 +112,21 @@ class EstimateViewModel: ObservableObject {
     @Published var searchText: String = ""
     @Published var isLoading: Bool = false
     @Published var error: String? = nil
+    @Published private var approvalStateByEstimateId: [String: EstimateApprovalUIState] = [:]
 
     private var repository: EstimateRepository?
+    private var acceptanceClient: EstimateAcceptanceClient?
+    private let acceptanceClientFactory: (String) -> EstimateAcceptanceClient
+    private let acceptanceIdempotencyStore: EstimateAcceptanceIdempotencyStore
     private var modelContext: ModelContext?
+
+    init(
+        acceptanceClientFactory: @escaping (String) -> EstimateAcceptanceClient = { EstimateRepository(companyId: $0) },
+        acceptanceIdempotencyStore: EstimateAcceptanceIdempotencyStore = .shared
+    ) {
+        self.acceptanceClientFactory = acceptanceClientFactory
+        self.acceptanceIdempotencyStore = acceptanceIdempotencyStore
+    }
 
     enum EstimateFilter: String, CaseIterable {
         case all      = "ALL"
@@ -46,8 +154,13 @@ class EstimateViewModel: ObservableObject {
 
     func setup(companyId: String, modelContext: ModelContext) {
         self.repository = EstimateRepository(companyId: companyId)
+        self.acceptanceClient = acceptanceClientFactory(companyId)
         self.modelContext = modelContext
         reloadFromLocal()
+    }
+
+    func approvalState(for estimateId: String) -> EstimateApprovalUIState {
+        approvalStateByEstimateId[estimateId] ?? .idle
     }
 
     /// Runs on the main thread (SwiftData's ModelContext is not thread-safe).
@@ -195,7 +308,58 @@ class EstimateViewModel: ObservableObject {
     }
 
     func markApproved(_ estimate: Estimate) async {
-        await updateStatus(estimate, to: .approved)
+        let originalStatus = estimate.status
+        let originalProjectId = estimate.projectId
+        let idempotencyKey = acceptanceIdempotencyStore.idempotencyKey(
+            companyId: estimate.companyId,
+            estimateId: estimate.id
+        )
+
+        approvalStateByEstimateId[estimate.id] = .submitting
+        error = nil
+
+        do {
+            guard let acceptanceClient else {
+                throw EstimateAcceptanceError.missingClient
+            }
+
+            let response = try await acceptanceClient.acceptEstimateToJob(
+                estimateId: estimate.id,
+                idempotencyKey: idempotencyKey
+            )
+
+            guard response.ok else {
+                throw EstimateAcceptanceError.rejected
+            }
+
+            estimate.status = .approved
+            estimate.projectId = response.projectId ?? response.projectTaskResult?.projectId ?? originalProjectId
+            estimate.updatedAt = Date()
+            estimate.lastSyncedAt = Date()
+            try modelContext?.save()
+
+            let overruns = response.overruns.isEmpty
+                ? response.bookingProjectionResult?.overruns ?? []
+                : response.overruns
+
+            approvalStateByEstimateId[estimate.id] = .accepted(
+                projectId: estimate.projectId,
+                inventoryMode: response.inventoryMode ?? response.bookingProjectionResult?.inventoryMode,
+                warningCount: response.warnings.count,
+                missingMappingCount: response.missingMappings.count,
+                overrunCount: overruns.count,
+                overrunDetails: overruns.map { EstimateAcceptanceOverrunDetail(overrun: $0) },
+                idempotentReplay: response.idempotentReplay
+            )
+            reloadFromLocal()
+        } catch {
+            estimate.status = originalStatus
+            estimate.projectId = originalProjectId
+            try? modelContext?.save()
+            let message = error.localizedDescription
+            approvalStateByEstimateId[estimate.id] = .failed(message)
+            self.error = message
+        }
     }
 
     func convertToInvoice(_ estimate: Estimate) async {

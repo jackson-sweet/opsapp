@@ -409,7 +409,7 @@ struct LineItemEditSheet: View {
             get: { current },
             set: { configuredOptions[opt.id] = .boolean($0) }
         ))
-        .tint(OPSStyle.Colors.primaryAccent)
+        .tint(OPSStyle.Colors.text)
         .labelsHidden()
     }
 
@@ -431,7 +431,7 @@ struct LineItemEditSheet: View {
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }
-        .tint(OPSStyle.Colors.primaryAccent)
+        .tint(OPSStyle.Colors.text)
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
     }

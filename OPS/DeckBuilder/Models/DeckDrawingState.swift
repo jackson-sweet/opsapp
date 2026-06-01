@@ -40,6 +40,7 @@ enum DrawingMode: Equatable {
     case selecting(rect: CGRect)                   // dragging a selection rectangle
     case lassoing(points: [CGPoint])               // drawing a freeform lasso
     case draggingVertex(vertexId: String)           // repositioning a vertex in 2D
+    case movingSelection                            // repositioning selected geometry as one XY group
 }
 
 struct SelectionState: Equatable {

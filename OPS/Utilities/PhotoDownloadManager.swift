@@ -98,7 +98,7 @@ class PhotoDownloadManager: ObservableObject {
     // MARK: - Download
 
     /// Download a single photo and cache to disk
-    func downloadPhoto(_ url: String) async -> Bool {
+    func downloadPhoto(_ url: String, timeout: TimeInterval? = nil) async -> Bool {
         let cacheKey = url.hasPrefix("//") ? "https:" + url : url
         guard let imageURL = URL(string: cacheKey) else { return false }
 
@@ -109,7 +109,11 @@ class PhotoDownloadManager: ObservableObject {
         }
 
         do {
-            let (data, response) = try await URLSession.shared.data(from: imageURL)
+            var request = URLRequest(url: imageURL)
+            if let timeout, timeout > 0 {
+                request.timeoutInterval = timeout
+            }
+            let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse,
                   (200...299).contains(httpResponse.statusCode),
                   UIImage(data: data) != nil else {

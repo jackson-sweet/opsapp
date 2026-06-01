@@ -88,8 +88,8 @@ final class TaskType: Identifiable {
     /// Check if this task type can be deleted
     var canDelete: Bool {
         // Default task types cannot be deleted
-        // Also check if any tasks are using this type
-        return !isDefault && tasks.isEmpty
+        // Also block if any active tasks are using this type
+        return !isDefault && tasks.allSatisfy { $0.deletedAt != nil }
     }
     
     // MARK: - Default Task Types
@@ -176,5 +176,16 @@ final class TaskType: Identifiable {
                 icon: "checkmark.circle.fill"
             )
         ]
+    }
+}
+
+// MARK: - Hashable
+extension TaskType: Hashable {
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
+    static func == (lhs: TaskType, rhs: TaskType) -> Bool {
+        lhs.id == rhs.id
     }
 }

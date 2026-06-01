@@ -19,6 +19,11 @@ struct LoginView: View {
     var onBack: (() -> Void)?
     /// Called when login succeeds but user hasn't completed onboarding (no company)
     var onNeedsOnboarding: (() -> Void)?
+    /// Called at the exact moment a returning login flips authentication on
+    /// (email/password, Apple, or Google). Lets the host arm the workspace
+    /// preload gate so the user isn't dropped into the app mid-sync
+    /// (bug 95bf7c82). Fired immediately before `isAuthenticated` is set true.
+    var onAuthenticated: (() -> Void)?
 
     @State private var username = ""
     @State private var password = ""
@@ -219,6 +224,7 @@ struct LoginView: View {
 
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                         showLoginSuccess = false
+                        onAuthenticated?()
                         dataController.isAuthenticated = true
                     }
                 } else if loginError == nil && dataController.currentUser != nil {
@@ -263,6 +269,7 @@ struct LoginView: View {
                 isLoggingIn = false
 
                 if success {
+                    onAuthenticated?()
                     dataController.isAuthenticated = true
                 } else if dataController.currentUser != nil {
                     // Login succeeded but onboarding incomplete — route to onboarding
@@ -305,6 +312,7 @@ struct LoginView: View {
                 isLoggingIn = false
 
                 if success {
+                    onAuthenticated?()
                     dataController.isAuthenticated = true
                 } else if dataController.currentUser != nil {
                     // Login succeeded but onboarding incomplete — route to onboarding

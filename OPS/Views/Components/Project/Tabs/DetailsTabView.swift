@@ -23,6 +23,10 @@ struct DetailsTabView: View {
     var onCancelTask: ((ProjectTask) -> Void)? = nil
     var onDeleteTask: ((ProjectTask) -> Void)? = nil
     var onClientLongPress: (() -> Void)? = nil
+    /// Opens the existing `ProjectStatusChangeSheet` (wired in
+    /// ProjectDetailsView via `showingStatusPicker`). Bug f3a300f7 — the
+    /// Details surface previously had no affordance to reach that sheet.
+    var onChangeStatus: (() -> Void)? = nil
 
     /// All Users in the store. Used to resolve team member avatars from the
     /// authoritative `teamMemberIdsString` CSV on both Project and ProjectTask.
@@ -32,6 +36,7 @@ struct DetailsTabView: View {
     /// in a separate batch, or `linkAllRelationships` may not have run yet
     /// for a freshly-inserted local row).
     @Query private var allUsers: [User]
+    @Query private var vinylOrderMarkers: [ProjectVinylOrderMarker]
 
     private var userById: [String: User] {
         Dictionary(allUsers.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -46,8 +51,21 @@ struct DetailsTabView: View {
         return ids.compactMap { userById[$0] }
     }
 
+    private var vinylOrderMarker: ProjectVinylOrderMarker? {
+        vinylOrderMarkers.first { $0.projectId == project.id }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
+            // STATUS — current project status + manual change control.
+            // Bug f3a300f7 — opens the existing ProjectStatusChangeSheet
+            // through the parent's `showingStatusPicker` hook.
+            StatusSection(
+                status: project.status,
+                canEdit: viewModel.canEditProject,
+                onChangeStatus: onChangeStatus
+            )
+
             // PROJECT TIMELINE — dates + task progress
             if project.hasTasks {
                 ProjectTimelineSection(project: project)
@@ -74,6 +92,16 @@ struct DetailsTabView: View {
                     viewModel.saveAddress()
                 }
             )
+
+            if PermissionStore.shared.isFeatureEnabled("deck_builder")
+                && PermissionStore.shared.can("deck_builder.view", requiredScope: "assigned") {
+                VinylOrderMarkerSection(
+                    marker: vinylOrderMarker,
+                    canEdit: viewModel.canEditVinylOrderMarker,
+                    isUpdating: viewModel.isUpdatingVinylOrderMarker,
+                    onToggle: { ordered in viewModel.setVinylOrdered(ordered) }
+                )
+            }
 
             // TASKS
             TaskListSection(
@@ -228,6 +256,76 @@ private struct ProjectTimelineSection: View {
     }
 }
 
+// MARK: - Status Section
+
+/// Project status row — shows the current status as the app's standard
+/// job-status badge and, for users with edit permission, opens the existing
+/// `ProjectStatusChangeSheet` picker. Mirrors the Details-tab card pattern
+/// (section label outside, `cardBackgroundDark` card with `cardBorder`).
+///
+/// Bug f3a300f7 — the status picker sheet and its `showingStatusPicker`
+/// hook already existed in ProjectDetailsView but nothing on the Details
+/// surface ever triggered it. This section is that trigger.
+private struct StatusSection: View {
+    let status: Status
+    let canEdit: Bool
+    var onChangeStatus: (() -> Void)? = nil
+
+    // Compact, single-line status field — a labelled value row, not a
+    // content-weight glass card. A single enum value doesn't warrant the same
+    // card the content-rich sections use; the original full card read oversized
+    // and bolted-on at the top of the tab (bug f3a300f7 follow-up).
+    private var row: some View {
+        HStack(spacing: 12) {
+            // Inline label — reuses the app's `[ LABEL ]` section-label convention.
+            Text("[ STATUS ]")
+                .font(OPSStyle.Typography.smallCaption)
+                .textCase(.uppercase)
+                .tracking(1)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            Spacer(minLength: 12)
+
+            // Current status — canonical badge at the standard (medium) size.
+            StatusBadge.forJobStatus(status, size: .medium)
+
+            // The whole row is tappable; a chevron signals it (no separate label).
+            if canEdit {
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+        }
+        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+        .padding(.horizontal, 16)
+        .contentShape(Rectangle())
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if canEdit, let onChangeStatus {
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onChangeStatus()
+                }) {
+                    row
+                }
+                .buttonStyle(PlainButtonStyle())
+            } else {
+                row
+            }
+
+            // Hairline anchors the backgroundless field above the content
+            // sections below it.
+            Rectangle()
+                .fill(OPSStyle.Colors.separator)
+                .frame(height: 1)
+                .padding(.horizontal, 16)
+                .padding(.top, OPSStyle.Layout.spacing2)
+        }
+    }
+}
+
 // MARK: - Client Section
 
 struct ClientSection: View {
@@ -370,6 +468,76 @@ struct ClientSection: View {
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
         .padding(.horizontal, 16)
+    }
+}
+
+// MARK: - Vinyl Order Marker
+
+private struct VinylOrderMarkerSection: View {
+    let marker: ProjectVinylOrderMarker?
+    let canEdit: Bool
+    let isUpdating: Bool
+    let onToggle: (Bool) -> Void
+
+    private var status: ProjectVinylOrderStatus {
+        marker?.status ?? .notOrdered
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("VINYL")
+
+            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("ORDER STATUS")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text(status.displayLabel)
+                        .font(OPSStyle.Typography.dataValue)
+                        .foregroundColor(status == .ordered ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryText)
+                    if let orderedAt = marker?.orderedAt, status == .ordered {
+                        Text("ORDERED \(DateHelper.simpleDateString(from: orderedAt).uppercased())")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                Button {
+                    onToggle(status != .ordered)
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        if isUpdating {
+                            ProgressView()
+                                .tint(OPSStyle.Colors.primaryText)
+                        }
+                        Text(status == .ordered ? "CLEAR ORDERED" : "MARK ORDERED")
+                            .font(OPSStyle.Typography.buttonLabel)
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .background(OPSStyle.Colors.surfaceHover)
+                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                            .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(!canEdit || isUpdating)
+                .opacity(canEdit ? 1 : 0.45)
+            }
+            .padding(14)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+            )
+            .padding(.horizontal, 16)
+        }
     }
 }
 

@@ -229,6 +229,20 @@ extension SupabaseProjectDTO {
         project.updatedAt = updatedAt.flatMap { SupabaseDate.parse($0) }
         return project
     }
+
+    func toVinylOrderMarkerModel() -> ProjectVinylOrderMarker {
+        ProjectVinylOrderMarker(
+            projectId: id,
+            status: resolvedVinylOrderStatus,
+            orderedAt: vinylOrderedAt.flatMap { SupabaseDate.parse($0) },
+            orderedBy: vinylOrderedBy,
+            sourceProjectUpdatedAt: updatedAt.flatMap { SupabaseDate.parse($0) }
+        )
+    }
+
+    var resolvedVinylOrderStatus: ProjectVinylOrderStatus {
+        ProjectVinylOrderStatus(rawValue: vinylOrderStatus ?? "") ?? .notOrdered
+    }
 }
 
 // MARK: - SupabaseProjectTaskDTO → ProjectTask

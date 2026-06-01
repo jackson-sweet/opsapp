@@ -607,7 +607,7 @@ struct NotificationSettingsView: View {
                     }
                 ))
                 .labelsHidden()
-                .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+                .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
             }
             .padding(.vertical, 14)
             .padding(.horizontal, 16)
@@ -912,7 +912,7 @@ struct NotificationSettingsView: View {
 
                 Toggle("", isOn: $isMuted)
                     .labelsHidden()
-                    .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+                    .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
                     .onChange(of: isMuted) { _, newValue in
                         if newValue {
                             muteUntil = Date().addingTimeInterval(Double(muteHours) * 3600).timeIntervalSince1970

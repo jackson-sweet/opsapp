@@ -17,7 +17,7 @@ struct ProjectPhotosGrid: View {
     @State private var cameraImage: UIImage?
     @State private var processingImage = false
     @State private var showingDeleteConfirmation = false
-    @State private var photoToDelete: String? = nil
+    @State private var photoDeleteTarget: ProjectPhotoDeleteTarget?
     @State private var longPressingPhotoIndex: Int? = nil
     @State private var showingNetworkError = false
     @State private var networkErrorMessage = ""
@@ -99,7 +99,7 @@ struct ProjectPhotosGrid: View {
                                         longPressingPhotoIndex = nil
                                         
                                         // Show delete confirmation
-                                        photoToDelete = item.sourceURL
+                                        photoDeleteTarget = item.deleteTarget
                                         showingDeleteConfirmation = true
                                     } onPressingChanged: { isPressing in
                                         // Visual feedback while pressing - happens immediately
@@ -206,11 +206,11 @@ struct ProjectPhotosGrid: View {
         // Delete confirmation alert
         .alert("Delete Photo?", isPresented: $showingDeleteConfirmation) {
             Button("Cancel", role: .cancel) {
-                photoToDelete = nil
+                photoDeleteTarget = nil
             }
             Button("Delete", role: .destructive) {
-                if let urlToDelete = photoToDelete {
-                    deletePhoto(urlToDelete)
+                if let target = photoDeleteTarget {
+                    deletePhoto(target)
                 }
             }
         } message: {
@@ -452,6 +452,7 @@ struct BasicPhotoViewer: View {
     let onDismiss: () -> Void
     var projectId: String? = nil
 
+    @Environment(\.modelContext) private var modelContext
     @State private var currentIndex: Int
     @State private var showingAnnotation = false
 
@@ -524,7 +525,8 @@ struct BasicPhotoViewer: View {
                         if currentIndex < photos.count {
                             PhotoAnnotationView(
                                 photoURL: sourcePhotoURL(at: currentIndex),
-                                projectId: projectId
+                                projectId: projectId,
+                                existingAnnotation: existingAnnotation(at: currentIndex)
                             )
                         }
                     }
@@ -536,6 +538,17 @@ struct BasicPhotoViewer: View {
     private func sourcePhotoURL(at index: Int) -> String {
         guard sourcePhotos.indices.contains(index) else { return photos[index] }
         return sourcePhotos[index]
+    }
+
+    private func existingAnnotation(at index: Int) -> PhotoAnnotation? {
+        let sourceURL = sourcePhotoURL(at: index)
+        let descriptor = FetchDescriptor<PhotoAnnotation>(
+            predicate: #Predicate {
+                $0.photoURL == sourceURL && $0.deletedAt == nil
+            },
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        return try? modelContext.fetch(descriptor).first
     }
 }
 
@@ -691,7 +704,6 @@ struct SinglePhotoView: View {
 
 // MARK: - Project Photo Management
 extension ProjectPhotosGrid {
-
     fileprivate func displayedPhotoItems(from sourceURLs: [String]) -> [ProjectPhotoDisplayItem] {
         ProjectPhotoDisplayMapper.items(
             sourceURLs: sourceURLs,
@@ -720,62 +732,202 @@ extension ProjectPhotosGrid {
             .compactMap { $0.renderedPhotoURL?.isEmpty == false ? $0.renderedPhotoURL : nil }
     }
 
+    static func annotationMatchesDeleteTarget(
+        _ annotation: PhotoAnnotation,
+        sourceURL: String,
+        renderedURL: String?
+    ) -> Bool {
+        if annotation.photoURL == sourceURL {
+            return true
+        }
+
+        guard let renderedURL, !renderedURL.isEmpty else {
+            return false
+        }
+
+        return annotation.renderedPhotoURL == renderedURL
+    }
+
     /// Delete a single photo from the project
-    private func deletePhoto(_ url: String) {
-        // Start a background task for deletion
+    private func deletePhoto(_ target: ProjectPhotoDeleteTarget) {
         Task {
-            
-            // Get current project images
-            var currentImages = project.getProjectImages()
-            
-            // Remove the specified image
-            if let index = currentImages.firstIndex(of: url) {
-                currentImages.remove(at: index)
-                
-                // Use ImageSyncManager if available
-                if let imageSyncManager = dataController.imageSyncManager {
-                    
-                    // Delete the image through the ImageSyncManager
-                    let success = await imageSyncManager.deleteImage(url, from: project)
-                    
-                    if success {
-                    } else {
-                    }
-                } else {
-                    // Fallback to direct file deletion if ImageSyncManager is not available
-                    
-                    // Clean up file storage
-                    if url.hasPrefix("local://") {
-                        let deleted = ImageFileManager.shared.deleteImage(localID: url)
-                    }
-                    
-                    // Also clean up UserDefaults (for legacy support)
-                    UserDefaults.standard.removeObject(forKey: url)
-                }
-                
-                // Update project in database
-                await MainActor.run {
-                    // Update project
-                    project.setProjectImageURLs(currentImages)
-                    project.needsSync = true
-                    project.syncPriority = 2 // Higher priority for image changes
-                    
-                    // Save changes to the database
-                    if let modelContext = dataController.modelContext {
-                        do {
-                            try modelContext.save()
-                        } catch {
-                        }
-                    } else {
-                    }
-                    
-                    // Reset state
-                    photoToDelete = nil
-                }
-            } else {
+            switch target {
+            case .projectImage(let sourceURL):
+                await deleteProjectImagePhoto(sourceURL)
+            case .annotation(let sourceURL, let renderedURL):
+                await deleteAnnotationBackedPhoto(sourceURL: sourceURL, renderedURL: renderedURL)
             }
         }
     }
+
+    private func deleteProjectImagePhoto(_ sourceURL: String) async {
+        // Get current project images
+        var currentImages = project.getProjectImages()
+
+        // Remove the specified image
+        guard let index = currentImages.firstIndex(of: sourceURL) else {
+            await MainActor.run {
+                photoDeleteTarget = nil
+            }
+            return
+        }
+
+        currentImages.remove(at: index)
+
+        // Use ImageSyncManager if available
+        if let imageSyncManager = dataController.imageSyncManager {
+            // Delete the image through the ImageSyncManager
+            let success = await imageSyncManager.deleteImage(sourceURL, from: project)
+
+            if success {
+            } else {
+            }
+        } else {
+            // Fallback to direct file deletion if ImageSyncManager is not available
+
+            // Clean up file storage
+            if sourceURL.hasPrefix("local://") {
+                _ = ImageFileManager.shared.deleteImage(localID: sourceURL)
+            }
+
+            // Also clean up UserDefaults (for legacy support)
+            UserDefaults.standard.removeObject(forKey: sourceURL)
+        }
+
+        let renderedURL = await MainActor.run {
+            renderedURLsBySource[sourceURL]
+        }
+        let deletePlan = await MainActor.run {
+            let deletePlan = renderedURL.map {
+                markMatchingAnnotationsDeleted(sourceURL: sourceURL, renderedURL: $0)
+            } ?? ProjectPhotoAnnotationDeletePlan(remoteSoftDeleteCandidates: [], localOnlyCandidateIDs: [])
+
+            project.setProjectImageURLs(currentImages)
+            project.needsSync = true
+            project.syncPriority = 2 // Higher priority for image changes
+
+            removeDeletedRenderedState(sourceURL: sourceURL, renderedURL: renderedURL)
+            saveModelChanges()
+            photoDeleteTarget = nil
+            return deletePlan
+        }
+
+        await softDeleteAnnotationsRemotely(deletePlan.remoteSoftDeleteCandidates)
+    }
+
+    private func deleteAnnotationBackedPhoto(sourceURL: String, renderedURL: String) async {
+        let deletePlan = await MainActor.run {
+            let deletePlan = markMatchingAnnotationsDeleted(sourceURL: sourceURL, renderedURL: renderedURL)
+            removeDeletedRenderedState(sourceURL: sourceURL, renderedURL: renderedURL)
+            saveModelChanges()
+            photoDeleteTarget = nil
+            return deletePlan
+        }
+
+        await softDeleteAnnotationsRemotely(deletePlan.remoteSoftDeleteCandidates)
+    }
+
+    @MainActor
+    private func markMatchingAnnotationsDeleted(
+        sourceURL: String,
+        renderedURL: String?
+    ) -> ProjectPhotoAnnotationDeletePlan {
+        let projectId = project.id
+        let descriptor = FetchDescriptor<PhotoAnnotation>(
+            predicate: #Predicate {
+                $0.projectId == projectId
+                    && $0.deletedAt == nil
+            }
+        )
+        guard let annotations = try? modelContext.fetch(descriptor) else {
+            return ProjectPhotoAnnotationDeletePlan(remoteSoftDeleteCandidates: [], localOnlyCandidateIDs: [])
+        }
+
+        let now = Date()
+        let matches = annotations.filter {
+            Self.annotationMatchesDeleteTarget($0, sourceURL: sourceURL, renderedURL: renderedURL)
+        }
+
+        for annotation in matches {
+            annotation.deletedAt = now
+            annotation.updatedAt = now
+            annotation.needsSync = ProjectPhotoAnnotationDeletePlanner.shouldMarkNeedsSyncAfterLocalDelete(
+                annotationID: annotation.id
+            )
+        }
+
+        let candidates = matches.map {
+            ProjectPhotoAnnotationDeleteCandidate(id: $0.id, companyId: $0.companyId)
+        }
+        return ProjectPhotoAnnotationDeletePlanner.plan(candidates: candidates)
+    }
+
+    @MainActor
+    private func markAnnotationDeleteSynced(id: String) {
+        let descriptor = FetchDescriptor<PhotoAnnotation>(
+            predicate: #Predicate { $0.id == id }
+        )
+        guard let annotation = try? modelContext.fetch(descriptor).first else {
+            return
+        }
+
+        annotation.needsSync = false
+        annotation.lastSyncedAt = Date()
+        saveModelChanges()
+    }
+
+    @MainActor
+    private func removeDeletedRenderedState(sourceURL: String, renderedURL: String?) {
+        let updated = ProjectPhotoAnnotationDeletePlanner.removingRenderedState(
+            sourceURL: sourceURL,
+            renderedURL: renderedURL,
+            from: ProjectPhotoRenderedDeleteState(
+                dimensionedURLs: dimensionedURLs,
+                renderedURLsBySource: renderedURLsBySource,
+                renderedDeliverableURLs: renderedDeliverableURLs
+            )
+        )
+        dimensionedURLs = updated.dimensionedURLs
+        renderedURLsBySource = updated.renderedURLsBySource
+        renderedDeliverableURLs = updated.renderedDeliverableURLs
+    }
+
+    @MainActor
+    private func saveModelChanges() {
+        do {
+            try modelContext.save()
+        } catch {
+        }
+    }
+
+    private func softDeleteAnnotationsRemotely(_ candidates: [ProjectPhotoAnnotationDeleteCandidate]) async {
+        for candidate in candidates {
+            do {
+                let repository = await MainActor.run {
+                    PhotoAnnotationRepository(companyId: candidate.companyId)
+                }
+                try await repository.softDelete(candidate.id)
+                await markAnnotationDeleteSynced(id: candidate.id)
+            } catch {
+                await AutoBugReporter.shared.reportIfPermanent(
+                    error,
+                    screen: "ProjectPhotosGrid.deletePhoto",
+                    suspectedFile: "ProjectPhotosGrid.swift",
+                    summary: "Rendered photo annotation delete failed for \(candidate.id): \(error.localizedDescription)",
+                    metadata: [
+                        "annotation_id": candidate.id,
+                        "company_id": candidate.companyId
+                    ]
+                )
+                DebugLogger.shared.log(
+                    "Rendered photo annotation delete failed for \(candidate.id): \(error)",
+                    level: .warning,
+                    category: "ProjectPhotosGrid"
+                )
+            }
+        }
+    }
+
     private func addPhotoToProject(_ image: UIImage) {
         // Start loading indicator
         processingImage = true

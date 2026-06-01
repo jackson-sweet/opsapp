@@ -11,6 +11,7 @@ struct DeckOverlayRenderer {
 
     private static func railingColor(for type: RailingType) -> UIColor {
         switch type {
+        case .parapetWall: return UIColor(hex: HouseEdgeMaterial.parapet.fillHex)
         case .glass:      return UIColor(red: 0.4, green: 0.6, blue: 0.9, alpha: 1)
         case .picket:     return UIColor(red: 0.7, green: 0.7, blue: 0.7, alpha: 1)
         case .cable:      return UIColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 1)

@@ -53,6 +53,13 @@
             </BuildableReference>
          </TestableReference>
       </Testables>
+      <EnvironmentVariables>
+         <EnvironmentVariable
+            key = "OPS_HOSTED_XCTEST_MBX_ACCESS_TOKEN"
+            value = "pk.test-hosted-xctest-token"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+      </EnvironmentVariables>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"

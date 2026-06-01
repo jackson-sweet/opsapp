@@ -5,7 +5,7 @@
 //  TABLE view mode for the STOCK segment (Bug 217c3d1f). Renders one
 //  table per family. Each table's header row enumerates the family's
 //  options dynamically (`VARIANT | <option 1> | <option 2> | ... | QTY
-//  | SKU`); body rows are the family's variants. Each family table
+//  | THRESH | SKU`); body rows are the family's variants. Each family table
 //  scrolls horizontally because column counts vary across families.
 //
 
@@ -13,6 +13,7 @@ import SwiftUI
 
 struct StockTableView: View {
     let rows: [EnrichedVariantRow]
+    let categories: [CatalogCategory]
     let allOptions: [CatalogOption]
     let allOptionValues: [CatalogOptionValue]
     let allVariantOptionValues: [CatalogVariantOptionValue]
@@ -24,15 +25,18 @@ struct StockTableView: View {
     private struct FamilyTable: Identifiable {
         let id: String
         let family: CatalogItem
+        let category: CatalogCategory?
         let options: [CatalogOption]
         let rows: [EnrichedVariantRow]
     }
 
+    private struct CategorySection: Identifiable {
+        let id: String
+        let title: String
+        let tables: [FamilyTable]
+    }
+
     private var familyTables: [FamilyTable] {
-        // Cache option-values by id and variant-option-values by variant id
-        // so the cell renderer can look up a variant's value for a column
-        // option in O(1).
-        let optionValuesById = Dictionary(uniqueKeysWithValues: allOptionValues.map { ($0.id, $0) })
         let optionsByItemId = Dictionary(grouping: allOptions, by: \.catalogItemId)
 
         var grouped: [String: [EnrichedVariantRow]] = [:]
@@ -47,24 +51,58 @@ struct StockTableView: View {
             familyById[row.family.id] = row.family
         }
 
-        _ = optionValuesById // silence unused warning when no families have options
         return orderedFamilyIds.compactMap { id in
             guard let family = familyById[id], let rs = grouped[id] else { return nil }
             let options = (optionsByItemId[id] ?? []).sorted { $0.sortOrder < $1.sortOrder }
-            return FamilyTable(id: id, family: family, options: options, rows: rs)
+            return FamilyTable(id: id, family: family, category: rs.first?.category, options: options, rows: rs)
+        }
+    }
+
+    private var categorySections: [CategorySection] {
+        let categoriesById = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+        var grouped: [String: [FamilyTable]] = [:]
+        var titles: [String: String] = [:]
+        var orderedKeys: [String] = []
+
+        for table in familyTables {
+            let key = table.category?.id ?? "__uncategorized"
+            if grouped[key] == nil {
+                orderedKeys.append(key)
+            }
+            grouped[key, default: []].append(table)
+            titles[key] = categoryTitle(table.category, categoriesById: categoriesById)
+        }
+
+        return orderedKeys.compactMap { key in
+            guard let tables = grouped[key] else { return nil }
+            return CategorySection(id: key, title: titles[key] ?? "UNCATEGORIZED", tables: tables)
         }
     }
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-                ForEach(familyTables) { table in
-                    familyTableView(table)
+                ForEach(categorySections) { section in
+                    categorySectionView(section)
                 }
                 Color.clear.frame(height: 100) // FAB clearance
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.top, OPSStyle.Layout.spacing2)
+        }
+    }
+
+    @ViewBuilder
+    private func categorySectionView(_ section: CategorySection) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("// \(section.title)")
+                .font(OPSStyle.Typography.category)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .padding(.horizontal, OPSStyle.Layout.spacing1)
+
+            ForEach(section.tables) { table in
+                familyTableView(table)
+            }
         }
     }
 
@@ -110,6 +148,7 @@ struct StockTableView: View {
                 cell(option.name.uppercased(), isHeader: true, width: 100, align: .leading)
             }
             cell("QTY", isHeader: true, width: 80, align: .trailing)
+            cell("THRESH", isHeader: true, width: 96, align: .trailing)
             cell("SKU", isHeader: true, width: 120, align: .leading)
         }
         .frame(height: 36)
@@ -170,6 +209,17 @@ struct StockTableView: View {
             .padding(.horizontal, OPSStyle.Layout.spacing2)
             .frame(width: 80, alignment: .trailing)
 
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(row.thresholdPercentText)
+                    .font(OPSStyle.Typography.dataValue)
+                    .foregroundColor(row.thresholdStatus.color)
+                Text(row.thresholdDeltaText)
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
+            .frame(width: 96, alignment: .trailing)
+
             Text(row.variant.sku ?? "—")
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -197,9 +247,17 @@ struct StockTableView: View {
     }
 
     private func quantityText(_ row: EnrichedVariantRow) -> String {
-        let formatter = NumberFormatter()
-        formatter.minimumFractionDigits = 0
-        formatter.maximumFractionDigits = 2
-        return formatter.string(from: NSNumber(value: row.variant.quantity)) ?? "0"
+        StockNumberFormatter.quantity(row.variant.quantity)
+    }
+
+    private func categoryTitle(
+        _ category: CatalogCategory?,
+        categoriesById: [String: CatalogCategory]
+    ) -> String {
+        guard let category else { return "UNCATEGORIZED" }
+        if let parentId = category.parentId, let parent = categoriesById[parentId] {
+            return "\(parent.name.uppercased()) / \(category.name.uppercased())"
+        }
+        return category.name.uppercased()
     }
 }

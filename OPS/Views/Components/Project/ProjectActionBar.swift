@@ -26,13 +26,11 @@ struct ProjectActionBar: View {
     @State private var showExpenseForm = false
     @State private var showProjectDetails = false
     @State private var showImagePicker = false
-    /// Bug 0a07ca47 — separate sheet for the multi-capture camera so
-    /// the user can take a stack of photos in one continuous session.
-    /// The library path keeps using ImagePicker so non-camera flows
-    /// stay simple.
-    @State private var showCameraBatch = false
-    /// Bug 0a07ca47 — confirmation dialog for picking between camera
-    /// multi-capture and library when the user taps the Photo action.
+    /// Bug 98773d61 — action-bar camera capture must use the native iOS
+    /// camera path. The library path keeps using PHPicker.
+    @State private var showNativeCamera = false
+    /// Confirmation dialog for picking between native camera capture and
+    /// library import when the user taps the Photo action.
     @State private var showPhotoSourceChooser = false
     @State private var selectedImages: [UIImage] = []
     @State private var processingImage = false
@@ -163,10 +161,8 @@ struct ProjectActionBar: View {
             }
             .interactiveDismissDisabled(true)
         }
-        // Bug 0a07ca47 / 02222904 — choose between the multi-shot
-        // camera and the library picker before opening anything. The
-        // camera path opens CameraBatchView (live preview + stack),
-        // the library path opens the standard PHPicker.
+        // Bug 98773d61 / 02222904 — choose between native camera capture
+        // and the library picker before opening anything.
         .confirmationDialog(
             "Add Photos",
             isPresented: $showPhotoSourceChooser,
@@ -174,7 +170,7 @@ struct ProjectActionBar: View {
         ) {
             if UIImagePickerController.isSourceTypeAvailable(.camera) {
                 Button("Take Photos") {
-                    showCameraBatch = true
+                    showNativeCamera = true
                 }
             }
             Button("Choose from Library") {
@@ -184,7 +180,7 @@ struct ProjectActionBar: View {
         } message: {
             Text("Capture photos with the camera or pick existing ones from your library.")
         }
-        // Library-only picker. The camera path lives in showCameraBatch.
+        // Library-only picker. The camera path lives in showNativeCamera.
         .sheet(isPresented: $showImagePicker, onDismiss: {
             isAddingPhotos = false
         }) {
@@ -194,30 +190,24 @@ struct ProjectActionBar: View {
                 sourceType: .photoLibrary,
                 selectionLimit: 10,
                 onSelectionComplete: {
-                    // Only process if not already processing
-                    if !isAddingPhotos && !selectedImages.isEmpty {
-                        isAddingPhotos = true
-                        // Dismiss sheet immediately
+                    commitSelectedPhotosAfterPickerDismiss {
                         showImagePicker = false
-                        // Process images after sheet dismisses
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            addPhotosToProject()
-                        }
                     }
                 }
             )
         }
-        // Bug 0a07ca47 — multi-capture camera. Stays open between
-        // shots, accumulates a stack, and returns the whole batch on
-        // Done. Skip the addPhotosToProject scheduler dance — the
-        // user already explicitly committed inside the camera UI.
-        .fullScreenCover(isPresented: $showCameraBatch) {
-            CameraBatchView { capturedImages in
-                guard !capturedImages.isEmpty, !isAddingPhotos else { return }
-                isAddingPhotos = true
-                selectedImages = capturedImages
-                addPhotosToProject()
-            }
+        .fullScreenCover(isPresented: $showNativeCamera) {
+            ImagePicker(
+                images: $selectedImages,
+                allowsEditing: false,
+                sourceType: .camera,
+                selectionLimit: 1,
+                onSelectionComplete: {
+                    commitSelectedPhotosAfterPickerDismiss {
+                        showNativeCamera = false
+                    }
+                }
+            )
         }
         // Loading overlay when processing image
         .overlay(
@@ -343,10 +333,18 @@ struct ProjectActionBar: View {
                 showProjectDetails = true
             }
         case .photo:
-            // Bug 0a07ca47 — show source chooser instead of going
-            // straight to the library. Lets the user pick between the
-            // multi-capture camera and gallery import.
             showPhotoSourceChooser = true
+        }
+    }
+
+    private func commitSelectedPhotosAfterPickerDismiss(_ dismiss: @escaping () -> Void) {
+        guard !isAddingPhotos, !selectedImages.isEmpty else { return }
+
+        isAddingPhotos = true
+        dismiss()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            addPhotosToProject()
         }
     }
     

@@ -28,6 +28,9 @@ struct ImagePicker: UIViewControllerRepresentable {
         // Go directly to appropriate picker based on source type
         switch sourceType {
         case .camera:
+            guard Self.nativeCameraIsAvailable else {
+                return makePHPickerController(context: context)
+            }
             return makeImagePickerController(context: context)
         case .photoLibrary:
             return makePHPickerController(context: context)
@@ -80,6 +83,10 @@ struct ImagePicker: UIViewControllerRepresentable {
         
         controller.present(actionSheet, animated: true)
     }
+
+    private static var nativeCameraIsAvailable: Bool {
+        UIImagePickerController.isSourceTypeAvailable(.camera)
+    }
     
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
     
@@ -91,12 +98,17 @@ struct ImagePicker: UIViewControllerRepresentable {
     @MainActor
     private func makeImagePickerController(sourceType: UIImagePickerController.SourceType = .camera, context: Context) -> UIImagePickerController {
         let picker = UIImagePickerController()
-        picker.sourceType = sourceType
+        let resolvedSourceType: UIImagePickerController.SourceType = {
+            guard sourceType == .camera else { return sourceType }
+            return Self.nativeCameraIsAvailable ? .camera : .photoLibrary
+        }()
+
+        picker.sourceType = resolvedSourceType
         picker.allowsEditing = allowsEditing
         picker.delegate = context.coordinator
         
         // Only set camera device related properties if using camera
-        if sourceType == .camera {
+        if resolvedSourceType == .camera {
             picker.cameraCaptureMode = .photo
             // Use default camera device settings
             // Don't specify any specific camera device to avoid compatibility issues

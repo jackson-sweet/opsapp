@@ -554,7 +554,8 @@ func visibleSections(for user: User?) -> [JobBoardSection] {
 /// Returns the default landing section based on permissions
 func defaultSection(for user: User?) -> JobBoardSection {
     guard user != nil else { return .projects }
-    return PermissionStore.shared.can("job_board.manage_sections") ? .projects : .myTasks
+    // Users who can see the kanban board land on it by default; everyone else keeps My Tasks.
+    return PermissionStore.shared.can("job_board.manage_sections") ? .kanban : .myTasks
 }
 
 // MARK: - Section Selector
@@ -706,21 +707,7 @@ struct JobBoardTasksView: View {
 
     private var allTasks: [ProjectTask] {
         let projects = dataController.getAllProjects()
-        // Task-only scheduling migration: All projects use tasks
-        let tasks = projects.flatMap { project -> [ProjectTask] in
-            return project.tasks
-        }
-
-        // Deduplicate by ID to prevent duplicate cards
-        var seenIds = Set<String>()
-        return tasks.filter { task in
-            if seenIds.contains(task.id) {
-                print("[JOB_BOARD] ⚠️ Duplicate task detected: \(task.id)")
-                return false
-            }
-            seenIds.insert(task.id)
-            return true
-        }
+        return JobBoardTaskFiltering.visibleTasks(from: projects)
     }
 
     private var availableTaskTypes: [TaskType] {
@@ -746,10 +733,7 @@ struct JobBoardTasksView: View {
 
         // Task-only scheduling migration: eventType filter removed (all projects use tasks)
         filtered = filtered.filter { task in
-            guard let project = projectsById[task.projectId] else {
-                return false
-            }
-            return true
+            projectsById[task.projectId] != nil
         }
 
         // Quick filter: assigned to me

@@ -45,7 +45,7 @@ final class ARCoordinateConverterTests: XCTestCase {
         XCTAssertEqual(data.edges[0].accuracyPercent, 2.5)
     }
 
-    func testConvert_preservesEdgeProperties() {
+    func testConvert_preservesHouseEdgeAndDropsInvalidRailing() {
         let vertices = [
             ARCoordinateConverter.ARVertex(id: "v1", x: 0, z: 0, y: 0),
             ARCoordinateConverter.ARVertex(id: "v2", x: 5, z: 0, y: 0),
@@ -62,7 +62,7 @@ final class ARCoordinateConverterTests: XCTestCase {
         let data = ARCoordinateConverter.convert(arVertices: vertices, arEdges: edges, isClosed: false)
 
         XCTAssertEqual(data.edges[0].edgeType, .houseEdge)
-        XCTAssertEqual(data.edges[0].railingConfig?.railingType, .glass)
+        XCTAssertNil(data.edges[0].railingConfig)
     }
 
     func testCalculateElevation() {

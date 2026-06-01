@@ -216,7 +216,7 @@ struct TemporaryMuteControl: View {
                 
                 Toggle("", isOn: $isMuted)
                     .labelsHidden()
-                    .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+                    .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
                     .onChange(of: isMuted) { _, newValue in
                         if newValue {
                             // Set mute end time when enabling

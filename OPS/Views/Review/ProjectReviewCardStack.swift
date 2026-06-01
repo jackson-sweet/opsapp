@@ -17,8 +17,34 @@ struct ProjectReviewCardStack: View {
     @State private var dragDirection: SwipeDirection? = nil
     @State private var hasTriggeredThresholdHaptic: Bool = false
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     private let swipeThreshold: CGFloat = 120
     private let maxVisibleCards: Int = 3
+
+    // MARK: - Motion (spec: one curve, no spring; reduce-motion → near-instant)
+
+    /// Drag-follow / snap settle. Tight 200ms curve smooths the implicit
+    /// catch-up between the gesture position and the rendered card.
+    private var dragFollowAnimation: Animation {
+        reduceMotion
+            ? .easeOut(duration: 0.1)
+            : OPSStyle.Animation.panel
+    }
+
+    /// Stack-shift when the top card changes — the next card sliding up.
+    private var stackShiftAnimation: Animation {
+        reduceMotion
+            ? .easeOut(duration: 0.15)
+            : OPSStyle.Animation.flip
+    }
+
+    /// Snap-back when a drag ends below threshold or is blocked.
+    private var snapBackAnimation: Animation {
+        reduceMotion
+            ? .easeOut(duration: 0.1)
+            : OPSStyle.Animation.page
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -52,8 +78,8 @@ struct ProjectReviewCardStack: View {
                     .zIndex(Double(projects.count - index))
                     .allowsHitTesting(index == currentIndex)
                     .gesture(index == currentIndex ? dragGesture : nil)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dragOffset)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.7), value: currentIndex)
+                    .animation(dragFollowAnimation, value: dragOffset)
+                    .animation(stackShiftAnimation, value: currentIndex)
                     .modifier(WizardTargetModifier(
                         stepIds: index == currentIndex
                             ? ["payment_demo_swipe_right", "payment_demo_swipe_left", "payment_demo_swipe_up", "payment_demo_swipe_down"]
@@ -117,7 +143,7 @@ struct ProjectReviewCardStack: View {
                 if magnitude > swipeThreshold, let dir = direction {
                     // Block up/down without financial access
                     if (dir == .up || dir == .down) && !hasFinancialAccess {
-                        withAnimation(.spring()) {
+                        withAnimation(snapBackAnimation) {
                             dragOffset = .zero
                             dragDirection = nil
                         }
@@ -126,7 +152,7 @@ struct ProjectReviewCardStack: View {
 
                     commitSwipe(dir)
                 } else {
-                    withAnimation(.spring()) {
+                    withAnimation(snapBackAnimation) {
                         dragOffset = .zero
                         dragDirection = nil
                     }

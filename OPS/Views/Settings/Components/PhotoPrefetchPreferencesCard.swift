@@ -29,7 +29,7 @@ struct PhotoPrefetchPreferencesCard: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
             }
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
             .padding()
 
             OPSStyle.Colors.separator.frame(height: 1)
@@ -47,7 +47,7 @@ struct PhotoPrefetchPreferencesCard: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
             }
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
             .padding()
         }
     }

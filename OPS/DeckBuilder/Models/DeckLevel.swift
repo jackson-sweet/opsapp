@@ -17,6 +17,19 @@ struct DeckLevel: Identifiable, Codable, Equatable {
     var displayColor: LevelColor = .blue
     var sortOrder: Int = 0
 
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case vertices
+        case edges
+        case footprint
+        case surfaces
+        case elevation
+        case perVertexElevation
+        case displayColor
+        case sortOrder
+    }
+
     init(
         id: String = UUID().uuidString,
         name: String,
@@ -27,6 +40,20 @@ struct DeckLevel: Identifiable, Codable, Equatable {
         self.name = name
         self.displayColor = displayColor
         self.sortOrder = sortOrder
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.name = try c.decode(String.self, forKey: .name)
+        self.vertices = try c.decodeIfPresent([DeckVertex].self, forKey: .vertices) ?? []
+        self.edges = try c.decodeIfPresent([DeckEdge].self, forKey: .edges) ?? []
+        self.footprint = try c.decodeIfPresent(DeckFootprint.self, forKey: .footprint) ?? DeckFootprint()
+        self.surfaces = try c.decodeIfPresent([DeckSurface].self, forKey: .surfaces) ?? []
+        self.elevation = try c.decodeIfPresent(Double.self, forKey: .elevation)
+        self.perVertexElevation = try c.decodeLegacyBoolIfPresent(forKey: .perVertexElevation) ?? false
+        self.displayColor = try c.decodeIfPresent(LevelColor.self, forKey: .displayColor) ?? .blue
+        self.sortOrder = try c.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
     }
 
     // MARK: - Vertex/Edge Helpers (mirror DeckDrawingData helpers)

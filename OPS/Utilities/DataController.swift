@@ -16,6 +16,20 @@ import Supabase
 import FirebaseAuth
 import FirebaseCrashlytics
 
+private enum ProjectTeamAssignmentSyncError: LocalizedError {
+    case missingServerUpdatedAt
+    case missingAssignmentTaskId
+
+    var errorDescription: String? {
+        switch self {
+        case .missingServerUpdatedAt:
+            return "Project team update needs a server timestamp before it can sync."
+        case .missingAssignmentTaskId:
+            return "Project team update could not create an assignment task."
+        }
+    }
+}
+
 /// Main controller for managing data, authentication, and app state
 class DataController: ObservableObject {
     // MARK: - Preview Detection
@@ -69,6 +83,7 @@ class DataController: ObservableObject {
 
     // Cache of non-existent user IDs to prevent repeated fetch attempts
     private var nonExistentUserIds: Set<String> = []
+    private var projectTeamMemberSyncsInFlight: Set<String> = []
 
     /// New sync engine (offline-first) — initialized in setModelContext,
     /// configured in initializeSyncManager. Safe to call methods before
@@ -92,6 +107,12 @@ class DataController: ObservableObject {
         // Migrate any images from UserDefaults to FileManager
         // This prevents the "attempting to store >= 4194304 bytes" error
         ImageFileManager.shared.migrateAllImages()
+
+        #if DEBUG
+        if CatalogSetupQARuntime.isEnabled() {
+            return
+        }
+        #endif
 
         // Check for existing authentication - plain Task for async work
         Task {
@@ -1899,6 +1920,29 @@ class DataController: ObservableObject {
     }
     
     /// Ensures project team members are properly synchronized between IDs and User objects
+    static func projectTeamMemberIdsNeedingRelationshipSync(
+        storedIds: [String],
+        relationshipIds: [String]
+    ) -> [String] {
+        let existing = Set(relationshipIds)
+        var seen = Set<String>()
+        return storedIds.compactMap { rawId in
+            let id = rawId.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !id.isEmpty,
+                  !existing.contains(id),
+                  seen.insert(id).inserted else { return nil }
+            return id
+        }
+    }
+
+    private func projectTeamMemberIdsNeedingRelationshipSync(_ project: Project) -> [String] {
+        Self.projectTeamMemberIdsNeedingRelationshipSync(
+            storedIds: project.getTeamMemberIds(),
+            relationshipIds: project.teamMembers.map(\.id)
+        )
+    }
+
+    /// Ensures project team members are properly synchronized between IDs and User objects
     @MainActor
     func syncProjectTeamMembers(_ project: Project) async {
         guard let context = modelContext else { return }
@@ -1914,7 +1958,10 @@ class DataController: ObservableObject {
         let existingMemberIds = Set(project.teamMembers.map { $0.id })
         
         // Find members that need to be added to project.teamMembers
-        let missingMemberIds = teamMemberIds.filter { !existingMemberIds.contains($0) }
+        let missingMemberIds = Self.projectTeamMemberIdsNeedingRelationshipSync(
+            storedIds: teamMemberIds,
+            relationshipIds: Array(existingMemberIds)
+        )
         
         if missingMemberIds.isEmpty {
             return
@@ -3191,13 +3238,22 @@ class DataController: ObservableObject {
             let projects = try context.fetch(descriptor)
 
             if let project = projects.first {
+                guard !projectTeamMemberIdsNeedingRelationshipSync(project).isEmpty else {
+                    return project
+                }
+
                 // Don't pass the model to a background task - use the ID instead
                 let projectId = project.id
                 Task { @MainActor in
-                    // Fetch fresh project in the task to avoid invalidation
-                    if let freshProject = self.getProjectWithoutSync(id: projectId) {
-                        await self.syncProjectTeamMembers(freshProject)
+                    guard self.projectTeamMemberSyncsInFlight.insert(projectId).inserted else {
+                        return
                     }
+                    defer { self.projectTeamMemberSyncsInFlight.remove(projectId) }
+
+                    // Fetch fresh project in the task to avoid invalidation
+                    guard let freshProject = self.getProjectWithoutSync(id: projectId),
+                          !self.projectTeamMemberIdsNeedingRelationshipSync(freshProject).isEmpty else { return }
+                    await self.syncProjectTeamMembers(freshProject)
                 }
                 return project
             }
@@ -3458,11 +3514,18 @@ class DataController: ObservableObject {
         try? modelContext?.save()
 
         // Record for async sync
+        var changedFields: [String: Any] = ["status": newStatus.rawValue]
+        if newStatus == .completed {
+            changedFields[TaskCompletionSync.idempotencyKeyPayloadKey] =
+                TaskCompletionSync.stableCompletionIdempotencyKey(taskId: task.id)
+            changedFields[TaskCompletionSync.materialAdjustmentsPayloadKey] = [String: Any]()
+        }
+
         syncEngine.recordOperation(
             entityType: .projectTask,
             entityId: task.id,
             operationType: "update",
-            changedFields: ["status": newStatus.rawValue]
+            changedFields: changedFields
         )
 
         // Cascade cancel to paired tasks (one-way — uncancelling does NOT
@@ -4278,21 +4341,139 @@ class DataController: ObservableObject {
         }
     }
 
-    /// Update project team members - SINGLE SOURCE OF TRUTH
+    /// Update the local project-team cache. The server owns
+    /// `projects.team_member_ids` and derives it from `project_tasks`.
     @MainActor
     func updateProjectTeamMembers(project: Project, memberIds: [String]) async throws {
-        // Apply locally
-        project.setTeamMemberIds(memberIds)
-        project.needsSync = true
-        try? modelContext?.save()
+        applyProjectTeamMembersCache(project: project, memberIds: memberIds)
+        try modelContext?.save()
+    }
 
-        // Record for async sync
-        syncEngine.recordOperation(
-            entityType: .project,
-            entityId: project.id,
-            operationType: "update",
-            changedFields: ["team_member_ids": memberIds]
+    /// Persist a project-level crew selection through the server task-team
+    /// assignment contract. This is for project-level team editing surfaces;
+    /// task-level editors should continue to call updateTaskTeamMembers.
+    @MainActor
+    func replaceProjectTeamMembersViaServerAssignments(project: Project, memberIds: [String]) async throws {
+        let targetMemberIds = normalizedTeamMemberIds(memberIds)
+        let targetSet = Set(targetMemberIds)
+        let currentSet = Set(normalizedTeamMemberIds(project.getTeamMemberIds()))
+
+        guard targetSet != currentSet else {
+            applyProjectTeamMembersCache(project: project, memberIds: targetMemberIds)
+            try modelContext?.save()
+            return
+        }
+
+        let repo = ProjectRepository(companyId: project.companyId)
+        var expectedUpdatedAt = try await serverUpdatedAtForProject(project, repo: repo)
+        var taskIds = activeTaskIds(for: project)
+
+        let removedMemberIds = currentSet.subtracting(targetSet).sorted()
+        for memberId in removedMemberIds {
+            let result = try await repo.removeProjectTeamMember(
+                projectId: project.id,
+                userId: memberId,
+                expectedUpdatedAt: expectedUpdatedAt
+            )
+            expectedUpdatedAt = result.updatedAt ?? expectedUpdatedAt
+        }
+
+        let addedMemberIds = targetSet.subtracting(currentSet).sorted()
+        if taskIds.isEmpty && !addedMemberIds.isEmpty {
+            let result = try await repo.createProjectTableAssignmentTask(
+                projectId: project.id,
+                title: "Team assignment",
+                expectedUpdatedAt: expectedUpdatedAt
+            )
+            guard let taskId = result.taskId else {
+                throw ProjectTeamAssignmentSyncError.missingAssignmentTaskId
+            }
+            expectedUpdatedAt = result.updatedAt ?? expectedUpdatedAt
+            taskIds = [taskId]
+            insertLocalAssignmentTaskIfNeeded(
+                taskId: taskId,
+                project: project,
+                memberIds: targetMemberIds
+            )
+        }
+
+        for memberId in addedMemberIds {
+            let result = try await repo.assignProjectTeamMember(
+                projectId: project.id,
+                userId: memberId,
+                taskIds: taskIds,
+                expectedUpdatedAt: expectedUpdatedAt
+            )
+            expectedUpdatedAt = result.updatedAt ?? expectedUpdatedAt
+        }
+
+        applyProjectTeamMembersCache(project: project, memberIds: targetMemberIds)
+        for task in project.tasks where task.deletedAt == nil {
+            task.setTeamMemberIds(targetMemberIds)
+            task.teamMembers = fetchUsersById(targetMemberIds)
+            task.needsSync = false
+            task.lastSyncedAt = Date()
+        }
+        project.updatedAt = SupabaseDate.parse(expectedUpdatedAt) ?? project.updatedAt
+        project.needsSync = false
+        project.lastSyncedAt = Date()
+        try modelContext?.save()
+    }
+
+    @MainActor
+    private func applyProjectTeamMembersCache(project: Project, memberIds: [String]) {
+        let normalizedIds = normalizedTeamMemberIds(memberIds)
+        project.setTeamMemberIds(normalizedIds)
+        project.teamMembers = fetchUsersById(normalizedIds)
+    }
+
+    private func normalizedTeamMemberIds(_ memberIds: [String]) -> [String] {
+        Array(Set(memberIds.map { $0.lowercased() })).sorted()
+    }
+
+    @MainActor
+    private func activeTaskIds(for project: Project) -> [String] {
+        project.tasks
+            .filter { $0.deletedAt == nil }
+            .map(\.id)
+            .sorted()
+    }
+
+    @MainActor
+    private func serverUpdatedAtForProject(_ project: Project, repo: ProjectRepository) async throws -> String {
+        if let updatedAt = project.updatedAt {
+            return SupabaseDate.format(updatedAt)
+        }
+
+        let dto = try await repo.fetchOne(project.id)
+        guard let updatedAt = dto.updatedAt else {
+            throw ProjectTeamAssignmentSyncError.missingServerUpdatedAt
+        }
+        project.updatedAt = SupabaseDate.parse(updatedAt)
+        return updatedAt
+    }
+
+    @MainActor
+    private func insertLocalAssignmentTaskIfNeeded(taskId: String, project: Project, memberIds: [String]) {
+        guard !project.tasks.contains(where: { $0.id == taskId }) else { return }
+
+        let task = ProjectTask(
+            id: taskId,
+            projectId: project.id,
+            taskTypeId: "",
+            companyId: project.companyId
         )
+        task.customTitle = "Team assignment"
+        task.project = project
+        task.displayOrder = project.tasks.count
+        task.createdAt = Date()
+        task.lastSyncedAt = Date()
+        task.needsSync = false
+        task.setTeamMemberIds(memberIds)
+        task.teamMembers = fetchUsersById(memberIds)
+
+        modelContext?.insert(task)
+        project.tasks.append(task)
     }
 
     // MARK: - Client Operations
@@ -4907,6 +5088,11 @@ class DataController: ObservableObject {
         var changedFields: [String: Any] = [
             "status": task.status.rawValue
         ]
+        if task.status == .completed {
+            changedFields[TaskCompletionSync.idempotencyKeyPayloadKey] =
+                TaskCompletionSync.stableCompletionIdempotencyKey(taskId: task.id)
+            changedFields[TaskCompletionSync.materialAdjustmentsPayloadKey] = [String: Any]()
+        }
         if let notes = task.taskNotes {
             changedFields["task_notes"] = notes
         }
@@ -5338,6 +5524,7 @@ class DataController: ObservableObject {
             project.needsSync = true
             try? context.save()
         }
+        applyProjectVinylOrderFieldsLocally(projectId: projectId, fields: fields, context: context)
 
         // Convert AnyJSON to [String: Any]
         let changedFields = anyJSONToDict(fields)
@@ -5370,6 +5557,68 @@ class DataController: ObservableObject {
                 break
             }
         }
+    }
+
+    /// Keep the local Deck Builder vinyl marker in sync with generic project
+    /// field writes. The server columns live on `projects`; the local model is
+    /// a projection so we don't mutate the historical `Project` SwiftData shape.
+    private func applyProjectVinylOrderFieldsLocally(
+        projectId: String,
+        fields: [String: AnyJSON],
+        context: ModelContext
+    ) {
+        let hasVinylField = fields.keys.contains(ProjectVinylOrderFields.status)
+            || fields.keys.contains(ProjectVinylOrderFields.orderedAt)
+            || fields.keys.contains(ProjectVinylOrderFields.orderedBy)
+        guard hasVinylField else { return }
+
+        let marker = localVinylOrderMarker(projectId: projectId, context: context)
+
+        if let rawStatus = fields[ProjectVinylOrderFields.status],
+           case .string(let value) = rawStatus {
+            marker.status = ProjectVinylOrderStatus(rawValue: value) ?? .notOrdered
+        }
+
+        if let rawOrderedAt = fields[ProjectVinylOrderFields.orderedAt] {
+            switch rawOrderedAt {
+            case .string(let value):
+                marker.orderedAt = SupabaseDate.parse(value)
+            case .null:
+                marker.orderedAt = nil
+            default:
+                break
+            }
+        }
+
+        if let rawOrderedBy = fields[ProjectVinylOrderFields.orderedBy] {
+            switch rawOrderedBy {
+            case .string(let value):
+                marker.orderedBy = value
+            case .null:
+                marker.orderedBy = nil
+            default:
+                break
+            }
+        }
+
+        marker.lastSyncedAt = nil
+        try? context.save()
+    }
+
+    private func localVinylOrderMarker(
+        projectId: String,
+        context: ModelContext
+    ) -> ProjectVinylOrderMarker {
+        let descriptor = FetchDescriptor<ProjectVinylOrderMarker>(
+            predicate: #Predicate { $0.id == projectId }
+        )
+        if let marker = try? context.fetch(descriptor).first {
+            return marker
+        }
+
+        let marker = ProjectVinylOrderMarker(projectId: projectId)
+        context.insert(marker)
+        return marker
     }
 
     // MARK: - Generic Task Field Updates (SyncEngine Migration)
@@ -5460,7 +5709,6 @@ class DataController: ObservableObject {
         if let v = dto.endDate { changedFields["end_date"] = v }
         if let v = dto.duration { changedFields["duration"] = v }
         if let v = dto.allDay { changedFields["all_day"] = v }
-        if let v = dto.teamMemberIds { changedFields["team_member_ids"] = v }
         if let v = dto.projectImages { changedFields["project_images"] = v }
 
         syncEngine.recordOperation(
@@ -5652,8 +5900,10 @@ class DataController: ObservableObject {
             throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
         }
 
-        // Generate ID locally
-        let subClientId = UUID().uuidString
+        // Generate ID locally. Lowercase to match Postgres uuid storage and the Client/Project
+        // create paths — an uppercase id makes the realtime echo + inbound sync case-sensitive
+        // id lookups miss this local row and insert a duplicate SubClient (bug c9ca72e7).
+        let subClientId = UUID().uuidString.lowercased()
 
         // Create local model
         let subClient = SubClient(id: subClientId, name: name)

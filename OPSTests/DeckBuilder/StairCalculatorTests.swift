@@ -26,6 +26,20 @@ final class StairCalculatorTests: XCTestCase {
         XCTAssertEqual(spec.treadCount, 0)
     }
 
+    func testCalculate_manualTreadCountOverridesCalculatedCount() {
+        let spec = StairCalculator.calculate(
+            totalRise: 30,
+            width: 48,
+            risePerStep: 7.5,
+            runPerTread: 10,
+            treadCountOverride: 6
+        )
+
+        XCTAssertEqual(spec.treadCount, 6)
+        XCTAssertEqual(spec.risePerStep, 5.0, accuracy: 0.01)
+        XCTAssertEqual(spec.totalRun, 60.0, accuracy: 0.01)
+    }
+
     func testStringerLength_pythagorean() {
         // 30" rise, 4 treads at 10" = 40" run
         // sqrt(30² + 40²) = sqrt(900 + 1600) = sqrt(2500) = 50

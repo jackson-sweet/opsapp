@@ -205,7 +205,7 @@ struct UpdateProductDTO: Codable {
 
 /// Type-erased JSON value for `tiered_pricing` and other jsonb fields we want
 /// to pass through without strong typing.
-struct RawJSONColumn: Codable {
+struct RawJSONColumn: Codable, Equatable {
     let rawJSONString: String
 
     init(rawJSONString: String) {

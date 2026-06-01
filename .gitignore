@@ -18,3 +18,7 @@ firebase-debug.log
 **/xcuserdata/
 **/*.xcuserstate
 *.xcuserdatad/
+
+# macOS Finder metadata
+.DS_Store
+**/.DS_Store

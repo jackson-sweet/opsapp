@@ -248,7 +248,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                     NotificationCenter.default.post(name: Notification.Name("OpenCatalog"), object: nil)
                     let segmentRaw: String = {
                         switch tabValue?.lowercased() {
-                        case "draft": return "DRAFT"
+                        case "draft", "drafts": return "DRAFT"
                         case "sent": return "SENT"
                         default: return "SUGGESTED"
                         }
@@ -258,6 +258,26 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                             name: Notification.Name("OpenCatalogOrders"),
                             object: nil,
                             userInfo: ["subSegment": segmentRaw]
+                        )
+                    }
+                }
+                return true
+            case "setup":
+                let missingMapping = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                    .queryItems?
+                    .first(where: { $0.name == "missingMapping" })?
+                    .value
+                Task { @MainActor in
+                    NotificationCenter.default.post(name: Notification.Name("OpenCatalog"), object: nil)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        var userInfo: [String: Any] = [:]
+                        if let missingMapping, !missingMapping.isEmpty {
+                            userInfo["missingMapping"] = missingMapping
+                        }
+                        NotificationCenter.default.post(
+                            name: Notification.Name("OpenCatalogSetup"),
+                            object: nil,
+                            userInfo: userInfo
                         )
                     }
                 }
@@ -545,6 +565,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
             // to OpenExpenses, which landed the user on the wrong list.
             NotificationCenter.default.post(
                 name: Notification.Name("OpenInvoices"),
+                object: nil
+            )
+        case "billable_this_week":
+            NotificationCenter.default.post(
+                name: Notification.Name("NavigateToMap"),
                 object: nil
             )
         case "role_assigned":

@@ -32,7 +32,7 @@ struct ProjectDetailsView: View {
     @State private var editingExpense: ExpenseDTO? = nil
     @State private var showNewExpenseSheet = false
     @State private var showingStatusPicker = false
-    @State private var showingCameraBatch = false
+    @State private var showingNativeCamera = false
     @State private var showingMeasureCapture = false
     @State private var showingDeckCreationPicker = false
     @State private var deckDesignToOpen: DeckDesign?
@@ -86,19 +86,8 @@ struct ProjectDetailsView: View {
                     .sheet(isPresented: $viewModel.showingImagePicker) {
                         imagePickerContent
                     }
-                    .fullScreenCover(isPresented: $showingCameraBatch) {
-                        CameraBatchView { capturedImages in
-                            viewModel.selectedImages = capturedImages
-                            if !capturedImages.isEmpty {
-                                viewModel.addPhotosToProject(tutorialMode: tutorialMode)
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    NotificationCenter.default.post(
-                                        name: Notification.Name("WizardPhotoCaptured"),
-                                        object: nil
-                                    )
-                                }
-                            }
-                        }
+                    .fullScreenCover(isPresented: $showingNativeCamera) {
+                        nativeCameraContent
                     }
                     .fullScreenCover(isPresented: $showingMeasureCapture) {
                         // LiDAR Dimensioned Photo Capture (spec §3.1) — same
@@ -168,19 +157,6 @@ struct ProjectDetailsView: View {
                         ContactDetailView(user: member)
                             .environmentObject(dataController)
                     }
-                    .sheet(isPresented: $viewModel.showingScheduler) {
-                        CalendarSchedulerSheet(
-                            isPresented: $viewModel.showingScheduler,
-                            itemType: .project(project),
-                            currentStartDate: project.startDate,
-                            currentEndDate: project.endDate,
-                            onScheduleUpdate: { start, end in
-                                viewModel.handleScheduleUpdate(startDate: start, endDate: end)
-                            },
-                            onClearDates: { viewModel.handleClearDates() }
-                        )
-                        .environmentObject(dataController)
-                    }
                     // Address editing is now inline in DetailsTabView
                     .sheet(isPresented: $viewModel.showingAddTaskSheet) {
                         TaskFormSheet(
@@ -237,9 +213,20 @@ struct ProjectDetailsView: View {
                             .environmentObject(dataController)
                     }
                     // Task picker is now an inline overlay (see mainContent)
-                    .sheet(item: $taskDetailTask, onDismiss: {
-                        saveTaskTeamChanges()
-                    }) { task in
+                    //
+                    // Bugs 0aa825fe + 62481022 — `saveTaskTeamChanges` MUST NOT
+                    // fire on sheet dismiss. The async updateTaskTeamMembers
+                    // path issues several modelContext.save() calls (task
+                    // mutation, then project syncProjectTeamMembersFromTasks);
+                    // when those notifications fire DURING the inner sheet's
+                    // dismiss animation, they tear down ProjectDetails' sheet
+                    // — either as a glitch close or, in the worst case, as
+                    // an outright crash from the @Bindable project being
+                    // re-evaluated mid-transition. Commit + save now happens
+                    // only on the explicit DONE button in TaskDetailPopupSheet's
+                    // inline picker (via `onCommitTeam`). The sheet's
+                    // dismissal is now purely UI cleanup.
+                    .sheet(item: $taskDetailTask) { task in
                         TaskDetailPopupSheet(
                             task: task,
                             onSelect: { t in
@@ -275,7 +262,10 @@ struct ProjectDetailsView: View {
                             },
                             selectedTeamMemberIds: $selectedTeamMemberIds,
                             allTeamMembers: allTeamMembers,
-                            isProjectCompleted: project.status == .completed
+                            isProjectCompleted: project.status == .completed,
+                            onCommitTeam: { committedIds in
+                                commitTaskTeamChanges(memberIds: committedIds)
+                            }
                         )
                     }
                     .confirmationDialog("Unsaved Changes", isPresented: $viewModel.showingUnsavedChangesAlert, titleVisibility: .visible) {
@@ -415,7 +405,9 @@ struct ProjectDetailsView: View {
                         hasClientContact: viewModel.hasClientContact,
                         canEdit: viewModel.canEditProject,
                         isMentionOnly: viewModel.isMentionOnlyAccess,
-                        onPhoto: { showingCameraBatch = true },
+                        onPhoto: {
+                            openProjectPhotoCapture()
+                        },
                         onNote: {
                             viewModel.selectedTab = .activity
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
@@ -712,7 +704,8 @@ struct ProjectDetailsView: View {
                     viewModel.selectedTask = task
                     viewModel.showingTaskDeleteConfirmation = true
                 },
-                onClientLongPress: { showingClientPicker = true }
+                onClientLongPress: { showingClientPicker = true },
+                onChangeStatus: { showingStatusPicker = true }
             )
 
         case .expenses:
@@ -761,6 +754,38 @@ struct ProjectDetailsView: View {
                 }
             }
         )
+    }
+
+    private var nativeCameraContent: some View {
+        ImagePicker(
+            images: $viewModel.selectedImages,
+            allowsEditing: false,
+            sourceType: .camera,
+            selectionLimit: 1,
+            onSelectionComplete: {
+                showingNativeCamera = false
+                if !viewModel.selectedImages.isEmpty {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        viewModel.addPhotosToProject(tutorialMode: tutorialMode)
+                        NotificationCenter.default.post(
+                            name: Notification.Name("WizardPhotoCaptured"),
+                            object: nil
+                        )
+                    }
+                }
+            }
+        )
+    }
+
+    private func openProjectPhotoCapture() {
+        viewModel.selectedImages = []
+
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+            viewModel.showingImagePicker = true
+            return
+        }
+
+        showingNativeCamera = true
     }
 
     private var noteImagePickerContent: some View {
@@ -1104,29 +1129,33 @@ struct ProjectDetailsView: View {
         }
     }
 
-    private func saveTaskTeamChanges() {
+    /// Commit a confirmed team selection from `TaskDetailPopupSheet`'s
+    /// inline picker. The DONE button there fires this with the already
+    /// canonicalized id set so we don't have to depend on `lastTeamEditTask`
+    /// or `selectedTeamMemberIds` being in any particular state when this
+    /// runs. The save itself is intentionally launched as a detached Task
+    /// (and on the next runloop turn) so the SwiftData notification cascade
+    /// from `updateTaskTeamMembers`' multiple modelContext saves never
+    /// overlaps a sheet animation — that overlap was the root cause of the
+    /// ProjectDetails crash + glitch-close on inline team assignment
+    /// (Bugs 0aa825fe + 62481022).
+    private func commitTaskTeamChanges(memberIds: Set<String>) {
         guard let task = lastTeamEditTask else { return }
         let currentIds = Set(task.getTeamMemberIds())
-        guard selectedTeamMemberIds != currentIds else {
-            lastTeamEditTask = nil
-            return
-        }
+        guard memberIds != currentIds else { return }
 
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.impactOccurred()
+        let newMemberIds = Array(memberIds)
 
-        let newMemberIds = Array(selectedTeamMemberIds)
-
-        Task {
-            do {
-                try await dataController.updateTaskTeamMembers(task: task, memberIds: newMemberIds)
-                print("[PROJECT_DETAILS] ✅ Task team update complete")
-            } catch {
-                print("[PROJECT_DETAILS] ⚠️ Team update failed: \(error)")
+        DispatchQueue.main.async {
+            Task {
+                do {
+                    try await dataController.updateTaskTeamMembers(task: task, memberIds: newMemberIds)
+                    print("[PROJECT_DETAILS] ✅ Task team update complete")
+                } catch {
+                    print("[PROJECT_DETAILS] ⚠️ Team update failed: \(error)")
+                }
             }
         }
-
-        lastTeamEditTask = nil
     }
 
     private func handleOnAppear() {

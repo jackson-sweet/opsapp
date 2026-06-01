@@ -15,6 +15,9 @@ struct ProductBundleItemDTO: Codable {
     let bundleProductId: String
     let childProductId: String
     let quantity: Double
+    let relationshipKind: String?
+    let suggestionReason: String?
+    let compatibilitySelector: RawJSONColumn?
     let displayOrder: Int
     let createdAt: String
     let updatedAt: String
@@ -26,6 +29,9 @@ struct ProductBundleItemDTO: Codable {
         case bundleProductId  = "bundle_product_id"
         case childProductId   = "child_product_id"
         case quantity
+        case relationshipKind = "relationship_kind"
+        case suggestionReason = "suggestion_reason"
+        case compatibilitySelector = "compatibility_selector"
         case displayOrder     = "display_order"
         case createdAt        = "created_at"
         case updatedAt        = "updated_at"
@@ -39,6 +45,9 @@ struct ProductBundleItemDTO: Codable {
             bundleProductId: bundleProductId,
             childProductId: childProductId,
             quantity: quantity,
+            relationshipKind: relationshipKind.flatMap { ProductBundleRelationshipKind(rawValue: $0) } ?? .required,
+            suggestionReason: suggestionReason,
+            compatibilitySelectorJSON: compatibilitySelector?.rawJSONString,
             displayOrder: displayOrder,
             createdAt: SupabaseDate.parse(createdAt) ?? Date()
         )
@@ -54,6 +63,9 @@ struct CreateProductBundleItemDTO: Codable {
     let bundleProductId: String
     let childProductId: String
     let quantity: Double
+    let relationshipKind: ProductBundleRelationshipKind
+    let suggestionReason: String?
+    let compatibilitySelector: RawJSONColumn?
     let displayOrder: Int
 
     enum CodingKeys: String, CodingKey {
@@ -62,16 +74,68 @@ struct CreateProductBundleItemDTO: Codable {
         case bundleProductId = "bundle_product_id"
         case childProductId  = "child_product_id"
         case quantity
+        case relationshipKind = "relationship_kind"
+        case suggestionReason = "suggestion_reason"
+        case compatibilitySelector = "compatibility_selector"
         case displayOrder    = "display_order"
+    }
+
+    init(
+        id: String,
+        companyId: String,
+        bundleProductId: String,
+        childProductId: String,
+        quantity: Double,
+        relationshipKind: ProductBundleRelationshipKind = .required,
+        suggestionReason: String? = nil,
+        compatibilitySelector: RawJSONColumn? = nil,
+        displayOrder: Int
+    ) {
+        self.id = id
+        self.companyId = companyId
+        self.bundleProductId = bundleProductId
+        self.childProductId = childProductId
+        self.quantity = quantity
+        self.relationshipKind = relationshipKind
+        self.suggestionReason = suggestionReason
+        self.compatibilitySelector = compatibilitySelector
+        self.displayOrder = displayOrder
+    }
+
+    var canDegradeToLegacyRequiredRow: Bool {
+        relationshipKind == .required &&
+            suggestionReason == nil &&
+            compatibilitySelector == nil
     }
 }
 
 struct UpdateProductBundleItemDTO: Codable {
     var quantity: Double?
+    var relationshipKind: ProductBundleRelationshipKind?
+    var suggestionReason: String?
+    var compatibilitySelector: RawJSONColumn?
     var displayOrder: Int?
 
     enum CodingKeys: String, CodingKey {
         case quantity
+        case relationshipKind = "relationship_kind"
+        case suggestionReason = "suggestion_reason"
+        case compatibilitySelector = "compatibility_selector"
         case displayOrder = "display_order"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(quantity, forKey: .quantity)
+        try c.encodeIfPresent(relationshipKind, forKey: .relationshipKind)
+        try c.encodeIfPresent(suggestionReason, forKey: .suggestionReason)
+        try c.encodeIfPresent(compatibilitySelector, forKey: .compatibilitySelector)
+        try c.encodeIfPresent(displayOrder, forKey: .displayOrder)
+    }
+
+    var includesRelationshipMetadata: Bool {
+        relationshipKind != nil ||
+            suggestionReason != nil ||
+            compatibilitySelector != nil
     }
 }

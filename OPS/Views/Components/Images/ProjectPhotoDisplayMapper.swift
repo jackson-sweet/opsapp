@@ -5,9 +5,105 @@
 
 import Foundation
 
+enum ProjectPhotoDeleteTarget: Equatable {
+    case projectImage(sourceURL: String)
+    case annotation(sourceURL: String, renderedURL: String)
+
+    var sourceURL: String {
+        switch self {
+        case .projectImage(let sourceURL),
+             .annotation(let sourceURL, _):
+            return sourceURL
+        }
+    }
+
+    var renderedURL: String? {
+        switch self {
+        case .projectImage:
+            return nil
+        case .annotation(_, let renderedURL):
+            return renderedURL
+        }
+    }
+}
+
+struct ProjectPhotoAnnotationDeleteCandidate: Equatable {
+    let id: String
+    let companyId: String
+}
+
+struct ProjectPhotoAnnotationDeletePlan: Equatable {
+    let remoteSoftDeleteCandidates: [ProjectPhotoAnnotationDeleteCandidate]
+    let localOnlyCandidateIDs: [String]
+}
+
+struct ProjectPhotoRenderedDeleteState: Equatable {
+    var dimensionedURLs: Set<String>
+    var renderedURLsBySource: [String: String]
+    var renderedDeliverableURLs: [String]
+}
+
+enum ProjectPhotoAnnotationDeletePlanner {
+    static func isLocalOnlyAnnotationID(_ id: String) -> Bool {
+        id.hasPrefix("local-")
+    }
+
+    static func shouldMarkNeedsSyncAfterLocalDelete(annotationID: String) -> Bool {
+        !isLocalOnlyAnnotationID(annotationID)
+    }
+
+    static func plan(
+        candidates: [ProjectPhotoAnnotationDeleteCandidate]
+    ) -> ProjectPhotoAnnotationDeletePlan {
+        var remoteSoftDeleteCandidates: [ProjectPhotoAnnotationDeleteCandidate] = []
+        var localOnlyCandidateIDs: [String] = []
+
+        for candidate in candidates {
+            if isLocalOnlyAnnotationID(candidate.id) {
+                localOnlyCandidateIDs.append(candidate.id)
+            } else {
+                remoteSoftDeleteCandidates.append(candidate)
+            }
+        }
+
+        return ProjectPhotoAnnotationDeletePlan(
+            remoteSoftDeleteCandidates: remoteSoftDeleteCandidates,
+            localOnlyCandidateIDs: localOnlyCandidateIDs
+        )
+    }
+
+    static func removingRenderedState(
+        sourceURL: String,
+        renderedURL: String?,
+        from state: ProjectPhotoRenderedDeleteState
+    ) -> ProjectPhotoRenderedDeleteState {
+        var updated = state
+        updated.dimensionedURLs.remove(sourceURL)
+        updated.renderedURLsBySource.removeValue(forKey: sourceURL)
+
+        if let renderedURL {
+            updated.dimensionedURLs.remove(renderedURL)
+            updated.renderedDeliverableURLs.removeAll { $0 == renderedURL }
+        }
+
+        return updated
+    }
+}
+
 struct ProjectPhotoDisplayItem: Equatable, Identifiable {
     let displayURL: String
     let sourceURL: String
+    let deleteTarget: ProjectPhotoDeleteTarget
+
+    init(
+        displayURL: String,
+        sourceURL: String,
+        deleteTarget: ProjectPhotoDeleteTarget? = nil
+    ) {
+        self.displayURL = displayURL
+        self.sourceURL = sourceURL
+        self.deleteTarget = deleteTarget ?? .projectImage(sourceURL: sourceURL)
+    }
 
     var id: String { displayURL }
     var syncStatusURL: String { sourceURL }
@@ -26,25 +122,47 @@ enum ProjectPhotoDisplayMapper {
             renderedURLsBySource.map { ($0.value, $0.key) },
             uniquingKeysWith: { first, _ in first }
         )
+        let sourceURLSet = Set(sourceURLs)
 
-        func append(displayURL: String, sourceURL: String) {
+        func append(displayURL: String, sourceURL: String, deleteTarget: ProjectPhotoDeleteTarget) {
             guard !displayURL.isEmpty, seenDisplayURLs.insert(displayURL).inserted else {
                 return
             }
-            result.append(ProjectPhotoDisplayItem(displayURL: displayURL, sourceURL: sourceURL))
+            result.append(
+                ProjectPhotoDisplayItem(
+                    displayURL: displayURL,
+                    sourceURL: sourceURL,
+                    deleteTarget: deleteTarget
+                )
+            )
         }
 
         for sourceURL in sourceURLs {
             if let renderedURL = renderedURLsBySource[sourceURL], !renderedURL.isEmpty {
-                append(displayURL: renderedURL, sourceURL: sourceURL)
+                append(
+                    displayURL: renderedURL,
+                    sourceURL: sourceURL,
+                    deleteTarget: .projectImage(sourceURL: sourceURL)
+                )
             } else {
-                append(displayURL: sourceURL, sourceURL: sourceURL)
+                append(
+                    displayURL: sourceURL,
+                    sourceURL: sourceURL,
+                    deleteTarget: .projectImage(sourceURL: sourceURL)
+                )
             }
         }
 
         for renderedURL in renderedDeliverableURLs {
-            append(displayURL: renderedURL,
-                   sourceURL: sourceByRenderedURL[renderedURL] ?? renderedURL)
+            let sourceURL = sourceByRenderedURL[renderedURL] ?? renderedURL
+            let deleteTarget: ProjectPhotoDeleteTarget = sourceURLSet.contains(sourceURL)
+                ? .projectImage(sourceURL: sourceURL)
+                : .annotation(sourceURL: sourceURL, renderedURL: renderedURL)
+            append(
+                displayURL: renderedURL,
+                sourceURL: sourceURL,
+                deleteTarget: deleteTarget
+            )
         }
 
         return result

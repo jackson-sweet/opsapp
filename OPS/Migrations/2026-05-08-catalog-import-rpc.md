@@ -96,6 +96,7 @@ INSERT (this writes data — only run against a scratch company).
 ## SKU collision policy
 
 For v1, a SKU that already exists for an active variant in the company
-is treated as a hard error. The DB has no unique constraint on SKU
-(only an index), so this guard lives in the RPC. Revisit when we have a
-duplicate-SKU policy and an upsert-or-error toggle on the import sheet.
+is treated as a hard error. The RPC catches the collision before insert;
+the live database also has the normalized per-company SKU uniqueness guard.
+This import policy is stricter than the interactive setup helper, where
+duplicate SKUs are warning-level until submit.

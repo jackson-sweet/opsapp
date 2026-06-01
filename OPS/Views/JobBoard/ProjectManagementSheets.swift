@@ -745,13 +745,10 @@ struct ProjectTeamChangeView: View {
 
         Task {
             do {
-                // Update project team using centralized function
-                try await dataController.updateProjectTeamMembers(project: project, memberIds: Array(selectedMemberIds))
-
-                // Task-only scheduling migration: Update all task teams
-                for task in project.tasks {
-                    try await dataController.updateTaskTeamMembers(task: task, memberIds: Array(selectedMemberIds))
-                }
+                try await dataController.replaceProjectTeamMembersViaServerAssignments(
+                    project: project,
+                    memberIds: Array(selectedMemberIds)
+                )
 
                 await MainActor.run {
                     // Success haptic feedback

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=1440, initial-scale=1"/>
+  <title>OPS · Books Tab — Design Exploration</title>
+  <link rel="stylesheet" href="tokens.css"/>
+  <style>
+    body { background: #000; min-height: 100vh; }
+    #root { min-height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script src="src/tokens.js"></script>
+  <script src="src/seed.js"></script>
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="src/frame.jsx"></script>
+  <script type="text/babel" src="src/direction-a.jsx"></script>
+  <script type="text/babel" src="src/direction-b.jsx"></script>
+  <script type="text/babel" src="src/direction-c.jsx"></script>
+  <script type="text/babel" src="src/states.jsx"></script>
+  <script type="text/babel" src="src/handoff.jsx"></script>
+  <script type="text/babel" src="src/b-prototype.jsx"></script>
+
+  <script type="text/babel" data-presets="env,react">
+    const { useState } = React;
+    // Artboard dims sized to contain the iOS frame including bezel padding
+    const FW = 402, FH = 856;
+
+    function App() {
+      return (
+        <DesignCanvas
+          title="OPS · BOOKS TAB"
+          subtitle="// Three directions for the iOS Books tab. All cards · all states · handoff. v1 · 2026-05-19 · For the engineering handoff package, open ⤴ Books — Handoff.html"
+        >
+          <DCSection id="prototype" title="B — Interactive prototype" subtitle="Click the artboard ⤢ icon to focus and swipe between cards · tap the period pill · switch segments · scroll to collapse · tap drill tiles · TopChase opens the A/R sheet.">
+            <DCArtboard id="bp" label="Mission Deck · live" width={FW} height={FH}><IOSFrame><BPrototype/></IOSFrame></DCArtboard>
+          </DCSection>
+          <DCSection id="dir-a" title="Direction A — Terminal" subtitle="Dense, mono-forward. Hero 40px, hairline charts, inline drill strips. The Bloomberg lineage.">
+            <DCArtboard id="a-pl"   label="01 · P&L"        width={FW} height={FH}><IOSFrame><BooksScreenA activeCard={0}/></IOSFrame></DCArtboard>
+            <DCArtboard id="a-flow" label="02 · Cash flow"  width={FW} height={FH}><IOSFrame><BooksScreenA activeCard={1}/></IOSFrame></DCArtboard>
+            <DCArtboard id="a-ar"   label="03 · A/R aging"  width={FW} height={FH}><IOSFrame><BooksScreenA activeCard={2}/></IOSFrame></DCArtboard>
+            <DCArtboard id="a-fc"   label="04 · Forecast"   width={FW} height={FH}><IOSFrame><BooksScreenA activeCard={3}/></IOSFrame></DCArtboard>
+            <DCArtboard id="a-jobs" label="05 · Jobs"       width={FW} height={FH}><IOSFrame><BooksScreenA activeCard={4}/></IOSFrame></DCArtboard>
+          </DCSection>
+
+          <DCSection id="dir-b" title="Direction B — Mission Deck" subtitle="Hero-led. 60px numbers, sparklines + soft ramps, breathing whitespace. Read at a glance.">
+            <DCArtboard id="b-pl"   label="01 · P&L"        width={FW} height={FH}><IOSFrame><BooksScreenB activeCard={0}/></IOSFrame></DCArtboard>
+            <DCArtboard id="b-flow" label="02 · Cash flow"  width={FW} height={FH}><IOSFrame><BooksScreenB activeCard={1}/></IOSFrame></DCArtboard>
+            <DCArtboard id="b-ar"   label="03 · A/R aging"  width={FW} height={FH}><IOSFrame><BooksScreenB activeCard={2}/></IOSFrame></DCArtboard>
+            <DCArtboard id="b-fc"   label="04 · Forecast"   width={FW} height={FH}><IOSFrame><BooksScreenB activeCard={3}/></IOSFrame></DCArtboard>
+            <DCArtboard id="b-jobs" label="05 · Jobs"       width={FW} height={FH}><IOSFrame><BooksScreenB activeCard={4}/></IOSFrame></DCArtboard>
+          </DCSection>
+
+          <DCSection id="dir-c" title="Direction C — Ledger" subtitle="Editorial. Hairlines as structure, numeric tables, tick-mark charts. SpaceX-readout feel.">
+            <DCArtboard id="c-pl"   label="01 · P&L"        width={FW} height={FH}><IOSFrame><BooksScreenC activeCard={0}/></IOSFrame></DCArtboard>
+            <DCArtboard id="c-flow" label="02 · Cash flow"  width={FW} height={FH}><IOSFrame><BooksScreenC activeCard={1}/></IOSFrame></DCArtboard>
+            <DCArtboard id="c-ar"   label="03 · A/R aging"  width={FW} height={FH}><IOSFrame><BooksScreenC activeCard={2}/></IOSFrame></DCArtboard>
+            <DCArtboard id="c-fc"   label="04 · Forecast"   width={FW} height={FH}><IOSFrame><BooksScreenC activeCard={3}/></IOSFrame></DCArtboard>
+            <DCArtboard id="c-jobs" label="05 · Jobs"       width={FW} height={FH}><IOSFrame><BooksScreenC activeCard={4}/></IOSFrame></DCArtboard>
+          </DCSection>
+
+          <DCSection id="states" title="States &amp; edge cases" subtitle="Built on Direction B. Empty · overflow · collapsed scroll · period menu · tile-drill · A/R sheet · offline · operator role.">
+            <DCArtboard id="s-empty"     label="Empty · $0"              width={FW} height={FH}><IOSFrame><BooksScreenEmpty/></IOSFrame></DCArtboard>
+            <DCArtboard id="s-overflow"  label="Overflow · A/R $1.28M"   width={FW} height={FH}><IOSFrame><BooksScreenOverflow/></IOSFrame></DCArtboard>
+            <DCArtboard id="s-collapsed" label="Collapsed strip · scrolled" width={FW} height={FH}><IOSFrame><BooksScreenCollapsed/></IOSFrame></DCArtboard>
+            <DCArtboard id="s-period"    label="Period menu open"        width={FW} height={FH}><IOSFrame><BooksScreenPeriodMenu/></IOSFrame></DCArtboard>
+            <DCArtboard id="s-seg-inv"   label="Segment · INVOICES"      width={FW} height={FH}><IOSFrame><BooksScreenSegment segment="INVOICES"/></IOSFrame></DCArtboard>
+            <DCArtboard id="s-seg-est"   label="Segment · ESTIMATES"     width={FW} height={FH}><IOSFrame><BooksScreenSegment segment="ESTIMATES"/></IOSFrame></DCArtboard>
+            <DCArtboard id="s-seg-exp"   label="Segment · EXPENSES"      width={FW} height={FH}><IOSFrame><BooksScreenSegment segment="EXPENSES"/></IOSFrame></DCArtboard>
+            <DCArtboard id="s-drill"     label="Outstanding tile → filter" width={FW} height={FH}><IOSFrame><BooksScreenDrillOutstanding/></IOSFrame></DCArtboard>
+            <DCArtboard id="s-arsheet"   label="TopChase → A/R sheet"    width={FW} height={FH}><IOSFrame><BooksScreenARSheet/></IOSFrame></DCArtboard>
+            <DCArtboard id="s-offline"   label="Offline · cached"        width={FW} height={FH}><IOSFrame><BooksScreenOffline/></IOSFrame></DCArtboard>
+            <DCArtboard id="s-operator"  label="Operator role · no hero" width={FW} height={FH}><IOSFrame><BooksScreenOperator/></IOSFrame></DCArtboard>
+            <DCArtboard id="s-skeleton"  label="Skeleton · first paint"  width={FW} height={FH}><IOSFrame><BooksScreenSkeleton/></IOSFrame></DCArtboard>
+            <DCArtboard id="s-error"     label="Card error · load failed" width={FW} height={FH}><IOSFrame><BooksScreenError/></IOSFrame></DCArtboard>
+            <DCArtboard id="s-ptr"       label="Pull-to-refresh · syncing" width={FW} height={FH}><IOSFrame><BooksScreenPTR/></IOSFrame></DCArtboard>
+          </DCSection>
+
+          <DCSection id="handoff" title="Handoff sheet" subtitle="Tokens, type scale, spacing, radii, motion. Engineering reference. Every value traces to OPS Design System.">
+            <DCArtboard id="ho-main" label="Tokens · spacing · motion" width={1280} height={2160}><HandoffSheet/></DCArtboard>
+          </DCSection>
+        </DesignCanvas>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>

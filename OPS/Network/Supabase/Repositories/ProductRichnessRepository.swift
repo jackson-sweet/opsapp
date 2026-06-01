@@ -60,6 +60,32 @@ class ProductRichnessRepository {
         }
     }
 
+    func createOption(_ dto: CreateProductOptionDTO) async throws -> ProductOptionDTO {
+        try await client.from("product_options")
+            .insert(dto)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func updateOption(_ id: String, fields: UpdateProductOptionDTO) async throws -> ProductOptionDTO {
+        try await client.from("product_options")
+            .update(fields)
+            .eq("id", value: id)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func deleteOption(_ id: String) async throws {
+        try await client.from("product_options")
+            .delete()
+            .eq("id", value: id)
+            .execute()
+    }
+
     // MARK: - Option values
 
     func fetchOptionValuesForCompany() async throws -> [ProductOptionValueDTO] {
@@ -82,6 +108,32 @@ class ProductRichnessRepository {
         return rows.map {
             ProductOptionValueDTO(id: $0.id, optionId: $0.optionId, value: $0.value, sortOrder: $0.sortOrder)
         }
+    }
+
+    func createOptionValue(_ dto: CreateProductOptionValueDTO) async throws -> ProductOptionValueDTO {
+        try await client.from("product_option_values")
+            .insert(dto)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func updateOptionValue(_ id: String, fields: UpdateProductOptionValueDTO) async throws -> ProductOptionValueDTO {
+        try await client.from("product_option_values")
+            .update(fields)
+            .eq("id", value: id)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func deleteOptionValue(_ id: String) async throws {
+        try await client.from("product_option_values")
+            .delete()
+            .eq("id", value: id)
+            .execute()
     }
 
     // MARK: - Pricing modifiers
@@ -119,6 +171,32 @@ class ProductRichnessRepository {
                 modifierKind: $0.modifierKind, amount: $0.amount
             )
         }
+    }
+
+    func createPricingModifier(_ dto: CreateProductPricingModifierDTO) async throws -> ProductPricingModifierDTO {
+        try await client.from("product_pricing_modifiers")
+            .insert(dto)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func updatePricingModifier(_ id: String, fields: UpdateProductPricingModifierDTO) async throws -> ProductPricingModifierDTO {
+        try await client.from("product_pricing_modifiers")
+            .update(fields)
+            .eq("id", value: id)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func deletePricingModifier(_ id: String) async throws {
+        try await client.from("product_pricing_modifiers")
+            .delete()
+            .eq("id", value: id)
+            .execute()
     }
 
     // MARK: - Recipe rows (product_materials)

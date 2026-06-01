@@ -5,11 +5,10 @@
 //  Legacy SwiftData schema (version 1.0.0) — the shape that shipped before
 //  `WizardState.id` was added for the Supabase sync contract.
 //
-//  All models other than WizardState are unchanged between V1 and V2, so
-//  they are referenced by their current type. WizardState is the only model
-//  whose persistent shape differs; its legacy form is redeclared inside this
-//  enum so SwiftData can load existing stores in the V1 format before the
-//  custom migration stage rewrites rows into the V2 shape.
+//  V1 uses frozen legacy core/task models plus the original WizardState shape
+//  so SwiftData can reproduce the historical model graph exactly. Referencing
+//  current top-level models here can collapse staged-migration fingerprints
+//  after later relationship changes.
 //
 
 import Foundation
@@ -19,7 +18,10 @@ enum OPSSchemaV1: VersionedSchema {
     static var versionIdentifier: Schema.Version { Schema.Version(1, 0, 0) }
 
     static var models: [any PersistentModel.Type] {
-        OPSSchemaCommon.unchangedModels + [WizardState.self]
+        OPSSchemaCommon.unchangedModels
+            + OPSSchemaCommon.v1ToV3CoreModels
+            + OPSSchemaCommon.v1ToV3TaskModels
+            + [OPSSchemaV1.WizardState.self]
     }
 
     /// Legacy WizardState shape — identical to the original commit

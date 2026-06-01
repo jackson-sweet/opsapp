@@ -787,7 +787,7 @@ struct CalendarSchedulerSheet: View {
                                     .cornerRadius(8)
                             }
                         }
-                        .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+                        .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
                     }
                 }
             }

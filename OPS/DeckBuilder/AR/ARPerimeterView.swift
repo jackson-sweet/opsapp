@@ -503,9 +503,7 @@ private struct ARTriggerButton: View {
     private static let builtInItems: [(String, String)] = [
         ("House", "house"),
         ("Deck", "rectangle"),
-        ("Glass", "rectangle.split.3x1"),
-        ("Picket", "line.3.horizontal"),
-        ("Cable", "cable.connector.horizontal"),
+        ("Parapet", "rectangle.bottomhalf.filled"),
         ("No Rail", "xmark"),
     ]
 
@@ -631,12 +629,14 @@ private struct ARTriggerButton: View {
         let builtInCount = Self.builtInItems.count
         if index < builtInCount {
             switch index {
-            case 0: viewModel.activeEdgeType = .houseEdge
+            case 0:
+                viewModel.activeEdgeType = .houseEdge
+                viewModel.activeRailingConfig = nil
             case 1: viewModel.activeEdgeType = .deckEdge
-            case 2: viewModel.activeRailingConfig = RailingConfig(railingType: .glass, maxPostSpacing: RailingType.glass.defaultMaxPostSpacing)
-            case 3: viewModel.activeRailingConfig = RailingConfig(railingType: .picket, maxPostSpacing: RailingType.picket.defaultMaxPostSpacing)
-            case 4: viewModel.activeRailingConfig = RailingConfig(railingType: .cable, maxPostSpacing: RailingType.cable.defaultMaxPostSpacing)
-            case 5: viewModel.activeRailingConfig = nil
+            case 2:
+                viewModel.activeEdgeType = .deckEdge
+                viewModel.activeRailingConfig = RailingConfig(railingType: .parapetWall, maxPostSpacing: RailingType.parapetWall.defaultMaxPostSpacing)
+            case 3: viewModel.activeRailingConfig = nil
             default: break
             }
         } else {

@@ -54,6 +54,15 @@ struct PhotoPrefetchBudgetReport {
     let estimatedRemainingBytes: Int64
 }
 
+struct PhotoPrefetchWarmupResult {
+    let planned: Int
+    let downloaded: Int
+    let alreadyOnDevice: Int
+    let skippedForBudget: Int
+    let timedOut: Bool
+    let duration: TimeInterval
+}
+
 @MainActor
 final class PhotoPrefetchService: ObservableObject {
     static let shared = PhotoPrefetchService()
@@ -167,6 +176,16 @@ final class PhotoPrefetchService: ObservableObject {
                 priorityDistance(for: lhs) < priorityDistance(for: rhs)
             }
 
+        let warmup = await runCriticalWarmup(
+            projects: ordered,
+            connectivity: connectivity,
+            profiler: profiler,
+            downloader: downloader
+        )
+        if warmup.planned > 0 {
+            print("[PhotoPrefetch] First-load warmup — planned \(warmup.planned), downloaded \(warmup.downloaded), already \(warmup.alreadyOnDevice), budget \(warmup.skippedForBudget), timedOut=\(warmup.timedOut), \(String(format: "%.2f", warmup.duration))s")
+        }
+
         var downloaded = 0
         var skippedForBudget = 0
 
@@ -233,7 +252,69 @@ final class PhotoPrefetchService: ObservableObject {
     /// estimate and proceed.
     private let headProbeTimeout: TimeInterval = 5
 
+    /// Initial Home photo warmup budget. This happens before the broader
+    /// prefetch pass so the first visible jobs are not blocked behind a single
+    /// old project with many photos.
+    private let firstLoadWarmupDuration: TimeInterval = 8
+    private let firstLoadWarmupProjectCap = 8
+    private let firstLoadWarmupPhotoCap = 18
+
     // MARK: - Helpers
+
+    private func runCriticalWarmup(
+        projects: [Project],
+        connectivity: ConnectivityManager,
+        profiler: StorageProfiler,
+        downloader: PhotoDownloadManager
+    ) async -> PhotoPrefetchWarmupResult {
+        let startedAt = Date()
+        let plan = PhotoPrefetchWarmupPlanner.plan(
+            projects: projects,
+            now: startedAt,
+            maxProjects: firstLoadWarmupProjectCap,
+            maxPhotos: firstLoadWarmupPhotoCap
+        )
+
+        var downloaded = 0
+        var alreadyOnDevice = 0
+        var skippedForBudget = 0
+        var timedOut = false
+
+        for candidate in plan {
+            if Task.isCancelled { break }
+            guard shouldRunOnCurrentNetwork(connectivity) else { break }
+
+            let elapsed = Date().timeIntervalSince(startedAt)
+            guard elapsed < firstLoadWarmupDuration else {
+                timedOut = true
+                break
+            }
+
+            guard !downloader.isOnDevice(candidate.url) else {
+                alreadyOnDevice += 1
+                continue
+            }
+
+            if profiler.wouldExceedBudget(adding: fallbackSizeEstimate) {
+                skippedForBudget += 1
+                continue
+            }
+
+            let remaining = max(0.5, firstLoadWarmupDuration - elapsed)
+            if await downloader.downloadPhoto(candidate.url, timeout: min(4, remaining)) {
+                downloaded += 1
+            }
+        }
+
+        return PhotoPrefetchWarmupResult(
+            planned: plan.count,
+            downloaded: downloaded,
+            alreadyOnDevice: alreadyOnDevice,
+            skippedForBudget: skippedForBudget,
+            timedOut: timedOut,
+            duration: Date().timeIntervalSince(startedAt)
+        )
+    }
 
     /// Issues a HEAD request against `urlString` and returns the Content-Length,
     /// if the server provides one. Returns nil on error / timeout / missing header.
@@ -445,4 +526,3 @@ final class PhotoPrefetchService: ObservableObject {
         }
     }
 }
-

@@ -9,6 +9,18 @@
 import Foundation
 import Supabase
 
+struct ProjectTeamAssignmentRPCResult: Decodable {
+    let updatedAt: String?
+    let teamMemberIds: [String]?
+    let taskId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case updatedAt = "updated_at"
+        case teamMemberIds = "team_member_ids"
+        case taskId = "task_id"
+    }
+}
+
 class ProjectRepository {
     private let client: SupabaseClient
     private let companyId: String
@@ -182,6 +194,7 @@ class ProjectRepository {
             .execute()
     }
 
+    @available(*, unavailable, message: "projects.team_member_ids is server-derived. Persist crew changes through project_tasks or the project-team RPCs.")
     func updateTeamMembers(_ projectId: String, memberIds: [String]) async throws {
         struct TeamUpdate: Codable {
             let team_member_ids: [String]
@@ -193,6 +206,84 @@ class ProjectRepository {
             .update(payload)
             .eq("id", value: projectId)
             .execute()
+    }
+
+    func createProjectTableAssignmentTask(
+        projectId: String,
+        title: String,
+        expectedUpdatedAt: String
+    ) async throws -> ProjectTeamAssignmentRPCResult {
+        struct Params: Encodable {
+            let p_project_id: String
+            let p_title: String
+            let p_expected_updated_at: String
+        }
+
+        return try await client
+            .rpc(
+                "create_project_table_assignment_task",
+                params: Params(
+                    p_project_id: projectId,
+                    p_title: title,
+                    p_expected_updated_at: expectedUpdatedAt
+                )
+            )
+            .execute()
+            .value
+    }
+
+    func assignProjectTeamMember(
+        projectId: String,
+        userId: String,
+        taskIds: [String],
+        expectedUpdatedAt: String
+    ) async throws -> ProjectTeamAssignmentRPCResult {
+        struct Params: Encodable {
+            let p_project_id: String
+            let p_user_id: String
+            let p_task_ids: [String]
+            let p_expected_updated_at: String
+        }
+
+        return try await client
+            .rpc(
+                "assign_project_team_member",
+                params: Params(
+                    p_project_id: projectId,
+                    p_user_id: userId,
+                    p_task_ids: taskIds,
+                    p_expected_updated_at: expectedUpdatedAt
+                )
+            )
+            .execute()
+            .value
+    }
+
+    func removeProjectTeamMember(
+        projectId: String,
+        userId: String,
+        taskIds: [String]? = nil,
+        expectedUpdatedAt: String
+    ) async throws -> ProjectTeamAssignmentRPCResult {
+        struct Params: Encodable {
+            let p_project_id: String
+            let p_user_id: String
+            let p_task_ids: [String]?
+            let p_expected_updated_at: String
+        }
+
+        return try await client
+            .rpc(
+                "remove_project_team_member",
+                params: Params(
+                    p_project_id: projectId,
+                    p_user_id: userId,
+                    p_task_ids: taskIds,
+                    p_expected_updated_at: expectedUpdatedAt
+                )
+            )
+            .execute()
+            .value
     }
 
     func updateFields(_ projectId: String, fields: [String: AnyJSON]) async throws {

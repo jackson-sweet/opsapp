@@ -13,6 +13,7 @@ struct TaskCompletionReviewView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.wizardStateManager) private var wizardStateManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject var permissionStore: PermissionStore
     @EnvironmentObject var dataController: DataController
 
@@ -326,13 +327,33 @@ struct TaskCompletionReviewView: View {
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
 
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.6)) {
+            withAnimation(celebrationScaleAnimation) {
                 celebrationScale = 1.0
             }
-            withAnimation(.easeOut(duration: 0.4).delay(0.3)) {
+            withAnimation(celebrationOpacityAnimation) {
                 celebrationOpacity = 1.0
             }
         }
+    }
+
+    // MARK: - Motion (spec: one curve, no spring; reduce-motion → near-instant)
+
+    private var celebrationScaleAnimation: Animation {
+        reduceMotion
+            ? .easeOut(duration: 0.1)
+            : OPSStyle.Animation.flip
+    }
+
+    private var celebrationOpacityAnimation: Animation {
+        reduceMotion
+            ? .easeOut(duration: 0.1).delay(0.3)
+            : .easeOut(duration: 0.4).delay(0.3)
+    }
+
+    private var allDoneTransitionAnimation: Animation {
+        reduceMotion
+            ? .easeOut(duration: 0.1).delay(0.3)
+            : OPSStyle.Animation.page.delay(0.3)
     }
 
     // MARK: - Swipe Handlers
@@ -377,7 +398,7 @@ struct TaskCompletionReviewView: View {
 
     private func checkCompletion() {
         if reviewedCount >= tasks.count {
-            withAnimation(.spring().delay(0.3)) {
+            withAnimation(allDoneTransitionAnimation) {
                 showAllDone = true
             }
         }

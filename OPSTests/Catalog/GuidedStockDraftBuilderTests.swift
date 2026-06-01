@@ -46,6 +46,23 @@ final class GuidedStockDraftBuilderTests: XCTestCase {
         XCTAssertEqual(v1, v2)   // stable variant signatures
     }
 
+    func test_variantLabel_singleItem_usesFamilyName() {
+        let g = group(single: true, attributes: [])
+        let variants = GuidedStockDraftBuilder.variantDrafts(for: g)
+        XCTAssertEqual(variants.count, 1)
+        XCTAssertEqual(GuidedStockDraftBuilder.variantLabel(for: g, variant: variants[0]), "Vinyl")
+    }
+
+    func test_variantLabel_oneAttribute_labelsVariantsByValue() {
+        let attrId = "attr-color"
+        let g = group(single: false, attributes: [GuidedAttribute(id: attrId, name: "Color", values: ["black", "white"])])
+        let variants = GuidedStockDraftBuilder.variantDrafts(for: g)
+        XCTAssertEqual(variants.count, 2)
+        let labels = variants.map { GuidedStockDraftBuilder.variantLabel(for: g, variant: $0) }
+        XCTAssertTrue(labels.contains("black"))
+        XCTAssertTrue(labels.contains("white"))
+    }
+
     func test_emptyAndBlankAttributesAreDropped() {
         let g = group(single: false, attributes: [
             GuidedAttribute(name: "Color", values: ["black", "  ", ""]),

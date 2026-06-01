@@ -41,6 +41,23 @@ enum GuidedStockDraftBuilder {
         variantDrafts(for: group).count
     }
 
+    // MARK: - Variant labelling
+
+    /// Human label for a variant within a group, e.g. "black · 6ft". Empty group/single → familyName.
+    static func variantLabel(for group: GuidedStructuredGroup, variant: CatalogSetupVariantDraft) -> String {
+        guard !group.isSingleItem, !group.attributes.isEmpty else { return group.familyName }
+        let valueById: [String: String] = group.attributes.reduce(into: [:]) { acc, attr in
+            for v in attr.values where !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                acc["\(attr.id)::\(v)"] = v
+            }
+        }
+        let parts = group.attributes.compactMap { attr -> String? in
+            guard let vid = variant.optionValueIdsByAttributeId[attr.id] else { return nil }
+            return valueById[vid]
+        }
+        return parts.isEmpty ? group.familyName : parts.joined(separator: " · ")
+    }
+
     // MARK: - Stock-unit drafts
 
     /// Physical stock-unit drafts for one variant's stock answers.

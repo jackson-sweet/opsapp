@@ -2,18 +2,21 @@ import SwiftUI
 
 // MARK: - GuidedStockStructureView
 //
-// STRUCTURE stage — the conversational grouping + attributes engine (§7.2a/2b).
+// STRUCTURE stage — the conversational grouping + attributes + measurement + stock engine.
 // Owns its own sub-flow state, BACK affordance, and CONTINUE/finalize CTA.
 // GuidedStockSetupFlow suppresses its generic bottom bar for this stage.
 //
 // Internal step machine:
-//   substep .grouping  — iterates every GuidedStructuredGroup via groupIndex cursor;
-//                        resolves multi-member merges and single-item "versions?" splits.
-//   substep .attributes — iterates only the versioned (isSingleItem=false) groups via
-//                         attrIndex cursor; collects attribute names + values.
+//   substep .grouping     — iterates every GuidedStructuredGroup via groupIndex cursor;
+//                           resolves multi-member merges and single-item "versions?" splits.
+//   substep .attributes   — iterates only the versioned (isSingleItem=false) groups via
+//                           attrIndex cursor; collects attribute names + values.
+//   substep .measurement  — iterates ALL groups via measurementIndex; captures how stock is counted.
+//   substep .stock        — iterates groups × variants via (stockGroupIndex, stockVariantIndex);
+//                           captures on-hand quantities for every variant.
 //
-// P4/P5 can append new cases to `Substep` and plug into the finalize/advance logic
-// without touching the existing substep implementations.
+// P5 can append new cases (e.g. .products) after .stock and before finalize()
+// by inserting the new case handling in the switch and extending stepBack() accordingly.
 
 struct GuidedStockStructureView: View {
 
@@ -25,11 +28,16 @@ struct GuidedStockStructureView: View {
     private enum Substep: Equatable {
         case grouping
         case attributes
+        case measurement
+        case stock
     }
 
     @State private var substep: Substep = .grouping
-    @State private var groupIndex: Int = 0   // cursor through model.groups (grouping phase)
-    @State private var attrIndex: Int = 0    // cursor through versioned groups (attributes phase)
+    @State private var groupIndex: Int = 0       // cursor through model.groups (grouping phase)
+    @State private var attrIndex: Int = 0        // cursor through versioned groups (attributes phase)
+    @State private var measurementIndex: Int = 0 // cursor through ALL groups (measurement phase)
+    @State private var stockGroupIndex: Int = 0  // cursor through groups (stock phase)
+    @State private var stockVariantIndex: Int = 0 // cursor through variants within stockGroupIndex group
 
     // MARK: - Computed helpers
 
@@ -51,6 +59,29 @@ struct GuidedStockStructureView: View {
     private var currentVersionedGroup: GuidedStructuredGroup? {
         guard let idx = currentVersionedGroupIndex else { return nil }
         return model.groups[idx]
+    }
+
+    private var currentMeasurementGroup: GuidedStructuredGroup? {
+        guard model.groups.indices.contains(measurementIndex) else { return nil }
+        return model.groups[measurementIndex]
+    }
+
+    // Stock phase: the group currently being filled
+    private var currentStockGroup: GuidedStructuredGroup? {
+        guard model.groups.indices.contains(stockGroupIndex) else { return nil }
+        return model.groups[stockGroupIndex]
+    }
+
+    // Stock phase: variants for the current stock group
+    private var currentStockVariants: [CatalogSetupVariantDraft] {
+        guard let group = currentStockGroup else { return [] }
+        return GuidedStockDraftBuilder.variantDrafts(for: group)
+    }
+
+    // Stock phase: the variant currently being filled
+    private var currentStockVariant: CatalogSetupVariantDraft? {
+        guard currentStockVariants.indices.contains(stockVariantIndex) else { return nil }
+        return currentStockVariants[stockVariantIndex]
     }
 
     private var pageAnimation: Animation {
@@ -77,6 +108,7 @@ struct GuidedStockStructureView: View {
                             .transition(cardTransition)
                             .animation(pageAnimation, value: groupIndex)
                         }
+
                     case .attributes:
                         if let group = currentVersionedGroup, let idx = currentVersionedGroupIndex {
                             AttributesCard(
@@ -86,6 +118,35 @@ struct GuidedStockStructureView: View {
                             .id("attrs-\(group.id)")
                             .transition(cardTransition)
                             .animation(pageAnimation, value: attrIndex)
+                        }
+
+                    case .measurement:
+                        if let group = currentMeasurementGroup {
+                            MeasurementCard(
+                                group: group,
+                                onSelect: { measurement in
+                                    handleMeasurementSelect(measurement)
+                                }
+                            )
+                            .id("measurement-\(group.id)")
+                            .transition(cardTransition)
+                            .animation(pageAnimation, value: measurementIndex)
+                        }
+
+                    case .stock:
+                        if let group = currentStockGroup,
+                           let variant = currentStockVariant {
+                            let gIdx = stockGroupIndex
+                            let vIdx = stockVariantIndex
+                            StockCard(
+                                group: groupBinding(for: gIdx),
+                                variant: variant,
+                                entry: stockEntryBinding(groupIndex: gIdx, variant: variant),
+                                onContinue: { handleStockContinue() }
+                            )
+                            .id("stock-\(group.id)-\(variant.id)")
+                            .transition(cardTransition)
+                            .animation(pageAnimation, value: stockGroupIndex * 1000 + stockVariantIndex)
                         }
                     }
                 }
@@ -103,6 +164,9 @@ struct GuidedStockStructureView: View {
             substep = .grouping
             groupIndex = 0
             attrIndex = 0
+            measurementIndex = 0
+            stockGroupIndex = 0
+            stockVariantIndex = 0
         }
     }
 
@@ -141,6 +205,7 @@ struct GuidedStockStructureView: View {
 
     private func stepBack() {
         switch substep {
+
         case .grouping:
             if groupIndex > 0 {
                 groupIndex -= 1
@@ -148,6 +213,7 @@ struct GuidedStockStructureView: View {
                 // First grouping question — return to CAPTURE stage.
                 model.back()
             }
+
         case .attributes:
             if attrIndex > 0 {
                 attrIndex -= 1
@@ -156,6 +222,34 @@ struct GuidedStockStructureView: View {
                 substep = .grouping
                 groupIndex = max(0, model.groups.count - 1)
             }
+
+        case .measurement:
+            if measurementIndex > 0 {
+                measurementIndex -= 1
+            } else {
+                // First measurement — go back to last attributes (or last grouping if no versioned groups).
+                if !versionedGroupIndices.isEmpty {
+                    substep = .attributes
+                    attrIndex = max(0, versionedGroupIndices.count - 1)
+                } else {
+                    substep = .grouping
+                    groupIndex = max(0, model.groups.count - 1)
+                }
+            }
+
+        case .stock:
+            if stockVariantIndex > 0 {
+                stockVariantIndex -= 1
+            } else if stockGroupIndex > 0 {
+                stockGroupIndex -= 1
+                let prevVariants = GuidedStockDraftBuilder.variantDrafts(for: model.groups[stockGroupIndex])
+                stockVariantIndex = max(0, prevVariants.count - 1)
+            } else {
+                // First stock question — go back to last measurement.
+                substep = .measurement
+                measurementIndex = max(0, model.groups.count - 1)
+            }
+            model.persist()
         }
     }
 
@@ -217,9 +311,10 @@ struct GuidedStockStructureView: View {
 
     private func checkGroupingComplete() {
         if groupIndex >= model.groups.count {
-            // All grouping decisions done. Move to attributes if any versioned groups exist.
+            // All grouping decisions done. Move to attributes if any versioned groups exist;
+            // otherwise skip straight to measurement.
             if versionedGroupIndices.isEmpty {
-                finalize()
+                startMeasurement()
             } else {
                 substep = .attributes
                 attrIndex = 0
@@ -234,6 +329,77 @@ struct GuidedStockStructureView: View {
         withAnimation(pageAnimation) {
             attrIndex += 1
             if attrIndex >= versionedGroupIndices.count {
+                startMeasurement()
+            }
+        }
+    }
+
+    // MARK: - Measurement handlers
+
+    private func startMeasurement() {
+        substep = .measurement
+        measurementIndex = 0
+    }
+
+    private func handleMeasurementSelect(_ measurement: GuidedMeasurement) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        guard model.groups.indices.contains(measurementIndex) else { return }
+        model.groups[measurementIndex].measurement = measurement
+        switch measurement {
+        case .piece:
+            break
+        case .length:
+            model.groups[measurementIndex].lengthUnit = "ft"
+        case .area:
+            model.groups[measurementIndex].lengthUnit = "ft"
+            model.groups[measurementIndex].widthUnit = "ft"
+        }
+        model.persist()
+        withAnimation(pageAnimation) {
+            measurementIndex += 1
+            if measurementIndex >= model.groups.count {
+                startStock()
+            }
+        }
+    }
+
+    // MARK: - Stock handlers
+
+    private func startStock() {
+        substep = .stock
+        stockGroupIndex = 0
+        stockVariantIndex = 0
+        // Seed missing stock entries for the first group upfront.
+        ensureStockEntries(for: stockGroupIndex)
+    }
+
+    /// Ensure model.groups[gIdx].stockEntries contains exactly one entry per variant.
+    /// Creates entries lazily by variant id; preserves any existing entries.
+    private func ensureStockEntries(for gIdx: Int) {
+        guard model.groups.indices.contains(gIdx) else { return }
+        let variants = GuidedStockDraftBuilder.variantDrafts(for: model.groups[gIdx])
+        for variant in variants {
+            if !model.groups[gIdx].stockEntries.contains(where: { $0.variantKey == variant.id }) {
+                model.groups[gIdx].stockEntries.append(GuidedStockEntry(variantKey: variant.id))
+            }
+        }
+    }
+
+    private func handleStockContinue() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        model.persist()
+        withAnimation(pageAnimation) {
+            let variants = currentStockVariants
+            if stockVariantIndex + 1 < variants.count {
+                // More variants in this group.
+                stockVariantIndex += 1
+            } else if stockGroupIndex + 1 < model.groups.count {
+                // Next group.
+                stockGroupIndex += 1
+                stockVariantIndex = 0
+                ensureStockEntries(for: stockGroupIndex)
+            } else {
+                // All groups × variants complete.
                 finalize()
             }
         }
@@ -250,12 +416,43 @@ struct GuidedStockStructureView: View {
         model.advance()
     }
 
-    // MARK: - Binding helper
+    // MARK: - Binding helpers
 
     private func binding(for groupIdx: Int) -> Binding<GuidedStructuredGroup> {
         Binding(
             get: { model.groups[groupIdx] },
             set: { model.groups[groupIdx] = $0 }
+        )
+    }
+
+    private func groupBinding(for gIdx: Int) -> Binding<GuidedStructuredGroup> {
+        Binding(
+            get: { model.groups.indices.contains(gIdx) ? model.groups[gIdx] : GuidedStructuredGroup() },
+            set: { if model.groups.indices.contains(gIdx) { model.groups[gIdx] = $0 } }
+        )
+    }
+
+    /// Returns a Binding<GuidedStockEntry> for the given group index + variant id.
+    /// Creates the entry if it doesn't exist yet (defensive — ensureStockEntries pre-seeds them).
+    private func stockEntryBinding(groupIndex gIdx: Int, variant: CatalogSetupVariantDraft) -> Binding<GuidedStockEntry> {
+        Binding(
+            get: {
+                guard model.groups.indices.contains(gIdx) else {
+                    return GuidedStockEntry(variantKey: variant.id)
+                }
+                if let existing = model.groups[gIdx].stockEntries.first(where: { $0.variantKey == variant.id }) {
+                    return existing
+                }
+                return GuidedStockEntry(variantKey: variant.id)
+            },
+            set: { newValue in
+                guard model.groups.indices.contains(gIdx) else { return }
+                if let idx = model.groups[gIdx].stockEntries.firstIndex(where: { $0.variantKey == variant.id }) {
+                    model.groups[gIdx].stockEntries[idx] = newValue
+                } else {
+                    model.groups[gIdx].stockEntries.append(newValue)
+                }
+            }
         )
     }
 }
@@ -516,6 +713,474 @@ private struct AttributesCard: View {
             }
         }
         selectedChips = chips
+    }
+}
+
+// MARK: - MeasurementCard
+//
+// Substep 2c — "How do you keep track of how much you have?"
+// One screen per group; three large option rows; sets group.measurement.
+
+private struct MeasurementCard: View {
+
+    let group: GuidedStructuredGroup
+    let onSelect: (GuidedMeasurement) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+
+            // Family context
+            Text(group.familyName.isEmpty ? "This item" : group.familyName)
+                .font(OPSStyle.Typography.cardTitle)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+
+            Text("How do you keep track of how much you have?")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            // Choice buttons — min 48pt per spec
+            VStack(spacing: OPSStyle.Layout.spacing2) {
+                MeasurementOptionRow(
+                    label: "BY THE PIECE",
+                    isSelected: group.measurement == .piece,
+                    onTap: { onSelect(.piece) }
+                )
+                MeasurementOptionRow(
+                    label: "BY LENGTH",
+                    isSelected: group.measurement == .length,
+                    onTap: { onSelect(.length) }
+                )
+                MeasurementOptionRow(
+                    label: "BY AREA",
+                    isSelected: group.measurement == .area,
+                    onTap: { onSelect(.area) }
+                )
+            }
+
+            // Teach line
+            Text("// IN OPS: sets the Unit and whether stock is counted or measured")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
+    }
+}
+
+// MARK: - MeasurementOptionRow
+
+private struct MeasurementOptionRow: View {
+
+    let label: String
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack {
+                Text(label)
+                    .font(OPSStyle.Typography.buttonLabel)
+                    .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .frame(minHeight: 48)
+            .background(
+                isSelected
+                    ? OPSStyle.Colors.primaryAccent.opacity(0.10)
+                    : OPSStyle.Colors.surfaceInput
+            )
+            .cornerRadius(OPSStyle.Layout.buttonRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                    .stroke(
+                        isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.40) : OPSStyle.Colors.line,
+                        lineWidth: OPSStyle.Layout.Border.standard
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .animation(OPSStyle.Animation.hover, value: isSelected)
+    }
+}
+
+// MARK: - StockCard
+//
+// Substep 2d — "How much do you have?" per variant.
+// Branches on group.measurement: piece / length / area.
+// Live readout of on-hand total using CatalogSetupWorkflow.mirroredQuantityLabel.
+
+private struct StockCard: View {
+
+    @Binding var group: GuidedStructuredGroup
+    let variant: CatalogSetupVariantDraft
+    @Binding var entry: GuidedStockEntry
+    let onContinue: () -> Void
+
+    // Text state for each numeric field (avoids Double ↔ String round-trip cursor jumps)
+    @State private var pieceCountText: String = ""
+    @State private var fullWidthText: String = ""
+    @State private var fullLengthText: String = ""
+    @State private var fullCountText: String = ""
+    @State private var offcutTexts: [String] = []
+
+    private var variantLabel: String {
+        GuidedStockDraftBuilder.variantLabel(for: group, variant: variant)
+    }
+
+    private var onHandLabel: String {
+        let drafts = GuidedStockDraftBuilder.stockUnitDrafts(for: group, entry: entry)
+        if drafts.isEmpty { return "—" }
+        return CatalogSetupWorkflow.mirroredQuantityLabel(for: drafts)
+    }
+
+    // Enable advancing: forgiving — allow 0/empty. Only block if fullCount > 0 but no length.
+    private var canContinue: Bool {
+        guard let m = group.measurement else { return true }
+        switch m {
+        case .piece:
+            return true
+        case .length, .area:
+            // If they entered a full count > 0, they must have a positive length.
+            if let count = entry.fullUnitCount, count > 0 {
+                guard let length = entry.fullUnitLength, length > 0 else { return false }
+                if m == .area {
+                    guard let width = entry.fullUnitWidth, width > 0 else { return false }
+                }
+                return true
+            }
+            return true
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+
+            // Variant heading
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                Text("// VARIANT")
+                    .font(OPSStyle.Typography.panelTitle)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Text(variantLabel)
+                    .font(OPSStyle.Typography.cardTitle)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
+
+            Divider().background(OPSStyle.Colors.separator)
+
+            // Branch on measurement
+            if let measurement = group.measurement {
+                switch measurement {
+                case .piece:
+                    pieceSection
+                case .length, .area:
+                    lengthAreaSection(isArea: measurement == .area)
+                }
+            }
+
+            // Live on-hand readout
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Text("On hand:")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Text(onHandLabel)
+                    .font(OPSStyle.Typography.dataValue)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
+            .padding(.vertical, OPSStyle.Layout.spacing1)
+            .animation(OPSStyle.Animation.hover, value: onHandLabel)
+
+            // CONTINUE button
+            Button(action: {
+                commitFieldsToEntry()
+                onContinue()
+            }) {
+                Text("CONTINUE →")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(StructureCTAButtonStyle(isEnabled: canContinue))
+            .disabled(!canContinue)
+            .frame(height: 52)
+            .padding(.top, OPSStyle.Layout.spacing2)
+            .accessibilityLabel("Continue")
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
+        .onAppear { syncTextsFromEntry() }
+        .onChange(of: variant.id) { _ in syncTextsFromEntry() }
+    }
+
+    // MARK: - Piece section
+
+    private var pieceSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("How many do you have?")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            DecimalInputField(
+                placeholder: "0",
+                text: $pieceCountText,
+                onChange: { syncEntryFromPieceText() }
+            )
+
+            Text("// IN OPS: on-hand quantity")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
+    }
+
+    // MARK: - Length / Area section
+
+    private func lengthAreaSection(isArea: Bool) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+
+            // — Full unit dimensions —
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                Text("What's one full unit?")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                if isArea {
+                    // Width × Length row with shared unit picker
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        // Width field
+                        DecimalInputField(
+                            placeholder: "width",
+                            text: $fullWidthText,
+                            onChange: { syncEntryFromLengthAreaTexts() }
+                        )
+
+                        Text("×")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                        // Length field
+                        DecimalInputField(
+                            placeholder: "length",
+                            text: $fullLengthText,
+                            onChange: { syncEntryFromLengthAreaTexts() }
+                        )
+
+                        // Unit picker (applies to both width and length for area)
+                        UnitPicker(unit: Binding(
+                            get: { group.lengthUnit },
+                            set: {
+                                group.lengthUnit = $0
+                                group.widthUnit = $0
+                            }
+                        ))
+                    }
+                } else {
+                    // Length only
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        DecimalInputField(
+                            placeholder: "length",
+                            text: $fullLengthText,
+                            onChange: { syncEntryFromLengthAreaTexts() }
+                        )
+
+                        UnitPicker(unit: Binding(
+                            get: { group.lengthUnit },
+                            set: { group.lengthUnit = $0 }
+                        ))
+                    }
+                }
+            }
+            .nestedCard()
+
+            // — Full unit count —
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                Text("How many full ones?")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                DecimalInputField(
+                    placeholder: "0",
+                    text: $fullCountText,
+                    onChange: { syncEntryFromLengthAreaTexts() }
+                )
+            }
+            .nestedCard()
+
+            // — Offcuts —
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                Text("Any leftover or offcut pieces?")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                ForEach(offcutTexts.indices, id: \.self) { idx in
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        DecimalInputField(
+                            placeholder: "remaining length",
+                            text: offcutBinding(for: idx),
+                            onChange: { syncOffcutsToEntry() }
+                        )
+
+                        // Delete offcut row
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(OPSStyle.Animation.hover) {
+                                offcutTexts.remove(at: idx)
+                                syncOffcutsToEntry()
+                            }
+                        } label: {
+                            Image(systemName: OPSStyle.Icons.minusCircle)
+                                .font(.system(size: OPSStyle.Layout.IconSize.md))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        }
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                // Add offcut row
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(OPSStyle.Animation.hover) {
+                        offcutTexts.append("")
+                        syncOffcutsToEntry()
+                    }
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
+                        Image(systemName: OPSStyle.Icons.plusCircle)
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        Text("ADD OFFCUT")
+                            .font(OPSStyle.Typography.metadata)
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+                .buttonStyle(.plain)
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            }
+            .nestedCard()
+
+            // Teach line
+            Text("// IN OPS: each full one and each offcut is a Stock Unit — we track remaining length so cut lists stay honest")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
+    }
+
+    // MARK: - Text ↔ Entry sync
+
+    private func syncTextsFromEntry() {
+        pieceCountText = entry.pieceCount.map { Self.format($0) } ?? ""
+        fullWidthText = entry.fullUnitWidth.map { Self.format($0) } ?? ""
+        fullLengthText = entry.fullUnitLength.map { Self.format($0) } ?? ""
+        fullCountText = entry.fullUnitCount.map { Self.format($0) } ?? ""
+        offcutTexts = entry.offcutLengths.map { Self.format($0) }
+    }
+
+    private func commitFieldsToEntry() {
+        syncEntryFromPieceText()
+        syncEntryFromLengthAreaTexts()
+        syncOffcutsToEntry()
+    }
+
+    private func syncEntryFromPieceText() {
+        entry.pieceCount = Double(pieceCountText.trimmingCharacters(in: .whitespaces))
+    }
+
+    private func syncEntryFromLengthAreaTexts() {
+        entry.fullUnitWidth = Double(fullWidthText.trimmingCharacters(in: .whitespaces))
+        entry.fullUnitLength = Double(fullLengthText.trimmingCharacters(in: .whitespaces))
+        entry.fullUnitCount = Double(fullCountText.trimmingCharacters(in: .whitespaces))
+    }
+
+    private func syncOffcutsToEntry() {
+        entry.offcutLengths = offcutTexts
+            .compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+    }
+
+    private func offcutBinding(for idx: Int) -> Binding<String> {
+        Binding(
+            get: { offcutTexts.indices.contains(idx) ? offcutTexts[idx] : "" },
+            set: { newVal in
+                if offcutTexts.indices.contains(idx) {
+                    offcutTexts[idx] = newVal
+                    syncOffcutsToEntry()
+                }
+            }
+        )
+    }
+
+    private static func format(_ value: Double) -> String {
+        // Omit trailing .0 for whole numbers; keep decimals otherwise.
+        if value.truncatingRemainder(dividingBy: 1) == 0 {
+            return String(Int(value))
+        }
+        return String(value)
+    }
+}
+
+// MARK: - DecimalInputField
+//
+// Reusable numeric field: decimal pad keyboard, dataValue font, OPSStyle tokens.
+
+private struct DecimalInputField: View {
+
+    let placeholder: String
+    @Binding var text: String
+    let onChange: () -> Void
+
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .font(OPSStyle.Typography.dataValue)
+            .foregroundColor(OPSStyle.Colors.primaryText)
+            .keyboardType(.decimalPad)
+            .padding(OPSStyle.Layout.spacing2)
+            .frame(maxWidth: .infinity)
+            .background(OPSStyle.Colors.surfaceInput)
+            .cornerRadius(OPSStyle.Layout.buttonRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                    .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+            .onChange(of: text) { _ in onChange() }
+    }
+}
+
+// MARK: - UnitPicker
+//
+// Compact inline picker for ft / in / yd / m. Defaults to "ft".
+
+private struct UnitPicker: View {
+
+    @Binding var unit: String
+    private let units = ["ft", "in", "yd", "m"]
+
+    var body: some View {
+        Menu {
+            ForEach(units, id: \.self) { u in
+                Button(u) {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    unit = u
+                }
+            }
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                Text(unit)
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
+            .frame(height: OPSStyle.Layout.touchTargetMin)
+            .background(OPSStyle.Colors.surfaceInput)
+            .cornerRadius(OPSStyle.Layout.buttonRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                    .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
     }
 }
 

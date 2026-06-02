@@ -107,6 +107,10 @@ final class DeckSceneSnapshotTests: XCTestCase {
         // Stair close-ups (front edge of the deck, low angle, zoomed).
         renderView(single, azimuthDeg: 200, elevationDeg: 12, name: "08-stairs-near", distanceScale: 0.45, focus: SCNVector3(0.4, 0.1, 0.0))
         renderView(single, azimuthDeg: 200, elevationDeg: 12, name: "09-stairs-near-flip", distanceScale: 0.45, focus: SCNVector3(0.4, 0.1, 1.0))
+        // Stair SIDE elevation — look along the stair width so the cut-stringer
+        // sawtooth profile faces the camera.
+        renderView(single, azimuthDeg: 90, elevationDeg: 4, name: "10-stairs-sawtooth", distanceScale: 0.5, focus: SCNVector3(0.5, 0.2, 0.0))
+        renderView(single, azimuthDeg: 270, elevationDeg: 4, name: "11-stairs-sawtooth2", distanceScale: 0.5, focus: SCNVector3(0.5, 0.2, 0.0))
 
         let multi = Self.multiLevelDeck()
         render(multi, preset: .perspective, name: "05-multi-perspective")

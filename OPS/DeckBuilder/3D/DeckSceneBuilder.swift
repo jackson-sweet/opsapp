@@ -752,29 +752,78 @@ struct DeckSceneBuilder {
 
     // MARK: - Stairs
 
-    /// Orientation for a stair stringer modelled as an `SCNBox` (local axes:
-    /// X = 2" width, Y = 10" depth, Z = slope length). Maps the box's length
-    /// down the rise/run slope and its width along the stair edge, built from
-    /// an explicit orthonormal basis so it is correct for ANY edge bearing and
-    /// any `flipDirection`/polygon-aware outward normal. The previous approach
-    /// set `eulerAngles.y` then `eulerAngles.x`, which pitched the slope about
-    /// the world X axis and only lined up when the edge ran along world X —
-    /// every rotated stair came out skewed.
-    /// - Parameters:
-    ///   - tangent: unit edge tangent (x, z) — where the box width lands.
-    ///   - outwardNormal: unit outward direction (x, z) the stair runs toward.
-    ///   - slopeAngle: stair pitch from horizontal, `atan2(totalRise, totalRun)`.
-    static func stringerOrientation(
-        tangent: SIMD2<Float>,
-        outwardNormal: SIMD2<Float>,
-        slopeAngle: Float
-    ) -> simd_quatf {
-        let c = cos(slopeAngle)
-        let s = sin(slopeAngle)
-        let xAxis = SIMD3<Float>(tangent.x, 0, tangent.y)                       // width → along edge
-        let zAxis = SIMD3<Float>(outwardNormal.x * c, -s, outwardNormal.y * c)  // length → down the slope
-        let yAxis = simd_normalize(simd_cross(zAxis, xAxis))                    // depth → slope-face normal
-        return simd_quatf(simd_float3x3(columns: (xAxis, yAxis, zAxis)))
+    /// Side-profile polygon (u = horizontal run outward, v = vertical, up
+    /// positive) of a cut/notched stair stringer: a sawtooth top edge whose
+    /// horizontal seats carry the treads and vertical risers face out, over a
+    /// straight underside `depthM` below. Treads rest ON the seats, so the
+    /// stringer never rises above them. Origin (0,0) is the top-back at the
+    /// deck edge; the flight descends to (treadCount·run, -treadCount·rise).
+    static func cutStringerProfilePoints(treadCount: Int, riseM: Float, runM: Float, depthM: Float) -> [CGPoint] {
+        guard treadCount > 0, riseM > 0, runM > 0, depthM > 0 else { return [] }
+        var pts: [CGPoint] = [CGPoint(x: 0, y: 0)]              // top-back at the deck
+        for k in 0..<treadCount {
+            let v = -Float(k + 1) * riseM
+            pts.append(CGPoint(x: CGFloat(Float(k) * runM), y: CGFloat(v)))       // riser bottom / seat back
+            pts.append(CGPoint(x: CGFloat(Float(k + 1) * runM), y: CGFloat(v)))   // seat front (nosing)
+        }
+        let n = Float(treadCount)
+        pts.append(CGPoint(x: CGFloat(n * runM), y: CGFloat(-n * riseM - depthM)))  // bottom-front
+        pts.append(CGPoint(x: 0, y: CGFloat(-depthM)))                              // bottom-back (underside ∥ slope)
+        return pts
+    }
+
+    /// Build the cut stringers for one stair flight as extruded sawtooth
+    /// profiles (`SCNShape`), spaced across the width by `StairConfig`'s
+    /// 24"-o.c. rule. The profile lives in the vertical plane and is oriented
+    /// so its run axis follows the outward normal and its thickness lies along
+    /// the stair edge — correct for any edge bearing.
+    private static func buildCutStringers(
+        parent: SCNNode,
+        midX: Float, midZ: Float,
+        nx: Float, nz: Float, tx: Float, tz: Float,
+        topY: Float,
+        treadCount: Int,
+        riseM: Float, runM: Float,
+        widthM: Float,
+        namePrefix: String
+    ) {
+        guard treadCount > 0, riseM > 0, runM > 0, widthM > 0 else { return }
+        let thicknessM: Float = 1.5 * inchesToMeters             // 2x lumber
+        let depthM: Float = riseM + 5.0 * inchesToMeters         // material below the seats
+        let widthInches = Double(widthM) / Double(inchesToMeters)
+        let count = StairConfig.stringerCount(width: widthInches)
+
+        let profile = cutStringerProfilePoints(treadCount: treadCount, riseM: riseM, runM: runM, depthM: depthM)
+        guard profile.count >= 3 else { return }
+        let path = UIBezierPath()
+        path.move(to: profile[0])
+        for p in profile.dropFirst() { path.addLine(to: p) }
+        path.close()
+
+        // Profile X (run, outward) → outward normal; Y (up) → world up;
+        // extrusion (thickness) → lateral (cross keeps the basis right-handed).
+        let xAxis = SIMD3<Float>(nx, 0, nz)
+        let yAxis = SIMD3<Float>(0, 1, 0)
+        let zAxis = simd_normalize(simd_cross(xAxis, yAxis))
+        let q = simd_quatf(simd_float3x3(columns: (xAxis, yAxis, zAxis)))
+
+        for s in 0..<count {
+            let t = count > 1 ? Float(s) / Float(count - 1) : 0.5
+            let lat = widthM * (t - 0.5)
+            let shape = SCNShape(path: path, extrusionDepth: CGFloat(thicknessM))
+            shape.firstMaterial = makeMaterial(color: stringerColor)
+            let node = SCNNode(geometry: shape)
+            node.simdOrientation = q
+            // Profile origin sits at the deck edge at this lateral offset;
+            // pull back half the thickness so the board centers on its line.
+            node.position = SCNVector3(
+                midX + tx * lat - zAxis.x * thicknessM / 2,
+                topY - zAxis.y * thicknessM / 2,
+                midZ + tz * lat - zAxis.z * thicknessM / 2
+            )
+            node.name = "\(namePrefix)_\(s)"
+            parent.addChildNode(node)
+        }
     }
 
     private static func buildStairs(
@@ -854,79 +903,40 @@ struct DeckSceneBuilder {
         let midX = stairBaseX + tx * stairWidthLimited / 2
         let midZ = stairBaseZ + tz * stairWidthLimited / 2
 
-        // Treads
+        // Treads — each rests ON its stringer seat (tread bottom flush with
+        // the cut), spanning one run with a slight nosing overhang.
+        let nosingM: Float = 1.0 * inchesToMeters
         for i in 0..<treadCount {
-            let stepOffset = Float(i + 1)
-            let y = deckElevationM - stepOffset * risePerStepM
-            let outward = stepOffset * runPerTreadM
+            let seatY = deckElevationM - Float(i + 1) * risePerStepM
+            let outward = (Float(i) + 0.5) * runPerTreadM + nosingM / 2
             let cx = midX + nx * outward
             let cz = midZ + nz * outward
 
-            // Tread: box oriented along edge direction; width clamped to edge.
             let treadNode = SCNNode(geometry: SCNBox(
                 width: CGFloat(stairWidthLimited),
                 height: CGFloat(treadThicknessM),
-                length: CGFloat(runPerTreadM),
+                length: CGFloat(runPerTreadM + nosingM),
                 chamferRadius: 0
             ))
             treadNode.geometry?.firstMaterial = makeMaterial(color: stairTreadColor)
-            treadNode.position = SCNVector3(cx, y, cz)
-
-            // Rotate tread to align with edge
-            let angle = atan2(edgeDz, edgeDx)
-            treadNode.eulerAngles.y = -angle
+            treadNode.position = SCNVector3(cx, seatY + treadThicknessM / 2, cz)
+            treadNode.eulerAngles.y = -atan2(edgeDz, edgeDx)
             treadNode.name = "tread_\(i)"
             stairGroup.addChildNode(treadNode)
         }
 
-        // Stringers (angled beams on each side)
-        let stringerCount = StairConfig.stringerCount(width: stairConfig.width)
-        let totalRunM = Float(treadCount) * runPerTreadM
-        // Use the config rise (not just deckElevationM) so the stringer angle
-        // matches the actual tread geometry. Bug 8.
-        let stringerLengthM = sqrt(totalRiseMFromConfig * totalRiseMFromConfig + totalRunM * totalRunM)
-        let stringerAngle = atan2(totalRiseMFromConfig, totalRunM)
-        let stringerWidthM: Float = 2.0 * inchesToMeters  // 2" wide stringer
-        let stringerDepthM: Float = 10.0 * inchesToMeters  // 10" deep stringer
-
-        // One orientation for every stringer on this run: length follows the
-        // rise/run slope, width lies along the stair edge — correct for any
-        // edge bearing (see `stringerOrientation`).
-        let stringerQ = stringerOrientation(
-            tangent: SIMD2<Float>(tx, tz),
-            outwardNormal: SIMD2<Float>(nx, nz),
-            slopeAngle: stringerAngle
+        // Cut (notched) stringers under the treads — sawtooth carriages that
+        // stop at the seats instead of a flat board poking above the steps.
+        buildCutStringers(
+            parent: stairGroup,
+            midX: midX, midZ: midZ,
+            nx: nx, nz: nz, tx: tx, tz: tz,
+            topY: deckElevationM,
+            treadCount: treadCount,
+            riseM: risePerStepM, runM: runPerTreadM,
+            widthM: stairWidthLimited,
+            namePrefix: "stringer"
         )
-        // Seat each board so its top face meets the tread nosing line instead
-        // of straddling it: drop the center half a board-depth down the
-        // slope-face normal (local +Y).
-        let stringerUp = stringerQ.act(SIMD3<Float>(0, 1, 0))
-        let seatOffset = -stringerDepthM / 2
-
-        for s in 0..<stringerCount {
-            let t = Float(s) / Float(max(stringerCount - 1, 1))
-            let lateralOffset = stairWidthLimited * (t - 0.5)
-
-            // Midway down the slope, offset to its side of the stair, seated
-            // under the treads.
-            let centerOutward = totalRunM / 2
-            let centerY = deckElevationM - totalRiseMFromConfig / 2
-            let sx = midX + nx * centerOutward + tx * lateralOffset + stringerUp.x * seatOffset
-            let sy = centerY + stringerUp.y * seatOffset
-            let sz = midZ + nz * centerOutward + tz * lateralOffset + stringerUp.z * seatOffset
-
-            let stringerNode = SCNNode(geometry: SCNBox(
-                width: CGFloat(stringerWidthM),
-                height: CGFloat(stringerDepthM),
-                length: CGFloat(stringerLengthM),
-                chamferRadius: 0
-            ))
-            stringerNode.geometry?.firstMaterial = makeMaterial(color: stringerColor)
-            stringerNode.position = SCNVector3(sx, sy, sz)
-            stringerNode.simdOrientation = stringerQ
-            stringerNode.name = "stringer_\(s)"
-            stairGroup.addChildNode(stringerNode)
-        }
 
         // Stair railing (if configured)
         if let railConfig = stairConfig.railingConfig {
@@ -1105,68 +1115,39 @@ struct DeckSceneBuilder {
         let midX = (start3D.x + end3D.x) / 2
         let midZ = (start3D.z + end3D.z) / 2
 
-        // Treads
+        // Treads — rest on the stringer seats.
+        let nosingM: Float = 1.0 * inchesToMeters
         for i in 0..<treadCount {
-            let stepOffset = Float(i + 1)
-            let y = upperElevM - stepOffset * risePerStepM
-            let outward = stepOffset * runPerTreadM
+            let seatY = upperElevM - Float(i + 1) * risePerStepM
+            let outward = (Float(i) + 0.5) * runPerTreadM + nosingM / 2
             let cx = midX + nx * outward
             let cz = midZ + nz * outward
 
             let treadNode = SCNNode(geometry: SCNBox(
                 width: CGFloat(stairWidthM),
                 height: CGFloat(treadThicknessM),
-                length: CGFloat(runPerTreadM),
+                length: CGFloat(runPerTreadM + nosingM),
                 chamferRadius: 0
             ))
             treadNode.geometry?.firstMaterial = makeMaterial(color: stairTreadColor)
-            treadNode.position = SCNVector3(cx, y, cz)
-            let angle = atan2(edgeDz, edgeDx)
-            treadNode.eulerAngles.y = -angle
+            treadNode.position = SCNVector3(cx, seatY + treadThicknessM / 2, cz)
+            treadNode.eulerAngles.y = -atan2(edgeDz, edgeDx)
             treadNode.name = "connTread_\(i)"
             connectionGroup.addChildNode(treadNode)
         }
 
-        // Stringers
-        let totalRunM = Float(treadCount) * runPerTreadM
-        let stringerLengthM = sqrt(riseDiffM * riseDiffM + totalRunM * totalRunM)
-        let stringerAngle = atan2(riseDiffM, totalRunM)
-        let stringerWidthM: Float = 2.0 * inchesToMeters
-        let stringerDepthM: Float = 10.0 * inchesToMeters
-        let stringerCountVal = StairConfig.stringerCount(width: connection.stairConfig.width)
-
-        // Same correct, edge-bearing-independent orientation + seating as
-        // edge-attached stairs (see `buildStairs`).
-        let stringerQ = stringerOrientation(
-            tangent: SIMD2<Float>(tx, tz),
-            outwardNormal: SIMD2<Float>(nx, nz),
-            slopeAngle: stringerAngle
+        // Cut (notched) stringers under the treads — same carriage as
+        // edge-attached stairs (see `buildCutStringers`).
+        buildCutStringers(
+            parent: connectionGroup,
+            midX: midX, midZ: midZ,
+            nx: nx, nz: nz, tx: tx, tz: tz,
+            topY: upperElevM,
+            treadCount: treadCount,
+            riseM: risePerStepM, runM: runPerTreadM,
+            widthM: stairWidthM,
+            namePrefix: "connStringer"
         )
-        let stringerUp = stringerQ.act(SIMD3<Float>(0, 1, 0))
-        let seatOffset = -stringerDepthM / 2
-
-        for s in 0..<stringerCountVal {
-            let t = Float(s) / Float(max(stringerCountVal - 1, 1))
-            let lateralOffset = stairWidthM * (t - 0.5)
-
-            let centerOutward = totalRunM / 2
-            let centerY = upperElevM - riseDiffM / 2
-            let sx = midX + nx * centerOutward + tx * lateralOffset + stringerUp.x * seatOffset
-            let sy = centerY + stringerUp.y * seatOffset
-            let sz = midZ + nz * centerOutward + tz * lateralOffset + stringerUp.z * seatOffset
-
-            let stringerNode = SCNNode(geometry: SCNBox(
-                width: CGFloat(stringerWidthM),
-                height: CGFloat(stringerDepthM),
-                length: CGFloat(stringerLengthM),
-                chamferRadius: 0
-            ))
-            stringerNode.geometry?.firstMaterial = makeMaterial(color: stringerColor)
-            stringerNode.position = SCNVector3(sx, sy, sz)
-            stringerNode.simdOrientation = stringerQ
-            stringerNode.name = "connStringer_\(s)"
-            connectionGroup.addChildNode(stringerNode)
-        }
 
         // Stair railing on level connection (if configured)
         if let railConfig = connection.stairConfig.railingConfig {
@@ -1602,7 +1583,7 @@ struct DeckSceneBuilder {
     /// length axis along the 3D `direction` (`p2 - p1`), keeps its width
     /// horizontal (perpendicular to the span's ground track), and tilts its
     /// height to stay normal to the length — built from an explicit orthonormal
-    /// basis like `stringerOrientation` so it is correct for any bearing AND any
+    /// basis so it is correct for any bearing AND any
     /// slope. For a level span (`direction.y == 0`) this reduces exactly to the
     /// historic `eulerAngles.y = atan2(dx, dz)` (length along the edge, width
     /// the horizontal perpendicular, height world-up) — no regression for the

@@ -526,8 +526,10 @@ struct StairConfig: Codable, Equatable {
 
     /// Number of stringers based on stair width
     static func stringerCount(width: Double) -> Int {
-        // One stringer every 16" on center, minimum 2
-        return max(2, Int(ceil(width / 16.0)) + 1)
+        // Two outer stringers plus intermediates so spacing never exceeds 24"
+        // on center: a 36" stair gets 3 (18" o.c.), 48" gets 3 (24"), 60" gets
+        // 4 (20"). Minimum 2 (one per side).
+        return max(2, Int(ceil(width / 24.0)) + 1)
     }
 }
 

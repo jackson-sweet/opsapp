@@ -339,40 +339,31 @@ final class DeckBuilderRegressionTests: XCTestCase {
         XCTAssertEqual(viewModel.findEdge(byId: "e3")?.edgeType, .deckEdge)
     }
 
-    // MARK: - 3D stringer orientation (bug: skewed for non-world-X edges)
+    // MARK: - 3D cut-stringer profile (sawtooth seats; never above the treads)
 
-    func testStringerOrientation_followsSlopeForEdgeNotAlignedToWorldX() {
-        // Edge runs along world +Z — the orientation the old dual-`eulerAngles`
-        // path skewed because it pitched about the world X axis.
-        let q = DeckSceneBuilder.stringerOrientation(
-            tangent: SIMD2<Float>(0, 1),         // box width → along the +Z edge
-            outwardNormal: SIMD2<Float>(-1, 0),  // stair runs out toward -X
-            slopeAngle: Float.pi / 4             // 45°: equal rise and run
-        )
-        let lengthAxis = q.act(SIMD3<Float>(0, 0, 1))  // box length → down the slope
-        let widthAxis = q.act(SIMD3<Float>(1, 0, 0))   // box width → along the edge
-        let r2 = Float(2).squareRoot() / 2
+    func testCutStringerProfile_sawtoothSeatsAndUnderside() {
+        let r: Float = 0.2, run: Float = 0.25, d: Float = 0.3
+        let pts = DeckSceneBuilder.cutStringerProfilePoints(treadCount: 3, riseM: r, runM: run, depthM: d)
 
-        XCTAssertEqual(lengthAxis.x, -r2, accuracy: 0.0001)
-        XCTAssertEqual(lengthAxis.y, -r2, accuracy: 0.0001)
-        XCTAssertEqual(lengthAxis.z, 0, accuracy: 0.0001)
+        // origin + 2 points per tread + 2 underside points
+        XCTAssertEqual(pts.count, 1 + 2 * 3 + 2)
+        XCTAssertEqual(pts.first, CGPoint(x: 0, y: 0))
 
-        XCTAssertEqual(widthAxis.x, 0, accuracy: 0.0001)
-        XCTAssertEqual(widthAxis.y, 0, accuracy: 0.0001)
-        XCTAssertEqual(widthAxis.z, 1, accuracy: 0.0001)
-    }
+        // Seat 0: back at (0,-r), nosing at (run,-r); riser down to seat 1.
+        XCTAssertEqual(Float(pts[1].x), 0, accuracy: 1e-5)
+        XCTAssertEqual(Float(pts[1].y), -r, accuracy: 1e-5)
+        XCTAssertEqual(Float(pts[2].x), run, accuracy: 1e-5)
+        XCTAssertEqual(Float(pts[2].y), -r, accuracy: 1e-5)
 
-    func testStringerOrientation_lengthDescendsAndStaysUnitLength() {
-        let q = DeckSceneBuilder.stringerOrientation(
-            tangent: SIMD2<Float>(1, 0),        // +X edge
-            outwardNormal: SIMD2<Float>(0, 1),  // outward +Z
-            slopeAngle: Float.pi / 6            // 30°
-        )
-        let lengthAxis = q.act(SIMD3<Float>(0, 0, 1))
+        // Bottom-front then bottom-back (underside parallel to the slope).
+        XCTAssertEqual(Float(pts[7].x), 3 * run, accuracy: 1e-5)
+        XCTAssertEqual(Float(pts[7].y), -3 * r - d, accuracy: 1e-5)
+        XCTAssertEqual(Float(pts[8].x), 0, accuracy: 1e-5)
+        XCTAssertEqual(Float(pts[8].y), -d, accuracy: 1e-5)
 
-        XCTAssertEqual(simd_length(lengthAxis), 1, accuracy: 0.0001)
-        XCTAssertEqual(lengthAxis.y, -sin(Float.pi / 6), accuracy: 0.0001)  // descends
-        XCTAssertEqual(lengthAxis.z, cos(Float.pi / 6), accuracy: 0.0001)   // runs outward
+        // Nothing rises above the deck line (v ≤ 0) — the stringer never pokes
+        // above the treads.
+        XCTAssertTrue(pts.allSatisfy { $0.y <= 1e-6 })
     }
 
     // MARK: - 3D spanning-box orientation (bug: stair top rail rendered flat)

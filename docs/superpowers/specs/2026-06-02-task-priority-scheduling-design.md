@@ -101,7 +101,9 @@ var priorityRank: Double?
 - Ranked sort: `priorityRank` ascending, ties broken by `id` (stable, conflict-safe).
 
 ### 6.2 Migration
-- Add `OPSSchemaV9` (current latest is **V8**) and a **`MigrationStage.lightweight`** `addTaskPriorityRankV8toV9` in `OPSMigrationPlan` — adding an optional property is lightweight, matching the established pattern (e.g. `addVinylOrderMarkerV6toV7`). Update `OPSSchemaCommon` task-model snapshot accordingly.
+- **No new `VersionedSchema` or `MigrationStage` is required.** `priorityRank` is an optional property on the **live** `ProjectTask` (referenced by V4–V8 via `OPSSchemaCommon.v4TaskModels`). SwiftData lightweight auto-migration adds the nil column to existing stores on next open.
+- Verified against git history: prior optional-property additions to live `ProjectTask` (commits `5d5800b0`, `8fe1e39d`, `ef1ce63b`) shipped with **zero** migration-file changes. The schema chain (V1–V8) is minted only for new *model types* (reminders, forecast, vinyl marker, catalog units), not for new properties. Do **not** add `OPSSchemaV9` for this.
+- The frozen `OPSSchemaLegacyTaskModels.ProjectTask` (V1–V3 snapshot) is intentionally left unchanged.
 
 ### 6.3 Supabase
 - New column `project_tasks.priority_rank double precision NULL`.
@@ -284,7 +286,7 @@ In `JobBoardView`, add a **`PRIORITIZE`** toggle button to the action row (`:182
   - `placeNext` extraction is behavior-preserving — existing batch/single/multi tests still green.
   - `taskPriorityQueue`: places ranked tasks in order; dependency-respecting traversal schedules a predecessor before a higher-ranked successor; crew-availability slotting around virtual commitments; `scheduleLocked` never moved; `includeUnranked` appends the tail; no-crew conflict surfaced.
 - **Fractional indexing (unit):** `rankBetween` end/middle/empty; repeated midpoint inserts trigger `normalizeRanks`; tie-by-id ordering.
-- **Migration:** V8→V9 lightweight adds `priorityRank` with `nil` default; existing rows load.
+- **Migration:** none required (lightweight auto-migration). A model test asserts `priorityRank` defaults `nil` and round-trips; manual check that a pre-existing store opens clean after the property add.
 - **View (snapshot, per the SwiftUI ImageRenderer harness):** ranked + unranked + waterline; scheduled badges; conflict badges; empty ranked zone.
 - **DataController:** `reorderPriority` / `bulkSetPriority` set ranks + `needsSync`; `autoSchedulePriorityQueue` returns a plan and commit writes dates.
 
@@ -292,7 +294,7 @@ In `JobBoardView`, add a **`PRIORITIZE`** toggle button to the action row (`:182
 
 ## 18. Build sequence (high level — detailed plan via writing-plans)
 
-1. **Data + migration:** `priorityRank` on `ProjectTask`, `OPSSchemaV9` + lightweight stage, Supabase column + index, DTO mapping, fractional-index helper (+ tests).
+1. **Data + sync:** `priorityRank` on `ProjectTask` (no schema-version bump), Supabase column + index, DTO + converter + `validProjectTaskColumns` mapping (mirror `display_order`), fractional-index helper (+ tests).
 2. **Engine:** extract `placeNext` (behavior-preserving, tests green), add `taskPriorityQueue` mode + provider resolvers + `DataController.autoSchedulePriorityQueue` (+ tests).
 3. **Reorder API:** `reorderPriority` / `bulkSetPriority` + normalization (+ tests).
 4. **Shared core UI:** `PriorityQueueViewModel`, `PriorityQueueView`, `PriorityQueueRow`, waterline, drag-reorder.

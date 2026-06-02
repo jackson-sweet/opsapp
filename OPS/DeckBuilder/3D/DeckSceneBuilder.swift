@@ -975,7 +975,10 @@ struct DeckSceneBuilder {
             ))
 
             // Posts at selected tread intervals (every 2-3 treads)
-            let postInterval = max(1, treadCount / 3)
+            // Newel posts at top + bottom, with an intermediate roughly every
+            // 6 treads on long runs. Posting every tread (the old `treadCount/3`,
+            // which collapsed to 1 on a typical stair) read as a cluttered cage.
+            let postInterval = 6
             for i in stride(from: postInterval, through: treadCount, by: postInterval) {
                 let stepOffset = Float(i)
                 let y = deckElevationM - stepOffset * risePerStepM

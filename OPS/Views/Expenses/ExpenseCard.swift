@@ -2,8 +2,10 @@
 //  ExpenseCard.swift
 //  OPS
 //
-//  Card for expense list — shows merchant, amount, category, status badge, and date.
-//  Submitted expenses render with reduced opacity and a "SUBMITTED" overlay badge.
+//  Card for an expense line — merchant, amount, category, and a quiet line that
+//  reads the line's state + its envelope phase ("filling" / "with the office" /
+//  "approved" / "paid"). Swipe left to delete. No submit gesture — the server
+//  files an added expense automatically.
 //
 
 import SwiftUI
@@ -12,29 +14,28 @@ struct ExpenseCard: View {
     let expense: ExpenseDTO
     let categoryName: String?
     let categoryIcon: String?
+    /// The expense's envelope phase (nil when the line is a draft / unbatched or
+    /// its batch isn't loaded on this surface). Drives the "filling" vs
+    /// "with the office" distinction for a submitted line.
+    var batchStatus: ExpenseBatchStatus?
     let onTap: () -> Void
-    let onEdit: (() -> Void)?
-    let onSwipeRight: () -> Void
     let onSwipeLeft: () -> Void
 
     @State private var dragOffset: CGFloat = 0
-    @State private var showingActionSheet = false
 
     init(
         expense: ExpenseDTO,
         categoryName: String?,
         categoryIcon: String?,
+        batchStatus: ExpenseBatchStatus? = nil,
         onTap: @escaping () -> Void,
-        onEdit: (() -> Void)? = nil,
-        onSwipeRight: @escaping () -> Void,
         onSwipeLeft: @escaping () -> Void
     ) {
         self.expense = expense
         self.categoryName = categoryName
         self.categoryIcon = categoryIcon
+        self.batchStatus = batchStatus
         self.onTap = onTap
-        self.onEdit = onEdit
-        self.onSwipeRight = onSwipeRight
         self.onSwipeLeft = onSwipeLeft
     }
 
@@ -44,14 +45,7 @@ struct ExpenseCard: View {
         ExpenseStatus(rawValue: expense.status) ?? .draft
     }
 
-    private var isSubmitted: Bool {
-        expenseStatus == .submitted
-    }
-
-    private var canSwipeRight: Bool {
-        expenseStatus == .draft
-    }
-
+    /// Approved / reimbursed lines are locked — no delete.
     private var canSwipeLeft: Bool {
         expenseStatus != .approved && expenseStatus != .reimbursed
     }
@@ -79,22 +73,7 @@ struct ExpenseCard: View {
 
     var body: some View {
         ZStack {
-            // Swipe-right reveal (SUBMIT)
-            if canSwipeRight {
-                HStack {
-                    Label("SUBMIT", systemImage: "paperplane.fill")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.invertedText)
-                        .padding(.leading, OPSStyle.Layout.spacing3)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(OPSStyle.Colors.primaryAccent)
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                .opacity(dragOffset > 0 ? Double(min(dragOffset / swipeThreshold, 1)) : 0)
-            }
-
-            // Swipe-left reveal (DELETE)
+            // Swipe-left reveal (DELETE) — the only swipe action.
             HStack {
                 Spacer()
                 Label("DELETE", systemImage: "trash.fill")
@@ -113,105 +92,56 @@ struct ExpenseCard: View {
                 .gesture(
                     DragGesture()
                         .onChanged { value in
-                            dragOffset = value.translation.width
+                            // Delete-only — ignore right swipes (no submit gesture).
+                            dragOffset = min(0, value.translation.width)
                         }
                         .onEnded { value in
-                            if value.translation.width > swipeThreshold && canSwipeRight {
-                                withAnimation(OPSStyle.Animation.faster) { dragOffset = 0 }
-                                onSwipeRight()
-                            } else if value.translation.width < -swipeThreshold && canSwipeLeft {
+                            if value.translation.width < -swipeThreshold && canSwipeLeft {
                                 withAnimation(OPSStyle.Animation.faster) { dragOffset = 0 }
                                 onSwipeLeft()
                             } else {
                                 withAnimation(OPSStyle.Animation.faster) { dragOffset = 0 }
                             }
                         }
-            )
-        }
-        .confirmationDialog("", isPresented: $showingActionSheet, titleVisibility: .hidden) {
-            Button("View Details") {
-                onTap()
-            }
-            Button("Edit Expense") {
-                if let onEdit = onEdit {
-                    onEdit()
-                } else {
-                    onTap()
-                }
-            }
-            Button("Cancel", role: .cancel) { }
+                )
         }
     }
 
     private var cardContent: some View {
-        Button(action: {
-            if isSubmitted {
-                showingActionSheet = true
-            } else {
-                onTap()
-            }
-        }) {
-            ZStack {
-                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                    // Row 1: merchant name + amount
-                    HStack {
-                        Text(expense.merchantName ?? "UNKNOWN MERCHANT")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .lineLimit(1)
-                        Spacer()
-                        Text(expense.amount, format: .currency(code: expense.currency ?? "USD").precision(.fractionLength(2)))
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-
-                    // Row 2: category icon + name
-                    HStack(spacing: OPSStyle.Layout.spacing1) {
-                        if let icon = categoryIcon, !icon.isEmpty {
-                            Image(systemName: icon)
-                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                        Text(categoryName ?? "UNCATEGORIZED")
-                            .font(OPSStyle.Typography.smallBody)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .lineLimit(1)
-                    }
-
-                    // Row 3: status badge + date
-                    HStack {
-                        statusBadge
-                        Spacer()
-                        Text(formattedDate)
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
+        Button(action: { onTap() }) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                // Row 1: merchant name + amount
+                HStack {
+                    Text(expense.merchantName ?? "UNKNOWN MERCHANT")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+                    Spacer()
+                    Text(expense.amount, format: .currency(code: expense.currency ?? "USD").precision(.fractionLength(2)))
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                .opacity(isSubmitted ? 0.5 : 1.0)
 
-                // Submitted overlay badge
-                if isSubmitted {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            HStack(spacing: 4) {
-                                Image(systemName: "paperplane.fill")
-                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                                Text("SUBMITTED")
-                                    .font(OPSStyle.Typography.microLabel)
-                            }
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            .padding(.horizontal, OPSStyle.Layout.spacing2)
-                            .padding(.vertical, OPSStyle.Layout.spacing1)
-                            .background(
-                                OPSStyle.Colors.primaryAccent.opacity(0.15)
-                            )
-                            .cornerRadius(OPSStyle.Layout.smallCornerRadius)
-                            Spacer()
-                        }
-                        Spacer()
+                // Row 2: category icon + name
+                HStack(spacing: OPSStyle.Layout.spacing1) {
+                    if let icon = categoryIcon, !icon.isEmpty {
+                        Image(systemName: icon)
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
+                    Text(categoryName ?? "UNCATEGORIZED")
+                        .font(OPSStyle.Typography.smallBody)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .lineLimit(1)
+                }
+
+                // Row 3: quiet state + envelope phase, with the date.
+                HStack {
+                    phaseLine
+                    Spacer()
+                    Text(formattedDate)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
@@ -219,39 +149,45 @@ struct ExpenseCard: View {
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(
-                        isSubmitted ? OPSStyle.Colors.primaryAccent.opacity(0.3) : OPSStyle.Colors.cardBorder,
-                        lineWidth: OPSStyle.Layout.Border.standard
-                    )
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(PlainButtonStyle())
     }
 
-    private var statusBadge: some View {
-        let color = expenseStatus.badgeColor
+    private var phaseLine: some View {
+        let p = phase
         return HStack(spacing: 4) {
             Circle()
-                .fill(color)
+                .fill(p.color)
                 .frame(width: OPSStyle.Layout.Indicator.dotMD, height: OPSStyle.Layout.Indicator.dotMD)
-            Text(expenseStatus.displayName)
+            Text(p.text)
                 .font(OPSStyle.Typography.smallCaption)
                 .fontWeight(.medium)
-                .foregroundColor(color)
+                .foregroundColor(p.color)
         }
     }
-}
 
-// MARK: - Helpers
-
-private extension ExpenseStatus {
-    var badgeColor: Color {
-        switch self {
-        case .draft:      return OPSStyle.Colors.tertiaryText
-        case .submitted:  return OPSStyle.Colors.primaryAccent
-        case .approved:   return OPSStyle.Colors.successStatus
-        case .rejected:   return OPSStyle.Colors.errorStatus
-        case .reimbursed: return OPSStyle.Colors.successStatus
+    /// Quiet, sentence-case descriptor of where this line is in its journey.
+    /// The line's own status carries most of it; the envelope phase distinguishes
+    /// a filling envelope from one already handed to the office.
+    private var phase: (text: String, color: Color) {
+        switch expenseStatus {
+        case .draft:      return ("unfinished", OPSStyle.Colors.tertiaryText)
+        case .rejected:   return ("needs fix",  OPSStyle.Colors.errorStatus)
+        case .approved:   return ("approved",   OPSStyle.Colors.successStatus)
+        case .reimbursed: return ("paid",       OPSStyle.Colors.successStatus)
+        case .submitted:
+            switch batchStatus {
+            case .some(.open):
+                return ("filling", OPSStyle.Colors.tertiaryText)
+            case .some(.pendingReview):
+                return ("with the office", OPSStyle.Colors.primaryAccent)
+            case .some(.approved), .some(.autoApproved), .some(.partiallyApproved):
+                return ("approved", OPSStyle.Colors.successStatus)
+            default:
+                return ("pending", OPSStyle.Colors.primaryAccent)
+            }
         }
     }
 }

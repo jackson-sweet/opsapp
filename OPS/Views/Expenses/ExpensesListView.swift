@@ -34,6 +34,9 @@ struct ExpensesListView: View {
 
     private var batchesForPeriod: [ExpenseBatchDTO] {
         viewModel.reviewBatches.filter { batch in
+            // Filling envelopes are peek-only and have no iOS peek surface —
+            // exclude them from the review hub, hero totals, and period pills.
+            guard batchStatus(batch) != .open else { return false }
             guard !selectedPeriod.isEmpty else { return true }
             return periodKey(for: batch) == selectedPeriod
         }
@@ -90,7 +93,6 @@ struct ExpensesListView: View {
             VStack(spacing: 0) {
                 if !embedded { header }
                 periodFilterPills
-                orphanRecoveryBanner
                 heroSummaryCard
                 tabToggle
                 batchList
@@ -138,63 +140,9 @@ struct ExpensesListView: View {
                     currentUserName: userName.isEmpty ? nil : userName
                 )
                 await viewModel.loadBatchesForReview()
-                await viewModel.loadOrphanCount()
                 computeAvailablePeriods()
                 hasAppeared = true
             }
-        }
-    }
-
-    // MARK: - Orphan Recovery Banner
-
-    /// Defense-in-depth: any expense in `submitted` status with no batch
-    /// (legacy clients, interrupted submissions) shows up here so admins
-    /// can recover with one tap. Hidden when there are no orphans.
-    @ViewBuilder
-    private var orphanRecoveryBanner: some View {
-        if viewModel.orphanCount > 0 {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
-                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                    .foregroundColor(OPSStyle.Colors.warningStatus)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(viewModel.orphanCount) UNBUNDLED EXPENSE\(viewModel.orphanCount == 1 ? "" : "S")")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                    Text("Submitted but never batched. Tap to bundle now.")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-
-                Spacer()
-
-                Button {
-                    Task {
-                        await viewModel.recoverOrphans()
-                    }
-                } label: {
-                    Text("BUNDLE")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.invertedText)
-                        .padding(.horizontal, OPSStyle.Layout.spacing3)
-                        .padding(.vertical, OPSStyle.Layout.spacing2)
-                        .background(OPSStyle.Colors.warningStatus)
-                        .cornerRadius(OPSStyle.Layout.smallCornerRadius)
-                }
-                .buttonStyle(PlainButtonStyle())
-                .disabled(viewModel.isLoading)
-            }
-            .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.warningStatus.opacity(0.1))
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.warningStatus.opacity(0.3),
-                            lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.top, OPSStyle.Layout.spacing2)
         }
     }
 
@@ -418,23 +366,13 @@ struct ExpensesListView: View {
 
     private var needsReviewContent: some View {
         Group {
-            if needsReviewBatches.isEmpty && autoApprovedBatches.isEmpty {
+            if needsReviewBatches.isEmpty {
                 emptyState
             } else {
-                VStack(spacing: OPSStyle.Layout.spacing3) {
-                    if !needsReviewBatches.isEmpty {
-                        batchSection(
-                            title: "\(needsReviewBatches.count) NEED REVIEW",
-                            batches: needsReviewBatches
-                        )
-                    }
-                    if !autoApprovedBatches.isEmpty {
-                        batchSection(
-                            title: "\(autoApprovedBatches.count) AUTO-APPROVED",
-                            batches: autoApprovedBatches
-                        )
-                    }
-                }
+                batchSection(
+                    title: "\(needsReviewBatches.count) NEED REVIEW",
+                    batches: needsReviewBatches
+                )
             }
         }
     }
@@ -443,10 +381,13 @@ struct ExpensesListView: View {
 
     private var historyContent: some View {
         Group {
-            if approvedBatches.isEmpty && rejectedBatches.isEmpty {
+            if autoApprovedBatches.isEmpty && approvedBatches.isEmpty && rejectedBatches.isEmpty {
                 emptyState
             } else {
                 VStack(spacing: OPSStyle.Layout.spacing3) {
+                    if !autoApprovedBatches.isEmpty {
+                        batchSection(title: "\(autoApprovedBatches.count) AUTO-APPROVED", batches: autoApprovedBatches)
+                    }
                     if !approvedBatches.isEmpty {
                         batchSection(title: "APPROVED", batches: approvedBatches)
                     }
@@ -600,6 +541,7 @@ struct ExpensesListView: View {
 
     private func batchStatusColor(_ status: ExpenseBatchStatus) -> Color {
         switch status {
+        case .open:              return OPSStyle.Colors.tertiaryText
         case .pendingReview:     return OPSStyle.Colors.warningStatus
         case .submitted:         return OPSStyle.Colors.primaryAccent
         case .approved:          return OPSStyle.Colors.successStatus
@@ -642,6 +584,7 @@ struct ExpensesListView: View {
     private func computeAvailablePeriods() {
         var keys = Set<String>()
         for batch in viewModel.reviewBatches {
+            guard batchStatus(batch) != .open else { continue }   // filling envelopes aren't shown here
             let key = periodKey(for: batch)
             if !key.isEmpty { keys.insert(key) }
         }

@@ -34,8 +34,9 @@ struct ExpenseBatchDetailView: View {
     }
 
     private var isReviewable: Bool {
-        let status = ExpenseBatchStatus(rawValue: batch.status) ?? .pendingReview
-        return status == .pendingReview || status == .submitted
+        // Filling (open) envelopes are not review-ready; only sent ones are.
+        // Shared rule with the hub's needsReview filter so they never diverge.
+        (ExpenseBatchStatus(rawValue: batch.status) ?? .pendingReview).needsReview
     }
 
     private var crewName: String {

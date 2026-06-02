@@ -164,6 +164,9 @@ enum ExpenseStatus: String, Codable, CaseIterable {
 // MARK: - Expense Batch Status
 
 enum ExpenseBatchStatus: String, Codable, CaseIterable {
+    /// Filling envelope — current period, silently accruing on the server.
+    /// Peek-only; never reviewable. The server's daily sweep owns when it sends.
+    case open              = "open"
     case pendingReview     = "pending_review"
     case submitted         = "submitted"
     case approved          = "approved"
@@ -173,6 +176,7 @@ enum ExpenseBatchStatus: String, Codable, CaseIterable {
 
     var displayName: String {
         switch self {
+        case .open:              return "FILLING"
         case .pendingReview:     return "PENDING"
         case .submitted:         return "SUBMITTED"
         case .approved:          return "APPROVED"
@@ -181,6 +185,10 @@ enum ExpenseBatchStatus: String, Codable, CaseIterable {
         case .autoApproved:      return "AUTO-APPROVED"
         }
     }
+
+    /// A filling envelope is current-period, silently accruing — not yet
+    /// handed to the office, so it is never review-ready or approvable.
+    var isFilling: Bool { self == .open }
 
     var needsReview: Bool { self == .pendingReview || self == .submitted }
     var isApproved: Bool { self == .approved || self == .autoApproved || self == .partiallyApproved }

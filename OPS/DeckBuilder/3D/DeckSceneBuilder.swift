@@ -24,6 +24,7 @@ struct DeckSceneBuilder {
     private static let stringerColor = UIColor(red: 139/255, green: 108/255, blue: 74/255, alpha: 1)       // #8B6C4A
     private static let groundColor = UIColor(red: 74/255, green: 94/255, blue: 58/255, alpha: 0.3)         // #4A5E3A at 30%
     private static let houseWallColor = UIColor(red: 136/255, green: 136/255, blue: 136/255, alpha: 0.5)   // #888888 at 50%
+    private static let footingColor = UIColor(red: 150/255, green: 150/255, blue: 150/255, alpha: 1)       // #969696 concrete pier
 
     // Dimensions in meters
     private static let railPostSizeM: Float = 3.5 * inchesToMeters   // 3.5" square rail post
@@ -211,7 +212,15 @@ struct DeckSceneBuilder {
             )
         }
 
-        addGroundPlane(to: scene)
+        // Size the ground to the deck so it always reads as continuous grade
+        // out to the horizon rather than a small floating island, but never so
+        // huge it blows out the shadow frustum.
+        let groundMeters = cameraFrameCenter.map {
+            convertToMeters(vertices: allPositions, scaleFactor: scaleFactor, center: $0)
+        } ?? convertToMeters(vertices: allPositions, scaleFactor: scaleFactor)
+        let groundBounds = DeckMeshGenerator.boundingRect(for: groundMeters)
+        let deckSpanM = Float(max(groundBounds.width, groundBounds.height))
+        addGroundPlane(to: scene, size: min(max(deckSpanM * 6 + 8, 30), 120))
         addLighting(to: scene)
         addCamera(
             to: scene,
@@ -375,6 +384,12 @@ struct DeckSceneBuilder {
             deckGroup.addChildNode(surfaceNode)
         }
 
+        // Support posts + footings under each surface's perimeter so a raised
+        // deck rests on grade instead of floating. No-op for ground-level decks.
+        for surf in surfaces {
+            buildSupportPosts(parent: deckGroup, perimeterMeters: surf.positionsInMeters, deckElevationM: elevationM)
+        }
+
         // Railing and stairs per edge
         for edge in edges {
             guard let startPt = vertexPositionsInMetersById[edge.startVertexId],
@@ -440,6 +455,71 @@ struct DeckSceneBuilder {
         }
 
         parent.addChildNode(deckGroup)
+    }
+
+    // MARK: - Support Structure
+
+    /// Vertical 6x6 support posts (on concrete footing pads) dropped from the
+    /// underside of a raised deck's perimeter down to grade. Without these the
+    /// deck reads as floating in mid-air. Posts land at each perimeter corner
+    /// plus subdivisions of long runs (~8' on center). No-op for decks at or
+    /// near grade.
+    private static func buildSupportPosts(
+        parent: SCNNode,
+        perimeterMeters: [CGPoint],
+        deckElevationM: Float,
+        postBottomY: Float = 0
+    ) {
+        let joistDepthM: Float = 9.25 * inchesToMeters    // seat posts under a 2x10 rim
+        let postTopY = deckElevationM - joistDepthM
+        guard postTopY - postBottomY > 0.2 else { return }  // only meaningfully raised decks
+
+        let postSizeM: Float = 5.5 * inchesToMeters         // 6x6 nominal
+        let footingH: Float = 5.0 * inchesToMeters
+        let footingW: Float = 11.0 * inchesToMeters
+        let maxSpacingM: Float = 2.44                       // ~8 ft on center
+
+        let n = perimeterMeters.count
+        guard n >= 2 else { return }
+
+        var xz: [CGPoint] = []
+        for i in 0..<n {
+            let a = perimeterMeters[i]
+            let b = perimeterMeters[(i + 1) % n]
+            xz.append(a)
+            let dx = Float(b.x - a.x), dz = Float(b.y - a.y)
+            let len = sqrt(dx * dx + dz * dz)
+            let segs = Int(ceil(len / maxSpacingM))
+            if segs > 1 {
+                for s in 1..<segs {
+                    let t = Float(s) / Float(segs)
+                    xz.append(CGPoint(x: a.x + CGFloat(dx * t), y: a.y + CGFloat(dz * t)))
+                }
+            }
+        }
+
+        let postHeight = postTopY - postBottomY
+        for p in xz {
+            let px = Float(p.x), pz = Float(p.y)
+
+            let post = SCNNode(geometry: SCNBox(
+                width: CGFloat(postSizeM), height: CGFloat(postHeight),
+                length: CGFloat(postSizeM), chamferRadius: 0
+            ))
+            post.geometry?.firstMaterial = makeMaterial(color: postColor)
+            post.position = SCNVector3(px, postBottomY + postHeight / 2, pz)
+            post.name = "supportPost"
+            parent.addChildNode(post)
+
+            let footing = SCNNode(geometry: SCNBox(
+                width: CGFloat(footingW), height: CGFloat(footingH),
+                length: CGFloat(footingW), chamferRadius: 0
+            ))
+            footing.geometry?.firstMaterial = makeMaterial(color: footingColor)
+            footing.position = SCNVector3(px, postBottomY + footingH / 2, pz)
+            footing.name = "footing"
+            parent.addChildNode(footing)
+        }
     }
 
     // MARK: - Railing
@@ -1174,8 +1254,8 @@ struct DeckSceneBuilder {
 
     // MARK: - Ground Plane
 
-    private static func addGroundPlane(to scene: SCNScene) {
-        let ground = SCNPlane(width: 30, height: 30)
+    private static func addGroundPlane(to scene: SCNScene, size: Float = 30) {
+        let ground = SCNPlane(width: CGFloat(size), height: CGFloat(size))
         ground.firstMaterial = makeMaterial(color: groundColor)
         ground.firstMaterial?.isDoubleSided = true
         let groundNode = SCNNode(geometry: ground)

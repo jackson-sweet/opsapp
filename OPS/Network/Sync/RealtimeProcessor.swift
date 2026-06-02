@@ -121,8 +121,11 @@ final class RealtimeProcessor: ObservableObject {
         // Companies table filters on `id`, not `company_id`
         subscribeToTable(channel: channel, table: "companies", filter: "id=eq.\(companyId)")
 
-        // Expenses and calendar events filtered by company_id
+        // Expenses, expense envelopes (batches), and calendar events filtered by company_id.
+        // expense_batches drives live envelope-status flips (filling → with the office,
+        // auto-approved) and total recalcs in the review hub + crew list.
         subscribeToTable(channel: channel, table: "expenses", filter: "company_id=eq.\(companyId)")
+        subscribeToTable(channel: channel, table: "expense_batches", filter: "company_id=eq.\(companyId)")
         subscribeToTable(channel: channel, table: "calendar_user_events", filter: "company_id=eq.\(companyId)")
 
         // Notifications filtered by user_id (user-specific)
@@ -333,8 +336,9 @@ final class RealtimeProcessor: ObservableObject {
                 let pendingFields = pendingFieldsForEntity(entityType: .deckDesign, entityId: dto.id, context: context)
                 try upsertDeckDesign(context: context, id: dto.id, dto: dto, pendingFields: pendingFields)
 
-            case "expenses":
+            case "expenses", "expense_batches":
                 NotificationCenter.default.post(name: .expenseUpdated, object: nil)
+                NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
 
             case "calendar_user_events":
                 NotificationCenter.default.post(name: .calendarEventUpdated, object: nil)
@@ -451,8 +455,9 @@ final class RealtimeProcessor: ObservableObject {
                     try context.save()
                 }
 
-            case "expenses":
+            case "expenses", "expense_batches":
                 NotificationCenter.default.post(name: .expenseUpdated, object: nil)
+                NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
 
             case "calendar_user_events":
                 NotificationCenter.default.post(name: .calendarEventUpdated, object: nil)
@@ -578,8 +583,9 @@ final class RealtimeProcessor: ObservableObject {
                 Task { await actor.handleRealtimeUpdate(.companyDefaultProduct(dto)) }
 
             // Non-merge tables: no actor involvement, just post events on main.
-            case "expenses":
+            case "expenses", "expense_batches":
                 NotificationCenter.default.post(name: .expenseUpdated, object: nil)
+                NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
             case "calendar_user_events":
                 NotificationCenter.default.post(name: .calendarEventUpdated, object: nil)
             case "notifications":
@@ -611,8 +617,9 @@ final class RealtimeProcessor: ObservableObject {
                 let payload = try action.decodeOldRecord(as: IdPayload.self, decoder: decoder)
                 Task { await actor.softDeleteFromRealtime(table: table, id: payload.id) }
 
-            case "expenses":
+            case "expenses", "expense_batches":
                 NotificationCenter.default.post(name: .expenseUpdated, object: nil)
+                NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
             case "calendar_user_events":
                 NotificationCenter.default.post(name: .calendarEventUpdated, object: nil)
             case "notifications":

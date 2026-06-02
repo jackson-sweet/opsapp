@@ -113,9 +113,6 @@ struct ProjectExpensesTabView: View {
                     categoryName: category?.name,
                     categoryIcon: category?.icon,
                     onTap: { onTapExpense(expense) },
-                    onSwipeRight: {
-                        Task { await expenseViewModel.submitExpense(expense.id) }
-                    },
                     onSwipeLeft: {
                         Task { await expenseViewModel.deleteExpense(expense.id) }
                     }

@@ -43,6 +43,17 @@ enum CatalogSchemaCapabilityError: LocalizedError {
     }
 }
 
+/// Result of a single schema capability probe.
+///
+/// `.available` and `.missing` are definitive server verdicts; `.unknown`
+/// covers transient/unclassifiable failures that must not permanently block
+/// a capability that was previously reachable.
+enum CatalogSchemaProbeResult: Equatable {
+    case available   // table/columns exist and are reachable
+    case missing     // server definitively reports the table/columns do not exist
+    case unknown     // transient/unclassifiable (network, timeout, etc.) — do not hard-block
+}
+
 enum CatalogSchemaCapabilityGate {
     private enum Keys {
         static let catalogStockUnits = "catalog.schema.catalogStockUnits"
@@ -62,25 +73,78 @@ enum CatalogSchemaCapabilityGate {
         current.supportsSync(entityType)
     }
 
+    // MARK: - Pure classifier (no network, fully testable)
+
+    /// Maps a thrown probe error to a `CatalogSchemaProbeResult`.
+    ///
+    /// Only definitive Postgres / PostgREST "object does not exist" signals
+    /// produce `.missing`; everything else — including all `URLError`s — is
+    /// `.unknown` so a single flaky network call cannot permanently mark a
+    /// capability unavailable.
+    static func classifyProbeError(_ error: Error) -> CatalogSchemaProbeResult {
+        // Any URLError (timeout, no connectivity, TLS, etc.) is transient.
+        if error is URLError { return .unknown }
+        let ns = error as NSError
+        if ns.domain == NSURLErrorDomain { return .unknown }
+
+        // Build a single lowercase search string from whatever the error exposes.
+        let message = (ns.userInfo[NSLocalizedDescriptionKey] as? String ?? "\(error)").lowercased()
+
+        // Definitive Postgres / PostgREST signals that a table or column is absent.
+        let missingSignals: [String] = [
+            "does not exist",
+            "could not find the table",
+            "could not find the",
+            "42p01",   // Postgres: undefined_table
+            "42703",   // Postgres: undefined_column
+            "pgrst205", // PostgREST: column not found
+            "pgrst204", // PostgREST: column not found (variant)
+            "pgrst202", // PostgREST: relationship not found
+        ]
+        if missingSignals.contains(where: { message.contains($0) }) { return .missing }
+
+        // Conservative default: never false-negative a real table on an unclassifiable error.
+        return .unknown
+    }
+
+    // MARK: - Pure resolver (no network, fully testable)
+
+    /// Applies last-known retention semantics.
+    ///
+    /// - `.available` / `.missing` are definitive: write their value.
+    /// - `.unknown` keeps whatever was last stored so a transient error
+    ///   cannot revoke a capability that was previously confirmed.
+    static func resolveCapability(probe: CatalogSchemaProbeResult, lastKnown: Bool) -> Bool {
+        switch probe {
+        case .available: return true
+        case .missing:   return false
+        case .unknown:   return lastKnown
+        }
+    }
+
+    // MARK: - Network refresh
+
     @discardableResult
     @MainActor
     static func refresh(
         companyId: String,
         client: SupabaseClient = SupabaseService.shared.client
     ) async -> CatalogSchemaCapabilities {
-        let stockUnits = await probe(
+        let lastKnown = current
+
+        let stockUnitsResult = await probe(
             client: client,
             table: "catalog_stock_units",
             columns: "id",
             companyId: companyId
         )
-        let optionMappings = await probe(
+        let optionMappingsResult = await probe(
             client: client,
             table: "catalog_product_option_mappings",
             columns: "id",
             companyId: companyId
         )
-        let bundleRelationshipFields = await probe(
+        let bundleRelationshipFieldsResult = await probe(
             client: client,
             table: "product_bundle_items",
             columns: "id,relationship_kind,suggestion_reason,compatibility_selector",
@@ -88,9 +152,9 @@ enum CatalogSchemaCapabilityGate {
         )
 
         let capabilities = CatalogSchemaCapabilities(
-            catalogStockUnits: stockUnits,
-            catalogProductOptionMappings: optionMappings,
-            productBundleRelationshipFields: bundleRelationshipFields
+            catalogStockUnits: resolveCapability(probe: stockUnitsResult, lastKnown: lastKnown.catalogStockUnits),
+            catalogProductOptionMappings: resolveCapability(probe: optionMappingsResult, lastKnown: lastKnown.catalogProductOptionMappings),
+            productBundleRelationshipFields: resolveCapability(probe: bundleRelationshipFieldsResult, lastKnown: lastKnown.productBundleRelationshipFields)
         )
         store(capabilities)
         return capabilities
@@ -111,7 +175,7 @@ enum CatalogSchemaCapabilityGate {
         table: String,
         columns: String,
         companyId: String
-    ) async -> Bool {
+    ) async -> CatalogSchemaProbeResult {
         do {
             var query = client.from(table).select(columns)
             if !companyId.isEmpty {
@@ -121,10 +185,10 @@ enum CatalogSchemaCapabilityGate {
                 .limit(1)
                 .execute()
                 .value
-            return true
+            return .available
         } catch {
             print("[CatalogSchemaCapabilityGate] \(table) unavailable for catalog setup sync: \(error)")
-            return false
+            return classifyProbeError(error)
         }
     }
 }

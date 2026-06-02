@@ -48,6 +48,7 @@ struct CatalogView: View {
     @State private var showDefaultsManage: Bool = false
     @State private var showSetupFlow: Bool = false
     @State private var setupMissingMappingKey: String?
+    @State private var showGuidedSetup: Bool = false
     @State private var showImport: Bool = false
 
     private var selectedSegment: CatalogSegment {
@@ -114,6 +115,13 @@ struct CatalogView: View {
             CatalogImportSheet()
                 .environmentObject(dataController)
         }
+        .fullScreenCover(isPresented: $showGuidedSetup) {
+            GuidedStockSetupFlow(
+                companyId: dataController.currentUser?.companyId ?? "",
+                userId: dataController.currentUser?.id ?? ""
+            )
+            .environmentObject(dataController)
+        }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenCatalogOrders"))) { notif in
             let raw = notif.userInfo?["subSegment"] as? String
             ordersInitialSubSegment = OrdersSubSegment(rawValue: raw ?? "") ?? .suggested
@@ -124,6 +132,11 @@ struct CatalogView: View {
             setupMissingMappingKey = key?.isEmpty == false ? key : nil
             setSegment(.stock)
             showSetupFlow = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenGuidedStockSetup"))) { _ in
+            guard permissionStore.can("catalog.manage") else { return }
+            setSegment(.stock)
+            showGuidedSetup = true
         }
     }
 

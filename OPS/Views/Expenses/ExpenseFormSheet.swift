@@ -793,7 +793,8 @@ struct ExpenseFormSheet: View {
                         .tint(OPSStyle.Colors.primaryAccent)
                         .frame(maxWidth: .infinity)
                 } else if editing == nil {
-                    // NEW expense
+                    // NEW expense — one Add. Snap-a-stack still saves drafts via
+                    // SAVE & NEXT; the last/single receipt is added (submitted).
                     if hasMoreReceipts {
                         Button {
                             Task { await saveAndAdvance() }
@@ -804,17 +805,9 @@ struct ExpenseFormSheet: View {
                         .opsPrimaryButtonStyle()
                     } else {
                         Button {
-                            Task { await save(submit: false) }
-                        } label: {
-                            Text("SAVE DRAFT")
-                                .font(OPSStyle.Typography.button)
-                        }
-                        .opsSecondaryButtonStyle()
-
-                        Button {
                             Task { await save(submit: true) }
                         } label: {
-                            Text("SUBMIT")
+                            Text("ADD")
                                 .font(OPSStyle.Typography.button)
                         }
                         .opsPrimaryButtonStyle()
@@ -830,7 +823,7 @@ struct ExpenseFormSheet: View {
                     }
                     .frame(maxWidth: .infinity)
                 } else if isViewMode {
-                    // View mode for draft/submitted/rejected — EDIT button + contextual action
+                    // Viewing draft/submitted/rejected — EDIT + the one finalize action.
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) { isViewMode = false }
                     } label: {
@@ -843,7 +836,7 @@ struct ExpenseFormSheet: View {
                         Button {
                             Task { await save(submit: true) }
                         } label: {
-                            Text("SUBMIT")
+                            Text("ADD")
                                 .font(OPSStyle.Typography.button)
                         }
                         .opsPrimaryButtonStyle()
@@ -857,16 +850,17 @@ struct ExpenseFormSheet: View {
                         .opsPrimaryButtonStyle()
                     }
                 } else {
-                    // Edit mode for draft/submitted/rejected
-                    if expenseStatus == .rejected {
+                    // Editing draft/submitted/rejected.
+                    if expenseStatus == .submitted {
+                        // Pending line — save edits in place; the trigger re-files + recalcs.
                         Button {
                             Task { await save(submit: false) }
                         } label: {
                             Text("SAVE")
                                 .font(OPSStyle.Typography.button)
                         }
-                        .opsSecondaryButtonStyle()
-
+                        .opsPrimaryButtonStyle()
+                    } else if expenseStatus == .rejected {
                         Button {
                             Task { await save(submit: true) }
                         } label: {
@@ -874,27 +868,11 @@ struct ExpenseFormSheet: View {
                                 .font(OPSStyle.Typography.button)
                         }
                         .opsPrimaryButtonStyle()
-                    } else if expenseStatus == .submitted {
-                        Button {
-                            Task { await save(submit: false) }
-                        } label: {
-                            Text("SAVE")
-                                .font(OPSStyle.Typography.button)
-                        }
-                        .opsPrimaryButtonStyle()
                     } else {
-                        Button {
-                            Task { await save(submit: false) }
-                        } label: {
-                            Text("SAVE DRAFT")
-                                .font(OPSStyle.Typography.button)
-                        }
-                        .opsSecondaryButtonStyle()
-
                         Button {
                             Task { await save(submit: true) }
                         } label: {
-                            Text("SUBMIT")
+                            Text("ADD")
                                 .font(OPSStyle.Typography.button)
                         }
                         .opsPrimaryButtonStyle()
@@ -1079,8 +1057,11 @@ struct ExpenseFormSheet: View {
         let ocrConfidence = lastOCRResult != nil ? Double(lastOCRResult!.overallConfidence) : nil
 
         if let exp = editing {
-            // If editing a submitted expense, reset status to draft and clear batch
-            let wasSubmitted = ExpenseStatus(rawValue: exp.status) == .submitted
+            // Server-authoritative edit: keep the line's status (no revert to
+            // draft). A pending line stays submitted; the place_expense trigger
+            // re-files it and recomputes the envelope after the field write
+            // (handled below by status).
+            let priorStatus = ExpenseStatus(rawValue: exp.status) ?? .draft
             let fields = UpdateExpenseDTO(
                 categoryId: selectedCategoryId,
                 merchantName: merchantName.isEmpty ? nil : merchantName,
@@ -1090,14 +1071,9 @@ struct ExpenseFormSheet: View {
                 currency: selectedCurrency,
                 expenseDate: dateString,
                 paymentMethod: paymentMethod.rawValue,
-                status: wasSubmitted ? ExpenseStatus.draft.rawValue : nil
+                status: nil
             )
             await viewModel.updateExpense(exp.id, fields: fields)
-
-            // Reset batch assignment separately if the expense was submitted
-            if wasSubmitted {
-                await viewModel.resetExpenseBatch(exp.id)
-            }
 
             // Upload receipt if new image captured (not already uploaded)
             if viewModel.error == nil, !receiptQueue.isEmpty, exp.receiptImageUrl == nil {
@@ -1134,8 +1110,19 @@ struct ExpenseFormSheet: View {
                 }
             }
 
-            if submit && viewModel.error == nil {
-                await viewModel.submitExpense(exp.id)
+            // Finalize per the prior status (server-authoritative — no client batching):
+            //  • draft + Add        → submitted; the place_expense trigger files it.
+            //  • rejected + Resubmit → submitted, then re-file into the current open envelope.
+            //  • submitted + Save    → keep submitted; re-file so the envelope total stays live.
+            if viewModel.error == nil {
+                if submit && priorStatus == .draft {
+                    await viewModel.submitExpense(exp.id)
+                } else if submit && priorStatus == .rejected {
+                    await viewModel.submitExpense(exp.id)
+                    await viewModel.refileEditedExpense(exp.id, previousBatchId: exp.batchId)
+                } else if priorStatus == .submitted {
+                    await viewModel.refileEditedExpense(exp.id, previousBatchId: exp.batchId)
+                }
             }
         } else {
             let created = await viewModel.createExpense(

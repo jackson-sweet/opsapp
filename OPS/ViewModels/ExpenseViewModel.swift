@@ -12,6 +12,9 @@ class ExpenseViewModel: ObservableObject {
     @Published var expenses: [ExpenseDTO] = []
     @Published var categories: [ExpenseCategoryDTO] = []
     @Published var batches: [ExpenseBatchDTO] = []
+    /// The current user's own batches — drives the My Expenses filling-total
+    /// strip and each card's envelope-phase line.
+    @Published var myBatches: [ExpenseBatchDTO] = []
     @Published var settings: ExpenseSettingsDTO? = nil
     @Published var selectedFilter: ExpenseFilter = .all
     @Published var searchText: String = ""
@@ -177,6 +180,45 @@ class ExpenseViewModel: ObservableObject {
         }
     }
 
+    /// Load the current user's own batches (for the crew filling total + the
+    /// per-card envelope phase). RLS scopes reads to the company; we keep just
+    /// this user's so the strip/phase math stays cheap and correct.
+    func loadMyBatches() async {
+        guard let repo = repository, let uid = storedUserId else { return }
+        do {
+            myBatches = try await repo.fetchBatchesByUser(uid)
+        } catch {
+            // Observability only — the list still works without the phase line.
+        }
+    }
+
+    /// Resolved envelope status for an expense's batch (nil when the line is a
+    /// draft / unbatched, or its batch isn't loaded yet).
+    func batchStatus(for expense: ExpenseDTO) -> ExpenseBatchStatus? {
+        guard let bid = expense.batchId,
+              let batch = myBatches.first(where: { $0.id == bid }) else { return nil }
+        return ExpenseBatchStatus(rawValue: batch.status)
+    }
+
+    /// The current filling envelope(s) total + period label for the low-key
+    /// running-total strip. Nil when nothing is filling this period.
+    var currentFilling: (total: Double, periodLabel: String)? {
+        let open = myBatches.filter { ExpenseBatchStatus(rawValue: $0.status) == .open }
+        guard !open.isEmpty else { return nil }
+        let total = open.compactMap(\.totalAmount).reduce(0, +)
+        let label: String = {
+            let latest = open
+                .sorted { ($0.periodStart ?? "") > ($1.periodStart ?? "") }
+                .first?.periodStart
+            guard let start = latest else { return "" }
+            let iso = ISO8601DateFormatter(); iso.formatOptions = [.withFullDate]
+            guard let d = iso.date(from: start) else { return "" }
+            let f = DateFormatter(); f.dateFormat = "MMMM"
+            return f.string(from: d).uppercased()
+        }()
+        return (total, label)
+    }
+
     func loadSettings() async {
         guard let repo = repository else { return }
         do {
@@ -191,7 +233,8 @@ class ExpenseViewModel: ObservableObject {
         async let categoriesTask: () = loadCategories()
         async let settingsTask: () = loadSettings()
         async let batchesTask: () = loadBatches()
-        _ = await (expensesTask, categoriesTask, settingsTask, batchesTask)
+        async let myBatchesTask: () = loadMyBatches()
+        _ = await (expensesTask, categoriesTask, settingsTask, batchesTask, myBatchesTask)
     }
 
     // MARK: - OCR
@@ -263,15 +306,21 @@ class ExpenseViewModel: ObservableObject {
         }
     }
 
-    /// Reset an expense's batch assignment (used when editing a submitted expense)
-    func resetExpenseBatch(_ expenseId: String) async {
+    /// Re-file + recompute totals after editing a line that is already in an
+    /// envelope. Clearing batch_id makes the server `place_expense` trigger
+    /// re-file it by its (possibly changed) date and recompute the destination
+    /// envelope total; the previous envelope is recomputed too if the line
+    /// moved. The line keeps its status — no revert to draft, no manual resubmit.
+    func refileEditedExpense(_ expenseId: String, previousBatchId: String?) async {
         guard let repo = repository else { return }
         do {
-            try await repo.clearBatchId(expenseId)
-            // Refresh the expense in our local list
+            try await repo.clearBatchId(expenseId)            // → trigger re-files + recalcs destination
             let updated = try await repo.fetchOne(expenseId)
             if let idx = expenses.firstIndex(where: { $0.id == expenseId }) {
                 expenses[idx] = updated
+            }
+            if let prev = previousBatchId, prev != updated.batchId {
+                _ = try? await repo.recalculateBatchTotal(prev)   // old envelope lost a line
             }
         } catch {
             self.error = error.localizedDescription
@@ -301,132 +350,21 @@ class ExpenseViewModel: ObservableObject {
 
     // MARK: - Status Actions
 
-    /// Submit a single expense for review.
-    ///
-    /// - If the expense's amount is below `expense_settings.auto_approve_threshold`,
-    ///   it auto-approves on the spot (status -> approved, accounting sync fires).
-    ///   No batch is attached and no review notification is sent — matches the
-    ///   pre-existing per-expense auto-approve semantics.
-    /// - Otherwise: the expense is attached to the user's open batch for the
-    ///   appropriate scope (per `review_frequency`), status -> submitted, batch
-    ///   total recalculated, and approvers (anyone with `expenses.approve`) are
-    ///   notified. Always-bundle: every above-threshold submission ends up in
-    ///   a batch — no orphans.
+    /// Mark a completed expense as submitted. The server `place_expense` trigger
+    /// files it into the right envelope by date; the daily sweep notifies the
+    /// office once per envelope when it sends, and auto-clears under-threshold
+    /// lines. The client no longer batches, notifies per-expense, or
+    /// auto-approves — the server is authoritative.
     func submitExpense(_ expenseId: String) async {
-        guard let repo = repository,
-              let companyId = storedCompanyId,
-              let expense = expenses.first(where: { $0.id == expenseId }) else { return }
-
-        // Auto-approve path (per-expense, threshold-based) — preserved.
-        if let threshold = settings?.autoApproveThreshold,
-           expense.amount < threshold {
-            do {
-                let updated = try await repo.approve(expenseId, approvedBy: "auto")
-                if let idx = expenses.firstIndex(where: { $0.id == expenseId }) {
-                    expenses[idx] = updated
-                }
-                Task { await repo.triggerAccountingSync(expenseId: expenseId) }
-            } catch {
-                self.error = error.localizedDescription
-            }
-            return
-        }
-
-        // Always-bundle path.
+        guard let repo = repository else { return }
         do {
-            let frequency = settings?.reviewFrequency ?? "monthly"
-            let scopeProjectId: String? = (frequency == "per_job")
-                ? expense.allocations?.first?.projectId
-                : nil
-
-            let period = ExpenseBatchPeriod.forExpense(
-                expenseDate: expense.expenseDate,
-                createdAt: expense.createdAt,
-                reviewFrequency: frequency
-            )
-
-            let batch = try await repo.getOrCreateOpenBatch(
-                submittedBy: expense.submittedBy,
-                periodStart: period.start,
-                periodEnd: period.end,
-                scopeProjectId: scopeProjectId
-            )
-
-            try await repo.assignExpensesToBatch([expenseId], batchId: batch.id)
             let updated = try await repo.updateStatus(expenseId, status: .submitted)
             if let idx = expenses.firstIndex(where: { $0.id == expenseId }) {
                 expenses[idx] = updated
             }
-
-            try? await repo.recalculateBatchTotal(batch.id)
-
-            // Fire-and-forget: notify approvers via permission lookup.
-            let capturedCompanyId = companyId
-            let capturedBatch = batch
-            let capturedExpense = updated
-            let capturedSubmitterId = storedUserId ?? expense.submittedBy
-            let capturedSubmitterName = storedUserName ?? "A crew member"
-            let capturedNotificationRepo = notificationRepo
-            Task {
-                await Self.dispatchExpenseSubmittedNotifications(
-                    companyId: capturedCompanyId,
-                    submitterId: capturedSubmitterId,
-                    submitterName: capturedSubmitterName,
-                    batch: capturedBatch,
-                    expense: capturedExpense,
-                    notificationRepo: capturedNotificationRepo
-                )
-            }
         } catch {
             self.error = error.localizedDescription
         }
-    }
-
-    /// Static helper: posts in-app + push notifications to everyone in the
-    /// company with `expenses.approve`, excluding the submitter. Fire-and-forget
-    /// at the call site; failures are logged but don't propagate.
-    private static func dispatchExpenseSubmittedNotifications(
-        companyId: String,
-        submitterId: String,
-        submitterName: String,
-        batch: ExpenseBatchDTO,
-        expense: ExpenseDTO,
-        notificationRepo: NotificationRepository
-    ) async {
-        let approverIds = (try? await RecipientLookupService.usersWithPermission(
-            companyId: companyId,
-            permission: "expenses.approve"
-        )) ?? []
-        let recipients = approverIds.filter { $0 != submitterId.lowercased() }
-        guard !recipients.isEmpty else { return }
-
-        let merchant = expense.merchantName?.isEmpty == false ? expense.merchantName! : "Expense"
-        let amountStr = String(format: "$%.2f", expense.amount)
-        let title = "Expense Submitted"
-        let body = "\(submitterName) submitted \(merchant) (\(amountStr)) for review"
-
-        for recipient in recipients {
-            let dto = NotificationRepository.CreateNotificationDTO(
-                userId: recipient,
-                companyId: companyId,
-                type: "expense_submitted",
-                title: title,
-                body: body,
-                projectId: nil,
-                noteId: nil,
-                expenseId: expense.id,
-                batchId: batch.id,
-                deepLinkType: "expense"
-            )
-            try? await notificationRepo.createNotification(dto)
-        }
-
-        try? await OneSignalService.shared.notifyExpenseSubmitted(
-            adminUserIds: recipients,
-            submitterName: submitterName,
-            batchNumber: batch.batchNumber,
-            batchId: batch.id
-        )
     }
 
     func approveExpense(_ expenseId: String, approvedBy: String) async {
@@ -524,213 +462,6 @@ class ExpenseViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Invoice Bundling
-
-    func bundleInvoice(userId: String, userName: String, periodStart: Date, periodEnd: Date, selectedExpenseIds: Set<String>? = nil) async throws {
-        guard let repo = repository else { return }
-        // Use date-only format (YYYY-MM-DD) to match the expense_date column type in Postgres
-        let dateFmt = DateFormatter()
-        dateFmt.dateFormat = "yyyy-MM-dd"
-        let startStr = dateFmt.string(from: periodStart)
-        let endStr = dateFmt.string(from: periodEnd)
-
-        var unbatched = try await repo.fetchUnbatchedExpenses(
-            userId: userId, periodStart: startStr, periodEnd: endStr
-        )
-
-        // Filter to only selected expenses if a selection was provided
-        if let selectedIds = selectedExpenseIds {
-            unbatched = unbatched.filter { selectedIds.contains($0.id) }
-        }
-
-        guard !unbatched.isEmpty else { return }
-
-        let total = unbatched.reduce(0.0) { $0 + $1.amount }
-
-        let monthFormatter = DateFormatter()
-        monthFormatter.dateFormat = "yyyy-MM"
-        let monthKey = monthFormatter.string(from: periodStart)
-        let lastName = userName.split(separator: " ").last.map(String.init) ?? userName
-        let batchNumber = "EXP-\(monthKey)-\(lastName.uppercased())"
-
-        let createDTO = CreateExpenseBatchDTO(
-            companyId: unbatched[0].companyId,
-            batchNumber: batchNumber,
-            periodStart: startStr,
-            periodEnd: endStr,
-            status: ExpenseBatchStatus.submitted.rawValue,
-            submittedBy: userId,
-            totalAmount: total,
-            parentBatchId: nil,
-            amendmentNumber: nil
-        )
-
-        let batch = try await repo.createBatch(createDTO)
-        let expenseIds = unbatched.map { $0.id }
-        try await repo.assignExpensesToBatch(expenseIds, batchId: batch.id)
-
-        // Check auto-approve
-        let shouldAutoApprove = try await repo.checkAutoApproveInvoice(userId: userId, totalAmount: total)
-        if shouldAutoApprove {
-            _ = try await repo.updateBatchStatus(
-                batch.id,
-                status: ExpenseBatchStatus.autoApproved.rawValue,
-                reviewedBy: nil,
-                reviewNotes: "Auto-approved by rule"
-            )
-            for expense in unbatched {
-                _ = try await repo.approve(expense.id, approvedBy: "auto")
-                await repo.triggerAccountingSync(expenseId: expense.id)
-            }
-        } else {
-            // Mark each expense as "submitted" so the UI reflects the correct state
-            for expense in unbatched {
-                _ = try await repo.updateStatus(expense.id, status: .submitted)
-            }
-        }
-
-        // Fire-and-forget: notify everyone with expenses.approve permission.
-        // NEVER filter by users.role — gate by granular permission so custom
-        // roles and per-user overrides are honored.
-        let capturedCompanyId = unbatched[0].companyId
-        let capturedBatchId = batch.id
-        let capturedBatchNumber = batchNumber
-        let capturedUserName = userName
-        let capturedSubmitterId = userId
-        let capturedNotificationRepo = notificationRepo
-        Task {
-            let approverIds = (try? await RecipientLookupService.usersWithPermission(
-                companyId: capturedCompanyId,
-                permission: "expenses.approve"
-            )) ?? []
-            let recipients = approverIds.filter { $0 != capturedSubmitterId }
-
-            for recipient in recipients {
-                let dto = NotificationRepository.CreateNotificationDTO(
-                    userId: recipient,
-                    companyId: capturedCompanyId,
-                    type: "expense_submitted",
-                    title: "Invoice Submitted",
-                    body: "\(capturedUserName) submitted invoice \(capturedBatchNumber) for review",
-                    projectId: nil,
-                    noteId: nil,
-                    expenseId: nil,
-                    batchId: capturedBatchId,
-                    deepLinkType: "invoice_detail"
-                )
-                try? await capturedNotificationRepo.createNotification(dto)
-            }
-
-            if !recipients.isEmpty {
-                try? await OneSignalService.shared.notifyExpenseSubmitted(
-                    adminUserIds: recipients,
-                    submitterName: capturedUserName,
-                    batchNumber: capturedBatchNumber,
-                    batchId: capturedBatchId
-                )
-            }
-        }
-
-        await loadBatches()
-        await loadExpenses()
-    }
-
-    // MARK: - Orphan Recovery
-
-    /// Count of expenses stuck in the orphan state for this company.
-    /// Drives the orphan-recovery banner in ExpensesListView.
-    @Published var orphanCount: Int = 0
-
-    func loadOrphanCount() async {
-        guard let repo = repository else { return }
-        do {
-            let orphans = try await repo.fetchOrphanExpenses()
-            orphanCount = orphans.count
-        } catch {
-            // Silently swallow — this is observability, not a user action.
-            // Refreshing the screen will retry.
-            orphanCount = 0
-        }
-    }
-
-    /// Re-bundle every orphan expense into the appropriate open batch and
-    /// notify approvers once per resulting batch. Idempotent: re-running is
-    /// safe; already-bundled expenses are filtered out by fetchOrphanExpenses.
-    func recoverOrphans() async {
-        guard let repo = repository,
-              let companyId = storedCompanyId else { return }
-        isLoading = true
-        defer { isLoading = false }
-
-        do {
-            let orphans = try await repo.fetchOrphanExpenses()
-            guard !orphans.isEmpty else {
-                orphanCount = 0
-                return
-            }
-
-            let frequency = settings?.reviewFrequency ?? "monthly"
-
-            // Resolve batches per orphan, group expense IDs by batch so we
-            // assign + recompute once per batch.
-            var attachmentsByBatch: [String: (batch: ExpenseBatchDTO, expenses: [ExpenseDTO])] = [:]
-            for expense in orphans {
-                let scopeProjectId: String? = (frequency == "per_job")
-                    ? expense.allocations?.first?.projectId
-                    : nil
-                let period = ExpenseBatchPeriod.forExpense(
-                    expenseDate: expense.expenseDate,
-                    createdAt: expense.createdAt,
-                    reviewFrequency: frequency
-                )
-                let batch = try await repo.getOrCreateOpenBatch(
-                    submittedBy: expense.submittedBy,
-                    periodStart: period.start,
-                    periodEnd: period.end,
-                    scopeProjectId: scopeProjectId
-                )
-                var bucket = attachmentsByBatch[batch.id] ?? (batch: batch, expenses: [])
-                bucket.expenses.append(expense)
-                attachmentsByBatch[batch.id] = bucket
-            }
-
-            for (_, bucket) in attachmentsByBatch {
-                let ids = bucket.expenses.map { $0.id }
-                try await repo.assignExpensesToBatch(ids, batchId: bucket.batch.id)
-                try? await repo.recalculateBatchTotal(bucket.batch.id)
-
-                // One in-app + push notification per batch (not per expense)
-                // so admins aren't spammed during recovery.
-                let firstExpense = bucket.expenses.first!
-                let submitterId = firstExpense.submittedBy.lowercased()
-                let submitterName = storedUserName ?? "A crew member"
-                let captured = (
-                    cid: companyId,
-                    sid: submitterId,
-                    sname: submitterName,
-                    batch: bucket.batch,
-                    expense: firstExpense
-                )
-                let capturedNotificationRepo = notificationRepo
-                Task {
-                    await Self.dispatchExpenseSubmittedNotifications(
-                        companyId: captured.cid,
-                        submitterId: captured.sid,
-                        submitterName: captured.sname,
-                        batch: captured.batch,
-                        expense: captured.expense,
-                        notificationRepo: capturedNotificationRepo
-                    )
-                }
-            }
-
-            await loadOrphanCount()
-            await loadBatchesForReview()
-            await loadExpenses()
-        } catch {
-            self.error = error.localizedDescription
-        }
-    }
 
     // MARK: - Invoice Review
 

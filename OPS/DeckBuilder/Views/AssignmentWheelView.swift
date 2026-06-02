@@ -377,9 +377,7 @@ struct AssignmentWheelView: View {
 
         switch action {
         case .edgeType(let type):
-            for id in viewModel.selection.selectedEdgeIds {
-                viewModel.setEdgeType(id, type: type)
-            }
+            viewModel.setEdgeType(Array(viewModel.selection.selectedEdgeIds), type: type)
         case .railing(let type):
             let config = RailingConfig(railingType: type, maxPostSpacing: type.defaultMaxPostSpacing)
             for id in viewModel.selection.selectedEdgeIds {

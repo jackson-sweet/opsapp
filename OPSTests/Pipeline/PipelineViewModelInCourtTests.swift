@@ -2,11 +2,19 @@
 //  PipelineViewModelInCourtTests.swift
 //  OPSTests
 //
-//  Coverage for PipelineViewModel stat-card computeds.
-//  The in-court bar was replaced by the triage chip filter (design-intent §24 J2),
-//  removing inCourtCount / inCourtBuckets / inCourtTotalValue / inCourtOpportunityIds
-//  / oldestStaleDescription / staleLeadsTotalValue. Those tests are dropped.
-//  closeRate(periodDays:) is retained for the BOOKS tab.
+//  Coverage for PipelineViewModel.closeRate(periodDays:).
+//
+//  NOTE (leads review 3, 2026-05-31): the in-court / stale-total / oldest-stale
+//  tests that used to live here were removed because the LEADS rebuild removed
+//  the view-model members they exercised — `inCourtCount`, `inCourtBuckets`,
+//  `inCourtTotalValue`, `inCourtOpportunityIds`, `oldestStaleDescription`, and
+//  `staleLeadsTotalValue`. The "ball in your court" bar those derivations fed
+//  was replaced by the triage chip filter in the rebuild (design-intent §23/§24
+//  J2). Those tests referenced symbols that no longer exist, which silently
+//  broke the entire OPSTests target's compilation. Triage-bucket behavior is now
+//  covered by the live `triageBuckets` logic + `LeadsConformanceTests`. The
+//  surviving `closeRate(periodDays:)` member (kept for the BOOKS tab) is covered
+//  below, unchanged.
 //
 
 import XCTest
@@ -42,7 +50,7 @@ final class PipelineViewModelInCourtTests: XCTestCase {
         return opp
     }
 
-    // MARK: - closeRate
+    // MARK: - Close rate (kept for BOOKS)
 
     func test_closeRate_returnsNilWhenInsufficientData() {
         let vm = PipelineViewModel()

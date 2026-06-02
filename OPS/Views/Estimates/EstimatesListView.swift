@@ -44,37 +44,25 @@ struct EstimatesListView: View {
 
                 Divider().background(OPSStyle.Colors.separator)
 
-                // Content
+                // Content — embedded in Books renders rows inline (single Books
+                // scroll, no nesting); standalone keeps its ScrollView + refresh.
                 if viewModel.isLoading && viewModel.estimates.isEmpty {
-                    Spacer()
-                    TacticalLoadingBarAnimated()
-                    Spacer()
+                    if embedded {
+                        TacticalLoadingBarAnimated()
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, OPSStyle.Layout.spacing5)
+                    } else {
+                        Spacer()
+                        TacticalLoadingBarAnimated()
+                        Spacer()
+                    }
                 } else if viewModel.filteredEstimates.isEmpty {
                     emptyState
+                } else if embedded {
+                    estimateRows
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: OPSStyle.Layout.spacing2) {
-                            ForEach(viewModel.filteredEstimates) { est in
-                                EstimateCard(
-                                    estimate: est,
-                                    onTap: { selectedEstimate = est },
-                                    onSwipeRight: {
-                                        if est.status == .draft {
-                                            Task { await viewModel.sendEstimate(est) }
-                                        } else if est.status == .approved {
-                                            estimateToConvert = est
-                                            showConvertConfirm = true
-                                        }
-                                    },
-                                    onSwipeLeft: {
-                                        // Void not yet implemented
-                                    }
-                                )
-                            }
-                        }
-                        .padding(.horizontal, OPSStyle.Layout.spacing3)
-                        .padding(.vertical, OPSStyle.Layout.spacing2)
-                        .padding(.bottom, 80)
+                        estimateRows
                     }
                     .refreshable {
                         await viewModel.loadEstimates()
@@ -190,6 +178,35 @@ struct EstimatesListView: View {
     }
 
     // MARK: - Empty State
+
+    private var estimateRows: some View {
+        LazyVStack(spacing: OPSStyle.Layout.spacing2) {
+            ForEach(viewModel.filteredEstimates) { est in
+                EstimateCard(
+                    estimate: est,
+                    onTap: { selectedEstimate = est },
+                    onSwipeRight: {
+                        if est.status == .draft {
+                            Task { await viewModel.sendEstimate(est) }
+                        } else if est.status == .approved {
+                            estimateToConvert = est
+                            showConvertConfirm = true
+                        }
+                    },
+                    onSwipeLeft: {
+                        // Void not yet implemented
+                    }
+                )
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        // Standalone clears its in-view FAB (touch target + margin); embedded
+        // has no FAB so it only needs strip rhythm before the tab bar.
+        .padding(.bottom, embedded
+                 ? OPSStyle.Layout.spacing4
+                 : OPSStyle.Layout.touchTargetLarge + OPSStyle.Layout.spacing3)
+    }
 
     private var emptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {

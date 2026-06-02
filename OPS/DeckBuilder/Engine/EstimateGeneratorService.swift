@@ -573,22 +573,14 @@ struct EstimateGeneratorService {
     // MARK: - Geometry Helpers
 
     static func calculateAreaSqFt(drawingData: DeckDrawingData) -> Double {
-        let scale = drawingData.effectiveScaleFactor
-        if drawingData.isMultiLevel {
-            return drawingData.levels.reduce(0) { total, level in
-                let positions = level.orderedPositions
-                // Skip unclosed and self-intersecting levels — both produce
-                // shoelace values that are mathematically meaningless for area.
-                guard level.isClosed,
-                      positions.count >= 3,
-                      !PolygonMath.isSelfIntersecting(vertices: positions) else { return total }
-                return total + PolygonMath.realWorldArea(vertices: positions, scaleFactor: scale) / 144.0
-            }
-        }
-        guard drawingData.isClosed else { return 0 }
-        let positions = drawingData.orderedPositions
-        guard !PolygonMath.isSelfIntersecting(vertices: positions) else { return 0 }
-        return PolygonMath.realWorldArea(vertices: positions, scaleFactor: scale) / 144.0
+        // Sum every detected surface (per level in multi-level mode) instead of
+        // shoelacing the outer perimeter. `isClosed`/`orderedPositions` rejects
+        // any level whose graph isn't a single Hamiltonian cycle — i.e. every
+        // multi-surface drawing since DECK-NEW-1 (an L-shape drawn as two loops
+        // sharing an edge) — returning 0. `totalRealWorldArea` is the same
+        // surface-aware computation the area badge and per-surface line items
+        // already use; it returns square inches, so divide by 144 for sq ft.
+        drawingData.totalRealWorldArea(scaleFactor: drawingData.effectiveScaleFactor) / 144.0
     }
 
     static func calculatePerimeterFt(drawingData: DeckDrawingData) -> Double {
@@ -648,7 +640,14 @@ struct EstimateGeneratorService {
         let startElev = startInfo.vertex.elevation ?? startInfo.levelElev ?? drawingData.overallElevation
         let endElev = endInfo.vertex.elevation ?? endInfo.levelElev ?? drawingData.overallElevation
         guard let s = startElev, let e = endElev else { return nil }
-        return max(s, e) * 12.0  // feet to inches
+        // A stair is centered on its edge, so its representative rise is the
+        // edge MIDPOINT height — the AVERAGE of the two endpoint elevations,
+        // not the higher one. On a LEVEL edge (the common case) s == e, so this
+        // is identical to before. On a SLOPED edge (per-vertex elevation, or a
+        // multi-level edge bridging heights) `max` over-counted by biasing to
+        // the taller endpoint, inflating tread/riser/stringer quantities; the
+        // mid-edge average is the physically correct rise the stair sits at.
+        return (s + e) / 2.0 * 12.0  // feet to inches
     }
 
     private static func edgeDescription(_ edge: DeckEdge, drawingData: DeckDrawingData) -> String? {

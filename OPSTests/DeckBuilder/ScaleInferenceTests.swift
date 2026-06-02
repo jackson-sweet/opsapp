@@ -85,10 +85,111 @@ final class ScaleInferenceTests: XCTestCase {
             segments: []
         )
 
-        // Default: 1 square = 1 foot → pixels per inch = 50 / 12
+        // Default (imperial, the parameter's default): 1 square = 1 foot
+        // → pixels per inch = 50 / 12
         XCTAssertEqual(result.scaleFactor, 50.0 / 12.0, accuracy: 0.01)
 
         if case .graphPaper(_, let unitName) = result.source {
+            XCTAssertTrue(unitName.contains("1 foot"))
+        } else {
+            XCTFail("Expected graphPaper source")
+        }
+    }
+
+    func testInferFromGrid_noAnnotations_imperialExplicit_defaultsToOneFoot() {
+        // Passing .imperial explicitly must behave identically to the default.
+        let result = ScaleInference.inferFromGrid(
+            gridSpacingPixels: 50.0,
+            associations: [],
+            segments: [],
+            measurementSystem: .imperial
+        )
+
+        XCTAssertEqual(result.scaleFactor, 50.0 / 12.0, accuracy: 0.01)
+        if case .graphPaper(_, let unitName) = result.source {
+            XCTAssertTrue(unitName.contains("1 foot"))
+        } else {
+            XCTFail("Expected graphPaper source")
+        }
+    }
+
+    func testInferFromGrid_noAnnotations_metric_defaultsToTenCentimeters() {
+        // BUG G-3: a metric drawing with a grid but no annotations must NOT assume
+        // feet. Metric convention is 1 square = 10 cm = 3.937".
+        // → pixels per inch = 50 / 3.937 ≈ 12.7
+        let result = ScaleInference.inferFromGrid(
+            gridSpacingPixels: 50.0,
+            associations: [],
+            segments: [],
+            measurementSystem: .metric
+        )
+
+        let expectedInchesPerSquare = 10.0 / 2.54   // 3.937"
+        XCTAssertEqual(result.scaleFactor, 50.0 / expectedInchesPerSquare, accuracy: 0.01)
+
+        // Sanity: metric scale is ~3.05x the (wrong) imperial assumption for the same grid.
+        XCTAssertEqual(result.scaleFactor / (50.0 / 12.0), 12.0 / expectedInchesPerSquare, accuracy: 0.01)
+
+        if case .graphPaper(_, let unitName) = result.source {
+            XCTAssertTrue(unitName.contains("10 cm"), "Expected '10 cm' in unit name, got: \(unitName)")
+        } else {
+            XCTFail("Expected graphPaper source")
+        }
+    }
+
+    func testInferFromGrid_metricAnnotated_classifiesAsMetricGrid() {
+        // Metric drawing WITH an annotation. The true scale comes from the annotation,
+        // but the human-readable grid label should classify as metric, not imperial.
+        // Grid spacing 50px; segment 1000px = 20 squares; annotation 200 cm (≈78.74").
+        // → inchesPerSquare = 78.74 / 20 ≈ 3.937" ≈ 10 cm per square.
+        let seg = DetectedLineSegment(
+            id: "s1",
+            startPoint: CGPoint(x: 0, y: 0),
+            endPoint: CGPoint(x: 1000, y: 0)
+        )
+        let assoc = DimensionAssociation(
+            textId: "t1",
+            segmentId: "s1",
+            dimensionInches: 200.0 / 2.54,   // 200 cm in inches
+            score: 1.0
+        )
+
+        let result = ScaleInference.inferFromGrid(
+            gridSpacingPixels: 50.0,
+            associations: [assoc],
+            segments: [seg],
+            measurementSystem: .metric
+        )
+
+        // pixels per inch = gridSpacing / inchesPerSquare = 50 / 3.937 ≈ 12.7
+        XCTAssertEqual(result.scaleFactor, 50.0 / (10.0 / 2.54), accuracy: 0.05)
+
+        if case .graphPaper(_, let unitName) = result.source {
+            XCTAssertTrue(unitName.contains("10 cm"), "Expected metric '10 cm' label, got: \(unitName)")
+        } else {
+            XCTFail("Expected graphPaper source")
+        }
+    }
+
+    func testInferFromGrid_imperialAnnotated_unchangedByMetricSupport() {
+        // Regression guard: the existing imperial 1-foot case must be byte-for-byte
+        // identical after threading measurementSystem (default .imperial).
+        let seg = DetectedLineSegment(
+            id: "s1",
+            startPoint: CGPoint(x: 0, y: 0),
+            endPoint: CGPoint(x: 1200, y: 0)
+        )
+        let assoc = DimensionAssociation(textId: "t1", segmentId: "s1", dimensionInches: 288.0, score: 1.0)
+
+        let result = ScaleInference.inferFromGrid(
+            gridSpacingPixels: 50.0,
+            associations: [assoc],
+            segments: [seg]
+        )
+
+        XCTAssertEqual(result.scaleFactor, 50.0 / 12.0, accuracy: 0.01)
+        if case .graphPaper(let squaresPerUnit, let unitName) = result.source {
+            XCTAssertEqual(squaresPerUnit, 1.0, accuracy: 0.001)
             XCTAssertTrue(unitName.contains("1 foot"))
         } else {
             XCTFail("Expected graphPaper source")

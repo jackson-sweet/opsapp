@@ -20,6 +20,7 @@ extension PipelineStage {
         case .negotiation: return Color(red: 0.710, green: 0.510, blue: 0.537)  // #B58289
         case .won:         return Color(red: 0.616, green: 0.710, blue: 0.510)  // #9DB582
         case .lost:        return Color(red: 0.420, green: 0.447, blue: 0.502)  // #6B7280
+        case .discarded:   return Color(red: 0.345, green: 0.349, blue: 0.380)  // muted graphite
         }
     }
 }

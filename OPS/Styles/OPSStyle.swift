@@ -251,6 +251,7 @@ enum OPSStyle {
             case .negotiation: return Color(hex: "#CA9670")! // terracotta
             case .won:         return Color(hex: "#9DB582")! // = olive
             case .lost:        return Color(hex: "#B58289")! // = rose
+            case .discarded:   return Color(hex: "#5A5E66")! // muted graphite (discarded)
             }
         }
 
@@ -291,6 +292,11 @@ enum OPSStyle {
         /// Hero number on carousel cards — Mohave Light 60pt.
         /// Tracking (-0.025em) and tabular-nums applied at call site, not here.
         static let heroNumber = Font.custom("Mohave-Light", size: 60)
+
+        /// Hero number on CONDENSED carousel cards — Mohave Light 38pt.
+        /// Compact glance variant of `heroNumber`; full 60pt lives in the
+        /// expand-to-sheet detail. Tracking + tabular-nums applied at call site.
+        static let heroNumberCondensed = Font.custom("Mohave-Light", size: 38)
 
         /// Page title — Cake Mono Light 22pt (TopBar H1, root-route page heading)
         static let pageTitle = Font.pageTitle

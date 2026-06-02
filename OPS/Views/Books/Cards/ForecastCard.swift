@@ -13,6 +13,8 @@ import SwiftUI
 
 struct ForecastCard: View {
     @ObservedObject var viewModel: MoneyDashboardViewModel
+    var style: BooksCardStyle = .full
+    var onExpand: () -> Void = {}
     var onTapCloseRate: (() -> Void)? = nil
     var onTapStale: (() -> Void)? = nil
 
@@ -40,6 +42,16 @@ struct ForecastCard: View {
     // MARK: - Body
 
     var body: some View {
+        switch style {
+        case .full:      fullBody
+        case .condensed: condensedBody
+        }
+    }
+
+    // MARK: - Full body (expand-to-sheet detail)
+
+    @ViewBuilder
+    private var fullBody: some View {
         if isSkeleton {
             skeletonView.padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .accessibilityElement(children: .ignore)
@@ -50,6 +62,58 @@ struct ForecastCard: View {
             emptyView.padding(.horizontal, OPSStyle.Layout.spacing3_5)
         } else {
             normalBody.padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        }
+    }
+
+    // MARK: - Condensed face (paging strip glance)
+
+    @ViewBuilder
+    private var condensedBody: some View {
+        if isSkeleton {
+            CondensedHeroCard<EmptyView, EmptyView>.skeleton()
+        } else if viewModel.cardError(.forecast) {
+            BooksCardError(onRetry: { Task { await viewModel.retry(.forecast) } })
+                .frame(height: BooksCondensedMetrics.cardHeight)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        } else {
+            CondensedHeroCard(
+                caption: "WEIGHTED FORECAST",
+                heroText: isEmpty
+                    ? "$0"
+                    : viewModel.weightedForecastValue.formatted(.currency(code: "USD").precision(.fractionLength(0))),
+                heroColor: isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent,
+                onExpand: onExpand,
+                viz: {
+                    if isEmpty {
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
+                            .fill(OPSStyle.Colors.fillNeutralDim)
+                            .frame(height: 8)
+                            .frame(maxHeight: .infinity, alignment: .center)
+                    } else {
+                        CondensedSegmentBar(
+                            segments: viewModel.weightedForecastByStage.enumerated().map { idx, row in
+                                CondensedSegmentBar.Segment(
+                                    id: idx,
+                                    value: row.value,
+                                    color: OPSStyle.Colors.pipelineStageColor(for: row.stage)
+                                )
+                            },
+                            barHeight: 8
+                        )
+                    }
+                },
+                subStat: {
+                    Text(isEmpty ? "// NO ACTIVE OPPORTUNITIES" : "\(viewModel.activeLeadCount) ACTIVE")
+                        .font(.custom("JetBrainsMono-Medium", size: 11))
+                        .tracking(isEmpty ? 1.32 : 1.32)
+                        .foregroundColor(isEmpty ? OPSStyle.Colors.inactiveText : OPSStyle.Colors.secondaryText)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                }
+            )
+            .accessibilityLabel(isEmpty
+                ? "Forecast. No active opportunities."
+                : accessibilityCardLabel)
         }
     }
 
@@ -78,13 +142,13 @@ struct ForecastCard: View {
                 BooksDrillTile(
                     label: "STALE",
                     value: "\(viewModel.staleLeadsCount)",
-                    sub: "> 14D IDLE",
+                    sub: "NO MOVEMENT",
                     valueColor: OPSStyle.Colors.warningStatus,
                     onTap: onTapStale,
-                    accessibilityLabelOverride: "Stale opportunities, \(viewModel.staleLeadsCount), over 14 days idle"
+                    accessibilityLabelOverride: "Stale opportunities, \(viewModel.staleLeadsCount), no recent movement"
                 )
             }
-            .padding(.top, 22)
+            .padding(.top, OPSStyle.Layout.spacing4)
         }
     }
 
@@ -116,7 +180,7 @@ struct ForecastCard: View {
     // MARK: - Stage bars
 
     private var stageBars: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             ForEach(viewModel.weightedForecastByStage) { row in
                 stageRow(row)
             }
@@ -179,9 +243,9 @@ struct ForecastCard: View {
             }
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 BooksDrillTile(label: "CLOSE RATE", value: "—",  sub: "LAST 90D",   valueColor: OPSStyle.Colors.tertiaryText)
-                BooksDrillTile(label: "STALE",      value: "0",  sub: "> 14D IDLE", valueColor: OPSStyle.Colors.tertiaryText)
+                BooksDrillTile(label: "STALE",      value: "0",  sub: "NO MOVEMENT", valueColor: OPSStyle.Colors.tertiaryText)
             }
-            .padding(.top, 22)
+            .padding(.top, OPSStyle.Layout.spacing4)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Forecast. No active opportunities.")
@@ -196,7 +260,7 @@ struct ForecastCard: View {
                 BooksSkeleton.bar(width: 240, height: 60)
                 BooksSkeleton.bar(width: 160, height: 11)
             }
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 ForEach(0..<5, id: \.self) { _ in
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
@@ -214,7 +278,7 @@ struct ForecastCard: View {
                 BooksSkeleton.tile()
                 BooksSkeleton.tile()
             }
-            .padding(.top, 22)
+            .padding(.top, OPSStyle.Layout.spacing4)
         }
     }
 }

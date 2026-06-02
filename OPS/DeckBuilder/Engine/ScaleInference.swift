@@ -6,16 +6,31 @@ struct ScaleInference {
 
     // MARK: - From Graph Paper
 
+    /// Inches that one grid square represents when the drawing has no usable
+    /// dimension annotations, defaulting per measurement system.
+    /// Imperial graph paper convention in North America is 1 square = 1 foot (12").
+    /// Metric engineering/graph paper convention is 1 square = 10 cm (3.937").
+    private static func defaultInchesPerSquare(for system: MeasurementSystem) -> Double {
+        switch system {
+        case .imperial: return 12.0          // 1 foot
+        case .metric:   return 10.0 / 2.54   // 10 cm = 3.937 in
+        }
+    }
+
     /// Infer scale from graph paper grid spacing combined with annotated dimensions
     /// - Parameters:
     ///   - gridSpacingPixels: Pixels between grid lines (from GridDetector)
     ///   - associations: Dimension associations (text → edge matches)
     ///   - segments: Detected line segments
+    ///   - measurementSystem: Drives the no-annotation fallback (imperial → 1 square =
+    ///     1 foot, metric → 1 square = 10 cm). Ignored when annotations are present,
+    ///     since annotated dimensions derive the true scale directly.
     /// - Returns: ScaleResult with pixels-per-inch scale factor
     static func inferFromGrid(
         gridSpacingPixels: Double,
         associations: [DimensionAssociation],
-        segments: [DetectedLineSegment]
+        segments: [DetectedLineSegment],
+        measurementSystem: MeasurementSystem = .imperial
     ) -> ScaleResult {
         guard gridSpacingPixels > 0 else {
             return ScaleResult(
@@ -37,7 +52,10 @@ struct ScaleInference {
             let inchesPerSquare = bestAssoc.dimensionInches / squaresAlongEdge
 
             // Determine human-readable grid scale
-            let (squaresPerUnit, unitName) = classifyGridScale(inchesPerSquare: inchesPerSquare)
+            let (squaresPerUnit, unitName) = classifyGridScale(
+                inchesPerSquare: inchesPerSquare,
+                measurementSystem: measurementSystem
+            )
 
             let pixelsPerInch = gridSpacingPixels / inchesPerSquare
 
@@ -55,13 +73,22 @@ struct ScaleInference {
             )
         }
 
-        // No annotations — assume 1 square = 1 foot (most common in NA)
-        let inchesPerSquare = 12.0 // 1 foot
+        // No annotations — fall back to the conventional grid square for the
+        // drawing's measurement system (imperial: 1 square = 1 foot;
+        // metric: 1 square = 10 cm). Assuming feet for a metric drawing is off
+        // by ~3x, which then scales every derived dimension and area.
+        let inchesPerSquare = defaultInchesPerSquare(for: measurementSystem)
         let pixelsPerInch = gridSpacingPixels / inchesPerSquare
+
+        let fallbackUnitName: String
+        switch measurementSystem {
+        case .imperial: fallbackUnitName = "1 square = 1 foot"
+        case .metric:   fallbackUnitName = "1 square = 10 cm"
+        }
 
         return ScaleResult(
             scaleFactor: pixelsPerInch,
-            source: .graphPaper(squaresPerUnit: 1.0, unitName: "1 square = 1 foot"),
+            source: .graphPaper(squaresPerUnit: 1.0, unitName: fallbackUnitName),
             conflicts: []
         )
     }
@@ -190,27 +217,60 @@ struct ScaleInference {
         return best
     }
 
-    /// Classify the grid scale into a human-readable description
-    /// - Parameter inchesPerSquare: How many inches one grid square represents
+    /// Classify the grid scale into a human-readable description.
+    ///
+    /// `scaleFactor` is always derived from the real annotated dimension, so this
+    /// only controls the label and `squaresPerUnit`. The candidate set is ordered by
+    /// the drawing's measurement system so a metric grid snaps to metric spacings
+    /// (10 cm, 25 cm, 50 cm, 1 m) before imperial ones, and vice versa.
+    /// - Parameters:
+    ///   - inchesPerSquare: How many inches one grid square represents
+    ///   - measurementSystem: Orders the candidate spacings and the unrecognized fallback label
     /// - Returns: (squaresPerUnit, description)
-    private static func classifyGridScale(inchesPerSquare: Double) -> (Double, String) {
-        // Common graph paper scales for deck drawings:
-        // 1 square = 1 foot (12 inches)     — most common
-        // 1 square = 6 inches (0.5 foot)    — detailed drawings
-        // 1 square = 2 feet (24 inches)     — large decks
-        // 1 square = 1 meter (39.37 inches) — metric
+    private static func classifyGridScale(
+        inchesPerSquare: Double,
+        measurementSystem: MeasurementSystem
+    ) -> (Double, String) {
+        // Each candidate: (inchesPerSquare, squaresPerUnit, label, tolerance fraction).
+        // squaresPerUnit = grid squares per primary unit (foot for imperial, meter for metric).
+        let cmToIn = 1.0 / 2.54
+        let imperialCandidates: [(Double, Double, String)] = [
+            (12.0,  1.0,  "1 square = 1 foot"),     // most common
+            (6.0,   2.0,  "1 square = 6 inches"),   // detailed drawings
+            (24.0,  0.5,  "1 square = 2 feet"),     // large decks
+            (3.0,   4.0,  "1 square = 3 inches")    // fine detail
+        ]
+        let metricCandidates: [(Double, Double, String)] = [
+            (10.0 * cmToIn, 10.0, "1 square = 10 cm"),  // most common metric graph paper
+            (25.0 * cmToIn, 4.0,  "1 square = 25 cm"),
+            (50.0 * cmToIn, 2.0,  "1 square = 50 cm"),
+            (100.0 * cmToIn, 1.0, "1 square = 1 meter"),
+            (1.0 * cmToIn,  100.0, "1 square = 1 cm")
+        ]
 
-        if abs(inchesPerSquare - 12.0) / 12.0 < 0.25 {
-            return (1.0, "1 square = 1 foot")
-        } else if abs(inchesPerSquare - 6.0) / 6.0 < 0.25 {
-            return (2.0, "1 square = 6 inches")
-        } else if abs(inchesPerSquare - 24.0) / 24.0 < 0.25 {
-            return (0.5, "1 square = 2 feet")
-        } else if abs(inchesPerSquare - 39.37) / 39.37 < 0.25 {
-            return (1.0, "1 square = 1 meter")
-        } else {
+        // Match against the measurement system's own conventions first, then the
+        // other system's, so a near-miss in one doesn't shadow an exact match in
+        // the other.
+        let ordered: [(Double, Double, String)]
+        switch measurementSystem {
+        case .imperial: ordered = imperialCandidates + metricCandidates
+        case .metric:   ordered = metricCandidates + imperialCandidates
+        }
+
+        for (inches, squaresPerUnit, label) in ordered
+        where abs(inchesPerSquare - inches) / inches < 0.25 {
+            return (squaresPerUnit, label)
+        }
+
+        // Unrecognized spacing — describe it in the drawing's own units.
+        switch measurementSystem {
+        case .imperial:
             let feet = inchesPerSquare / 12.0
-            return (1.0 / feet, String(format: "1 square ≈ %.1f inches", inchesPerSquare))
+            return (feet > 0 ? 1.0 / feet : 1.0, String(format: "1 square ≈ %.1f inches", inchesPerSquare))
+        case .metric:
+            let cm = inchesPerSquare * 2.54
+            let meters = cm / 100.0
+            return (meters > 0 ? 1.0 / meters : 1.0, String(format: "1 square ≈ %.1f cm", cm))
         }
     }
 }

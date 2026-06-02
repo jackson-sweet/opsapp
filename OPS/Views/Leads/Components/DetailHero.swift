@@ -29,6 +29,21 @@ struct DetailHero: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            identityBlock
+
+            kpiStrip
+                .padding(.top, 18)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 4)
+        .padding(.bottom, 18)
+    }
+
+    /// Lead identity (id, days-in-stage, stage, win prob, name, title) grouped
+    /// into ONE VoiceOver element so it reads as a coherent unit instead of ~7
+    /// disjoint fragments. (review W-3)
+    private var identityBlock: some View {
+        VStack(alignment: .leading, spacing: 0) {
             idRow
                 .padding(.bottom, 10)
 
@@ -51,13 +66,21 @@ struct DetailHero: View {
                     .lineLimit(2)
                     .padding(.top, 6)
             }
-
-            kpiStrip
-                .padding(.top, 18)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 4)
-        .padding(.bottom, 18)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(identityLabel)
+    }
+
+    private var identityLabel: String {
+        var parts: [String] = [
+            "Lead \(displayId)",
+            opportunity.stage.displayName,
+            "\(winProbability) percent win probability",
+            displayName
+        ]
+        if let title = opportunity.title, !title.isEmpty { parts.append(title) }
+        parts.append("\(opportunity.daysInStage) days in stage")
+        return parts.joined(separator: ", ")
     }
 
     // MARK: - ID + days-in-stage row
@@ -222,7 +245,7 @@ private struct StageTag: View {
         case .won:                                   return OPSStyle.Colors.oliveFillM
         case .lost:                                  return OPSStyle.Colors.roseFillM
         case .quoted, .followUp, .negotiation:       return OPSStyle.Colors.tanFillM
-        case .newLead, .qualifying, .quoting:        return OPSStyle.Colors.surfaceHover
+        case .newLead, .qualifying, .quoting, .discarded:  return OPSStyle.Colors.surfaceHover
         }
     }
 
@@ -231,7 +254,7 @@ private struct StageTag: View {
         case .won:                                   return OPSStyle.Colors.oliveLineM
         case .lost:                                  return OPSStyle.Colors.roseLineM
         case .quoted, .followUp, .negotiation:       return OPSStyle.Colors.tanLineM
-        case .newLead, .qualifying, .quoting:        return OPSStyle.Colors.line
+        case .newLead, .qualifying, .quoting, .discarded:  return OPSStyle.Colors.line
         }
     }
 
@@ -240,7 +263,7 @@ private struct StageTag: View {
         case .won:                                   return OPSStyle.Colors.oliveTextM
         case .lost:                                  return OPSStyle.Colors.roseTextM
         case .quoted, .followUp, .negotiation:       return OPSStyle.Colors.tanTextM
-        case .newLead, .qualifying, .quoting:        return OPSStyle.Colors.text2
+        case .newLead, .qualifying, .quoting, .discarded:  return OPSStyle.Colors.text2
         }
     }
 }

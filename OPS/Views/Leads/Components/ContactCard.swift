@@ -70,7 +70,7 @@ struct ContactCard: View {
 
             CTAButton(label: "EMAIL", icon: "envelope",
                       isEnabled: hasEmail,
-                      action: { open("mailto:\(opportunity.contactEmail ?? "")") })
+                      action: { open(mailtoURLString) })
 
             CTAButton(label: "MAP",   icon: "mappin.and.ellipse",
                       isEnabled: hasAddress,
@@ -120,6 +120,15 @@ struct ContactCard: View {
         return "https://maps.apple.com/?address=\(encoded)"
     }
 
+    /// Percent-encodes the email so a malformed-but-present address degrades
+    /// gracefully (matching the map path) rather than silently yielding a nil
+    /// URL that drops the tap. (review I-11)
+    private var mailtoURLString: String {
+        let encoded = (opportunity.contactEmail ?? "")
+            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        return "mailto:\(encoded)"
+    }
+
     private func open(_ urlString: String) {
         guard let url = URL(string: urlString) else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -130,8 +139,9 @@ struct ContactCard: View {
 // MARK: - CTAButton (private)
 
 /// One equal-weight contact CTA. Stroke + surfaceInput fill, text2 foreground.
-/// 44pt min height per MOBILE.md §1. Disabled appearance: 35% opacity,
-/// `accessibilityHidden` for screen readers.
+/// 44pt min height per MOBILE.md §1. Disabled appearance: 35% opacity; the
+/// button stays in the VoiceOver tree (announced "dimmed") so the action is
+/// discoverable even when no contact detail is on file.
 private struct CTAButton: View {
     let label: String
     let icon: String
@@ -164,7 +174,10 @@ private struct CTAButton: View {
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1.0 : 0.35)
         .accessibilityLabel(label)
-        .accessibilityHidden(!isEnabled)
+        // Keep disabled CTAs in the VoiceOver tree (announced "dimmed") rather
+        // than hiding them entirely — the operator should know the action
+        // exists but is unavailable. (review W-2)
+        .accessibilityHint(isEnabled ? "" : "Unavailable — no contact detail on file")
     }
 }
 

@@ -9,6 +9,10 @@ import SwiftUI
 import SwiftData
 
 struct MyExpensesView: View {
+    /// When embedded in the Books page (which owns the single scroll + provides
+    /// the global FAB), drop the inner ScrollView, the redundant header, and the
+    /// in-view FAB — matching the other embedded list views.
+    var embedded: Bool = false
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = ExpenseViewModel()
     @EnvironmentObject private var dataController: DataController
@@ -35,42 +39,40 @@ struct MyExpensesView: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            OPSStyle.Colors.backgroundGradient
-                .edgesIgnoringSafeArea(.all)
+            if !embedded {
+                OPSStyle.Colors.backgroundGradient
+                    .edgesIgnoringSafeArea(.all)
+            }
 
             VStack(spacing: 0) {
-                // Header
-                SettingsHeader(
-                    title: "My Expenses",
-                    onBackTapped: { dismiss() }
-                )
+                // Header — the Books page provides its own AppHeader + segment
+                // picker, so hide this redundant one when embedded.
+                if !embedded {
+                    SettingsHeader(
+                        title: "My Expenses",
+                        onBackTapped: { dismiss() }
+                    )
+                }
 
-                // Content
+                // Content — embedded renders inline (Books owns the single
+                // scroll); standalone keeps its ScrollView + pull-to-refresh.
                 if viewModel.isLoading && viewModel.expenses.isEmpty {
-                    Spacer()
-                    TacticalLoadingBarAnimated()
-                    Spacer()
+                    if embedded {
+                        TacticalLoadingBarAnimated()
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, OPSStyle.Layout.spacing5)
+                    } else {
+                        Spacer()
+                        TacticalLoadingBarAnimated()
+                        Spacer()
+                    }
                 } else if viewModel.expenses.isEmpty {
                     emptyState
+                } else if embedded {
+                    expensesScrollContent
                 } else {
                     ScrollView {
-                        VStack(spacing: OPSStyle.Layout.spacing3_5) {
-                            // Search + filter
-                            searchAndFilter
-
-                            // Submit for Review
-                            submitForReviewButton
-
-                            // Expense list grouped by month
-                            if viewModel.filteredExpenses.isEmpty {
-                                filterEmptyState
-                            } else {
-                                expensesList
-                            }
-                        }
-                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                        .padding(.top, OPSStyle.Layout.spacing3)
-                        .padding(.bottom, 100)
+                        expensesScrollContent
                     }
                     .refreshable {
                         await viewModel.loadAll()
@@ -78,10 +80,17 @@ struct MyExpensesView: View {
                 }
             }
 
-            // FAB
-            expensesFAB
+            // FAB — hidden when embedded in Books (global FAB handles creation).
+            if !embedded {
+                expensesFAB
+            }
         }
         .trackScreen("MyExpenses")
+        // Refresh when an expense is created/updated anywhere (e.g. the global
+        // FAB), since that flow no longer shares this view's model.
+        .onReceive(NotificationCenter.default.publisher(for: .opsExpensesDidChange)) { _ in
+            Task { await viewModel.loadAll() }
+        }
         .navigationBarBackButtonHidden(true)
         .overlay {
             if showSubmitLoadingOverlay {
@@ -474,6 +483,26 @@ struct MyExpensesView: View {
     }
 
     // MARK: - Expenses List
+
+    /// The scrollable body, shared by the embedded (inline) and standalone
+    /// (own ScrollView) layouts.
+    private var expensesScrollContent: some View {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
+            searchAndFilter
+            submitForReviewButton
+            if viewModel.filteredExpenses.isEmpty {
+                filterEmptyState
+            } else {
+                expensesList
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing3)
+        // Standalone clears the in-view FAB; embedded only needs strip rhythm.
+        .padding(.bottom, embedded
+                 ? OPSStyle.Layout.spacing4
+                 : OPSStyle.Layout.touchTargetLarge + OPSStyle.Layout.spacing4 + OPSStyle.Layout.spacing2_5)
+    }
 
     private var expensesList: some View {
         VStack(spacing: 0) {

@@ -43,6 +43,76 @@ final class ContourExtractorTests: XCTestCase {
         XCTAssertEqual(snapped[0].angleDegrees, 90.0, accuracy: 1.0)
     }
 
+    // MARK: - Contour Simplification (start/end seam wraparound merge)
+
+    /// Total length of a segment chain.
+    private func perimeter(_ segments: [DetectedLineSegment]) -> Double {
+        segments.reduce(0.0) { $0 + $1.lengthPixels }
+    }
+
+    func testSimplifyContour_mergesNearCollinearWraparound_withoutShorteningShape() {
+        // Rectangle 200 wide × 100 tall whose BOTTOM edge is split at the start/end
+        // seam into two near-collinear halves. The contour walk begins mid-bottom:
+        //   p0 (60,100) seam → p1 (200,100) BR → p2 (200,0) TR → p3 (0,0) TL
+        //   → p4 (0,100) BL → back to p0
+        // simplifyContour wraps last→first, so the two bottom halves (first + last
+        // segments) must merge into ONE full-width bottom edge: (0,100)→(200,100).
+        // Image 1000×1000 → minLength ≈ 21.2px; every edge here is ≥ 60px, so none
+        // are filtered out.
+        let imageSize = CGSize(width: 1000, height: 1000)
+        let points = [
+            CGPoint(x: 60, y: 100),   // p0 — seam (mid bottom)
+            CGPoint(x: 200, y: 100),  // p1 — bottom-right
+            CGPoint(x: 200, y: 0),    // p2 — top-right
+            CGPoint(x: 0, y: 0),      // p3 — top-left
+            CGPoint(x: 0, y: 100)     // p4 — bottom-left
+        ]
+
+        let segments = ContourExtractor.simplifyContour(points, imageSize: imageSize)
+
+        // 5 input edges, two of which (the bottom halves) are collinear at the seam →
+        // they collapse to a single edge → 4 edges total (the rectangle's four sides).
+        XCTAssertEqual(segments.count, 4, "Collinear wraparound halves should merge into one edge")
+
+        // Shape must NOT be shortened: full rectangle perimeter is 2*(200+100) = 600.
+        XCTAssertEqual(perimeter(segments), 600.0, accuracy: 0.5,
+                       "Wraparound merge must not truncate the shape or introduce a gap")
+
+        // The merged terminal (bottom) edge must span the FULL width: (0,100)→(200,100),
+        // i.e. length 200 — not a truncated half.
+        let bottomEdge = segments.first { seg in
+            abs(seg.lengthPixels - 200.0) < 0.5
+        }
+        XCTAssertNotNil(bottomEdge, "Expected a full-width 200px bottom edge after merge")
+
+        // Chain must remain closed (each edge's end coincides with the next edge's start,
+        // cyclically) — no gap opened by the merge.
+        for i in 0..<segments.count {
+            let curr = segments[i]
+            let next = segments[(i + 1) % segments.count]
+            let gap = SnapEngine.distance(curr.endPoint, next.startPoint)
+            XCTAssertEqual(gap, 0.0, accuracy: 0.5, "Edge \(i) must connect to the next with no gap")
+        }
+    }
+
+    func testSimplifyContour_doesNotMergeWraparoundAtRealCorner() {
+        // A clean rectangle whose seam sits exactly on a 90° corner. The first edge
+        // (bottom, 0°) and last edge (left, vertical) are NOT collinear, so the
+        // wraparound merge must NOT fire — all four edges are preserved.
+        let imageSize = CGSize(width: 1000, height: 1000)
+        let points = [
+            CGPoint(x: 0, y: 100),    // p0 — bottom-left (seam at corner)
+            CGPoint(x: 200, y: 100),  // p1 — bottom-right
+            CGPoint(x: 200, y: 0),    // p2 — top-right
+            CGPoint(x: 0, y: 0)       // p3 — top-left
+        ]
+
+        let segments = ContourExtractor.simplifyContour(points, imageSize: imageSize)
+
+        XCTAssertEqual(segments.count, 4, "Non-collinear seam must keep all four edges")
+        XCTAssertEqual(perimeter(segments), 600.0, accuracy: 0.5)
+    }
+
     // MARK: - Vertex Building
 
     func testBuildVertices_mergesNearbyEndpoints() {

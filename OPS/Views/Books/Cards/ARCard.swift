@@ -13,6 +13,8 @@ import SwiftUI
 
 struct ARCard: View {
     @ObservedObject var viewModel: MoneyDashboardViewModel
+    var style: BooksCardStyle = .full
+    var onExpand: () -> Void = {}
     var onTapTopChase: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -90,6 +92,16 @@ struct ARCard: View {
     // MARK: - Body
 
     var body: some View {
+        switch style {
+        case .full:      fullBody
+        case .condensed: condensedBody
+        }
+    }
+
+    // MARK: - Full body (expand-to-sheet detail)
+
+    @ViewBuilder
+    private var fullBody: some View {
         if isSkeleton {
             skeletonView.padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .accessibilityElement(children: .ignore)
@@ -103,6 +115,64 @@ struct ARCard: View {
         }
     }
 
+    // MARK: - Condensed face (paging strip glance)
+
+    @ViewBuilder
+    private var condensedBody: some View {
+        if isSkeleton {
+            CondensedHeroCard<EmptyView, EmptyView>.skeleton()
+        } else if viewModel.cardError(.ar) {
+            BooksCardError(onRetry: { Task { await viewModel.retry(.ar) } })
+                .frame(height: BooksCondensedMetrics.cardHeight)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        } else {
+            CondensedHeroCard(
+                caption: "TOTAL OUTSTANDING",
+                heroText: isEmpty ? "$0" : currencyString(totalOutstanding),
+                heroColor: isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.rose,
+                onExpand: onExpand,
+                viz: {
+                    if isEmpty {
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
+                            .fill(OPSStyle.Colors.fillNeutralDim)
+                            .frame(height: 10)
+                            .frame(maxHeight: .infinity, alignment: .center)
+                    } else {
+                        CondensedSegmentBar(segments: buckets.map {
+                            CondensedSegmentBar.Segment(id: $0.id, value: $0.amount, color: $0.color)
+                        })
+                    }
+                },
+                subStat: { condensedSubline }
+            )
+            .accessibilityLabel(isEmpty
+                ? "Accounts receivable. No open invoices."
+                : accessibilityCardLabel)
+        }
+    }
+
+    /// Compact "{open} OPEN · {overdue} OVERDUE" line for the condensed face.
+    private var condensedSubline: some View {
+        let openCount = viewModel.outstandingInvoiceBreakdown.count
+        let overdueCount = viewModel.overdueInvoicesCount
+        return HStack(spacing: 4) {
+            if isEmpty {
+                Text("// NO OPEN INVOICES")
+                    .foregroundColor(OPSStyle.Colors.inactiveText)
+            } else {
+                Text("\(openCount) OPEN")
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Text("·").foregroundColor(OPSStyle.Colors.inactiveText)
+                Text("\(overdueCount) OVERDUE")
+                    .foregroundColor(overdueCount > 0 ? OPSStyle.Colors.rose : OPSStyle.Colors.secondaryText)
+            }
+        }
+        .font(.custom("JetBrainsMono-Medium", size: 11))
+        .tracking(1.32)
+        .monospacedDigit()
+        .lineLimit(1)
+    }
+
     // MARK: - Normal body
 
     private var normalBody: some View {
@@ -112,7 +182,7 @@ struct ARCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 heroBlock
                 agingRamp.padding(.top, OPSStyle.Layout.spacing4)
-                bucketGrid.padding(.top, 14)
+                bucketGrid.padding(.top, OPSStyle.Layout.spacing3)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilityCardLabel)
@@ -296,7 +366,7 @@ struct ARCard: View {
                     }
                 }
             }
-            .padding(.top, 14)
+            .padding(.top, OPSStyle.Layout.spacing3)
             BooksSkeleton.bar(width: nil, height: 80).padding(.top, OPSStyle.Layout.spacing4)
         }
     }

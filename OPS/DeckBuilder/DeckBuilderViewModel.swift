@@ -56,6 +56,12 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var isSelectionMoveArmed: Bool = false
     private var selectionMoveStart: CGPoint?
     private var selectionMoveOriginalVertices: [String: CGPoint] = [:]
+    /// Fixed drag-start anchor for the active marquee. The running
+    /// `.selecting(rect:)` can't double as the anchor — once a reversing drag
+    /// pulls the rect origin to a min corner, that corner is no longer the
+    /// start point, so the box must be rebuilt from this stable anchor and the
+    /// live finger point on every update.
+    private var marqueeAnchor: CGPoint?
 
     // MARK: - UI State
 
@@ -703,6 +709,7 @@ class DeckBuilderViewModel: ObservableObject {
 
         redoStack.append(DrawingSnapshot(drawingData: drawingData, description: "redo"))
         drawingData = snapshot.drawingData
+        pruneSelectionToGeometry()
         hapticLight()
         save()
     }
@@ -711,8 +718,21 @@ class DeckBuilderViewModel: ObservableObject {
         guard let snapshot = redoStack.popLast() else { return }
         undoStack.append(DrawingSnapshot(drawingData: drawingData, description: "undo"))
         drawingData = snapshot.drawingData
+        pruneSelectionToGeometry()
         hapticLight()
         save()
+    }
+
+    /// Drop selected edge/vertex ids the current geometry no longer contains.
+    /// undo()/redo() swap in a snapshot whose graph may not include what was
+    /// selected; without this the toolbar shows context actions for elements
+    /// that were just undone away and those actions fire against dead ids.
+    /// (Surface ids are pruned separately by `save()` → `reconcileSurfaces`.)
+    private func pruneSelectionToGeometry() {
+        let liveEdgeIds = Set(drawingData.allEdges.map { $0.id })
+        let liveVertexIds = Set(drawingData.allVertices.map { $0.id })
+        selection.selectedEdgeIds.formIntersection(liveEdgeIds)
+        selection.selectedVertexIds.formIntersection(liveVertexIds)
     }
 
     // MARK: - Level Management
@@ -1130,12 +1150,20 @@ class DeckBuilderViewModel: ObservableObject {
         if tapSelectFilter.contains(.edge),
            let stairEdgeId = findStairEdgeAtPoint(point) {
             if !additive { selection.clear() }
-            selection.selectedEdgeIds = [stairEdgeId]
+            // Toggle/add like an edge tap — never replace the whole set.
+            // Previously this did `selectedEdgeIds = [stairEdgeId]`, which in
+            // additive (multi-select) mode wiped every other selected edge.
+            selection.toggleEdge(stairEdgeId)
             editingEdgeId = stairEdgeId
             hapticMedium()
-            // Auto-open the stair editor — single tap = edit. Field users
-            // expect the stair to behave like any other selectable thing.
-            showingStairConfig = true
+            // Auto-open the stair editor only on a plain single-select tap —
+            // single tap = edit. In additive mode the user is building a
+            // multi-selection, so popping a modal editor (and clobbering the
+            // set) is wrong; mirror edge-tap, which never opens a sheet while
+            // multi-selecting.
+            if !additive {
+                showingStairConfig = true
+            }
             return
         }
 
@@ -1232,45 +1260,60 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Marquee Selection
 
     func beginMarquee(at point: CGPoint) {
+        marqueeAnchor = point
         drawingMode = .selecting(rect: CGRect(origin: point, size: .zero))
     }
 
     func updateMarquee(to point: CGPoint) {
-        guard case .selecting(let rect) = drawingMode else { return }
+        guard case .selecting = drawingMode else { return }
+        // Normalize from the FIXED anchor (drag start) and the live point so
+        // the box is correct for any drag direction. Reading the anchor off the
+        // running rect's origin is wrong: after a reversing drag the origin is
+        // the minimized corner, not the start, and the box would collapse /
+        // pin to a stale corner (negative-extent bug).
+        let anchor = marqueeAnchor ?? point
         let newRect = CGRect(
-            x: min(rect.origin.x, point.x),
-            y: min(rect.origin.y, point.y),
-            width: abs(point.x - rect.origin.x),
-            height: abs(point.y - rect.origin.y)
+            x: min(anchor.x, point.x),
+            y: min(anchor.y, point.y),
+            width: abs(point.x - anchor.x),
+            height: abs(point.y - anchor.y)
         )
         drawingMode = .selecting(rect: newRect)
     }
 
     func endMarquee() {
         guard case .selecting(let rect) = drawingMode else { return }
+        defer {
+            marqueeAnchor = nil
+            drawingMode = .idle
+        }
         let additive = activeTool == .tapSelect   // Multi-select mode: add, never replace
         if !additive { selection.clear() }
 
-        // Collect vertices hit by the rectangle
-        var hitVertexIds: Set<String> = []
-        for vertex in activeVertices {
-            if rect.contains(vertex.position) {
-                hitVertexIds.insert(vertex.id)
-                selection.selectedVertexIds.insert(vertex.id)
-            }
+        // Vertices geometrically inside the box — computed independent of the
+        // filter so edges can still be resolved by their endpoints even when
+        // vertex selection is filtered out (e.g. edge-only marquee).
+        let hitVertexIds = Set(activeVertices.filter { rect.contains($0.position) }.map(\.id))
+
+        // Honor the tap-select element-type filter (DECK-NEW-4) for marquee the
+        // same way handleTap does — without this, marquee added every element
+        // type regardless of the vertices/edges/faces toggle.
+        if tapSelectFilter.contains(.vertex) {
+            selection.selectedVertexIds.formUnion(hitVertexIds)
         }
 
-        // Edges fully inside (both endpoints hit). Union with existing endpoint selection
-        // so additive mode picks up edges even if one endpoint was pre-selected.
-        let effectiveVertexIds = selection.selectedVertexIds
-        for edge in activeEdges {
-            if effectiveVertexIds.contains(edge.startVertexId) &&
-               effectiveVertexIds.contains(edge.endVertexId) {
-                selection.selectedEdgeIds.insert(edge.id)
+        if tapSelectFilter.contains(.edge) {
+            // Edges fully inside (both endpoints hit). Union the geometric hits
+            // with the existing selection so additive mode picks up edges even
+            // if one endpoint was pre-selected.
+            let effectiveVertexIds = selection.selectedVertexIds.union(hitVertexIds)
+            for edge in activeEdges {
+                if effectiveVertexIds.contains(edge.startVertexId) &&
+                   effectiveVertexIds.contains(edge.endVertexId) {
+                    selection.selectedEdgeIds.insert(edge.id)
+                }
             }
         }
-
-        drawingMode = .idle
     }
 
     // MARK: - Lasso Selection
@@ -1294,17 +1337,28 @@ class DeckBuilderViewModel: ObservableObject {
         let additive = activeTool == .tapSelect
         if !additive { selection.clear() }
 
-        for vertex in activeVertices {
-            if PolygonMath.pointInPolygon(vertex.position, vertices: points) {
-                selection.selectedVertexIds.insert(vertex.id)
-            }
+        // Vertices inside the lasso polygon — computed independent of the
+        // filter so edges can be resolved by their endpoints even when vertex
+        // selection is filtered out.
+        let hitVertexIds = Set(
+            activeVertices
+                .filter { PolygonMath.pointInPolygon($0.position, vertices: points) }
+                .map(\.id)
+        )
+
+        // Honor the tap-select element-type filter (DECK-NEW-4) — lasso must
+        // respect the vertices/edges/faces toggle just like handleTap.
+        if tapSelectFilter.contains(.vertex) {
+            selection.selectedVertexIds.formUnion(hitVertexIds)
         }
 
-        let effectiveVertexIds = selection.selectedVertexIds
-        for edge in activeEdges {
-            if effectiveVertexIds.contains(edge.startVertexId) &&
-               effectiveVertexIds.contains(edge.endVertexId) {
-                selection.selectedEdgeIds.insert(edge.id)
+        if tapSelectFilter.contains(.edge) {
+            let effectiveVertexIds = selection.selectedVertexIds.union(hitVertexIds)
+            for edge in activeEdges {
+                if effectiveVertexIds.contains(edge.startVertexId) &&
+                   effectiveVertexIds.contains(edge.endVertexId) {
+                    selection.selectedEdgeIds.insert(edge.id)
+                }
             }
         }
 
@@ -1867,19 +1921,39 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Edge Properties
 
     func setEdgeType(_ edgeId: String, type: EdgeType) {
-        guard var edge = activeEdge(byId: edgeId) else { return }
+        setEdgeType([edgeId], type: type)
+    }
+
+    /// Apply an edge type to every edge in `edgeIds` as ONE atomic action — a
+    /// single undo snapshot and a single save, mirroring
+    /// `assignItemToSelectedEdges`. The assignment wheel and the Properties
+    /// sheet both route multi-edge type changes here so "mark these as house
+    /// edge" lands on the whole selection, not just one edge.
+    func setEdgeType(_ edgeIds: [String], type: EdgeType) {
+        let ids = edgeIds.filter { activeEdge(byId: $0) != nil }
+        guard !ids.isEmpty else { return }
         pushUndo("set edge type")
-        edge.edgeType = type
-        // House edge and deck-edge railing are mutually exclusive. House
-        // edges carry house cladding only; deck edges may carry railing/
-        // parapet configuration. Clearing the invalid side here keeps old
-        // saved payloads from leaking into renderers and estimates.
-        if type == .houseEdge {
-            edge.railingConfig = nil
-        } else {
-            edge.houseEdgeMaterial = nil
+        for id in ids {
+            guard var edge = activeEdge(byId: id) else { continue }
+            edge.edgeType = type
+            // House edge and deck-edge railing are mutually exclusive. House
+            // edges carry house cladding only; deck edges may carry railing/
+            // parapet configuration. Clearing the invalid side here keeps old
+            // saved payloads from leaking into renderers and estimates.
+            if type == .houseEdge {
+                edge.railingConfig = nil
+            } else {
+                edge.houseEdgeMaterial = nil
+            }
+            activeUpdateEdge(edge)
         }
-        activeUpdateEdge(edge)
+        hapticMedium()
+        // Confirm multi-edge applies hit the whole selection — single-edge
+        // changes are self-evident on the canvas and stay quiet.
+        if ids.count > 1 {
+            let label = type == .houseEdge ? "House edge" : "Deck edge"
+            showAssignmentConfirmation("\(label) applied to \(ids.count) edges")
+        }
         save()
     }
 

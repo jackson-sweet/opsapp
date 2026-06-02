@@ -50,7 +50,6 @@ struct BooksTabView: View {
     @AppStorage("books.lastViewedCard") private var lastViewedCardRaw: String = HeroCarousel.CardID.pl.rawValue
 
     @State private var headerCollapsed = false
-    @State private var showARDetail = false
     @State private var showCashflowForecast = false
 
     private var selectedSegment: BooksSection {
@@ -126,7 +125,7 @@ struct BooksTabView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 AppHeader(headerType: .books)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
 
                 // Sync banner — sits above the hero whenever a sync is in
                 // flight, the network is unreachable, or the last fetch
@@ -144,26 +143,12 @@ struct BooksTabView: View {
                     .transition(.opacity)
                 }
 
-                if headerCollapsed && carouselVisible {
-                    CollapsedCarouselStrip(
-                        viewModel: dashboardVM,
-                        activeCard: activeCarouselCard,
-                        visibleCards: visibleCarouselCards
-                    )
-                    .transition(.opacity)
-                }
-
-                if headerCollapsed && !visibleSegments.isEmpty {
-                    VStack(spacing: 0) {
-                        insetPillSegmentedControl
-                        activeFilterChip
-                    }
-                    .background(OPSStyle.Colors.background)
-                    .transition(.opacity)
-                }
-
                 ScrollView {
-                    VStack(spacing: 0) {
+                    // One scroll surface owns the whole page (no nested
+                    // ScrollViews in the embedded lists). The segment picker +
+                    // section label are a pinned section header, so the active
+                    // list always has a clear, delineated start (P6 issue #2).
+                    LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                         // Hero carousel — borderless, top-level data.
                         // PeriodPill lives inline on each card's top row (inside HeroCarousel).
                         // Operator role lands here with zero permitted cards and skips the hero.
@@ -177,10 +162,10 @@ struct BooksTabView: View {
                                 onDrillForecast: {
                                     selectedSegmentRaw = BooksSection.estimates.rawValue
                                     estimateVM.selectedFilter = .sent
-                                },
-                                onDrillTopChase: { showARDetail = true },
+                                }
                             )
                             .environmentObject(permissionStore)
+                            .environmentObject(dataController)
                             .padding(.bottom, OPSStyle.Layout.spacing2)
                             .background(
                                 GeometryReader { geo in
@@ -199,19 +184,37 @@ struct BooksTabView: View {
                             CashflowForecastCard(viewModel: cashflowVM)
                                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                                 .padding(.top, OPSStyle.Layout.spacing2)
+                                .padding(.bottom, OPSStyle.Layout.spacing3)
                         }
 
-                        if !headerCollapsed && !visibleSegments.isEmpty {
-                            insetPillSegmentedControl
-                            activeFilterChip
+                        // Pinned section: the picker + drill chip + section label
+                        // stay docked under the (collapsing) carousel, giving the
+                        // list a clear delineated start.
+                        if !visibleSegments.isEmpty {
+                            Section {
+                                contentForSegment
+                                    .padding(.top, OPSStyle.Layout.spacing2)
+                            } header: {
+                                booksSectionHeader
+                            }
                         }
-
-                        contentForSegment
                     }
                 }
                 .coordinateSpace(name: "scroll")
                 .onPreferenceChange(HeaderBottomKey.self) { bottomY in
-                    let shouldCollapse = bottomY < 0
+                    // bottomY is the carousel's maxY in scroll space: positive
+                    // near the top, negative once it scrolls above the viewport.
+                    // Exactly 0 means the lazy carousel was discarded deep in a
+                    // long list — latch the current state rather than snapping the
+                    // collapsed strip back open.
+                    let shouldCollapse: Bool
+                    if bottomY > 0 {
+                        shouldCollapse = false
+                    } else if bottomY < 0 {
+                        shouldCollapse = true
+                    } else {
+                        shouldCollapse = headerCollapsed
+                    }
                     if shouldCollapse != headerCollapsed {
                         withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
                             headerCollapsed = shouldCollapse
@@ -235,12 +238,6 @@ struct BooksTabView: View {
             .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: invoiceVM.selectedFilter)
             .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: estimateVM.selectedFilter)
             .background(OPSStyle.Colors.background.ignoresSafeArea())
-            .sheet(isPresented: $showARDetail) {
-                ARAgingDetailView()
-                    .environmentObject(dataController)
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
-            }
             .fullScreenCover(isPresented: $showCashflowForecast) {
                 CashflowForecastScreen(viewModel: cashflowVM)
             }
@@ -350,6 +347,61 @@ struct BooksTabView: View {
         }
     }
 
+    // MARK: - Pinned section header
+
+    /// Docked header for the active segment: the collapse strip (once the
+    /// carousel scrolls away) + segment picker + drill chip + a `// SEGMENT · N`
+    /// label and a hairline that visually opens the list section (P6 issue #2).
+    private var booksSectionHeader: some View {
+        VStack(spacing: 0) {
+            if headerCollapsed && carouselVisible {
+                CollapsedCarouselStrip(
+                    viewModel: dashboardVM,
+                    activeCard: activeCarouselCard,
+                    visibleCards: visibleCarouselCards
+                )
+            }
+            insetPillSegmentedControl
+                .padding(.top, OPSStyle.Layout.spacing2_5)
+            activeFilterChip
+            segmentLabel
+                .padding(.top, OPSStyle.Layout.spacing2_5)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
+            Rectangle()
+                .fill(OPSStyle.Colors.line)
+                .frame(height: 1)
+        }
+        .background(OPSStyle.Colors.background)
+    }
+
+    /// `// INVOICES · 12` data-section marker that anchors the list start.
+    private var segmentLabel: some View {
+        HStack(spacing: 4) {
+            Text("//").foregroundColor(OPSStyle.Colors.textMute)
+            Text(selectedSegment.rawValue).foregroundColor(OPSStyle.Colors.tertiaryText)
+            if let count = segmentCount {
+                Text("·").foregroundColor(OPSStyle.Colors.textMute)
+                Text("\(count)").foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+            Spacer()
+        }
+        .font(.custom("JetBrainsMono-Medium", size: 10))
+        .tracking(1.6)  // 0.16em at 10pt
+        .textCase(.uppercase)
+        .monospacedDigit()
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+    }
+
+    /// Item count for the active segment's list, where this view owns the VM.
+    /// Expenses lists own their own data, so they show no count.
+    private var segmentCount: Int? {
+        switch selectedSegment {
+        case .invoices:  return invoiceVM.filteredInvoices.count
+        case .estimates: return estimateVM.filteredEstimates.count
+        case .expenses:  return nil
+        }
+    }
+
     // MARK: - Content per segment
 
     @ViewBuilder
@@ -367,14 +419,14 @@ struct BooksTabView: View {
             case .expenses:
                 if visibleSegments.contains(.expenses) {
                     if expensesScopeIsOwn {
-                        MyExpensesView()
+                        MyExpensesView(embedded: true)
                     } else {
                         ExpensesListView(embedded: true)
                     }
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
         .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: selectedSegment)
     }
 

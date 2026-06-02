@@ -14,7 +14,12 @@ class Scene3DController: ObservableObject {
     func setCameraPreset(_ preset: CameraPreset) {
         guard let scnView = scnView, let scene = scene else { return }
 
+        // Frame the DECK, not the whole scene — the ground plane otherwise
+        // dominates the bounding box and every preset zooms out to a tiny deck.
+        let ground = scene.rootNode.childNode(withName: "groundPlane", recursively: false)
+        ground?.removeFromParentNode()
         let (minBound, maxBound) = scene.rootNode.boundingBox
+        if let ground { scene.rootNode.addChildNode(ground) }
         let centerX = (minBound.x + maxBound.x) / 2
         let centerY = (minBound.y + maxBound.y) / 2
         let centerZ = (minBound.z + maxBound.z) / 2

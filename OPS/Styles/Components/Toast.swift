@@ -182,13 +182,17 @@ struct ToastHostView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .ignoresSafeArea(edges: .top)
-            // Two distinct curves — enter is the OPS standard (250ms), exit is
-            // .fast (200ms). Reduced-motion collapses both to a 150ms crossfade.
+            // Single OPS easing curve cubic-bezier(0.22, 1, 0.36, 1) on every
+            // path: enter = .standard (250ms), exit = .panel (200ms),
+            // reduced-motion crossfade = .hover (150ms). Durations are
+            // unchanged; only the curve is corrected — .fast/.faster are legacy
+            // easeInOut/easeOut aliases that violated the single-curve rule.
+            // (review W-9)
             .animation(
                 reduceMotion
-                    ? OPSStyle.Animation.faster
+                    ? OPSStyle.Animation.hover
                     : (center.current == nil
-                        ? OPSStyle.Animation.fast
+                        ? OPSStyle.Animation.panel
                         : OPSStyle.Animation.standard),
                 value: center.current?.id
             )

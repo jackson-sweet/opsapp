@@ -25,8 +25,13 @@ class SketchScanPipeline: ObservableObject {
     @Published var result: SketchScanResult?
     @Published var error: String?
 
-    /// Run the full 7-stage pipeline on a captured image
-    func process(image: UIImage) async {
+    /// Run the full 7-stage pipeline on a captured image.
+    /// - Parameters:
+    ///   - image: The captured (perspective-corrected) sketch photo.
+    ///   - measurementSystem: The drawing's units. Drives the grid-scale fallback
+    ///     when the sketch has a detectable grid but no usable dimension annotations
+    ///     (imperial → 1 square = 1 foot, metric → 1 square = 10 cm).
+    func process(image: UIImage, measurementSystem: MeasurementSystem = .imperial) async {
         guard let cgImage = image.cgImage else {
             error = "Invalid image"
             stage = .failed
@@ -106,7 +111,8 @@ class SketchScanPipeline: ObservableObject {
             scaleResult = ScaleInference.inferFromGrid(
                 gridSpacingPixels: gridSpacing,
                 associations: associations,
-                segments: contourResult.segments
+                segments: contourResult.segments,
+                measurementSystem: measurementSystem
             )
         } else if !associations.isEmpty {
             scaleResult = ScaleInference.inferFromAnnotations(

@@ -10,7 +10,7 @@ final class StairCalculatorTests: XCTestCase {
         XCTAssertEqual(spec.treadCount, 4)  // 30 / 7.5 = 4
         XCTAssertEqual(spec.risePerStep, 7.5, accuracy: 0.01)
         XCTAssertEqual(spec.totalRun, 40.0, accuracy: 0.01) // 4 * 10
-        XCTAssertEqual(spec.stringerCount, 4) // ceil(48/16) + 1 = 4
+        XCTAssertEqual(spec.stringerCount, 3) // ceil(48/24) + 1 = 3 (24" o.c. max)
     }
 
     func testCalculate_8footDeck_13treads() {

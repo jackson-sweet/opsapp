@@ -586,13 +586,21 @@ struct ProjectFormSheet: View {
             _isNotesExpanded = State(initialValue: !(project.notes ?? "").isEmpty)
             _isDatesExpanded = State(initialValue: project.startDate != nil)
 
-            // Convert project tasks to local tasks
-            _localTasks = State(initialValue: project.tasks.map { task in
+            // Convert project tasks to local tasks. Load the full task state
+            // (dates, crew, title) and remember each row's real task id so the
+            // edit-mode save can reconcile changes back to Supabase.
+            _localTasks = State(initialValue: project.tasks
+                .filter { $0.deletedAt == nil }
+                .map { task in
                 LocalTask(
                     id: UUID(),
                     taskTypeId: task.taskTypeId,
-                    customTitle: nil,
-                    status: task.status
+                    customTitle: task.customTitle,
+                    status: task.status,
+                    teamMemberIds: task.getTeamMemberIds(),
+                    startDate: task.startDate,
+                    endDate: task.endDate,
+                    existingTaskId: task.id
                 )
             })
             _isTasksExpanded = State(initialValue: !project.tasks.isEmpty)
@@ -780,7 +788,11 @@ struct ProjectFormSheet: View {
                 .draft(nil)
             ) { savedTask in
                 if let editIndex = editingTaskIndex {
-                    localTasks[editIndex] = savedTask
+                    // Preserve the real-task mapping so an edit updates the
+                    // existing task on save instead of creating a duplicate.
+                    var merged = savedTask
+                    merged.existingTaskId = localTasks[editIndex].existingTaskId
+                    localTasks[editIndex] = merged
                 } else {
                     localTasks.append(savedTask)
                 }
@@ -3206,7 +3218,97 @@ struct ProjectFormSheet: View {
             try? modelContext.save()
         }
 
+        // Reconcile task add/remove/edit against the real tasks and sync each
+        // change. Previously edit-mode task changes were dropped entirely.
+        await reconcileTasks(for: project)
+
         dataController.triggerBackgroundSync()
+    }
+
+    /// Reconcile the edited `localTasks` against the project's real tasks:
+    /// create added rows, delete removed rows, and push field changes on kept
+    /// rows. Every mutation routes through the DataController sync methods so the
+    /// change reaches Supabase (the edit form previously dropped them all).
+    @MainActor
+    private func reconcileTasks(for project: Project) async {
+        let realTasks = project.tasks.filter { $0.deletedAt == nil }
+        let realById = Dictionary(realTasks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let keptIds = Set(localTasks.compactMap { $0.existingTaskId })
+
+        // 1) Deletions — existing tasks the user removed from the list.
+        for real in realTasks where !keptIds.contains(real.id) {
+            do { try await dataController.deleteTask(real, updateProject: false) }
+            catch { print("[PROJECT_EDIT] ⚠️ Failed to delete task \(real.id): \(error)") }
+        }
+
+        // 2) Additions + field updates.
+        for localTask in localTasks {
+            if let existingId = localTask.existingTaskId, let real = realById[existingId] {
+                await applyTaskEdits(to: real, from: localTask)
+            } else {
+                await createTask(for: project, localTask: localTask)
+            }
+        }
+    }
+
+    /// Push any changed fields of an existing task through the canonical sync
+    /// methods. `applyTaskFieldsLocally` does not mirror task_type_id/dates onto
+    /// the local model, so those are set here as well.
+    @MainActor
+    private func applyTaskEdits(to task: ProjectTask, from local: LocalTask) async {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+
+        var fields: [String: AnyJSON] = [:]
+
+        if task.taskTypeId != local.taskTypeId, !local.taskTypeId.isEmpty {
+            fields["task_type_id"] = .string(local.taskTypeId)
+            task.taskTypeId = local.taskTypeId
+            task.taskType = allTaskTypes.first { $0.id == local.taskTypeId }
+        }
+
+        let realTitle = (task.customTitle?.isEmpty == true) ? nil : task.customTitle
+        let localTitle = (local.customTitle?.isEmpty == true) ? nil : local.customTitle
+        if realTitle != localTitle {
+            fields["custom_title"] = localTitle.map { AnyJSON.string($0) } ?? .null
+        }
+
+        if task.startDate != local.startDate || task.endDate != local.endDate {
+            if let start = local.startDate {
+                fields["start_date"] = .string(iso.string(from: start))
+                if let end = local.endDate {
+                    fields["end_date"] = .string(iso.string(from: end))
+                    let days = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
+                    fields["duration"] = .integer(days + 1)
+                } else {
+                    fields["end_date"] = .null
+                    fields["duration"] = .integer(1)
+                }
+            } else {
+                fields["start_date"] = .null
+                fields["end_date"] = .null
+                fields["duration"] = .integer(0)
+            }
+            task.startDate = local.startDate
+            task.endDate = local.endDate
+        }
+
+        if !fields.isEmpty {
+            do { try await dataController.updateTaskFields(taskId: task.id, fields: fields) }
+            catch { print("[PROJECT_EDIT] ⚠️ Failed to update task \(task.id): \(error)") }
+        }
+
+        if task.status != local.status {
+            do { try await dataController.updateTaskStatus(task: task, to: local.status) }
+            catch { print("[PROJECT_EDIT] ⚠️ Failed to update task status \(task.id): \(error)") }
+        }
+
+        let realTeam = Set(task.getTeamMemberIds().map { $0.lowercased() })
+        let localTeam = Set(local.teamMemberIds.map { $0.lowercased() })
+        if realTeam != localTeam {
+            do { try await dataController.updateTaskTeamMembers(task: task, memberIds: local.teamMemberIds) }
+            catch { print("[PROJECT_EDIT] ⚠️ Failed to update task team \(task.id): \(error)") }
+        }
     }
 
     private func createTask(for project: Project, localTask: LocalTask) async {
@@ -3516,6 +3618,9 @@ struct LocalTask: Identifiable, Equatable {
     var teamMemberIds: [String] = []
     var startDate: Date?
     var endDate: Date?
+    /// The real ProjectTask.id this row maps to in edit mode (nil = newly added
+    /// row). Lets the project-edit save reconcile rows against existing tasks.
+    var existingTaskId: String? = nil
 
     static func == (lhs: LocalTask, rhs: LocalTask) -> Bool {
         lhs.id == rhs.id &&
@@ -3524,7 +3629,8 @@ struct LocalTask: Identifiable, Equatable {
         lhs.status == rhs.status &&
         lhs.teamMemberIds == rhs.teamMemberIds &&
         lhs.startDate == rhs.startDate &&
-        lhs.endDate == rhs.endDate
+        lhs.endDate == rhs.endDate &&
+        lhs.existingTaskId == rhs.existingTaskId
     }
 }
 

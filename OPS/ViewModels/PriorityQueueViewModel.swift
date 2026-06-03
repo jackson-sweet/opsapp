@@ -32,7 +32,10 @@ final class PriorityQueueViewModel: ObservableObject {
     /// Load all active company tasks, split by waterline.
     func reload() {
         let active = dataController.getAllTasks().filter { $0.status == .active && $0.deletedAt == nil }
-        ranked = active.filter { $0.priorityRank != nil }.sorted { ($0.priorityRank!, $0.id) < ($1.priorityRank!, $1.id) }
+        ranked = active.filter { $0.priorityRank != nil }.sorted { lhs, rhs in
+            let lr = lhs.priorityRank ?? 0, rr = rhs.priorityRank ?? 0
+            return lr == rr ? lhs.id < rhs.id : lr < rr
+        }
         unranked = active.filter { $0.priorityRank == nil }.sorted { ($0.lastSyncedAt ?? .distantPast) > ($1.lastSyncedAt ?? .distantPast) }
     }
 

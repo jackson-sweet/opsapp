@@ -24,6 +24,7 @@ struct JobBoardView: View {
     @State private var showingTaskFilterSheet = false
     @State private var activeOnly = false
     @State private var assignedToMe = false
+    @State private var prioritizeMode = false
 
     // Payment review state
     @State private var showPaymentReview: Bool = false
@@ -238,6 +239,26 @@ struct JobBoardView: View {
                                     )
                             }
 
+                            if selectedSection == .tasks && permissionStore.can("tasks.edit") {
+                                Button(action: {
+                                    withAnimation(.easeInOut(duration: 0.2)) { prioritizeMode.toggle() }
+                                }) {
+                                    Text("PRIORITIZE")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(prioritizeMode ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                .fill(prioritizeMode ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
+                                        )
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                .stroke(prioritizeMode ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                        )
+                                }
+                            }
+
                             Spacer()
                         }
                         .padding(.horizontal, 16)
@@ -281,13 +302,18 @@ struct JobBoardView: View {
                                 )
                                 .padding(.horizontal, 16)
                             case .tasks:
-                                JobBoardTasksView(
-                                    searchText: searchText,
-                                    showingFilters: $showingFilters,
-                                    showingFilterSheet: $showingTaskFilterSheet,
-                                    assignedToMe: assignedToMe
-                                )
-                                .padding(.horizontal, 16)
+                                if prioritizeMode {
+                                    PriorityQueueView(displayMode: .inline, dataController: dataController)
+                                        .padding(.horizontal, 16)
+                                } else {
+                                    JobBoardTasksView(
+                                        searchText: searchText,
+                                        showingFilters: $showingFilters,
+                                        showingFilterSheet: $showingTaskFilterSheet,
+                                        assignedToMe: assignedToMe
+                                    )
+                                    .padding(.horizontal, 16)
+                                }
                             case .kanban:
                                 JobBoardKanbanView(assignedToMe: assignedToMe)
                             }

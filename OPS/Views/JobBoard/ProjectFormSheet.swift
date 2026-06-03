@@ -3301,6 +3301,7 @@ struct ProjectFormSheet: View {
                 status: localTask.status.rawValue,
                 taskColor: taskType.color,
                 displayOrder: nil,
+                priorityRank: nil,
                 // Bug daaf7efe — read from the authoritative CSV (which
                 // setTeamMemberIds populated) rather than the [User]
                 // relationship. SwiftData drops non-managed User instances

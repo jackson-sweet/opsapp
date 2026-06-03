@@ -8,6 +8,7 @@
 
 import SwiftUI
 import SwiftData
+import Supabase
 
 struct TimelineView: View {
     @EnvironmentObject var dataController: DataController
@@ -135,15 +136,30 @@ struct TimelineView: View {
     }
 
     private func updateTaskTime(_ task: ProjectTask, newStartTime: Date) {
-        let calendar = Calendar.current
         let duration = task.endTime.timeIntervalSince(task.startTime)
         let newEndTime = newStartTime.addingTimeInterval(duration)
 
+        // Apply locally for instant feedback
         task.startTime = newStartTime
         task.endTime = newEndTime
         task.needsSync = true
-
         try? dataController.modelContext?.save()
-        dataController.triggerBackgroundSync()
+
+        // Persist to Supabase. triggerBackgroundSync() only drains the sync-op
+        // queue — a local-only time edit is never queued, so without an explicit
+        // updateTaskFields the new time would stay on-device (one time on the
+        // phone, a different time on web). Format for the `time` columns.
+        let timeFormatter = DateFormatter()
+        timeFormatter.locale = Locale(identifier: "en_US_POSIX")
+        timeFormatter.dateFormat = "HH:mm:ss"
+        let startString = timeFormatter.string(from: newStartTime)
+        let endString = timeFormatter.string(from: newEndTime)
+        let taskId = task.id
+        Task {
+            try? await dataController.updateTaskFields(taskId: taskId, fields: [
+                "start_time": .string(startString),
+                "end_time": .string(endString)
+            ])
+        }
     }
 }

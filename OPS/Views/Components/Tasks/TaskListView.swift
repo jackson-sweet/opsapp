@@ -188,32 +188,29 @@ struct TaskRow: View {
                     print("[RESCHEDULE_TASK] Task: \(task.displayTitle)")
                     print("[RESCHEDULE_TASK] New dates: \(startDate) to \(endDate)")
 
-                    // Set dates directly on task
-                    task.startDate = startDate
-                    task.endDate = endDate
-                    let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
-                    task.duration = daysDiff + 1
-                    task.needsSync = true
-                    try? dataController.modelContext?.save()
-                    print("[RESCHEDULE_TASK] ✅ Task saved to SwiftData")
+                    // Route through the single syncing method so the task's new
+                    // dates reach Supabase, not just SwiftData. Saving locally and
+                    // only syncing the project left the task on the iOS calendar
+                    // but Unscheduled on web.
+                    Task {
+                        do {
+                            try await dataController.updateTaskSchedule(task: task, startDate: startDate, endDate: endDate)
+                            print("[RESCHEDULE_TASK] ✅ Task schedule synced")
 
-                    // Update project dates (computed from tasks)
-                    if let project = task.project {
-                        print("[RESCHEDULE_TASK] 📅 Updating project dates after reschedule...")
-                        print("[RESCHEDULE_TASK] Project: \(project.title)")
-
-                        Task {
-                            // Sync computed dates to Supabase
-                            print("[RESCHEDULE_TASK] 🔄 Syncing updated project dates to Supabase...")
-                            try? await dataController.updateProjectDates(
-                                project: project,
-                                startDate: project.computedStartDate,
-                                endDate: project.computedEndDate
-                            )
-                            print("[RESCHEDULE_TASK] ✅ Project dates update complete")
+                            // Update project dates (computed from the now-updated tasks)
+                            if let project = task.project {
+                                try? await dataController.updateProjectDates(
+                                    project: project,
+                                    startDate: project.computedStartDate,
+                                    endDate: project.computedEndDate
+                                )
+                                print("[RESCHEDULE_TASK] ✅ Project dates update complete")
+                            } else {
+                                print("[RESCHEDULE_TASK] ⚠️ No project found - skipping project date update")
+                            }
+                        } catch {
+                            print("[RESCHEDULE_TASK] ❌ Failed to sync task schedule: \(error)")
                         }
-                    } else {
-                        print("[RESCHEDULE_TASK] ⚠️ No project found - skipping date update")
                     }
                 }
             )

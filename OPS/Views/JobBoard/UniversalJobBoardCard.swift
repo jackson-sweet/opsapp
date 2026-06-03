@@ -1207,6 +1207,20 @@ struct UniversalJobBoardCard: View {
                                     try? dataController.modelContext?.save()
                                 }
 
+                                // Persist the cleared dates to Supabase. Previously this
+                                // only saved locally and synced the project, so the task
+                                // stayed scheduled on web after being cleared on device.
+                                try await dataController.updateTaskFields(taskId: selectedTask.id, fields: [
+                                    "start_date": .null,
+                                    "end_date": .null,
+                                    "duration": .integer(0)
+                                ])
+                                await MainActor.run {
+                                    selectedTask.needsSync = false
+                                    selectedTask.lastSyncedAt = Date()
+                                    try? dataController.modelContext?.save()
+                                }
+
                                 // Update parent project dates if necessary
                                 if let project = selectedTask.project {
                                     let tasksWithDates = project.tasks.filter { $0.startDate != nil && $0.endDate != nil }

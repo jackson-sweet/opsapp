@@ -412,7 +412,7 @@ final class OutboundProcessor {
 
     private static let validProjectTaskColumns: Set<String> = [
         "id", "bubble_id", "company_id", "project_id", "task_type_id",
-        "custom_title", "task_notes", "status", "task_color", "display_order", "priority_rank",
+        "custom_title", "task_notes", "status", "task_color", "display_order",
         "team_member_ids", "source_line_item_id", "source_estimate_id",
         "start_date", "end_date", "duration", "schedule_locked", "dependency_overrides",
         "start_time", "end_time", "deleted_at", "created_at", "updated_at"

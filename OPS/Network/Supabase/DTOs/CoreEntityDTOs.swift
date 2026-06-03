@@ -281,7 +281,6 @@ struct SupabaseProjectTaskDTO: Codable, Identifiable {
     let status: String
     let taskColor: String?
     let displayOrder: Int?
-    let priorityRank: Double?
     let teamMemberIds: [String]?
     let sourceLineItemId: String?
     let sourceEstimateId: String?
@@ -306,7 +305,6 @@ struct SupabaseProjectTaskDTO: Codable, Identifiable {
         case taskNotes            = "task_notes"
         case taskColor            = "task_color"
         case displayOrder         = "display_order"
-        case priorityRank         = "priority_rank"
         case teamMemberIds        = "team_member_ids"
         case sourceLineItemId     = "source_line_item_id"
         case sourceEstimateId     = "source_estimate_id"

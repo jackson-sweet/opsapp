@@ -124,12 +124,6 @@ final class ProjectTask {
     var taskTypeId: String
     var taskIndex: Int?  // Index for task ordering within project (based on startDate)
     var displayOrder: Int = 0
-    /// Global company-wide manual priority. Lower = higher priority.
-    /// nil = unranked (below the waterline). Fractional indexing: a moved task
-    /// receives a value strictly between its neighbors, so one reorder dirties one
-    /// row. Re-spaced by FractionalRank.normalize when neighbor gaps get tight.
-    /// Synced to Supabase `project_tasks.priority_rank`. Added 2026-06-02.
-    var priorityRank: Double?
     var customTitle: String?  // Optional custom title for task (overrides taskType.display)
     var sourceLineItemId: String?   // Supabase LineItem UUID this task was generated from
     var sourceEstimateId: String?   // Supabase Estimate UUID this task was generated from

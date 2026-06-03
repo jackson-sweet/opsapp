@@ -44,6 +44,7 @@ struct InvoiceDetailView: View {
         }
         .trackScreen("InvoiceDetail")
         .navigationBarTitleDisplayMode(.inline)
+        .hidesGlobalTabBar()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if invoice.status != .void && invoice.status != .paid {

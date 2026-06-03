@@ -89,6 +89,7 @@ struct ExpenseBatchDetailView: View {
         }
         .navigationTitle(batch.batchNumber)
         .navigationBarTitleDisplayMode(.inline)
+        .hidesGlobalTabBar()
         .task {
             isLoading = true
             await viewModel.loadBatchExpenses(batch.id)

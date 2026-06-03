@@ -8,9 +8,15 @@
 //
 
 import Foundation
+import Supabase
 // FirebaseAuthService used for token retrieval (Firebase Auth migration)
 
-class OnboardingService {
+protocol OnboardingServiceProtocol {
+    func syncUser(email: String, firstName: String?, lastName: String?, photoURL: String?) async throws -> SyncUserResponse
+    func markOnboardingComplete(userId: String) async throws
+}
+
+class OnboardingService: OnboardingServiceProtocol {
 
     init() {}
 
@@ -65,6 +71,41 @@ class OnboardingService {
         let syncResponse = try JSONDecoder().decode(SyncUserResponse.self, from: data)
         print("[ONBOARDING_SERVICE] User synced — Supabase ID: \(syncResponse.user.id)")
         return syncResponse
+    }
+
+    /// ACK iOS onboarding completion through ops-web so server invariants are
+    /// checked before onboarding_completed.ios is merged.
+    func markOnboardingComplete(userId: String) async throws {
+        let idToken: String
+        do {
+            idToken = try await FirebaseAuthService.shared.getIDToken()
+        } catch {
+            throw OnboardingServiceError.notAuthenticated
+        }
+
+        let url = AppConfiguration.apiBaseURL.appendingPathComponent("/api/onboarding/complete")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "idToken": idToken,
+            "platform": "ios"
+        ])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OnboardingServiceError.invalidResponse
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            print("[ONBOARDING_SERVICE] onboarding complete error \(httpResponse.statusCode): \(errorMessage)")
+            throw OnboardingServiceError.serverError("Onboarding completion failed with status \(httpResponse.statusCode)")
+        }
+
+        print("[ONBOARDING_SERVICE] iOS onboarding completion ACK received for user \(userId)")
     }
 
     // MARK: - Send Invites via ops-web

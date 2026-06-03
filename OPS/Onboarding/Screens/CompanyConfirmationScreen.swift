@@ -87,6 +87,15 @@ struct CompanyConfirmationScreen: View {
         }
     }
 
+    private var companyCode: String? {
+        switch manager.confirmationSource {
+        case .singleInvite, .pickerSelection:
+            return manager.selectedInvite?.companyCode
+        case .manualCodeEntry:
+            return manager.companyJoinDetails?.companyCode ?? manager.state.companyData.companyCode
+        }
+    }
+
     private var roleName: String? {
         switch manager.confirmationSource {
         case .singleInvite, .pickerSelection:
@@ -382,7 +391,8 @@ struct CompanyConfirmationScreen: View {
             do {
                 try await manager.joinCompanyFromOnboarding(
                     companyId: companyId,
-                    invitationId: invitationId
+                    invitationId: invitationId,
+                    companyCode: companyCode
                 )
 
                 await MainActor.run {

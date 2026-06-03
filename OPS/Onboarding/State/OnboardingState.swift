@@ -85,6 +85,19 @@ enum OnboardingFlow: String, Codable {
     }
 }
 
+enum OnboardingAuthSyncStatus: String, Codable, Equatable {
+    case notStarted
+    case synced
+    case syncFailed
+}
+
+enum OnboardingResumeBoundary: String, Codable, Equatable {
+    case postAuthPreCompany
+    case employeePostCode
+    case employeePostJoinPreProfile
+    case completionPendingServerACK
+}
+
 // MARK: - User Data
 
 /// User data collected during onboarding
@@ -169,6 +182,8 @@ struct OnboardingState: Codable, Equatable {
     var isAuthenticated: Bool = false
     var hasExistingCompany: Bool = false
     var hasCompletedPreSignupTutorial: Bool = false
+    var authSyncStatus: OnboardingAuthSyncStatus = .notStarted
+    var resumeBoundary: OnboardingResumeBoundary?
 
     /// Create default initial state
     static var initial: OnboardingState {
@@ -188,6 +203,8 @@ struct OnboardingState: Codable, Equatable {
         profileJoinPhase = .form
         credentialsPhase = .input
         hasExistingCompany = false
+        authSyncStatus = .notStarted
+        resumeBoundary = nil
     }
 }
 

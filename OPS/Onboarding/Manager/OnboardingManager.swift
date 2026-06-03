@@ -37,7 +37,11 @@ class OnboardingManager: ObservableObject {
     // MARK: - Dependencies
 
     private let dataController: DataController
-    private let onboardingService: OnboardingService
+    private let onboardingService: OnboardingServiceProtocol
+
+    var dataControllerForTesting: DataController {
+        dataController
+    }
 
     // MARK: - Callbacks
 
@@ -45,9 +49,9 @@ class OnboardingManager: ObservableObject {
 
     // MARK: - Initialization
 
-    init(dataController: DataController) {
+    init(dataController: DataController, onboardingService: OnboardingServiceProtocol = OnboardingService()) {
         self.dataController = dataController
-        self.onboardingService = OnboardingService()
+        self.onboardingService = onboardingService
 
         // Load saved state or create initial
         if let savedState = OnboardingState.load() {
@@ -147,21 +151,19 @@ class OnboardingManager: ObservableObject {
             return (true, manager)
         }
 
-        // Check if user has company (definitive proof of completed onboarding)
+        // Check if user has company and type. These are required identity fields,
+        // but they are not completion ACKs by themselves.
         let hasCompany = user.companyId != nil && !user.companyId!.isEmpty
+        let hasUserType = user.userType != nil
 
-        // CRITICAL: Check if user has already completed onboarding.
-        // Having a company is definitive proof — covers pre-migration users
-        // whose onboarding_completed JSONB was never populated.
-        if user.hasCompletedAppOnboarding || hasCompany {
+        // CRITICAL: Only the server onboarding_completed.ios ACK can complete
+        // onboarding. A company_id can exist after a partial join and must resume.
+        if user.hasCompletedAppOnboarding && hasCompany && hasUserType {
             // Clear any stale saved state
             OnboardingState.clear()
-            print("[ONBOARDING_MANAGER] User has completed onboarding (hasCompletedAppOnboarding=\(user.hasCompletedAppOnboarding), hasCompany=\(hasCompany)), skipping")
+            print("[ONBOARDING_MANAGER] User has completed onboarding (hasCompletedAppOnboarding=\(user.hasCompletedAppOnboarding), hasCompany=\(hasCompany), hasUserType=\(hasUserType)), skipping")
             return (false, nil)
         }
-
-        // Check if user has userType set
-        let hasUserType = user.userType != nil
 
         // Check for saved state that needs to be resumed
         if let savedState = OnboardingState.load() {
@@ -177,8 +179,22 @@ class OnboardingManager: ObservableObject {
             return (true, manager)
         }
 
-        // All conditions met - no onboarding needed
-        return (false, nil)
+        let manager = OnboardingManager(dataController: dataController)
+        manager.state.userData.userId = user.id
+        manager.state.companyData.companyId = user.companyId
+        manager.state.flow = user.userType == .company ? .companyCreator : .employee
+
+        if hasCompany {
+            manager.state.resumeBoundary = .completionPendingServerACK
+            manager.goToScreen(.ready)
+        } else if user.userType == .company {
+            manager.state.resumeBoundary = .postAuthPreCompany
+            manager.goToScreen(.companySetup)
+        } else {
+            manager.goToScreen(.codeEntry)
+        }
+
+        return (true, manager)
     }
 
     // MARK: - Navigation
@@ -440,14 +456,10 @@ class OnboardingManager: ObservableObject {
             print("[ONBOARDING_MANAGER] Ready screen - checking tutorial status:")
             print("[ONBOARDING_MANAGER]   - preSignupTutorialDone: \(preSignupDone)")
 
-            // Mark onboarding as complete (user finished all onboarding steps)
-            Task {
-                await markOnboardingComplete()
-
-                await MainActor.run {
-                    dataController.currentUser?.hasCompletedAppOnboarding = true
-                }
-            }
+            // User reached final onboarding UX, but local completion is gated
+            // until completeOnboardingAwaitingServerAck() receives server ACK.
+            state.resumeBoundary = .completionPendingServerACK
+            state.save()
 
             if preSignupDone {
                 // Pre-signup tutorial was done, mark hasCompletedAppTutorial and go to app setup
@@ -642,8 +654,7 @@ class OnboardingManager: ObservableObject {
             // Create user row via ops-web API (service role, bypasses RLS, generates proper UUID).
             // Direct client-side upsert fails because Firebase UIDs are not valid UUIDs
             // and the users.id column is UUID type.
-            let onboardingService = OnboardingService()
-            let syncResponse = try await onboardingService.syncUser(email: email)
+            let syncResponse = try await onboardingService.syncUser(email: email, firstName: nil, lastName: nil, photoURL: nil)
             let userId = syncResponse.user.id
 
             // Store credentials - CRITICAL: Set both user_id AND currentUserId
@@ -717,11 +728,11 @@ class OnboardingManager: ObservableObject {
         var resolvedUserId = userId
         if !email.isEmpty {
             do {
-                let onboardingService = OnboardingService()
                 let syncResponse = try await onboardingService.syncUser(
                     email: email,
                     firstName: firstName,
-                    lastName: lastName
+                    lastName: lastName,
+                    photoURL: nil
                 )
                 resolvedUserId = syncResponse.user.id
                 print("[ONBOARDING_MANAGER] Social auth user synced — Supabase ID: \(resolvedUserId)")
@@ -729,7 +740,27 @@ class OnboardingManager: ObservableObject {
                 // Update AuthManager with the correct Supabase user ID
                 dataController.authManager.setUserId(resolvedUserId)
             } catch {
-                print("[ONBOARDING_MANAGER] sync-user failed for social auth, falling back to provided userId: \(error.localizedDescription)")
+                print("[ONBOARDING_MANAGER] sync-user failed for social auth; holding recoverable unsynced state: \(error.localizedDescription)")
+                state.userData.userId = nil
+                state.userData.email = email
+                if let firstName = firstName, !firstName.isEmpty {
+                    state.userData.firstName = firstName
+                }
+                if let lastName = lastName, !lastName.isEmpty {
+                    state.userData.lastName = lastName
+                }
+                state.isAuthenticated = true
+                state.authSyncStatus = .syncFailed
+                state.resumeBoundary = .postAuthPreCompany
+                if state.flow == .employee {
+                    ABTestFlowStep.employeeSignup.save()
+                } else {
+                    ABTestFlowStep.signup.save()
+                }
+                state.save()
+                removeFirebaseFallbackUserDefaults(firebaseUID: userId)
+                showError("SYS :: USER SYNC FAILED")
+                throw OnboardingManagerError.serverError("SYS :: USER SYNC FAILED. Retry sign-in.")
             }
         }
 
@@ -743,6 +774,8 @@ class OnboardingManager: ObservableObject {
         }
 
         state.isAuthenticated = true
+        state.authSyncStatus = .synced
+        state.resumeBoundary = state.flow == .employee ? .employeePostCode : .postAuthPreCompany
 
         // Store for later - CRITICAL: Set both user_id AND currentUserId
         UserDefaults.standard.set(resolvedUserId, forKey: "user_id")
@@ -760,6 +793,16 @@ class OnboardingManager: ObservableObject {
         }
 
         state.save()
+    }
+
+    private func removeFirebaseFallbackUserDefaults(firebaseUID: String) {
+        guard !firebaseUID.isEmpty else { return }
+        if UserDefaults.standard.string(forKey: "user_id") == firebaseUID {
+            UserDefaults.standard.removeObject(forKey: "user_id")
+        }
+        if UserDefaults.standard.string(forKey: "currentUserId") == firebaseUID {
+            UserDefaults.standard.removeObject(forKey: "currentUserId")
+        }
     }
 
     /// PATCH userType to Supabase
@@ -805,35 +848,55 @@ class OnboardingManager: ObservableObject {
             // First update user profile
             try await updateUserProfile()
 
-            // Generate a unique company code
-            let newCompanyCode = generateCompanyCode()
-            let now = ISO8601DateFormatter().string(from: Date())
-            let trialEnd = ISO8601DateFormatter().string(from: Calendar.current.date(byAdding: .day, value: 30, to: Date())!)
+            // Idempotent retry guard: if a prior attempt already created the
+            // company (insert succeeded but a later step failed, or the app was
+            // killed mid-flow), reuse it instead of inserting a duplicate.
+            // companyData persists across relaunch via OnboardingState.save().
+            let companyId: String
+            let newCompanyCode: String
 
-            // Insert company into Supabase
-            let companyRepo = CompanyRepository()
-            let payload = NewCompanyPayload(
-                name: state.companyData.name,
-                email: state.companyData.email.isEmpty ? nil : state.companyData.email,
-                phone: state.companyData.phone.isEmpty ? nil : state.companyData.phone,
-                address: state.companyData.address.isEmpty ? nil : state.companyData.address,
-                company_code: newCompanyCode,
-                admin_ids: [userId],
-                seated_employee_ids: [userId],
-                account_holder_id: userId,
-                industries: state.companyData.industry.isEmpty ? nil : [state.companyData.industry],
-                company_size: state.companyData.size.isEmpty ? nil : state.companyData.size,
-                company_age: state.companyData.age.isEmpty ? nil : state.companyData.age,
-                subscription_status: "trial",
-                subscription_plan: "trial",
-                trial_start_date: now,
-                trial_end_date: trialEnd,
-                max_seats: 10,
-                created_at: now,
-                updated_at: now
-            )
-            let createdCompany = try await companyRepo.insert(payload)
-            let companyId = createdCompany.id
+            if let existingCompanyId = state.companyData.companyId,
+               !existingCompanyId.isEmpty {
+                companyId = existingCompanyId
+                newCompanyCode = state.companyData.companyCode ?? generateCompanyCode()
+                print("[ONBOARDING_MANAGER] Reusing company from a prior attempt: \(companyId)")
+            } else {
+                // Generate a unique company code
+                newCompanyCode = generateCompanyCode()
+                let now = ISO8601DateFormatter().string(from: Date())
+                let trialEnd = ISO8601DateFormatter().string(from: Calendar.current.date(byAdding: .day, value: 30, to: Date())!)
+
+                // Insert company into Supabase
+                let companyRepo = CompanyRepository()
+                let payload = NewCompanyPayload(
+                    name: state.companyData.name,
+                    email: state.companyData.email.isEmpty ? nil : state.companyData.email,
+                    phone: state.companyData.phone.isEmpty ? nil : state.companyData.phone,
+                    address: state.companyData.address.isEmpty ? nil : state.companyData.address,
+                    company_code: newCompanyCode,
+                    admin_ids: [userId],
+                    seated_employee_ids: [userId],
+                    account_holder_id: userId,
+                    industries: state.companyData.industry.isEmpty ? nil : [state.companyData.industry],
+                    company_size: state.companyData.size.isEmpty ? nil : state.companyData.size,
+                    company_age: state.companyData.age.isEmpty ? nil : state.companyData.age,
+                    subscription_status: "trial",
+                    subscription_plan: "trial",
+                    trial_start_date: now,
+                    trial_end_date: trialEnd,
+                    max_seats: 10,
+                    created_at: now,
+                    updated_at: now
+                )
+                let createdCompany = try await companyRepo.insert(payload)
+                companyId = createdCompany.id
+
+                // Persist immediately so any failure after this point reuses the
+                // company on retry instead of inserting a duplicate.
+                state.companyData.companyId = companyId
+                state.companyData.companyCode = newCompanyCode
+                state.save()
+            }
 
             // Update user's company_id in Supabase
             let userRepo = UserRepository(companyId: companyId)
@@ -881,6 +944,7 @@ class OnboardingManager: ObservableObject {
 
             state.profileCompanyPhase = .success
             state.hasExistingCompany = true
+            state.resumeBoundary = .completionPendingServerACK
             state.save()
 
             // Store in UserDefaults
@@ -957,7 +1021,11 @@ class OnboardingManager: ObservableObject {
             throw OnboardingManagerError.noUserId
         }
 
-        print("[ONBOARDING_MANAGER] Joining company with code: \(code)")
+        guard let companyCodeProof = normalizedCompanyCodeProof(code) else {
+            throw OnboardingManagerError.invalidCompanyCode
+        }
+
+        print("[ONBOARDING_MANAGER] Joining company with code: \(companyCodeProof)")
 
         state.profileJoinPhase = .joining
 
@@ -965,7 +1033,7 @@ class OnboardingManager: ObservableObject {
             // Look up company by code in Supabase (needed for name/phone/address metadata
             // that goes into UserDefaults and local SwiftData).
             let companyRepo = CompanyRepository()
-            guard let companyDTO = try await companyRepo.fetchByCode(code) else {
+            guard let companyDTO = try await companyRepo.fetchByCode(companyCodeProof) else {
                 throw OnboardingManagerError.invalidCompanyCode
             }
 
@@ -973,7 +1041,11 @@ class OnboardingManager: ObservableObject {
 
             // Atomic RPC: writes company_id, role, invitation acceptance, and seat grant.
             // Mirrors the ops-web /api/auth/join-company path so all platforms stay in sync.
-            let joinResult = try await executeJoinUserToCompanyRPC(userId: userId, companyId: companyId)
+            let joinResult = try await executeJoinUserToCompanyRPC(
+                userId: userId,
+                companyId: companyId,
+                companyCode: companyCodeProof
+            )
 
             // RPC returns `{ seat_granted: false }` when the company is at seat capacity.
             // Treat that as a user-visible error so the join doesn't succeed silently
@@ -993,8 +1065,9 @@ class OnboardingManager: ObservableObject {
             ])
 
             state.companyData.companyId = companyId
-            state.companyData.companyCode = code
+            state.companyData.companyCode = companyCodeProof
             state.hasExistingCompany = true
+            state.resumeBoundary = .employeePostJoinPreProfile
             state.save()
 
             // Store in UserDefaults
@@ -1124,15 +1197,16 @@ class OnboardingManager: ObservableObject {
         }
     }
 
-    /// Calls `public.join_user_to_company(p_user_id, p_company_id)` and decodes the JSONB result.
+    /// Calls `public.join_user_to_company(p_user_id, p_company_id, p_company_code)` and decodes the JSONB result.
     /// Throws `OnboardingManagerError.serverError(...)` if the RPC returns `{ error: "..." }`.
-    private func executeJoinUserToCompanyRPC(userId: String, companyId: String) async throws -> JoinUserToCompanyResult {
+    private func executeJoinUserToCompanyRPC(userId: String, companyId: String, companyCode: String) async throws -> JoinUserToCompanyResult {
         print("[ONBOARDING_MANAGER] Calling join_user_to_company RPC (user: \(userId), company: \(companyId))")
 
         let responseData: Data = try await SupabaseService.shared.client
             .rpc("join_user_to_company", params: [
                 "p_user_id": userId,
-                "p_company_id": companyId
+                "p_company_id": companyId,
+                "p_company_code": companyCode
             ])
             .execute()
             .data
@@ -1160,6 +1234,14 @@ class OnboardingManager: ObservableObject {
         let raw = String(data: responseData, encoding: .utf8) ?? "nil"
         print("[ONBOARDING_MANAGER] ❌ Failed to decode RPC response: \(raw.prefix(500))")
         throw OnboardingManagerError.serverError("Could not parse join response. Please try again.")
+    }
+
+    private func normalizedCompanyCodeProof(_ code: String?) -> String? {
+        let normalized = (code ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .filter { $0.isASCII && !$0.isWhitespace }
+            .uppercased()
+        return normalized.isEmpty ? nil : normalized
     }
 
     /// Look up a company by crew code without joining.
@@ -1216,15 +1298,17 @@ class OnboardingManager: ObservableObject {
             throw OnboardingManagerError.invalidCompanyCode
         }
         companyJoinDetails = details
+        state.resumeBoundary = .employeePostCode
+        state.save()
         return details
     }
 
     /// Joins company during onboarding flow. Unlike joinCompany(code:), this method:
-    /// 1. Accepts companyId directly (no redundant code lookup)
+    /// 1. Accepts companyId directly after code/invite confirmation
     /// 2. Skips updateUserProfile() (Profile screen hasn't been filled yet)
     /// 3. Marks the invitation as accepted (if invitationId provided)
     /// 4. Applies prescribed role from invitation (instead of hardcoding Crew)
-    func joinCompanyFromOnboarding(companyId: String, invitationId: String? = nil) async throws {
+    func joinCompanyFromOnboarding(companyId: String, invitationId: String? = nil, companyCode: String? = nil) async throws {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
@@ -1239,10 +1323,23 @@ class OnboardingManager: ObservableObject {
             let companyRepo = CompanyRepository()
             // fetch(companyId:) throws if not found — no optional
             let companyDTO = try await companyRepo.fetch(companyId: companyId)
+            guard let companyCodeProof = normalizedCompanyCodeProof(
+                companyCode
+                    ?? state.companyData.companyCode
+                    ?? selectedInvite?.companyCode
+                    ?? companyJoinDetails?.companyCode
+                    ?? companyDTO.companyCode
+            ) else {
+                throw OnboardingManagerError.invalidCompanyCode
+            }
 
             // Atomic RPC: writes company_id, role (from invitation or default), invitation
             // acceptance, and seat grant. Mirrors ops-web /api/auth/join-company.
-            let joinResult = try await executeJoinUserToCompanyRPC(userId: userId, companyId: companyId)
+            let joinResult = try await executeJoinUserToCompanyRPC(
+                userId: userId,
+                companyId: companyId,
+                companyCode: companyCodeProof
+            )
 
             // When the RPC reports seat_granted:false for a user who isn't already seated,
             // surface a clear user-visible error instead of letting the join succeed with
@@ -1263,7 +1360,9 @@ class OnboardingManager: ObservableObject {
 
             // Store company info in state and UserDefaults
             state.companyData.companyId = companyId
+            state.companyData.companyCode = companyCodeProof
             state.hasExistingCompany = true
+            state.resumeBoundary = .employeePostJoinPreProfile
             state.save()
 
             UserDefaults.standard.set(companyId, forKey: "company_id")
@@ -1525,8 +1624,26 @@ class OnboardingManager: ObservableObject {
 
     /// Complete onboarding and transition to main app
     func completeOnboarding() {
+        Task { @MainActor in
+            do {
+                _ = try await completeOnboardingAwaitingServerAck()
+            } catch {
+                showError(error.localizedDescription)
+            }
+        }
+    }
+
+    @discardableResult
+    func completeOnboardingAwaitingServerAck(callCompletion: Bool = true) async throws -> Bool {
         print("[ONBOARDING_MANAGER] ========== COMPLETE ONBOARDING START ==========")
         print("[ONBOARDING_MANAGER] Completing onboarding")
+
+        if OnboardingState.isCompleted {
+            if callCompletion {
+                onComplete?()
+            }
+            return true
+        }
 
         // Debug current state
         print("[ONBOARDING_MANAGER] State data:")
@@ -1534,34 +1651,32 @@ class OnboardingManager: ObservableObject {
         print("[ONBOARDING_MANAGER]   - companyId: \(state.companyData.companyId ?? "nil")")
         print("[ONBOARDING_MANAGER]   - companyCode: \(state.companyData.companyCode ?? "nil")")
 
-        // Store credentials so app can load user data on next launch
+        state.resumeBoundary = .completionPendingServerACK
+        state.save()
+
+        try await markOnboardingComplete()
+
+        // Store credentials so app can load user data on next launch. This must
+        // happen only after the server ACK above.
         storeCredentials()
+        dataController.currentUser?.hasCompletedAppOnboarding = true
+        OnboardingState.markCompleted()
+        ABTestFlowStep.clearSaved()
+        UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
+        state.resumeBoundary = nil
 
-        Task {
-            // Mark as completed on server
-            await markOnboardingComplete()
+        let udUserId = UserDefaults.standard.string(forKey: "currentUserId")
+        let udCompanyId = UserDefaults.standard.string(forKey: "company_id")
+        print("[ONBOARDING_MANAGER] Final UserDefaults check:")
+        print("[ONBOARDING_MANAGER]   - currentUserId: \(udUserId ?? "nil")")
+        print("[ONBOARDING_MANAGER]   - company_id: \(udCompanyId ?? "nil")")
 
-            await MainActor.run {
-                // Clear state
-                OnboardingState.markCompleted()
-                // Clean up pre-signup tutorial key
-                UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
-                print("[ONBOARDING_MANAGER] ✅ Onboarding state marked as completed")
-
-                // Verify UserDefaults
-                let udUserId = UserDefaults.standard.string(forKey: "currentUserId")
-                let udCompanyId = UserDefaults.standard.string(forKey: "company_id")
-                print("[ONBOARDING_MANAGER] Final UserDefaults check:")
-                print("[ONBOARDING_MANAGER]   - currentUserId: \(udUserId ?? "nil")")
-                print("[ONBOARDING_MANAGER]   - company_id: \(udCompanyId ?? "nil")")
-
-                print("[ONBOARDING_MANAGER] ========== COMPLETE ONBOARDING END ==========")
-                print("[ONBOARDING_MANAGER] Calling onComplete callback...")
-
-                // Notify completion - app will reload and DataHealthManager will handle sync
-                onComplete?()
-            }
+        print("[ONBOARDING_MANAGER] ========== COMPLETE ONBOARDING END ==========")
+        if callCompletion {
+            print("[ONBOARDING_MANAGER] Calling onComplete callback...")
+            onComplete?()
         }
+        return true
     }
 
     /// Store user credentials for app to use after onboarding
@@ -1589,35 +1704,13 @@ class OnboardingManager: ObservableObject {
         print("[ONBOARDING_MANAGER] ✅ Credentials stored to UserDefaults")
     }
 
-    /// PATCH onboarding_completed JSONB with {"ios": true} via read-modify-write merge.
-    /// The web app independently writes {"web": true} to the same column.
-    private func markOnboardingComplete() async {
+    /// ACK onboarding completion through the server-authoritative ops-web endpoint.
+    private func markOnboardingComplete() async throws {
         guard let userId = state.userData.userId ?? dataController.currentUser?.id else {
             print("[ONBOARDING_MANAGER] No user ID for completion patch")
-            return
+            throw OnboardingManagerError.noUserId
         }
-
-        do {
-            // Read current onboarding_completed JSONB, merge with ios: true, write back
-            let userRepo = UserRepository(companyId: "")
-            let currentDTO = try await userRepo.fetchOne(userId)
-            var merged = currentDTO.onboardingCompleted ?? [:]
-            merged["ios"] = true
-
-            // Build merged JSONB value
-            var mergedJSON: [String: AnyJSON] = [:]
-            for (key, value) in merged {
-                mergedJSON[key] = .bool(value)
-            }
-
-            try await userRepo.updateFields(userId: userId, fields: [
-                "onboarding_completed": .object(mergedJSON)
-            ])
-            print("[ONBOARDING_MANAGER] onboarding_completed merged with ios:true → \(merged)")
-        } catch {
-            print("[ONBOARDING_MANAGER] Failed to patch completion: \(error)")
-            // Non-fatal, continue anyway
-        }
+        try await onboardingService.markOnboardingComplete(userId: userId)
     }
 
     /// Mark tutorial as completed (used when pre-signup tutorial was already done)

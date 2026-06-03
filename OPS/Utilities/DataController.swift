@@ -6507,4 +6507,15 @@ extension DataController {
         )
         return AutoScheduleManager.schedule(request: request, provider: self)
     }
+
+    /// Auto-schedule a priority-ordered, cross-project task list.
+    func autoSchedulePriorityQueue(orderedTaskIds: [String], includeUnranked: Bool, anchorDate: Date = Date()) -> SchedulePlan {
+        let constraints = buildScheduleConstraints()
+        let request = ScheduleRequest(
+            mode: .taskPriorityQueue(orderedTaskIds: orderedTaskIds, includeUnranked: includeUnranked),
+            anchorDate: anchorDate,
+            constraints: constraints
+        )
+        return AutoScheduleManager.schedule(request: request, provider: self)
+    }
 }

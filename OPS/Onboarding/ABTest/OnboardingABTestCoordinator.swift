@@ -334,7 +334,8 @@ struct OnboardingABTestCoordinator: View {
                                 do {
                                     try await onboardingManager.joinCompanyFromOnboarding(
                                         companyId: invite.companyId,
-                                        invitationId: invite.invitationId
+                                        invitationId: invite.invitationId,
+                                        companyCode: invite.companyCode
                                     )
                                     let generator = UINotificationFeedbackGenerator()
                                     generator.notificationOccurred(.success)
@@ -371,7 +372,8 @@ struct OnboardingABTestCoordinator: View {
                             Task { @MainActor in
                                 do {
                                     try await onboardingManager.joinCompanyFromOnboarding(
-                                        companyId: details.companyId
+                                        companyId: details.companyId,
+                                        companyCode: details.companyCode ?? onboardingManager.state.companyData.companyCode
                                     )
                                     let generator = UINotificationFeedbackGenerator()
                                     generator.notificationOccurred(.success)
@@ -457,8 +459,22 @@ struct OnboardingABTestCoordinator: View {
             case .complete:
                 Color.clear
                     .onAppear {
-                        ABTestFlowStep.clearSaved()
-                        onComplete()
+                        guard !isFinishing else { return }
+                        isFinishing = true
+                        Task { @MainActor in
+                            do {
+                                _ = try await onboardingManager.completeOnboardingAwaitingServerAck(callCompletion: false)
+                                isFinishing = false
+                                onComplete()
+                            } catch {
+                                print("[ONBOARDING_AB] Completion ACK failed: \(error)")
+                                onboardingManager.showError("SYS :: ONBOARDING SYNC FAILED")
+                                isFinishing = false
+                                withAnimation {
+                                    flowStep = retryStepAfterCompletionFailure()
+                                }
+                            }
+                        }
                     }
             }
         }
@@ -485,6 +501,8 @@ struct OnboardingABTestCoordinator: View {
         .onChange(of: flowStep) { _, newStep in
             // Persist flow step for resume on app relaunch
             newStep.save()
+            onboardingManager.state.recordABTestResumeBoundary(for: newStep)
+            onboardingManager.state.save()
             print("[ONBOARDING_AB] Flow step changed to: \(newStep.rawValue)")
         }
         .onAppear {
@@ -503,7 +521,7 @@ struct OnboardingABTestCoordinator: View {
             let flow = onboardingManager.state.flow
 
             if let savedStep = ABTestFlowStep.loadSaved(), savedStep != .splash {
-                let resumeStep = savedStep.safeResumeStep(hasAuth: hasAuth, flow: flow)
+                let resumeStep = Self.resumeStep(savedStep: savedStep, hasAuth: hasAuth, state: onboardingManager.state)
                 if resumeStep != .splash {
                     print("[ONBOARDING_AB] Resuming at \(resumeStep.rawValue) (saved: \(savedStep.rawValue), hasAuth: \(hasAuth), flow: \(flow?.rawValue ?? "nil"))")
                     flowStep = resumeStep
@@ -578,6 +596,58 @@ struct OnboardingABTestCoordinator: View {
                 isFinishing = false
                 withAnimation { flowStep = .employeeCodeEntry }
             }
+        }
+    }
+
+    private func retryStepAfterCompletionFailure() -> ABTestFlowStep {
+        onboardingManager.state.resumeBoundary = .completionPendingServerACK
+        onboardingManager.state.save()
+
+        if onboardingManager.state.flow == .employee {
+            return .employeeEmergencyContact
+        }
+        return .crewCode
+    }
+
+    static func resumeStep(savedStep: ABTestFlowStep?, hasAuth: Bool, state: OnboardingState) -> ABTestFlowStep {
+        guard hasAuth else { return .splash }
+
+        switch state.resumeBoundary {
+        case .postAuthPreCompany:
+            if state.flow == .employee { return .employeeCodeEntry }
+            if state.flow == .companyCreator { return .companyName }
+        case .employeePostCode:
+            return .employeeCodeEntry
+        case .employeePostJoinPreProfile:
+            return .employeeProfile
+        case .completionPendingServerACK:
+            return .complete
+        case .none:
+            break
+        }
+
+        guard let savedStep else { return .splash }
+        return savedStep.safeResumeStep(hasAuth: hasAuth, flow: state.flow)
+    }
+}
+
+extension OnboardingState {
+    mutating func recordABTestResumeBoundary(for step: ABTestFlowStep) {
+        switch step {
+        case .companyName:
+            resumeBoundary = .postAuthPreCompany
+        case .employeeCodeEntry, .employeeConfirmation:
+            resumeBoundary = .employeePostCode
+        case .employeeProfile, .employeeEmergencyContact:
+            if hasExistingCompany || companyData.companyId != nil {
+                resumeBoundary = .employeePostJoinPreProfile
+            }
+        case .complete:
+            resumeBoundary = .completionPendingServerACK
+        case .crewCode:
+            resumeBoundary = nil
+        case .splash, .typeSelection, .walkthrough, .signup, .employeeSignup, .employeeInviteCheck, .employeeInvitePicker:
+            break
         }
     }
 }

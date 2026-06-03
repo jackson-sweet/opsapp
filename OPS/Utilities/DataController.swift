@@ -6449,6 +6449,18 @@ extension DataController: ScheduleDataProvider {
 
         return nil
     }
+
+    func schedulableTasks(forIds ids: [String]) -> [any SchedulableTask] {
+        let byId = Dictionary(getAllTasks().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return ids.compactMap { byId[$0] as (any SchedulableTask)? }
+    }
+
+    func unrankedActiveSchedulableTasks() -> [any SchedulableTask] {
+        getAllTasks()
+            .filter { $0.status == .active && $0.deletedAt == nil && $0.priorityRank == nil }
+            .sorted { ($0.lastSyncedAt ?? .distantPast) > ($1.lastSyncedAt ?? .distantPast) }
+            .map { $0 as any SchedulableTask }
+    }
 }
 
 // MARK: - AutoScheduleManager Convenience

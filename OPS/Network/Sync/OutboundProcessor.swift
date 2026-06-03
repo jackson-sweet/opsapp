@@ -407,7 +407,7 @@ final class OutboundProcessor {
         "title", "status", "address", "latitude", "longitude",
         "start_date", "end_date", "duration", "notes", "description",
         "all_day", "project_images", "completed_at",
-        "deleted_at", "created_at", "updated_at"
+        "deleted_at", "created_at", "updated_at", "priority_rank"
     ]
 
     private static let validProjectTaskColumns: Set<String> = [

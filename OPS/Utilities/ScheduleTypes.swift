@@ -20,6 +20,8 @@ struct ScheduleRequest {
         case multiProjectBatch(projectIds: [String])
         /// Auto-schedule a flat, cross-project list of tasks in explicit priority order.
         case taskPriorityQueue(orderedTaskIds: [String], includeUnranked: Bool)
+        /// Auto-schedule whole projects in an explicit (user-ranked) order.
+        case projectPriorityQueue(orderedProjectIds: [String])
     }
 
     let mode: Mode

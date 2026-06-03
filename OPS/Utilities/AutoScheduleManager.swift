@@ -77,6 +77,15 @@ struct AutoScheduleManager {
                 constraints: request.constraints,
                 provider: provider
             )
+
+        case .projectPriorityQueue(let orderedProjectIds):
+            return scheduleBatch(
+                projectIds: orderedProjectIds,
+                respectOrder: true,
+                anchor: anchor,
+                constraints: request.constraints,
+                provider: provider
+            )
         }
     }
 
@@ -336,18 +345,22 @@ struct AutoScheduleManager {
 
     private static func scheduleBatch(
         projectIds: [String],
+        respectOrder: Bool = false,
         anchor: Date,
         constraints: ScheduleConstraints,
         provider: ScheduleDataProvider
     ) -> SchedulePlan {
         let calendar = Calendar.current
 
-        // Sort projects by priority (won date → estimate approved → created)
-        let sortedProjectIds = projectIds.sorted { a, b in
-            let dateA = provider.priorityDateForProject(a) ?? Date.distantFuture
-            let dateB = provider.priorityDateForProject(b) ?? Date.distantFuture
-            return dateA < dateB
-        }
+        // Sort projects by priority (won date → estimate approved → created),
+        // or preserve explicit caller order when respectOrder is true.
+        let sortedProjectIds = respectOrder
+            ? projectIds
+            : projectIds.sorted { a, b in
+                let dateA = provider.priorityDateForProject(a) ?? Date.distantFuture
+                let dateB = provider.priorityDateForProject(b) ?? Date.distantFuture
+                return dateA < dateB
+            }
 
         var state = RunState()
 

@@ -240,6 +240,10 @@ struct SupabaseProjectDTO: Codable, Identifiable {
     /// callers don't pass it. Declared as `var` with a default so the
     /// synthesized memberwise init keeps its existing arity.
     var updatedAt: String? = nil
+    /// Company-wide manual project priority. Lower = higher priority.
+    /// nil = unranked. Fractional indexing (FractionalRank). Synced to
+    /// Supabase `projects.priority_rank`. Added 2026-06-03.
+    var priorityRank: Double? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, title, status, address, latitude, longitude, notes, description, duration
@@ -260,6 +264,7 @@ struct SupabaseProjectDTO: Codable, Identifiable {
         case vinylOrderedAt = "vinyl_ordered_at"
         case vinylOrderedBy = "vinyl_ordered_by"
         case updatedAt      = "updated_at"
+        case priorityRank   = "priority_rank"
     }
 }
 

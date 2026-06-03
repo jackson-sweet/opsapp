@@ -6518,6 +6518,62 @@ extension DataController {
         )
         return AutoScheduleManager.schedule(request: request, provider: self)
     }
+
+    /// Auto-schedule whole projects in an explicit ranked order.
+    func autoSchedulePriorityProjects(orderedProjectIds: [String], anchorDate: Date = Date()) -> SchedulePlan {
+        let request = ScheduleRequest(
+            mode: .projectPriorityQueue(orderedProjectIds: orderedProjectIds),
+            anchorDate: anchorDate,
+            constraints: buildScheduleConstraints()
+        )
+        return AutoScheduleManager.schedule(request: request, provider: self)
+    }
+}
+
+// MARK: - Project Priority (drag-to-reorder)
+
+extension DataController {
+    /// Persist a single project's priority rank (nil = unranked). Marks dirty + enqueues sync.
+    @MainActor
+    func reorderProjectPriority(projectId: String, newRank: Double?) {
+        guard let context = modelContext,
+              let project = (try? context.fetch(FetchDescriptor<Project>(predicate: #Predicate<Project> { $0.id == projectId })))?.first
+        else { return }
+        project.priorityRank = newRank
+        project.needsSync = true
+        try? context.save()
+        let rankValue: Any = newRank.map { $0 as Any } ?? NSNull()
+        syncEngine.recordOperation(
+            entityType: .project,
+            entityId: project.id,
+            operationType: "update",
+            changedFields: ["priority_rank": rankValue]
+        )
+    }
+
+    /// Persist many project ranks at once (divider sweep / normalization). One save, N enqueues.
+    @MainActor
+    func bulkSetProjectPriority(_ ranks: [String: Double?]) {
+        guard let context = modelContext, !ranks.isEmpty else { return }
+        let ids = Array(ranks.keys)
+        let projects = (try? context.fetch(FetchDescriptor<Project>(predicate: #Predicate<Project> { ids.contains($0.id) }))) ?? []
+        for project in projects {
+            guard let r = ranks[project.id] else { continue }
+            project.priorityRank = r
+            project.needsSync = true
+        }
+        try? context.save()
+        for project in projects {
+            guard let r = ranks[project.id] else { continue }
+            let rankValue: Any = r.map { $0 as Any } ?? NSNull()
+            syncEngine.recordOperation(
+                entityType: .project,
+                entityId: project.id,
+                operationType: "update",
+                changedFields: ["priority_rank": rankValue]
+            )
+        }
+    }
 }
 
 // MARK: - Task Priority (drag-to-reorder)

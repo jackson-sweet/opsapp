@@ -227,6 +227,7 @@ extension SupabaseProjectDTO {
         project.createdAt = createdAt.flatMap { SupabaseDate.parse($0) }
         project.createdBy = createdBy
         project.updatedAt = updatedAt.flatMap { SupabaseDate.parse($0) }
+        project.priorityRank = priorityRank
         return project
     }
 

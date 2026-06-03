@@ -6519,3 +6519,60 @@ extension DataController {
         return AutoScheduleManager.schedule(request: request, provider: self)
     }
 }
+
+// MARK: - Task Priority (drag-to-reorder)
+
+extension DataController {
+    /// Persist a single task's priority rank (nil = unranked). Marks dirty + enqueues sync.
+    @MainActor
+    func reorderPriority(taskId: String, newRank: Double?) {
+        guard let context = modelContext else { return }
+
+        let descriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { $0.id == taskId }
+        )
+        guard let task = (try? context.fetch(descriptor))?.first else { return }
+
+        task.priorityRank = newRank
+        task.needsSync = true
+        try? context.save()
+
+        let rankValue: Any = newRank.map { $0 as Any } ?? NSNull()
+        syncEngine.recordOperation(
+            entityType: .projectTask,
+            entityId: task.id,
+            operationType: "update",
+            changedFields: ["priority_rank": rankValue]
+        )
+    }
+
+    /// Persist many ranks at once (divider sweep / normalization). One save, N enqueues.
+    @MainActor
+    func bulkSetPriority(_ ranks: [String: Double?]) {
+        guard let context = modelContext, !ranks.isEmpty else { return }
+
+        let ids = Array(ranks.keys)
+        let descriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { ids.contains($0.id) }
+        )
+        guard let tasks = try? context.fetch(descriptor) else { return }
+
+        for task in tasks {
+            guard let newRank = ranks[task.id] else { continue }
+            task.priorityRank = newRank
+            task.needsSync = true
+        }
+        try? context.save()
+
+        for task in tasks {
+            guard let newRank = ranks[task.id] else { continue }
+            let rankValue: Any = newRank.map { $0 as Any } ?? NSNull()
+            syncEngine.recordOperation(
+                entityType: .projectTask,
+                entityId: task.id,
+                operationType: "update",
+                changedFields: ["priority_rank": rankValue]
+            )
+        }
+    }
+}

@@ -69,10 +69,10 @@ struct AutoScheduleManager {
                 provider: provider
             )
 
-        case .taskPriorityQueue(let orderedTaskIds, let includeUnranked):
-            return schedulePriorityQueue(
-                orderedTaskIds: orderedTaskIds,
-                includeUnranked: includeUnranked,
+        case .projectPriorityQueue(let orderedProjectIds):
+            return scheduleBatch(
+                projectIds: orderedProjectIds,
+                respectOrder: true,
                 anchor: anchor,
                 constraints: request.constraints,
                 provider: provider
@@ -336,18 +336,22 @@ struct AutoScheduleManager {
 
     private static func scheduleBatch(
         projectIds: [String],
+        respectOrder: Bool = false,
         anchor: Date,
         constraints: ScheduleConstraints,
         provider: ScheduleDataProvider
     ) -> SchedulePlan {
         let calendar = Calendar.current
 
-        // Sort projects by priority (won date → estimate approved → created)
-        let sortedProjectIds = projectIds.sorted { a, b in
-            let dateA = provider.priorityDateForProject(a) ?? Date.distantFuture
-            let dateB = provider.priorityDateForProject(b) ?? Date.distantFuture
-            return dateA < dateB
-        }
+        // Sort projects by priority (won date → estimate approved → created),
+        // or preserve explicit caller order when respectOrder is true.
+        let sortedProjectIds = respectOrder
+            ? projectIds
+            : projectIds.sorted { a, b in
+                let dateA = provider.priorityDateForProject(a) ?? Date.distantFuture
+                let dateB = provider.priorityDateForProject(b) ?? Date.distantFuture
+                return dateA < dateB
+            }
 
         var state = RunState()
 
@@ -375,78 +379,6 @@ struct AutoScheduleManager {
         // Pass 4: Calculate gap days
         let totalGapDays = calculateTotalGapDays(placements: state.placements, calendar: calendar)
 
-        return SchedulePlan(
-            placements: state.placements,
-            conflicts: state.conflicts,
-            metadata: ScheduleMetadata(
-                totalGapDays: totalGapDays,
-                proximityGroupsFound: state.proximityGroups,
-                weatherDependentTaskCount: 0,
-                weatherDeferrals: 0,
-                downstreamUnscheduledCount: 0,
-                warnings: state.warnings
-            )
-        )
-    }
-
-    // MARK: - Priority-Queue Scheduling
-
-    /// Schedules a flat, cross-project task list in explicit priority order,
-    /// deferring any task whose predecessors aren't placed yet so dependencies
-    /// always win. Reuses placeNext — the SAME placement logic as the batch path.
-    private static func schedulePriorityQueue(
-        orderedTaskIds: [String],
-        includeUnranked: Bool,
-        anchor: Date,
-        constraints: ScheduleConstraints,
-        provider: ScheduleDataProvider
-    ) -> SchedulePlan {
-        let calendar = Calendar.current
-        var state = RunState()
-
-        // Candidate set in priority order; unranked tail appended when requested.
-        var candidates = provider.schedulableTasks(forIds: orderedTaskIds)
-        if includeUnranked {
-            candidates.append(contentsOf: provider.unrankedActiveSchedulableTasks())
-        }
-
-        // Only schedule tasks that still need it (no dates). Already-dated tasks act
-        // as fixed commitments via provider.allScheduledTasksForMembers (inside placeNext).
-        var remaining = candidates.filter { $0.startDate == nil || $0.endDate == nil }
-        guard !remaining.isEmpty else { return .empty }
-
-        // Priority-respecting topological traversal: among tasks whose predecessors
-        // (matched by taskTypeId, still in the to-place set) are already placed, take
-        // the highest-priority (earliest in `remaining`) and place it. Repeat.
-        func predecessorsSatisfied(_ task: any SchedulableTask) -> Bool {
-            let placedTypeIds = Set(state.placed.map(\.taskTypeId))
-            for dep in task.effectiveDependencies {
-                let stillToPlace = remaining.contains { $0.taskTypeId == dep.dependsOnTaskTypeId }
-                if stillToPlace && !placedTypeIds.contains(dep.dependsOnTaskTypeId) {
-                    return false
-                }
-            }
-            return true
-        }
-
-        var safety = remaining.count * remaining.count + 1
-        while !remaining.isEmpty && safety > 0 {
-            safety -= 1
-            if let idx = remaining.firstIndex(where: predecessorsSatisfied) {
-                let task = remaining.remove(at: idx)
-                let visible = provider.tasksForProject(task.schedulingProjectId)
-                placeNext(task, dependencyVisibleTasks: visible, anchor: anchor, constraints: constraints, provider: provider, state: &state)
-            } else {
-                // Cycle / unresolvable predecessor: place the rest in priority order.
-                for task in remaining {
-                    let visible = provider.tasksForProject(task.schedulingProjectId)
-                    placeNext(task, dependencyVisibleTasks: visible, anchor: anchor, constraints: constraints, provider: provider, state: &state)
-                }
-                remaining.removeAll()
-            }
-        }
-
-        let totalGapDays = calculateTotalGapDays(placements: state.placements, calendar: calendar)
         return SchedulePlan(
             placements: state.placements,
             conflicts: state.conflicts,

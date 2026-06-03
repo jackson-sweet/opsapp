@@ -227,7 +227,6 @@ struct QuickAddSuggestionsRail: View {
             status: newTask.status.rawValue,
             taskColor: newTask.taskColor,
             displayOrder: newTask.displayOrder,
-            priorityRank: nil,
             teamMemberIds: suggestion.teamMemberIds,
             sourceLineItemId: nil,
             sourceEstimateId: nil,

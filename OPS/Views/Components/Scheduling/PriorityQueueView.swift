@@ -8,9 +8,9 @@ struct PriorityQueueView: View {
     let displayMode: DisplayMode
     var onClose: (() -> Void)? = nil
 
-    @State private var showConfirm = false
     @State private var waterlineEngaged = false
     @State private var waterlineSteps = 0
+    @State private var waterlineDragOffset: CGFloat = 0
     private let waterlineRowHeight: CGFloat = OPSStyle.Layout.touchTargetStandard
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -33,12 +33,6 @@ struct PriorityQueueView: View {
                 Task { await vm.commit(plan: box.plan) }
             }
             .environmentObject(dataController)
-        }
-        .alert("Move scheduled tasks?", isPresented: $showConfirm) {
-            Button("Cancel", role: .cancel) {}
-            Button("Continue") { vm.buildPlan() }
-        } message: {
-            Text("This moves \(vm.pendingConfirmCount) already-scheduled tasks.")
         }
         .overlay(alignment: .top) { confirmationBanner }
         .onChange(of: vm.justScheduledCount) { _, newValue in
@@ -80,7 +74,6 @@ struct PriorityQueueView: View {
     private var toggles: some View {
         HStack(spacing: 12) {
             toggleChip("INCLUDE UNRANKED", isOn: vm.includeUnranked) { vm.includeUnranked.toggle() }
-            toggleChip("MOVE SCHEDULED", isOn: vm.rescheduleScheduled) { vm.rescheduleScheduled.toggle() }
             Spacer()
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
@@ -90,19 +83,19 @@ struct PriorityQueueView: View {
         List {
             Section {
                 if vm.ranked.isEmpty {
-                    Text("Drag tasks up to rank them, or turn on Include Unranked.")
+                    Text("Drag projects up to rank them, or turn on Include Unranked.")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .listRowBackground(Color.clear)
                 } else {
-                    ForEach(Array(vm.ranked.enumerated()), id: \.element.id) { idx, task in
-                        PriorityQueueRow(task: task, rankNumber: idx + 1)
+                    ForEach(Array(vm.ranked.enumerated()), id: \.element.id) { idx, project in
+                        PriorityQueueRow(project: project, rankNumber: idx + 1)
                             .listRowBackground(Color.clear)
                     }
                     .onMove { from, to in
                         guard let f = from.first else { return }
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        vm.moveRanked(taskId: vm.ranked[f].id, to: to > f ? to - 1 : to)
+                        vm.moveRanked(projectId: vm.ranked[f].id, to: to > f ? to - 1 : to)
                     }
                 }
             } header: {
@@ -110,11 +103,11 @@ struct PriorityQueueView: View {
             }
 
             Section {
-                ForEach(vm.unranked, id: \.id) { task in
-                    PriorityQueueRow(task: task, rankNumber: nil)
+                ForEach(vm.unranked, id: \.id) { project in
+                    PriorityQueueRow(project: project, rankNumber: nil)
                         .listRowBackground(Color.clear)
                         .swipeActions(edge: .leading) {
-                            Button("Rank") { vm.rank(taskId: task.id, at: vm.ranked.count) }
+                            Button("Rank") { vm.rank(projectId: project.id, at: vm.ranked.count) }
                                 .tint(OPSStyle.Colors.primaryAccent)
                         }
                 }
@@ -128,6 +121,7 @@ struct PriorityQueueView: View {
                         .foregroundColor(waterlineEngaged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                     Spacer()
                 }
+                .offset(y: reduceMotion ? 0 : waterlineDragOffset)
                 .contentShape(Rectangle())
                 .gesture(waterlineGesture)
             }
@@ -143,11 +137,12 @@ struct PriorityQueueView: View {
                 Text("SCHEDULE NEXT").frame(maxWidth: .infinity)
             }
             .buttonStyle(SecondaryRunButtonStyle())
-            .disabled(vm.ranked.allSatisfy { $0.startDate != nil })
+            .disabled(vm.ranked.allSatisfy { p in
+                !p.tasks.contains { $0.deletedAt == nil && $0.status == .active && ($0.startDate == nil || $0.endDate == nil) }
+            })
 
             Button {
-                let moves = vm.scheduledMoveCount()
-                if moves > 0 { vm.pendingConfirmCount = moves; showConfirm = true } else { vm.buildPlan() }
+                vm.buildPlan()
             } label: {
                 Text("SCHEDULE ALL").frame(maxWidth: .infinity)
             }
@@ -181,6 +176,9 @@ struct PriorityQueueView: View {
                         UISelectionFeedbackGenerator().selectionChanged()
                         waterlineSteps = steps
                     }
+                    let maxDown = CGFloat(vm.unranked.count) * waterlineRowHeight
+                    let maxUp = -CGFloat(vm.ranked.count) * waterlineRowHeight
+                    waterlineDragOffset = min(max(drag.translation.height, maxUp), maxDown)
                 default:
                     break
                 }
@@ -194,6 +192,9 @@ struct PriorityQueueView: View {
                     withAnimation(reduceMotion ? Optional<Animation>.none : OPSStyle.Animation.standard) {
                         vm.setWaterline(rankedCount: newCount)
                     }
+                }
+                withAnimation(reduceMotion ? Optional<Animation>.none : OPSStyle.Animation.standard) {
+                    waterlineDragOffset = 0
                 }
                 waterlineEngaged = false
                 waterlineSteps = 0

@@ -529,8 +529,7 @@ class DataController: ObservableObject {
                     Task { await OneSignalService.shared.configure() }
                     NotificationManager.shared.refreshCachedPreferences()
 
-                    let localHasCompany = !(user.companyId ?? "").isEmpty
-                    if user.hasCompletedAppOnboarding || localHasCompany {
+                    if user.hasCompletedAppOnboarding {
                         self.isAuthenticated = true
                         UserDefaults.standard.set(true, forKey: "onboarding_completed")
                     }
@@ -841,20 +840,11 @@ class DataController: ObservableObject {
             if let user = currentUser {
                 let hasCompany = !(user.companyId ?? "").isEmpty
                 let hasCompletedAppOnboarding = user.hasCompletedAppOnboarding
+                let hasUserType = user.userType != nil
 
-                // A user with a company has definitively completed onboarding,
-                // even if onboarding_completed JSONB is empty (pre-migration users).
-                let needsOnboarding = !hasCompany
+                let needsOnboarding = !hasCompany || !hasCompletedAppOnboarding || !hasUserType
 
-                print("[AUTH] 🔍 Onboarding check: hasCompany=\(hasCompany) (companyId='\(user.companyId ?? "nil")'), hasCompletedAppOnboarding=\(hasCompletedAppOnboarding), needsOnboarding=\(needsOnboarding)")
-
-                // Backfill: if user has a company but onboarding_completed["ios"] is false,
-                // patch Supabase so future logins don't hit this path
-                if hasCompany && !hasCompletedAppOnboarding {
-                    print("[AUTH] 📝 Backfilling onboarding_completed for pre-migration user")
-                    user.hasCompletedAppOnboarding = true
-                    Task { await self.backfillOnboardingCompleted(userId: user.id) }
-                }
+                print("[AUTH] 🔍 Onboarding check: hasCompany=\(hasCompany) (companyId='\(user.companyId ?? "nil")'), hasCompletedAppOnboarding=\(hasCompletedAppOnboarding), hasUserType=\(hasUserType), needsOnboarding=\(needsOnboarding)")
 
                 // Store user type if available
                 if let userTypeString = user.userType?.rawValue {
@@ -886,10 +876,10 @@ class DataController: ObservableObject {
                 return true
             } else if userExistsInSupabase {
                 // User exists in Supabase but fetchUserFromAPI failed to populate currentUser.
-                // Treat as returning user to avoid incorrectly routing to onboarding.
-                print("[AUTH] ⚠️ User exists in Supabase but currentUser is nil — setting authenticated")
-                UserDefaults.standard.set(true, forKey: "onboarding_completed")
-                self.isAuthenticated = true
+                // Keep onboarding locked until the server row is actually loaded and complete.
+                print("[AUTH] ⚠️ User exists in Supabase but currentUser is nil — keeping onboarding locked")
+                UserDefaults.standard.set(false, forKey: "onboarding_completed")
+                self.isAuthenticated = false
                 // Re-attempt fetch in background so data loads
                 Task {
                     try? await self.fetchUserFromAPI(userId: userId)
@@ -904,31 +894,6 @@ class DataController: ObservableObject {
         } catch {
             print("[AUTH] Google login failed: \(error)")
             return false
-        }
-    }
-
-    /// Backfill onboarding_completed JSONB with {"ios": true} for pre-migration users
-    /// who completed onboarding before this column was introduced.
-    @MainActor
-    private func backfillOnboardingCompleted(userId: String) async {
-        do {
-            let userRepo = UserRepository(companyId: "")
-            let currentDTO = try await userRepo.fetchOne(userId)
-            var merged = currentDTO.onboardingCompleted ?? [:]
-            merged["ios"] = true
-
-            var mergedJSON: [String: AnyJSON] = [:]
-            for (key, value) in merged {
-                mergedJSON[key] = .bool(value)
-            }
-
-            try await userRepo.updateFields(userId: userId, fields: [
-                "onboarding_completed": .object(mergedJSON)
-            ])
-            print("[AUTH] ✅ Backfilled onboarding_completed with ios:true → \(merged)")
-        } catch {
-            // Non-fatal — will retry on next login
-            print("[AUTH] ⚠️ Failed to backfill onboarding_completed: \(error)")
         }
     }
 
@@ -1031,15 +996,13 @@ class DataController: ObservableObject {
         // is deferred to the very end of this method, after the full
         // sync completes and SwiftData is stable.
         //
-        // The check preserves the original semantics: "has completed
-        // app onboarding OR has a company" — having a company is
-        // definitive proof of completed onboarding for pre-migration
-        // users whose onboarding_completed JSONB was never populated.
+        // The server onboarding_completed.ios ACK is the only completion proof.
+        // A company_id can exist after a partial join and must resume onboarding.
         await MainActor.run {
             isPerformingInitialSync = true
         }
         let hasCompany = !(user.companyId ?? "").isEmpty
-        let shouldFlipAuthentication = user.hasCompletedAppOnboarding || hasCompany
+        let shouldFlipAuthentication = user.hasCompletedAppOnboarding && hasCompany && user.userType != nil
 
         // Fetch company data if needed
         if isConnected, let companyId = user.companyId, !companyId.isEmpty {

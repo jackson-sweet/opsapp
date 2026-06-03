@@ -20,6 +20,7 @@ final class PriorityQueueViewModel: ObservableObject {
     @Published var anchorDate = Date()
     @Published var previewPlan: SchedulePlan?         // non-nil → present preview
     @Published var pendingConfirmCount = 0           // scheduled tasks a run would move
+    @Published var justScheduledCount: Int?           // set after a batch commit → drives the confirmation overlay
 
     private let dataController: DataController
 

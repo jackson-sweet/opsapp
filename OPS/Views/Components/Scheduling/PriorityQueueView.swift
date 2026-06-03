@@ -9,6 +9,7 @@ struct PriorityQueueView: View {
     var onClose: (() -> Void)? = nil
 
     @State private var showConfirm = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(displayMode: DisplayMode, dataController: DataController, onClose: (() -> Void)? = nil) {
         self.displayMode = displayMode
@@ -30,11 +31,33 @@ struct PriorityQueueView: View {
             }
             .environmentObject(dataController)
         }
-        .alert("Reschedule scheduled tasks?", isPresented: $showConfirm) {
+        .alert("Move scheduled tasks?", isPresented: $showConfirm) {
             Button("Cancel", role: .cancel) {}
             Button("Continue") { vm.buildPlan() }
         } message: {
             Text("This moves \(vm.pendingConfirmCount) already-scheduled tasks.")
+        }
+        .overlay(alignment: .top) { confirmationBanner }
+        .onChange(of: vm.justScheduledCount) { _, newValue in
+            guard newValue != nil else { return }
+            Task {
+                try? await Task.sleep(for: .seconds(1.4))
+                withAnimation(OPSStyle.Animation.standard) { vm.justScheduledCount = nil }
+            }
+        }
+        .animation(OPSStyle.Animation.standard, value: vm.justScheduledCount)
+    }
+
+    @ViewBuilder private var confirmationBanner: some View {
+        if let n = vm.justScheduledCount {
+            Text("\(n) scheduled")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .padding(.horizontal, 16).padding(.vertical, 10)
+                .background(Capsule().fill(OPSStyle.Colors.cardBackgroundDark))
+                .overlay(Capsule().stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard))
+                .padding(.top, 12)
+                .transition(.opacity)
         }
     }
 
@@ -54,7 +77,7 @@ struct PriorityQueueView: View {
     private var toggles: some View {
         HStack(spacing: 12) {
             toggleChip("INCLUDE UNRANKED", isOn: vm.includeUnranked) { vm.includeUnranked.toggle() }
-            toggleChip("RESCHEDULE SCHEDULED", isOn: vm.rescheduleScheduled) { vm.rescheduleScheduled.toggle() }
+            toggleChip("MOVE SCHEDULED", isOn: vm.rescheduleScheduled) { vm.rescheduleScheduled.toggle() }
             Spacer()
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
@@ -63,14 +86,21 @@ struct PriorityQueueView: View {
     private var list: some View {
         List {
             Section {
-                ForEach(Array(vm.ranked.enumerated()), id: \.element.id) { idx, task in
-                    PriorityQueueRow(task: task, rankNumber: idx + 1)
+                if vm.ranked.isEmpty {
+                    Text("Drag tasks up to rank them, or turn on Include Unranked.")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .listRowBackground(Color.clear)
-                }
-                .onMove { from, to in
-                    guard let f = from.first else { return }
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    vm.moveRanked(taskId: vm.ranked[f].id, to: to > f ? to - 1 : to)
+                } else {
+                    ForEach(Array(vm.ranked.enumerated()), id: \.element.id) { idx, task in
+                        PriorityQueueRow(task: task, rankNumber: idx + 1)
+                            .listRowBackground(Color.clear)
+                    }
+                    .onMove { from, to in
+                        guard let f = from.first else { return }
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        vm.moveRanked(taskId: vm.ranked[f].id, to: to > f ? to - 1 : to)
+                    }
                 }
             } header: {
                 Text("RANKED").font(OPSStyle.Typography.captionBold).foregroundColor(OPSStyle.Colors.secondaryText)
@@ -86,7 +116,7 @@ struct PriorityQueueView: View {
                         }
                 }
             } header: {
-                Text("UNRANKED — WATERLINE").font(OPSStyle.Typography.captionBold).foregroundColor(OPSStyle.Colors.tertiaryText)
+                Text("UNRANKED").font(OPSStyle.Typography.captionBold).foregroundColor(OPSStyle.Colors.tertiaryText)
             }
         }
         .listStyle(.plain)
@@ -97,7 +127,7 @@ struct PriorityQueueView: View {
     private var runBar: some View {
         HStack(spacing: 12) {
             Button { Task { await vm.tapToPlaceNext() } } label: {
-                Text("PLACE NEXT").frame(maxWidth: .infinity)
+                Text("SCHEDULE NEXT").frame(maxWidth: .infinity)
             }
             .buttonStyle(SecondaryRunButtonStyle())
             .disabled(vm.ranked.allSatisfy { $0.startDate != nil })

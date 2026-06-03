@@ -261,6 +261,7 @@ extension SupabaseProjectTaskDTO {
         task.customTitle = customTitle
         task.taskNotes = taskNotes
         task.displayOrder = displayOrder ?? 0
+        task.priorityRank = priorityRank
         task.teamMemberIdsString = (teamMemberIds ?? []).joined(separator: ",")
         task.sourceLineItemId = sourceLineItemId
         task.sourceEstimateId = sourceEstimateId

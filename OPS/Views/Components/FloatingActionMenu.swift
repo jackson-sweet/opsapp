@@ -103,6 +103,7 @@ struct FloatingActionMenu: View {
     @State private var showingPersonalEventSheet = false
     @State private var showingTimeOffSheet = false
     @State private var showingLogActivity = false
+    @State private var showingPrioritize = false
 
     // Catalog FAB state — adapts based on selected segment in CatalogView. The
     // segment selection lives in @AppStorage so the FAB and CatalogView share
@@ -556,6 +557,17 @@ struct FloatingActionMenu: View {
         groups.append(
             FABMenuGroup(id: "scheduling", title: "SCHEDULING", items: [
                 FABMenuItem(
+                    id: "prioritize",
+                    icon: "arrow.up.arrow.down",
+                    label: "Prioritize",
+                    permission: "tasks.edit",
+                    disabledInTutorial: true,
+                    action: {
+                        showCreateMenu = false
+                        showingPrioritize = true
+                    }
+                ),
+                FABMenuItem(
                     id: "new-time-off",
                     icon: "clock.badge.questionmark",
                     label: "New Time Off",
@@ -932,6 +944,12 @@ struct FloatingActionMenu: View {
         }
         .sheet(isPresented: $showingLogActivity) {
             LogActivitySheet()
+        }
+        .fullScreenCover(isPresented: $showingPrioritize) {
+            PriorityQueueView(displayMode: .fullScreen, dataController: dataController) {
+                showingPrioritize = false
+            }
+            .environmentObject(dataController)
         }
         .onChange(of: showingPersonalEventSheet) { _, showing in
             if !showing {

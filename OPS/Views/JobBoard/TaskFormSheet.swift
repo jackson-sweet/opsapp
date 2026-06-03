@@ -1654,6 +1654,7 @@ struct TaskFormSheet: View {
                         status: task.status.rawValue,
                         taskColor: task.taskColor,
                         displayOrder: task.displayOrder,
+                        priorityRank: task.priorityRank,
                         teamMemberIds: task.getTeamMemberIds(),
                         sourceLineItemId: nil,
                         sourceEstimateId: nil,

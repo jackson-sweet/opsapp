@@ -43,6 +43,8 @@ private struct MockScheduleDataProvider: ScheduleDataProvider {
     let allTasks: [any SchedulableTask]
     let projectCoordinates: [String: (lat: Double, lng: Double)]
     let projectPriorities: [String: Date] // projectId -> priority date (won date or fallback)
+    var schedulableTasksById: [String: any SchedulableTask] = [:]
+    var unranked: [any SchedulableTask] = []
 
     func tasksForProject(_ projectId: String) -> [any SchedulableTask] {
         allTasks.filter { $0.schedulingProjectId == projectId }
@@ -66,6 +68,12 @@ private struct MockScheduleDataProvider: ScheduleDataProvider {
     func priorityDateForProject(_ projectId: String) -> Date? {
         projectPriorities[projectId]
     }
+
+    func schedulableTasks(forIds ids: [String]) -> [any SchedulableTask] {
+        ids.compactMap { schedulableTasksById[$0] }
+    }
+
+    func unrankedActiveSchedulableTasks() -> [any SchedulableTask] { unranked }
 }
 
 // MARK: - Tests

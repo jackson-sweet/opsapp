@@ -13,6 +13,27 @@ import Foundation
 
 struct AutoScheduleManager {
 
+    // MARK: - Run Accumulator Types
+
+    /// One already-placed task in a batch run; seen by later tasks as a commitment.
+    struct PlacedRecord {
+        let id: String
+        let taskTypeId: String
+        let startDate: Date
+        let endDate: Date
+        let teamMemberIds: Set<String>
+        let projectId: String
+    }
+
+    /// Mutable accumulator threaded through a batch/priority run.
+    private struct RunState {
+        var placements: [TaskPlacement] = []
+        var conflicts: [ScheduleConflict] = []
+        var warnings: [String] = []
+        var placed: [PlacedRecord] = []
+        var proximityGroups = 0
+    }
+
     // MARK: - Public Entry Point
 
     static func schedule(request: ScheduleRequest, provider: ScheduleDataProvider) -> SchedulePlan {
@@ -43,6 +64,15 @@ struct AutoScheduleManager {
         case .multiProjectBatch(let projectIds):
             return scheduleBatch(
                 projectIds: projectIds,
+                anchor: anchor,
+                constraints: request.constraints,
+                provider: provider
+            )
+
+        case .taskPriorityQueue(let orderedTaskIds, let includeUnranked):
+            return schedulePriorityQueue(
+                orderedTaskIds: orderedTaskIds,
+                includeUnranked: includeUnranked,
                 anchor: anchor,
                 constraints: request.constraints,
                 provider: provider
@@ -167,6 +197,141 @@ struct AutoScheduleManager {
         )
     }
 
+    // MARK: - Per-Task Placement
+
+    /// Places a single task into a run, mutating `state` to record the placement,
+    /// any conflicts/warnings, and a `PlacedRecord` so later tasks see it as a
+    /// commitment. Extracted verbatim from `scheduleBatch`'s inner loop so a
+    /// priority-queue sequencer can reuse the exact same placement logic.
+    ///
+    /// `dependencyVisibleTasks` is the base set of tasks visible when computing
+    /// this task's dependency floor (in batch mode, the current project's DB
+    /// tasks); already-placed records for the same project are layered on top as
+    /// virtual scheduled tasks.
+    private static func placeNext(
+        _ task: any SchedulableTask,
+        dependencyVisibleTasks: [any SchedulableTask],
+        anchor: Date,
+        constraints: ScheduleConstraints,
+        provider: ScheduleDataProvider,
+        state: inout RunState
+    ) {
+        let calendar = Calendar.current
+
+        let teamMemberIds = task.schedulingTeamMemberIds
+        let effectiveDuration = max(task.duration, 1)
+        let projectId = task.schedulingProjectId
+
+        // Pass 1: Dependency floor (consider both DB tasks and already-placed tasks)
+        var allKnownTasks: [any SchedulableTask] = dependencyVisibleTasks
+
+        // Add already-placed tasks from this batch as virtual scheduled tasks
+        for placed in state.placed where placed.projectId == projectId {
+            let virtual = VirtualTask(
+                id: placed.id,
+                taskTypeId: placed.taskTypeId,
+                startDate: placed.startDate,
+                endDate: placed.endDate,
+                duration: calendar.dateComponents([.day], from: placed.startDate, to: placed.endDate).day.map { $0 + 1 } ?? 1,
+                effectiveDependencies: [],
+                displayOrder: 0,
+                schedulingTeamMemberIds: placed.teamMemberIds,
+                schedulingProjectId: placed.projectId
+            )
+            allKnownTasks.append(virtual)
+        }
+
+        let dependencyFloor = calculateDependencyFloor(
+            for: task,
+            allProjectTasks: allKnownTasks,
+            anchor: anchor,
+            skipWeekends: constraints.skipWeekends
+        )
+
+        // Pass 2: Team availability
+        if teamMemberIds.isEmpty {
+            state.conflicts.append(ScheduleConflict(
+                id: task.id, type: .noCrewAssigned,
+                message: "No crew assigned — availability not checked"
+            ))
+
+            let startDate = constraints.skipWeekends
+                ? skipToWeekday(date: dependencyFloor, calendar: calendar)
+                : dependencyFloor
+            let endDate = calendar.date(byAdding: .day, value: max(effectiveDuration - 1, 0), to: startDate) ?? startDate
+
+            state.placements.append(TaskPlacement(
+                id: task.id, taskTypeId: task.taskTypeId,
+                startDate: startDate, endDate: endDate,
+                startTime: nil, endTime: nil, alternative: nil
+            ))
+
+            state.placed.append(PlacedRecord(
+                id: task.id, taskTypeId: task.taskTypeId,
+                startDate: startDate, endDate: endDate,
+                teamMemberIds: teamMemberIds, projectId: projectId
+            ))
+            return
+        }
+
+        // Get existing + already-placed commitments for these members
+        var existingCommitments = provider.allScheduledTasksForMembers(teamMemberIds, from: dependencyFloor)
+
+        // Add already-placed batch tasks as virtual commitments
+        for placed in state.placed {
+            if !placed.teamMemberIds.isDisjoint(with: teamMemberIds) {
+                existingCommitments.append(VirtualTask(
+                    id: placed.id,
+                    taskTypeId: placed.taskTypeId,
+                    startDate: placed.startDate,
+                    endDate: placed.endDate,
+                    duration: calendar.dateComponents([.day], from: placed.startDate, to: placed.endDate).day.map { $0 + 1 } ?? 1,
+                    effectiveDependencies: [],
+                    displayOrder: 0,
+                    schedulingTeamMemberIds: placed.teamMemberIds,
+                    schedulingProjectId: placed.projectId
+                ))
+            }
+        }
+
+        let slot = findAvailableSlot(
+            memberIds: teamMemberIds,
+            duration: effectiveDuration,
+            from: dependencyFloor,
+            existingCommitments: existingCommitments,
+            constraints: constraints,
+            calendar: calendar
+        )
+
+        let endDate = calendar.date(byAdding: .day, value: max(effectiveDuration - 1, 0), to: slot) ?? slot
+
+        // Pass 3: Geographic alternative
+        let alternative = findGeographicAlternative(
+            task: task,
+            teamMemberIds: teamMemberIds,
+            primaryStart: slot,
+            duration: effectiveDuration,
+            existingCommitments: existingCommitments,
+            constraints: constraints,
+            provider: provider,
+            calendar: calendar
+        )
+
+        if alternative != nil { state.proximityGroups += 1 }
+
+        state.placements.append(TaskPlacement(
+            id: task.id, taskTypeId: task.taskTypeId,
+            startDate: slot, endDate: endDate,
+            startTime: nil, endTime: nil, alternative: alternative
+        ))
+
+        state.placed.append(PlacedRecord(
+            id: task.id, taskTypeId: task.taskTypeId,
+            startDate: slot, endDate: endDate,
+            teamMemberIds: teamMemberIds, projectId: projectId
+        ))
+    }
+
     // MARK: - Batch Scheduling
 
     private static func scheduleBatch(
@@ -184,13 +349,7 @@ struct AutoScheduleManager {
             return dateA < dateB
         }
 
-        var allPlacements: [TaskPlacement] = []
-        var allConflicts: [ScheduleConflict] = []
-        var allWarnings: [String] = []
-        var proximityGroups = 0
-
-        // Track placements as we go so later tasks see earlier placements
-        var placedTasks: [(id: String, taskTypeId: String, startDate: Date, endDate: Date, teamMemberIds: Set<String>, projectId: String)] = []
+        var state = RunState()
 
         for projectId in sortedProjectIds {
             let projectTasks = provider.tasksForProject(projectId)
@@ -202,125 +361,102 @@ struct AutoScheduleManager {
             let sorted = SchedulingEngine.topologicalSort(tasks: unscheduled)
 
             for task in sorted {
-                let teamMemberIds = task.schedulingTeamMemberIds
-                let effectiveDuration = max(task.duration, 1)
-
-                // Pass 1: Dependency floor (consider both DB tasks and already-placed tasks)
-                var allKnownTasks: [any SchedulableTask] = projectTasks
-
-                // Add already-placed tasks from this batch as virtual scheduled tasks
-                for placed in placedTasks where placed.projectId == projectId {
-                    let virtual = VirtualTask(
-                        id: placed.id,
-                        taskTypeId: placed.taskTypeId,
-                        startDate: placed.startDate,
-                        endDate: placed.endDate,
-                        duration: calendar.dateComponents([.day], from: placed.startDate, to: placed.endDate).day.map { $0 + 1 } ?? 1,
-                        effectiveDependencies: [],
-                        displayOrder: 0,
-                        schedulingTeamMemberIds: placed.teamMemberIds,
-                        schedulingProjectId: placed.projectId
-                    )
-                    allKnownTasks.append(virtual)
-                }
-
-                let dependencyFloor = calculateDependencyFloor(
-                    for: task,
-                    allProjectTasks: allKnownTasks,
+                placeNext(
+                    task,
+                    dependencyVisibleTasks: projectTasks,
                     anchor: anchor,
-                    skipWeekends: constraints.skipWeekends
-                )
-
-                // Pass 2: Team availability
-                if teamMemberIds.isEmpty {
-                    allConflicts.append(ScheduleConflict(
-                        id: task.id, type: .noCrewAssigned,
-                        message: "No crew assigned — availability not checked"
-                    ))
-
-                    let startDate = constraints.skipWeekends
-                        ? skipToWeekday(date: dependencyFloor, calendar: calendar)
-                        : dependencyFloor
-                    let endDate = calendar.date(byAdding: .day, value: max(effectiveDuration - 1, 0), to: startDate) ?? startDate
-
-                    allPlacements.append(TaskPlacement(
-                        id: task.id, taskTypeId: task.taskTypeId,
-                        startDate: startDate, endDate: endDate,
-                        startTime: nil, endTime: nil, alternative: nil
-                    ))
-
-                    placedTasks.append((task.id, task.taskTypeId, startDate, endDate, teamMemberIds, projectId))
-                    continue
-                }
-
-                // Get existing + already-placed commitments for these members
-                var existingCommitments = provider.allScheduledTasksForMembers(teamMemberIds, from: dependencyFloor)
-
-                // Add already-placed batch tasks as virtual commitments
-                for placed in placedTasks {
-                    if !placed.teamMemberIds.isDisjoint(with: teamMemberIds) {
-                        existingCommitments.append(VirtualTask(
-                            id: placed.id,
-                            taskTypeId: placed.taskTypeId,
-                            startDate: placed.startDate,
-                            endDate: placed.endDate,
-                            duration: calendar.dateComponents([.day], from: placed.startDate, to: placed.endDate).day.map { $0 + 1 } ?? 1,
-                            effectiveDependencies: [],
-                            displayOrder: 0,
-                            schedulingTeamMemberIds: placed.teamMemberIds,
-                            schedulingProjectId: placed.projectId
-                        ))
-                    }
-                }
-
-                let slot = findAvailableSlot(
-                    memberIds: teamMemberIds,
-                    duration: effectiveDuration,
-                    from: dependencyFloor,
-                    existingCommitments: existingCommitments,
-                    constraints: constraints,
-                    calendar: calendar
-                )
-
-                let endDate = calendar.date(byAdding: .day, value: max(effectiveDuration - 1, 0), to: slot) ?? slot
-
-                // Pass 3: Geographic alternative
-                let alternative = findGeographicAlternative(
-                    task: task,
-                    teamMemberIds: teamMemberIds,
-                    primaryStart: slot,
-                    duration: effectiveDuration,
-                    existingCommitments: existingCommitments,
                     constraints: constraints,
                     provider: provider,
-                    calendar: calendar
+                    state: &state
                 )
-
-                if alternative != nil { proximityGroups += 1 }
-
-                allPlacements.append(TaskPlacement(
-                    id: task.id, taskTypeId: task.taskTypeId,
-                    startDate: slot, endDate: endDate,
-                    startTime: nil, endTime: nil, alternative: alternative
-                ))
-
-                placedTasks.append((task.id, task.taskTypeId, slot, endDate, teamMemberIds, projectId))
             }
         }
 
         // Pass 4: Calculate gap days
-        let totalGapDays = calculateTotalGapDays(placements: allPlacements, calendar: calendar)
+        let totalGapDays = calculateTotalGapDays(placements: state.placements, calendar: calendar)
 
         return SchedulePlan(
-            placements: allPlacements,
-            conflicts: allConflicts,
+            placements: state.placements,
+            conflicts: state.conflicts,
             metadata: ScheduleMetadata(
                 totalGapDays: totalGapDays,
-                proximityGroupsFound: proximityGroups,
+                proximityGroupsFound: state.proximityGroups,
                 weatherDependentTaskCount: 0,
                 weatherDeferrals: 0,
                 downstreamUnscheduledCount: 0,
-                warnings: allWarnings
+                warnings: state.warnings
+            )
+        )
+    }
+
+    // MARK: - Priority-Queue Scheduling
+
+    /// Schedules a flat, cross-project task list in explicit priority order,
+    /// deferring any task whose predecessors aren't placed yet so dependencies
+    /// always win. Reuses placeNext — the SAME placement logic as the batch path.
+    private static func schedulePriorityQueue(
+        orderedTaskIds: [String],
+        includeUnranked: Bool,
+        anchor: Date,
+        constraints: ScheduleConstraints,
+        provider: ScheduleDataProvider
+    ) -> SchedulePlan {
+        let calendar = Calendar.current
+        var state = RunState()
+
+        // Candidate set in priority order; unranked tail appended when requested.
+        var candidates = provider.schedulableTasks(forIds: orderedTaskIds)
+        if includeUnranked {
+            candidates.append(contentsOf: provider.unrankedActiveSchedulableTasks())
+        }
+
+        // Only schedule tasks that still need it (no dates). Already-dated tasks act
+        // as fixed commitments via provider.allScheduledTasksForMembers (inside placeNext).
+        var remaining = candidates.filter { $0.startDate == nil || $0.endDate == nil }
+        guard !remaining.isEmpty else { return .empty }
+
+        // Priority-respecting topological traversal: among tasks whose predecessors
+        // (matched by taskTypeId, still in the to-place set) are already placed, take
+        // the highest-priority (earliest in `remaining`) and place it. Repeat.
+        func predecessorsSatisfied(_ task: any SchedulableTask) -> Bool {
+            let placedTypeIds = Set(state.placed.map(\.taskTypeId))
+            for dep in task.effectiveDependencies {
+                let stillToPlace = remaining.contains { $0.taskTypeId == dep.dependsOnTaskTypeId }
+                if stillToPlace && !placedTypeIds.contains(dep.dependsOnTaskTypeId) {
+                    return false
+                }
+            }
+            return true
+        }
+
+        var safety = remaining.count * remaining.count + 1
+        while !remaining.isEmpty && safety > 0 {
+            safety -= 1
+            if let idx = remaining.firstIndex(where: predecessorsSatisfied) {
+                let task = remaining.remove(at: idx)
+                let visible = provider.tasksForProject(task.schedulingProjectId)
+                placeNext(task, dependencyVisibleTasks: visible, anchor: anchor, constraints: constraints, provider: provider, state: &state)
+            } else {
+                // Cycle / unresolvable predecessor: place the rest in priority order.
+                for task in remaining {
+                    let visible = provider.tasksForProject(task.schedulingProjectId)
+                    placeNext(task, dependencyVisibleTasks: visible, anchor: anchor, constraints: constraints, provider: provider, state: &state)
+                }
+                remaining.removeAll()
+            }
+        }
+
+        let totalGapDays = calculateTotalGapDays(placements: state.placements, calendar: calendar)
+        return SchedulePlan(
+            placements: state.placements,
+            conflicts: state.conflicts,
+            metadata: ScheduleMetadata(
+                totalGapDays: totalGapDays,
+                proximityGroupsFound: state.proximityGroups,
+                weatherDependentTaskCount: 0,
+                weatherDeferrals: 0,
+                downstreamUnscheduledCount: 0,
+                warnings: state.warnings
             )
         )
     }

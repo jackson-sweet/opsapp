@@ -115,11 +115,14 @@ final class PriorityQueueViewModel: ObservableObject {
 
     /// Commit a built plan: write each placement via the existing schedule writer.
     func commit(plan: SchedulePlan) async {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()   // beat 1: received
         let byId = Dictionary(dataController.getAllTasks().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         for p in plan.placements {
             guard let task = byId[p.id] else { continue }
             try? await dataController.updateTaskSchedule(task: task, startDate: p.startDate, endDate: p.endDate, manualEdit: false)
         }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)   // beat 2: confirmed
+        justScheduledCount = plan.placements.count
         previewPlan = nil
         reload()
     }
@@ -130,6 +133,7 @@ final class PriorityQueueViewModel: ObservableObject {
         let plan = dataController.autoScheduleSingleTask(task, teamMemberIds: Set(task.getTeamMemberIds()), anchorDate: anchorDate)
         if let p = plan.placements.first {
             try? await dataController.updateTaskSchedule(task: task, startDate: p.startDate, endDate: p.endDate, manualEdit: false)
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         }
         reload()
     }

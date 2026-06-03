@@ -9,6 +9,9 @@ struct PriorityQueueView: View {
     var onClose: (() -> Void)? = nil
 
     @State private var showConfirm = false
+    @State private var waterlineEngaged = false
+    @State private var waterlineSteps = 0
+    private let waterlineRowHeight: CGFloat = OPSStyle.Layout.touchTargetStandard
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(displayMode: DisplayMode, dataController: DataController, onClose: (() -> Void)? = nil) {
@@ -116,7 +119,17 @@ struct PriorityQueueView: View {
                         }
                 }
             } header: {
-                Text("UNRANKED").font(OPSStyle.Typography.captionBold).foregroundColor(OPSStyle.Colors.tertiaryText)
+                HStack(spacing: 8) {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        .foregroundColor(waterlineEngaged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    Text(waterlineLabel)
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(waterlineEngaged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+                .gesture(waterlineGesture)
             }
         }
         .listStyle(.plain)
@@ -142,6 +155,49 @@ struct PriorityQueueView: View {
             .disabled(vm.ranked.isEmpty)
         }
         .padding(16)
+    }
+
+    private var waterlineLabel: String {
+        if waterlineSteps > 0 { return "UNRANKED  +\(waterlineSteps) ranked" }
+        if waterlineSteps < 0 { return "UNRANKED  \(waterlineSteps) ranked" }
+        return "UNRANKED"
+    }
+
+    /// Long-press to engage, then drag up/down: each `rowHeight` of travel flips one
+    /// row across the waterline. Drag DOWN (positive) = more ranked; UP = fewer.
+    private var waterlineGesture: some Gesture {
+        LongPressGesture(minimumDuration: 0.35)
+            .sequenced(before: DragGesture(minimumDistance: 0))
+            .onChanged { value in
+                switch value {
+                case .first(true):
+                    if !waterlineEngaged {
+                        waterlineEngaged = true
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    }
+                case .second(true, let drag?):
+                    let steps = Int((drag.translation.height / waterlineRowHeight).rounded())
+                    if steps != waterlineSteps {
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        waterlineSteps = steps
+                    }
+                default:
+                    break
+                }
+            }
+            .onEnded { _ in
+                let current = vm.ranked.count
+                let total = vm.ranked.count + vm.unranked.count
+                let newCount = max(0, min(total, current + waterlineSteps))
+                if newCount != current {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    withAnimation(reduceMotion ? Optional<Animation>.none : OPSStyle.Animation.standard) {
+                        vm.setWaterline(rankedCount: newCount)
+                    }
+                }
+                waterlineEngaged = false
+                waterlineSteps = 0
+            }
     }
 
     @ViewBuilder

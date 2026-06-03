@@ -208,6 +208,7 @@ extension SupabaseProjectTaskDTO {
             status: status,
             taskColor: taskColor,
             displayOrder: displayOrder,
+            priorityRank: priorityRank,
             teamMemberIds: teamMemberIds,
             sourceLineItemId: sourceLineItemId,
             sourceEstimateId: sourceEstimateId,

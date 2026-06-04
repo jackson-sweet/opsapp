@@ -1305,6 +1305,9 @@ struct MainTabView: View {
         // Layer 3 — resolve project (local cache → awaited sync, with
         // explicit offline handling so the user sees a useful message).
         let project: Project?
+        // Whether the project was resolved via a live server fetch (RLS-authorized)
+        // rather than the local cache. Used to trust the server's view grant below.
+        var resolvedFromServer = false
         if let local = dataController.getProject(id: projectId) {
             project = local
         } else if !dataController.isConnected {
@@ -1314,6 +1317,7 @@ struct MainTabView: View {
             return
         } else {
             print("[DEEP_LINK] Project \(projectId) not cached — awaiting sync")
+            resolvedFromServer = true
             showDeepLinkLoading = true
             defer { showDeepLinkLoading = false }
 
@@ -1357,11 +1361,18 @@ struct MainTabView: View {
                         message: "You don't have permission to view this project.")
             return
         }
-        guard permissionStore.canViewProject(project, userId: userId) else {
-            denyProject(projectId: projectId, deepLinkId: deepLinkId,
-                        reason: "scope",
-                        message: "You don't have permission to view this project.")
-            return
+        // A project resolved via a live server fetch was already authorized by
+        // RLS (the row would not have come back otherwise) — trust it. This lets
+        // mention-granted deep links open reliably even before the local
+        // MentionAccessIndex has hydrated from synced notes (cold-start race).
+        // Locally-cached projects still get the scope re-check.
+        if !resolvedFromServer {
+            guard permissionStore.canViewProject(project, userId: userId) else {
+                denyProject(projectId: projectId, deepLinkId: deepLinkId,
+                            reason: "scope",
+                            message: "You don't have permission to view this project.")
+                return
+            }
         }
 
         // All gates passed — open the sheet and clear the stash.

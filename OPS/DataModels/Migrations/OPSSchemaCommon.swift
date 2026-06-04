@@ -565,6 +565,15 @@ enum OPSSchemaCommon {
         CatalogProductOptionMapping.self
     ]
 
+    /// V9 synced project photos. Layered on top of V8 (additive). Promotes the
+    /// canonical `project_photos` store to a first-class synced entity so every
+    /// assigned teammate sees the full gallery — not just the uploader, who was
+    /// previously the only device to render the legacy `projects.project_images`
+    /// optimistic append.
+    static let v9ProjectPhotoModels: [any PersistentModel.Type] = [
+        ProjectPhoto.self
+    ]
+
     /// V3 catalog/product models other than ProductBundleItem. Historical
     /// schemas append a frozen bundle-row shape; V8 appends the live top-level
     /// ProductBundleItem with the additive relationship fields.

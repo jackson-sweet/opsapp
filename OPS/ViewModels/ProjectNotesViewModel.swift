@@ -208,7 +208,11 @@ class ProjectNotesViewModel: ObservableObject {
                 // online (S3 upload + Supabase + project_photos), offline
                 // (local URLs + pending-upload queue + retry timer), and
                 // permanent rejection (failed-tile carousel + auto-bug).
-                attachmentURLs = await imageSyncManager.saveImages(imagesToUpload, for: project)
+                // notifyCrew:false — the note-added notification below already
+                // tells assigned crew about this post; saveImages skips its
+                // own "photos added" notification so a photo-bearing note
+                // doesn't fire two notifications for one action.
+                attachmentURLs = await imageSyncManager.saveImages(imagesToUpload, for: project, notifyCrew: false)
 
                 if attachmentURLs.isEmpty {
                     // Every image was rejected and no local placeholder
@@ -622,7 +626,11 @@ class ProjectNotesViewModel: ObservableObject {
     /// Notify project team members when a note is added.
     /// Excludes the author (self) and anyone already @mentioned (they got a mention push).
     private func sendNoteAddedNotifications(mentionedIds: [String], noteText: String, noteId: String, attachmentURLs: [String] = []) async {
-        guard UserDefaults.standard.bool(forKey: "notifyProjectNoteAdded") else { return }
+        // Assigned crew are always notified of new project comments/notes
+        // (the author and anyone already @mentioned are excluded below). The
+        // previous `notifyProjectNoteAdded` UserDefaults gate was never set
+        // anywhere and had no settings UI, so it silently suppressed every
+        // team notification — only @mentions reached teammates.
         guard let currentUserId = currentUserId, let companyId = companyId else { return }
 
         // Get project and its team member IDs

@@ -228,6 +228,7 @@ extension SupabaseProjectDTO {
         project.createdAt = createdAt.flatMap { SupabaseDate.parse($0) }
         project.createdBy = createdBy
         project.updatedAt = updatedAt.flatMap { SupabaseDate.parse($0) }
+        project.priorityRank = priorityRank
         return project
     }
 
@@ -262,7 +263,6 @@ extension SupabaseProjectTaskDTO {
         task.customTitle = customTitle
         task.taskNotes = taskNotes
         task.displayOrder = displayOrder ?? 0
-        task.priorityRank = priorityRank
         task.teamMemberIdsString = (teamMemberIds ?? []).joined(separator: ",")
         task.sourceLineItemId = sourceLineItemId
         task.sourceEstimateId = sourceEstimateId

@@ -1,14 +1,23 @@
 import SwiftUI
 
 struct PriorityQueueRow: View {
-    let task: ProjectTask
-    let rankNumber: Int?     // 1-based position in the ranked zone; nil = unranked
+    let project: Project
+    let rankNumber: Int?     // 1-based rank; nil = unranked
+    var lifted: Bool = false // picked up for drag — accent border + shadow + slight scale
 
-    private var dateText: String {
-        guard let start = task.startDate else { return "—" }
-        let f = DateFormatter(); f.dateFormat = "MMM d"
-        if let end = task.endDate, end != start { return "\(f.string(from: start)) – \(f.string(from: end))" }
-        return f.string(from: start)
+    private var subtitle: String {
+        let client = project.effectiveClientName
+        let addr = project.address ?? ""
+        if addr.isEmpty { return client }
+        if client.isEmpty { return addr }
+        return "\(client) · \(addr)"
+    }
+
+    /// Completed / total active tasks (cancelled + deleted excluded).
+    private var taskFraction: String {
+        let active = project.tasks.filter { $0.deletedAt == nil && $0.status != .cancelled }
+        let done = active.filter { $0.status == .completed }.count
+        return "\(done)/\(active.count)"
     }
 
     var body: some View {
@@ -19,11 +28,11 @@ struct PriorityQueueRow: View {
                 .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(task.displayTitle)
+                Text(project.title)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
-                Text(task.project?.title ?? "—")
+                Text(subtitle)
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .lineLimit(1)
@@ -31,17 +40,10 @@ struct PriorityQueueRow: View {
 
             Spacer()
 
-            if task.getTeamMemberIds().isEmpty {
-                Image(systemName: "person.crop.circle.badge.exclamationmark")
-                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                    .foregroundColor(OPSStyle.Colors.warningStatus)
-            }
-
-            if task.startDate != nil {
-                Text(dateText)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
+            // OPSStyle.Typography.dataValue = JetBrains Mono 13pt — correct token for numeric data
+            Text(taskFraction)
+                .font(OPSStyle.Typography.dataValue)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
 
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -49,7 +51,16 @@ struct PriorityQueueRow: View {
         }
         .padding(.horizontal, 14)
         .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(OPSStyle.Colors.cardBackgroundDark)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(lifted ? OPSStyle.Colors.primaryAccent : Color.clear,
+                        lineWidth: OPSStyle.Layout.Border.standard)
+        )
         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .shadow(color: Color.black.opacity(lifted ? 0.35 : 0),
+                radius: lifted ? 12 : 0, x: 0, y: lifted ? 6 : 0)
+        .scaleEffect(lifted ? 1.03 : 1.0)
     }
 }

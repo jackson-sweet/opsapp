@@ -43,6 +43,10 @@
 //  V7 → V8 stage: lightweight additive — catalog stock units and
 //  catalog-product option mappings for Phase 4 Catalog Setup.
 //
+//  V8 → V9 stage: lightweight additive — `ProjectPhoto`, the synced
+//  `project_photos` gallery store, so every assigned teammate sees the full
+//  gallery instead of only the uploader's optimistic local append.
+//
 
 import Foundation
 import SwiftData
@@ -57,7 +61,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV5.self,
             OPSSchemaV6.self,
             OPSSchemaV7.self,
-            OPSSchemaV8.self
+            OPSSchemaV8.self,
+            OPSSchemaV9.self
         ]
     }
 
@@ -69,9 +74,18 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addCalendarMirrorMapV4toV5,
             addForecastModelsV5toV6,
             addVinylOrderMarkerV6toV7,
-            addCatalogSetupModelsV7toV8
+            addCatalogSetupModelsV7toV8,
+            addProjectPhotosV8toV9
         ]
     }
+
+    /// V8 → V9: purely additive — `ProjectPhoto` is a brand-new @Model backing
+    /// the synced `project_photos` gallery store. No pre-existing rows to
+    /// transform; SwiftData lightweight migration handles the V8 store.
+    static let addProjectPhotosV8toV9 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV8.self,
+        toVersion: OPSSchemaV9.self
+    )
 
     /// V7 → V8: purely additive — stock units and product-option mappings are
     /// new local projections of existing live catalog setup tables.

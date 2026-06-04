@@ -97,6 +97,7 @@ actor DataActor {
         .projectTask,
         .wizardState,
         .projectNote,
+        .projectPhoto,
         .photoAnnotation,
         .deckDesign,
         .estimate,
@@ -340,6 +341,8 @@ actor DataActor {
             try await syncSubClients(since: since, repos: repos)
         case .projectNote:
             try await syncProjectNotes(since: since, repos: repos)
+        case .projectPhoto:
+            try await syncProjectPhotos(since: since, repos: repos)
         case .photoAnnotation:
             try await syncPhotoAnnotations(since: since, repos: repos)
         case .deckDesign:
@@ -1158,6 +1161,58 @@ actor DataActor {
 
             existing.lastSyncedAt = Date()
             if !hasPendingOperations(entityType: .projectNote, entityId: existing.id) {
+                existing.needsSync = false
+            }
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+        }
+    }
+
+    // MARK: - Sync: Project Photos
+
+    private func syncProjectPhotos(since: Date?, repos: InboundRepositories) async throws {
+        let dtos = try await repos.projectPhoto.fetchAll(since: since)
+        guard !dtos.isEmpty else { return }
+
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergeProjectPhoto(dto: dto)
+            }
+        }
+        print("[DataActor] Merged \(dtos.count) project photos")
+    }
+
+    private func mergeProjectPhoto(dto: ProjectPhotoDTO) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<ProjectPhoto>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .projectPhoto,
+                entityId: id,
+                fields: [
+                    "url", "thumbnailURL", "renderedURL", "source", "caption",
+                    "isClientVisible", "takenAt", "updatedAt", "deletedAt"
+                ]
+            )
+
+            if accept.contains("url") { existing.url = dto.url }
+            if accept.contains("thumbnailURL") { existing.thumbnailURL = dto.thumbnailURL }
+            if accept.contains("renderedURL") { existing.renderedURL = dto.renderedURL }
+            if accept.contains("source") { existing.source = dto.source ?? existing.source }
+            if accept.contains("caption") { existing.caption = dto.caption }
+            if accept.contains("isClientVisible") { existing.isClientVisible = dto.isClientVisible ?? existing.isClientVisible }
+            if accept.contains("takenAt") { existing.takenAt = dto.takenAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+
+            existing.lastSyncedAt = Date()
+            if !hasPendingOperations(entityType: .projectPhoto, entityId: existing.id) {
                 existing.needsSync = false
             }
         } else {
@@ -3465,6 +3520,7 @@ actor DataActor {
                 case .taskType(let dto):                try mergeTaskType(dto: dto)
                 case .subClient(let dto):               try mergeSubClient(dto: dto)
                 case .projectNote(let dto):             try mergeProjectNote(dto: dto)
+                case .projectPhoto(let dto):            try mergeProjectPhoto(dto: dto)
                 case .photoAnnotation(let dto):         try mergePhotoAnnotation(dto: dto)
                 case .deckDesign(let dto):              try mergeDeckDesign(dto: dto)
                 case .catalogCategory(let dto):         try mergeCatalogCategory(dto: dto)
@@ -3522,6 +3578,10 @@ actor DataActor {
                     }
                 case "project_notes":
                     if let m = try modelContext.fetch(FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "project_photos":
+                    if let m = try modelContext.fetch(FetchDescriptor<ProjectPhoto>(predicate: #Predicate { $0.id == id })).first {
                         m.deletedAt = Date()
                     }
                 case "project_photo_annotations":
@@ -4481,6 +4541,7 @@ enum RealtimeUpdate: Sendable {
     case taskType(SupabaseTaskTypeDTO)
     case subClient(SupabaseSubClientDTO)
     case projectNote(ProjectNoteDTO)
+    case projectPhoto(ProjectPhotoDTO)
     case photoAnnotation(PhotoAnnotationDTO)
     case deckDesign(SupabaseDeckDesignDTO)
     // Catalog parents (Option A — children refetch via next pullDelta).
@@ -4511,6 +4572,7 @@ struct InboundRepositories {
     let company: CompanyRepository
     let taskType: TaskTypeRepository
     let projectNote: ProjectNoteRepository
+    let projectPhoto: ProjectPhotoRepository
     let photoAnnotation: PhotoAnnotationRepository
     let deckDesign: DeckDesignRepository
     let wizardState: WizardStateRepository
@@ -4537,6 +4599,7 @@ struct InboundRepositories {
         self.company = CompanyRepository()
         self.taskType = TaskTypeRepository(companyId: companyId)
         self.projectNote = ProjectNoteRepository(companyId: companyId)
+        self.projectPhoto = ProjectPhotoRepository(companyId: companyId)
         self.photoAnnotation = PhotoAnnotationRepository(companyId: companyId)
         self.deckDesign = DeckDesignRepository(companyId: companyId)
         self.wizardState = WizardStateRepository(userId: userId)

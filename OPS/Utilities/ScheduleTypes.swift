@@ -18,8 +18,8 @@ struct ScheduleRequest {
         case projectBatch(projectId: String)
         /// Auto-schedule all unscheduled tasks across multiple projects
         case multiProjectBatch(projectIds: [String])
-        /// Auto-schedule a flat, cross-project list of tasks in explicit priority order.
-        case taskPriorityQueue(orderedTaskIds: [String], includeUnranked: Bool)
+        /// Auto-schedule whole projects in an explicit (user-ranked) order.
+        case projectPriorityQueue(orderedProjectIds: [String])
     }
 
     let mode: Mode
@@ -195,8 +195,4 @@ protocol ScheduleDataProvider {
     func allScheduledTasksForMembers(_ memberIds: Set<String>, from date: Date) -> [any SchedulableTask]
     func coordinatesForProject(_ projectId: String) -> (lat: Double, lng: Double)?
     func priorityDateForProject(_ projectId: String) -> Date?
-    /// Resolve task ids to SchedulableTask, preserving input order. Missing ids dropped.
-    func schedulableTasks(forIds ids: [String]) -> [any SchedulableTask]
-    /// All active, unranked (priorityRank == nil) tasks, default (latest-edited) order.
-    func unrankedActiveSchedulableTasks() -> [any SchedulableTask]
 }

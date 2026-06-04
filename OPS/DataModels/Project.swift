@@ -23,6 +23,10 @@ final class Project: Identifiable {
     var status: Status
     var notes: String?
     var companyId: String
+    /// Global company-wide manual priority. Lower = higher priority.
+    /// nil = unranked. Fractional indexing (FractionalRank). Synced to
+    /// Supabase `projects.priority_rank`. Added 2026-06-03.
+    var priorityRank: Double?
     var clientId: String? // Store the client ID
     var allDay: Bool
     var opportunityId: String?  // Supabase Opportunity UUID — links this project to its pipeline deal

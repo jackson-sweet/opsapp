@@ -33,6 +33,7 @@ final class InboundProcessor {
     private var companyRepo: CompanyRepository
     private var taskTypeRepo: TaskTypeRepository
     private var projectNoteRepo: ProjectNoteRepository
+    private var projectPhotoRepo: ProjectPhotoRepository
     private var photoAnnotationRepo: PhotoAnnotationRepository
     private var deckDesignRepo: DeckDesignRepository
     private var wizardStateRepo: WizardStateRepository
@@ -70,6 +71,7 @@ final class InboundProcessor {
         self.companyRepo = CompanyRepository()
         self.taskTypeRepo = TaskTypeRepository(companyId: companyId)
         self.projectNoteRepo = ProjectNoteRepository(companyId: companyId)
+        self.projectPhotoRepo = ProjectPhotoRepository(companyId: companyId)
         self.photoAnnotationRepo = PhotoAnnotationRepository(companyId: companyId)
         self.deckDesignRepo = DeckDesignRepository(companyId: companyId)
         self.wizardStateRepo = WizardStateRepository(userId: userId)
@@ -113,6 +115,7 @@ final class InboundProcessor {
         self.companyRepo = CompanyRepository()
         self.taskTypeRepo = TaskTypeRepository(companyId: newCompanyId)
         self.projectNoteRepo = ProjectNoteRepository(companyId: newCompanyId)
+        self.projectPhotoRepo = ProjectPhotoRepository(companyId: newCompanyId)
         self.photoAnnotationRepo = PhotoAnnotationRepository(companyId: newCompanyId)
         self.deckDesignRepo = DeckDesignRepository(companyId: newCompanyId)
         self.wizardStateRepo = WizardStateRepository(userId: newUserId)
@@ -144,6 +147,7 @@ final class InboundProcessor {
         .projectTask,
         .wizardState,
         .projectNote,
+        .projectPhoto,
         .photoAnnotation,
         .deckDesign,
         .estimate,
@@ -390,6 +394,8 @@ final class InboundProcessor {
             try await syncSubClients(since: since, context: context)
         case .projectNote:
             try await syncProjectNotes(since: since, context: context)
+        case .projectPhoto:
+            try await syncProjectPhotos(since: since, context: context)
         case .photoAnnotation:
             try await syncPhotoAnnotations(since: since, context: context)
         case .deckDesign:
@@ -1299,6 +1305,58 @@ final class InboundProcessor {
 
             existing.lastSyncedAt = Date()
             let hasPending = hasPendingOperations(entityType: .projectNote, entityId: existing.id, context: context)
+            if !hasPending {
+                existing.needsSync = false
+            }
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+
+        try context.save()
+    }
+
+    // MARK: - ProjectPhoto Sync
+
+    private func syncProjectPhotos(since: Date?, context: ModelContext) async throws {
+        let dtos = try await projectPhotoRepo.fetchAll(since: since)
+        for dto in dtos {
+            try mergeProjectPhoto(dto: dto, context: context)
+        }
+        print("[InboundProcessor] Merged \(dtos.count) project photos")
+    }
+
+    private func mergeProjectPhoto(dto: ProjectPhotoDTO, context: ModelContext) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<ProjectPhoto>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try context.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .projectPhoto,
+                entityId: id,
+                fields: [
+                    "url", "thumbnailURL", "renderedURL", "source", "caption",
+                    "isClientVisible", "takenAt", "updatedAt", "deletedAt"
+                ],
+                context: context
+            )
+
+            if accept.contains("url") { existing.url = dto.url }
+            if accept.contains("thumbnailURL") { existing.thumbnailURL = dto.thumbnailURL }
+            if accept.contains("renderedURL") { existing.renderedURL = dto.renderedURL }
+            if accept.contains("source") { existing.source = dto.source ?? existing.source }
+            if accept.contains("caption") { existing.caption = dto.caption }
+            if accept.contains("isClientVisible") { existing.isClientVisible = dto.isClientVisible ?? existing.isClientVisible }
+            if accept.contains("takenAt") { existing.takenAt = dto.takenAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+
+            existing.lastSyncedAt = Date()
+            let hasPending = hasPendingOperations(entityType: .projectPhoto, entityId: existing.id, context: context)
             if !hasPending {
                 existing.needsSync = false
             }

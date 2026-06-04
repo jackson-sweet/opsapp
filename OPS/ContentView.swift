@@ -198,11 +198,9 @@ struct ContentView: View {
                     variantManager: variantManager,
                     onboardingManager: manager,
                     onComplete: {
-                        // Finalize onboarding state before disposing manager
-                        onboardingManagerInstance?.completeOnboarding()
+                        // OnboardingABTestCoordinator already waited for the
+                        // server ACK before invoking this callback.
                         dataController.isAuthenticated = true
-                        UserDefaults.standard.set(true, forKey: "onboarding_completed")
-                        UserDefaults.standard.set(true, forKey: "is_authenticated")
                         showABTestOnboarding = false
                         onboardingManagerInstance = nil
                     },

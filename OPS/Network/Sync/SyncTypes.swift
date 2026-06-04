@@ -164,6 +164,7 @@ enum SyncEntityType: String, CaseIterable {
     case lineItem
     case payment
     case projectNote
+    case projectPhoto
     case photoAnnotation
     case calendarUserEvent
     case catalogCategory
@@ -226,6 +227,7 @@ enum SyncEntityType: String, CaseIterable {
         case .lineItem:              return "line_items"
         case .payment:               return "payments"
         case .projectNote:           return "project_notes"
+        case .projectPhoto:          return "project_photos"
         case .photoAnnotation:       return "project_photo_annotations"
         case .calendarUserEvent:     return "calendar_user_events"
         case .catalogCategory:              return "catalog_categories"
@@ -278,7 +280,7 @@ enum SyncEntityType: String, CaseIterable {
         case .taskType, .taskStatusOption, .expenseCategory: return 4
         case .project:                                      return 5
         case .projectTask:                                  return 6
-        case .projectNote, .photoAnnotation,
+        case .projectNote, .projectPhoto, .photoAnnotation,
              .calendarUserEvent:                            return 7
         case .expense, .estimate, .invoice:                 return 8
         case .lineItem, .payment:                           return 9

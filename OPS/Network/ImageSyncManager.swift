@@ -92,7 +92,7 @@ class ImageSyncManager: ObservableObject {
     }
     
     /// Save images using S3 and update Supabase
-    func saveImages(_ images: [UIImage], for project: Project) async -> [String] {
+    func saveImages(_ images: [UIImage], for project: Project, notifyCrew: Bool = true) async -> [String] {
         let companyId = project.companyId
         guard !companyId.isEmpty else {
             return []
@@ -163,6 +163,19 @@ class ImageSyncManager: ObservableObject {
                     tilesShouldRemainAsFailed = true
                 }
 
+                // Notify assigned crew that new photos landed on the project.
+                // Gallery "add photos" actions notify; the note-attachment path
+                // passes notifyCrew:false so a photo-bearing note doesn't fire a
+                // second notification. Best-effort, and the uploader is excluded.
+                if notifyCrew && portalMirrorSucceeded {
+                    notifyCrewOfAddedPhotos(
+                        project: project,
+                        uploaderId: uploaderId,
+                        photoCount: savedURLs.count,
+                        firstURL: savedURLs.first
+                    )
+                }
+
                 // Images uploaded to S3 and Supabase updated — no further sync needed
                 project.needsSync = false
                 project.lastSyncedAt = Date()
@@ -220,6 +233,66 @@ class ImageSyncManager: ObservableObject {
         }
 
         return savedURLs
+    }
+
+    /// Fire the "photos added" notification to assigned crew. Resolves the
+    /// recipient list + uploader name on the main actor (cheap local reads),
+    /// then performs the in-app + push writes in a task so the upload return
+    /// isn't blocked. Best-effort — failures log only and never affect the
+    /// upload result.
+    private func notifyCrewOfAddedPhotos(project: Project, uploaderId: String, photoCount: Int, firstURL: String?) {
+        guard photoCount > 0 else { return }
+        let recipientIds = project.getTeamMemberIds().filter { $0 != uploaderId && !$0.isEmpty }
+        guard !recipientIds.isEmpty else { return }
+        let companyId = project.companyId
+        guard !companyId.isEmpty else { return }
+        let projectId = project.id
+        let projectTitle = project.title
+
+        // Resolve the uploader's display name from the local roster.
+        let uploaderName: String = {
+            guard let context = modelContext, !uploaderId.isEmpty else { return "A teammate" }
+            let descriptor = FetchDescriptor<TeamMember>(predicate: #Predicate { $0.id == uploaderId })
+            return (try? context.fetch(descriptor).first?.fullName) ?? "A teammate"
+        }()
+
+        let title = photoCount == 1 ? "\(uploaderName) added a photo" : "\(uploaderName) added photos"
+        let body = photoCount == 1 ? "1 photo on \(projectTitle)" : "\(photoCount) photos on \(projectTitle)"
+
+        Task {
+            let notificationRepo = NotificationRepository()
+            for recipientId in recipientIds {
+                do {
+                    let dto = NotificationRepository.CreateNotificationDTO(
+                        userId: recipientId,
+                        companyId: companyId,
+                        type: "photo_uploaded",
+                        title: title,
+                        body: body,
+                        projectId: projectId,
+                        noteId: nil,
+                        expenseId: nil,
+                        batchId: nil,
+                        deepLinkType: "projectNotes"
+                    )
+                    try await notificationRepo.createNotification(dto)
+                } catch {
+                    print("[IMAGE_SYNC] Failed to create in-app photos-added notification for \(recipientId): \(error)")
+                }
+            }
+            do {
+                try await OneSignalService.shared.notifyPhotosAdded(
+                    userIds: recipientIds,
+                    uploaderName: uploaderName,
+                    photoCount: photoCount,
+                    projectName: projectTitle,
+                    projectId: projectId,
+                    imageUrl: firstURL
+                )
+            } catch {
+                print("[IMAGE_SYNC] Failed to send photos-added push: \(error)")
+            }
+        }
     }
 
     /// Bug 7b43be32 — insert a project_photos row for each newly uploaded

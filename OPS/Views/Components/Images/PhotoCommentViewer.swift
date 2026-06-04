@@ -193,56 +193,30 @@ struct PhotoCommentViewer: View {
 
     private var annotationPhotoLayer: some View {
         GeometryReader { geometry in
-            let fittedSize = fittedImageSize(in: geometry.size)
             ZStack {
                 // Full-bleed black background
                 Color.black
 
-                // Static photo (no zoom during annotation)
+                // Bug 8824a41c — photo + PencilKit share one UIScrollView so
+                // the user can two-finger pinch to zoom while one finger draws,
+                // matching the system Photos markup behaviour (and the photos-
+                // grid markup surface). Strokes live in the canvas's unscaled
+                // space, so they stay pixel-aligned at any zoom level. The
+                // canvas reports its aspect-fitted size back into
+                // annotationImageSize for the save + composite geometry.
                 if let image = annotationImage {
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
+                    ZoomablePhotoAnnotationCanvas(
+                        image: image,
+                        drawing: $annotationDrawing,
+                        displayedCanvasSize: $annotationImageSize
+                    )
+                    .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
                 } else {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                 }
-
-                // PencilKit canvas overlay — only appears once image size is computed.
-                // Size is computed synchronously from the UIImage dimensions + container,
-                // eliminating the timing gap of a background GeometryReader.
-                if fittedSize.width > 0 && fittedSize.height > 0 {
-                    AnnotationCanvas(drawing: $annotationDrawing)
-                        .frame(width: fittedSize.width, height: fittedSize.height)
-                        .onAppear {
-                            annotationImageSize = fittedSize
-                        }
-                        .onChange(of: fittedSize) { _, newSize in
-                            annotationImageSize = newSize
-                        }
-                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    /// Compute the aspect-fitted image dimensions within a container, matching
-    /// SwiftUI's `.aspectRatio(contentMode: .fit)` layout behavior.
-    private func fittedImageSize(in containerSize: CGSize) -> CGSize {
-        guard let image = annotationImage,
-              image.size.width > 0, image.size.height > 0,
-              containerSize.width > 0, containerSize.height > 0 else { return .zero }
-        let imageAspect = image.size.width / image.size.height
-        let containerAspect = containerSize.width / containerSize.height
-        if imageAspect > containerAspect {
-            // Width-constrained
-            let width = containerSize.width
-            return CGSize(width: width, height: width / imageAspect)
-        } else {
-            // Height-constrained
-            let height = containerSize.height
-            return CGSize(width: height * imageAspect, height: height)
         }
     }
 

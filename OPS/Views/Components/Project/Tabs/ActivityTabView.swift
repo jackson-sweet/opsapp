@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct ActivityTabView: View {
     @ObservedObject var notesViewModel: ProjectNotesViewModel
@@ -18,6 +19,7 @@ struct ActivityTabView: View {
     @Binding var noteFieldFocused: Bool
 
     @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var dataController: DataController
     @FocusState private var isTextFieldFocused: Bool
 
@@ -366,7 +368,7 @@ struct ActivityTabView: View {
     /// fallback when DataController hasn't booted ImageSyncManager yet
     /// (rare, but possible during cold-start race).
     private var staticPhotosCarousel: some View {
-        let photos = project.getProjectImages()
+        let photos = project.mergedGalleryImageURLs(using: modelContext)
         return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack {
                 Text(photos.isEmpty
@@ -532,9 +534,23 @@ private struct ProjectPhotosCarousel: View {
     let onPhotoTap: (Int) -> Void
 
     @EnvironmentObject private var dataController: DataController
+    @Query private var syncedPhotos: [ProjectPhoto]
+
+    init(project: Project, imageSyncManager: ImageSyncManager, onPhotoTap: @escaping (Int) -> Void) {
+        self.project = project
+        self.imageSyncManager = imageSyncManager
+        self.onPhotoTap = onPhotoTap
+        let pid = project.id
+        _syncedPhotos = Query(
+            filter: #Predicate<ProjectPhoto> { $0.projectId == pid && $0.deletedAt == nil },
+            sort: [SortDescriptor(\ProjectPhoto.createdAt, order: .forward)]
+        )
+    }
 
     var body: some View {
-        let photos = project.getProjectImages()
+        // Canonical gallery list: synced project_photos ∪ legacy CSV, deduped.
+        // @Query keeps it live as inbound/realtime sync lands teammates' photos.
+        let photos = project.mergedGalleryImageURLs(syncedPhotoURLs: syncedPhotos.map(\.url))
         let pending = imageSyncManager.currentInFlightUploads(for: project.id)
         // Split in-flight tiles into actively-uploading vs failed. The
         // UPLOADING badge counts only the spinners; failed tiles show

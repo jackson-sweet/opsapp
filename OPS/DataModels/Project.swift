@@ -26,7 +26,15 @@ final class Project: Identifiable {
     var clientId: String? // Store the client ID
     var allDay: Bool
     var opportunityId: String?  // Supabase Opportunity UUID — links this project to its pipeline deal
-    
+
+    // Won-conversion dedup + auto-naming. True when `title` was machine-derived
+    // from the address/client by the server `projects_autoname` trigger; a
+    // hand-set name flips it false. Mirrors `projects.title_is_auto` (live on
+    // prod). Lightweight SwiftData migration — `Bool` with a default value, so
+    // existing rows backfill to false without a schema bump (matches the
+    // `clientVisibleImagesString` / `updatedAt` additive precedent).
+    var titleIsAuto: Bool = false
+
     // Relationship to Client object
     @Relationship(deleteRule: .nullify)
     var client: Client?

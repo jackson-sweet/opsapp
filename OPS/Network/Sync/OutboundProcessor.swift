@@ -404,7 +404,7 @@ final class OutboundProcessor {
     /// that would cause "could not find column" errors if sent to PostgREST.
     private static let validProjectColumns: Set<String> = [
         "id", "bubble_id", "company_id", "client_id", "opportunity_id",
-        "title", "status", "address", "latitude", "longitude",
+        "title", "title_is_auto", "status", "address", "latitude", "longitude",
         "start_date", "end_date", "duration", "notes", "description",
         "all_day", "project_images", "completed_at",
         "deleted_at", "created_at", "updated_at"

@@ -872,7 +872,7 @@ final class InboundProcessor {
                 entityType: .project,
                 entityId: id,
                 fields: [
-                    "title", "status", "company_id", "client_id", "opportunity_id",
+                    "title", "title_is_auto", "status", "company_id", "client_id", "opportunity_id",
                     "address", "latitude", "longitude",
                     "start_date", "end_date", "duration",
                     "notes", "description", "all_day",
@@ -885,6 +885,7 @@ final class InboundProcessor {
             )
 
             if accept.contains("title") { existing.title = dto.title }
+            if accept.contains("title_is_auto") { existing.titleIsAuto = dto.titleIsAuto ?? false }
             if accept.contains("status") { existing.status = Status(rawValue: dto.status) ?? .rfq }
             if accept.contains("company_id") { existing.companyId = dto.companyId }
             if accept.contains("client_id") {

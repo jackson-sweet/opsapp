@@ -8,14 +8,25 @@ struct PriorityQueueView: View {
     let displayMode: DisplayMode
     var onClose: (() -> Void)? = nil
 
+    // Waterline drag (move the boundary between ranked/unranked)
     @State private var waterlineEngaged = false
     @State private var waterlineSteps = 0
-    @State private var waterlineDragStartY: CGFloat?
+    @State private var waterlineDragOffset: CGFloat = 0
+    // Card drag (reorder within ranked, or cross the waterline to rank/unrank)
+    @State private var draggingCardId: String?
+    @State private var cardDragOffset: CGFloat = 0
+
     @State private var selectionFeedback = UISelectionFeedbackGenerator()
     @State private var impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-    private let waterlineRowHeight: CGFloat = OPSStyle.Layout.touchTargetStandard
-    private static let waterlineSpace = "priorityQueueWaterline"
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    // Layout constants — one card pitch drives both finger→slot mapping and gap shifts.
+    private let cardHeight: CGFloat = OPSStyle.Layout.touchTargetStandard   // 56
+    private let rowSpacing: CGFloat = 8
+    private var rowPitch: CGFloat { cardHeight + rowSpacing }               // 64
+    private let waterlineHandleHeight: CGFloat = 36
+    private let waterlineGap: CGFloat = 44      // extra space opened at the dragged boundary
+    private let fadeBelow: Double = 0.4         // unranked-below-the-line opacity during drag
 
     init(displayMode: DisplayMode, dataController: DataController, onClose: (() -> Void)? = nil) {
         self.displayMode = displayMode
@@ -82,66 +93,94 @@ struct PriorityQueueView: View {
         .padding(.horizontal, 16).padding(.vertical, 8)
     }
 
-    private var list: some View {
-        List {
-            Section {
-                if displayRanked.isEmpty {
-                    Text("Drag projects up to rank them, or turn on Include Unranked.")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .listRowBackground(Color.clear)
-                } else {
-                    ForEach(Array(displayRanked.enumerated()), id: \.element.id) { idx, project in
-                        PriorityQueueRow(project: project,
-                                         rankNumber: idx + 1,
-                                         pending: pendingState(combinedIndex: idx),
-                                         isWaterline: isWaterlineRow(combinedIndex: idx))
-                            .listRowBackground(Color.clear)
-                    }
-                    .onMove { from, to in
-                        guard let f = from.first else { return }
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        vm.moveRanked(projectId: displayRanked[f].id, to: to > f ? to - 1 : to)
-                    }
-                }
-            } header: {
-                Text("RANKED").font(OPSStyle.Typography.captionBold).foregroundColor(OPSStyle.Colors.secondaryText)
-            }
+    // MARK: - The prioritized list (custom scroll + VStack)
+    // A single committed-order column of cards split by a draggable waterline.
+    // Drag the waterline → cards spread to open a gap at the target boundary, the
+    // divider rides in the gap, and the cards that will be unranked fade below it.
+    // Drag a card → it lifts and reorders (within ranked) or crosses the waterline
+    // to rank/unrank. The dragged element follows the finger via `.offset`, which is
+    // visual-only and never moves the gesture's layout frame — so there is no
+    // reflow→measurement feedback loop (the same reason FloatingActionMenu is stable).
 
-            Section {
-                ForEach(Array(displayUnranked.enumerated()), id: \.element.id) { localIdx, project in
-                    let combinedIdx = vm.ranked.count + localIdx
-                    PriorityQueueRow(project: project,
-                                     rankNumber: nil,
-                                     pending: pendingState(combinedIndex: combinedIdx),
-                                     isWaterline: isWaterlineRow(combinedIndex: combinedIdx))
-                        .listRowBackground(Color.clear)
-                        .swipeActions(edge: .leading) {
-                            Button("Rank") { vm.rank(projectId: project.id, at: vm.ranked.count) }
-                                .tint(OPSStyle.Colors.primaryAccent)
-                        }
+    private var list: some View {
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(spacing: rowSpacing) {
+                if vm.ranked.isEmpty {
+                    emptyRankedHint
+                } else {
+                    ForEach(Array(vm.ranked.enumerated()), id: \.element.id) { i, project in
+                        card(project, combinedIndex: i)
+                    }
                 }
-            } header: {
-                HStack(spacing: 8) {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                        .foregroundColor(waterlineEngaged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                    Text(waterlineLabel)
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(waterlineEngaged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                    Spacer()
+
+                if !combinedProjects.isEmpty {
+                    waterlineHandle
                 }
-                .contentShape(Rectangle())
-                .gesture(waterlineGesture)
+
+                ForEach(Array(vm.unranked.enumerated()), id: \.element.id) { j, project in
+                    card(project, combinedIndex: vm.ranked.count + j)
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
         }
-        .listStyle(.plain)
-        .environment(\.editMode, .constant(.active))
-        .scrollContentBackground(.hidden)
-        .coordinateSpace(.named(Self.waterlineSpace))
-        .animation(reduceMotion ? Optional<Animation>.none : OPSStyle.Animation.standard, value: waterlineSteps)
-        .animation(reduceMotion ? Optional<Animation>.none : OPSStyle.Animation.standard, value: waterlineEngaged)
-        .animation(reduceMotion ? Optional<Animation>.none : OPSStyle.Animation.standard, value: vm.ranked.count)
+        .scrollDisabled(waterlineEngaged || draggingCardId != nil)
+    }
+
+    private var emptyRankedHint: some View {
+        Text("Drag projects up to rank them, or turn on Include Unranked.")
+            .font(OPSStyle.Typography.caption)
+            .foregroundColor(OPSStyle.Colors.tertiaryText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 12)
+    }
+
+    // MARK: Card
+
+    @ViewBuilder
+    private func card(_ project: Project, combinedIndex i: Int) -> some View {
+        let isThisDragging = draggingCardId == project.id
+        PriorityQueueRow(project: project, rankNumber: rankNumber(combinedIndex: i), lifted: isThisDragging)
+            .opacity(cardOpacity(combinedIndex: i, project: project))
+            .offset(y: cardOffsetY(combinedIndex: i, project: project))
+            .zIndex(isThisDragging ? 10 : 0)
+            .animation(isThisDragging || reduceMotion ? nil : OPSStyle.Animation.standard,
+                       value: cardOffsetY(combinedIndex: i, project: project))
+            .animation(reduceMotion ? nil : OPSStyle.Animation.standard,
+                       value: cardOpacity(combinedIndex: i, project: project))
+            .gesture(cardDragGesture(project: project, combinedIndex: i))
+    }
+
+    // MARK: Waterline handle
+
+    private var waterlineHandle: some View {
+        ZStack {
+            Rectangle()
+                .fill(waterlineEngaged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder)
+                .frame(height: waterlineEngaged ? 2 : 1)
+                .frame(maxWidth: .infinity)
+
+            HStack(spacing: 8) {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(waterlineEngaged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                Text(waterlineLabel)
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(waterlineEngaged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+        }
+        .frame(height: waterlineHandleHeight)
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .offset(y: waterlineEngaged ? waterlineDragOffset : 0)
+        .scaleEffect(waterlineEngaged ? 1.02 : 1.0)
+        .shadow(color: Color.black.opacity(waterlineEngaged ? 0.3 : 0),
+                radius: waterlineEngaged ? 10 : 0, x: 0, y: waterlineEngaged ? 4 : 0)
+        .zIndex(20)
+        .gesture(waterlineGesture)
     }
 
     private var runBar: some View {
@@ -171,75 +210,85 @@ struct PriorityQueueView: View {
         return "UNRANKED"
     }
 
-    // MARK: - Waterline target (non-reflowing preview)
-    // The rows stay in COMMITTED order while the UNRANKED handle is dragged — they
-    // do NOT reflow. Reflowing mid-drag slid the sticky header (the drag target),
-    // which shifted the finger→row mapping and made the list oscillate. Instead the
-    // target boundary is painted in place (accent fill + waterline) and the reflow
-    // is committed once, on release, via setWaterline.
+    // MARK: - Geometry / styling helpers
 
     private var combinedProjects: [Project] { vm.ranked + vm.unranked }
+    private var totalCount: Int { combinedProjects.count }
+    private var committedRanked: Int { vm.ranked.count }
 
     /// Where the waterline will land = committed ranked count shifted by the drag.
     private var targetRankedCount: Int {
-        let base = vm.ranked.count + (waterlineEngaged ? waterlineSteps : 0)
-        return min(max(base, 0), combinedProjects.count)
+        let base = committedRanked + (waterlineEngaged ? waterlineSteps : 0)
+        return min(max(base, 0), totalCount)
     }
 
-    // Frozen while dragging: the rows never reflow until commit.
-    private var displayRanked: [Project] { vm.ranked }
-    private var displayUnranked: [Project] { vm.unranked }
-
-    /// Pending crossing state for the row at `combinedIndex` (ranked first, then
-    /// unranked). Rows that will flip side are accented (→ ranked) or dimmed
-    /// (→ unranked) so the waterline reads as moving between rows without reflow.
-    private func pendingState(combinedIndex i: Int) -> PriorityQueueRow.Pending {
-        guard waterlineEngaged else { return .none }
-        let committedRanked = vm.ranked.count
-        let willBeRanked = i < targetRankedCount
-        let isRanked = i < committedRanked
-        if isRanked && !willBeRanked { return .willUnrank }
-        if !isRanked && willBeRanked { return .willRank }
-        return .none
+    /// Provisional rank number: above the (live) boundary → numbered, below → unranked.
+    private func rankNumber(combinedIndex i: Int) -> Int? {
+        i < targetRankedCount ? i + 1 : nil
     }
 
-    /// The boundary row — the first row that will be UNRANKED after commit — draws
-    /// the waterline on its top edge. Hidden when everything ends up ranked.
-    private func isWaterlineRow(combinedIndex i: Int) -> Bool {
-        waterlineEngaged && i == targetRankedCount && i < combinedProjects.count
+    /// Fade the cards that sit below the waterline during a waterline drag.
+    private func cardOpacity(combinedIndex i: Int, project: Project) -> Double {
+        if draggingCardId == project.id { return 0.95 }
+        if waterlineEngaged && i >= targetRankedCount { return fadeBelow }
+        return 1
     }
 
-    /// Long-press to engage, then drag up/down. The rows DON'T reflow while dragging
-    /// (see `displayRanked`/`displayUnranked`), so the UNRANKED header — the drag
-    /// target — stays put and can't feed its own movement back into the measurement.
-    /// That frozen layout, not the coordinate space, is what kills the oscillation;
-    /// reading the finger's absolute position in `waterlineSpace` is belt-and-braces.
-    /// Each `rowHeight` of travel flips one row; a deadband (`steppedWaterline`) keeps
-    /// the boundary from chattering when the finger hovers on a row midpoint.
-    /// Drag DOWN (positive) = more ranked; UP = fewer.
+    private func combinedIndex(of id: String) -> Int? {
+        combinedProjects.firstIndex { $0.id == id }
+    }
+
+    /// Per-card vertical offset: the dragged element follows the finger; siblings
+    /// shift to open a gap at the target slot (visual-only — never reflows layout).
+    private func cardOffsetY(combinedIndex i: Int, project: Project) -> CGFloat {
+        if draggingCardId == project.id { return cardDragOffset }
+        if let draggingId = draggingCardId, let dIdx = combinedIndex(of: draggingId) {
+            return cardReorderOffset(thisIndex: i, draggingIndex: dIdx)
+        }
+        if waterlineEngaged {
+            return i >= targetRankedCount ? waterlineGap : 0
+        }
+        return 0
+    }
+
+    /// Gap-opening offset for non-dragged cards while a card is being dragged
+    /// (FloatingActionMenu's `itemVisualOffset` pattern, across the combined list).
+    private func cardReorderOffset(thisIndex: Int, draggingIndex: Int) -> CGFloat {
+        let steps = Int((cardDragOffset / rowPitch).rounded())
+        let target = min(max(draggingIndex + steps, 0), totalCount - 1)
+        if draggingIndex < target {
+            if thisIndex > draggingIndex && thisIndex <= target { return -rowPitch }
+        } else if draggingIndex > target {
+            if thisIndex >= target && thisIndex < draggingIndex { return rowPitch }
+        }
+        return 0
+    }
+
+    // MARK: - Gestures
+
+    /// Long-press the waterline, then drag up/down. `waterlineDragOffset` follows the
+    /// finger via `.offset` (visual-only → the handle's layout frame is fixed → local
+    /// `translation` stays true → no oscillation). A hysteresis deadband keeps the
+    /// boundary from chattering at a card midpoint. DOWN = more ranked; UP = fewer.
     private var waterlineGesture: some Gesture {
         LongPressGesture(minimumDuration: 0.35)
-            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.waterlineSpace)))
+            .sequenced(before: DragGesture(minimumDistance: 0))
             .onChanged { value in
                 switch value {
                 case .first(true):
                     if !waterlineEngaged {
                         waterlineEngaged = true
-                        impactFeedback.impactOccurred()        // medium on engage
-                        selectionFeedback.prepare()            // warm Taptic for per-row ticks
-                        impactFeedback.prepare()               // warm for the commit-on-release
+                        impactFeedback.impactOccurred()
+                        selectionFeedback.prepare()
+                        impactFeedback.prepare()
                     }
                 case .second(true, let drag?):
-                    // Anchor on the first drag sample, then measure pure finger travel
-                    // in the fixed space — immune to the header reflowing underneath.
-                    if waterlineDragStartY == nil { waterlineDragStartY = drag.location.y }
-                    guard let startY = waterlineDragStartY else { break }
-                    let offsetRows = (drag.location.y - startY) / waterlineRowHeight
-                    let stepped = steppedWaterline(offsetRows: offsetRows, current: waterlineSteps)
-                    let clamped = min(max(stepped, -vm.ranked.count), vm.unranked.count)
+                    waterlineDragOffset = drag.translation.height
+                    let stepped = steppedWaterline(offsetRows: waterlineDragOffset / rowPitch, current: waterlineSteps)
+                    let clamped = min(max(stepped, -committedRanked), vm.unranked.count)
                     if clamped != waterlineSteps {
                         selectionFeedback.selectionChanged()
-                        selectionFeedback.prepare()            // re-warm for the next tick
+                        selectionFeedback.prepare()
                         waterlineSteps = clamped
                     }
                 default:
@@ -248,14 +297,64 @@ struct PriorityQueueView: View {
             }
             .onEnded { _ in
                 let newCount = targetRankedCount
-                if newCount != vm.ranked.count {
-                    impactFeedback.impactOccurred()            // medium on commit
-                    vm.setWaterline(rankedCount: newCount)
+                let changed = newCount != committedRanked
+                if changed { impactFeedback.impactOccurred() }
+                withAnimation(reduceMotion ? nil : OPSStyle.Animation.standard) {
+                    if changed { vm.setWaterline(rankedCount: newCount) }
+                    waterlineEngaged = false
+                    waterlineSteps = 0
+                    waterlineDragOffset = 0
                 }
-                waterlineEngaged = false
-                waterlineSteps = 0
-                waterlineDragStartY = nil
             }
+    }
+
+    /// Long-press a card to lift it, then drag. Within ranked → reorder; across the
+    /// waterline → rank / unrank (replaces the old swipe-to-rank).
+    private func cardDragGesture(project: Project, combinedIndex i: Int) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.4)
+            .sequenced(before: DragGesture(minimumDistance: 0))
+            .onChanged { value in
+                switch value {
+                case .first(true):
+                    if draggingCardId == nil {
+                        draggingCardId = project.id
+                        impactFeedback.impactOccurred()
+                        selectionFeedback.prepare()
+                    }
+                case .second(true, let drag?):
+                    cardDragOffset = drag.translation.height
+                default:
+                    break
+                }
+            }
+            .onEnded { _ in
+                commitCardDrag(project: project, fromIndex: i)
+                withAnimation(reduceMotion ? nil : OPSStyle.Animation.standard) {
+                    cardDragOffset = 0
+                    draggingCardId = nil
+                }
+            }
+    }
+
+    private func commitCardDrag(project: Project, fromIndex i: Int) {
+        let steps = Int((cardDragOffset / rowPitch).rounded())
+        let target = min(max(i + steps, 0), totalCount - 1)
+        guard target != i else { return }
+
+        let wasRanked = i < committedRanked
+        let landsRanked = target < committedRanked
+
+        if wasRanked && landsRanked {
+            vm.moveRanked(projectId: project.id, to: target)
+            impactFeedback.impactOccurred()
+        } else if wasRanked && !landsRanked {
+            vm.unrank(projectId: project.id)
+            impactFeedback.impactOccurred()
+        } else if !wasRanked && landsRanked {
+            vm.rank(projectId: project.id, at: target)
+            impactFeedback.impactOccurred()
+        }
+        // unranked → unranked: no user-defined order, no-op (card snaps back).
     }
 
     /// Quantize a continuous row-offset to an integer step through a 0.4-row deadband:
@@ -263,7 +362,7 @@ struct PriorityQueueView: View {
     /// snap to the nearest step. Asymmetric thresholds (up at s+0.7, back at s+0.3)
     /// prevent flip-flop; a fast drag still jumps multiple steps via `rounded()`.
     private func steppedWaterline(offsetRows x: CGFloat, current s: Int) -> Int {
-        let deadband: CGFloat = 0.2                  // hold zone = ±(0.5 + deadband) rows around s
+        let deadband: CGFloat = 0.2
         if x > CGFloat(s) + 0.5 + deadband || x < CGFloat(s) - 0.5 - deadband {
             return Int(x.rounded())
         }

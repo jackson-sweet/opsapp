@@ -10,7 +10,11 @@ struct PriorityQueueView: View {
 
     @State private var waterlineEngaged = false
     @State private var waterlineSteps = 0
+    @State private var waterlineDragStartY: CGFloat?
+    @State private var selectionFeedback = UISelectionFeedbackGenerator()
+    @State private var impactFeedback = UIImpactFeedbackGenerator(style: .medium)
     private let waterlineRowHeight: CGFloat = OPSStyle.Layout.touchTargetStandard
+    private static let waterlineSpace = "priorityQueueWaterline"
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(displayMode: DisplayMode, dataController: DataController, onClose: (() -> Void)? = nil) {
@@ -127,6 +131,7 @@ struct PriorityQueueView: View {
         .listStyle(.plain)
         .environment(\.editMode, .constant(.active))
         .scrollContentBackground(.hidden)
+        .coordinateSpace(.named(Self.waterlineSpace))
         .animation(reduceMotion ? Optional<Animation>.none : OPSStyle.Animation.standard, value: waterlineSteps)
     }
 
@@ -172,23 +177,37 @@ struct PriorityQueueView: View {
     private var displayRanked: [Project] { Array(combinedProjects.prefix(previewRankedCount)) }
     private var displayUnranked: [Project] { Array(combinedProjects.suffix(combinedProjects.count - previewRankedCount)) }
 
-    /// Long-press to engage, then drag up/down: each `rowHeight` of travel flips one
-    /// row across the waterline. Drag DOWN (positive) = more ranked; UP = fewer.
+    /// Long-press to engage, then drag up/down. The finger's ABSOLUTE position is
+    /// read in a fixed coordinate space (`waterlineSpace`) — never relative to the
+    /// UNRANKED header, which itself slides as rows reflow across the boundary.
+    /// Measuring against that moving header was the source of the oscillation: each
+    /// reflow shifted the local translation by a full row and flipped the step back.
+    /// Each `rowHeight` of true travel flips one row; a deadband (`steppedWaterline`)
+    /// keeps the boundary from chattering when the finger hovers on a row midpoint.
+    /// Drag DOWN (positive) = more ranked; UP = fewer.
     private var waterlineGesture: some Gesture {
         LongPressGesture(minimumDuration: 0.35)
-            .sequenced(before: DragGesture(minimumDistance: 0))
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.waterlineSpace)))
             .onChanged { value in
                 switch value {
                 case .first(true):
                     if !waterlineEngaged {
                         waterlineEngaged = true
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        impactFeedback.impactOccurred()        // medium on engage
+                        selectionFeedback.prepare()            // warm Taptic for per-row ticks
+                        impactFeedback.prepare()               // warm for the commit-on-release
                     }
                 case .second(true, let drag?):
-                    let raw = Int((drag.translation.height / waterlineRowHeight).rounded())
-                    let clamped = min(max(raw, -vm.ranked.count), vm.unranked.count)
+                    // Anchor on the first drag sample, then measure pure finger travel
+                    // in the fixed space — immune to the header reflowing underneath.
+                    if waterlineDragStartY == nil { waterlineDragStartY = drag.location.y }
+                    guard let startY = waterlineDragStartY else { break }
+                    let offsetRows = (drag.location.y - startY) / waterlineRowHeight
+                    let stepped = steppedWaterline(offsetRows: offsetRows, current: waterlineSteps)
+                    let clamped = min(max(stepped, -vm.ranked.count), vm.unranked.count)
                     if clamped != waterlineSteps {
-                        UISelectionFeedbackGenerator().selectionChanged()
+                        selectionFeedback.selectionChanged()
+                        selectionFeedback.prepare()            // re-warm for the next tick
                         waterlineSteps = clamped
                     }
                 default:
@@ -198,12 +217,25 @@ struct PriorityQueueView: View {
             .onEnded { _ in
                 let newCount = previewRankedCount
                 if newCount != vm.ranked.count {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    impactFeedback.impactOccurred()            // medium on commit
                     vm.setWaterline(rankedCount: newCount)
                 }
                 waterlineEngaged = false
                 waterlineSteps = 0
+                waterlineDragStartY = nil
             }
+    }
+
+    /// Quantize a continuous row-offset to an integer step through a 0.4-row deadband:
+    /// hold the current step until travel clears the row midpoint by `deadband`, then
+    /// snap to the nearest step. Asymmetric thresholds (up at s+0.7, back at s+0.3)
+    /// prevent flip-flop; a fast drag still jumps multiple steps via `rounded()`.
+    private func steppedWaterline(offsetRows x: CGFloat, current s: Int) -> Int {
+        let deadband: CGFloat = 0.2                  // hold zone = ±(0.5 + deadband) rows around s
+        if x > CGFloat(s) + 0.5 + deadband || x < CGFloat(s) - 0.5 - deadband {
+            return Int(x.rounded())
+        }
+        return s
     }
 
     @ViewBuilder

@@ -739,6 +739,10 @@ struct NotificationListView: View {
                 return (OPSStyle.Icons.mention, OPSStyle.Colors.primaryAccent)
             case "project_note":
                 return ("note.text", OPSStyle.Colors.primaryAccent.opacity(0.8))
+            case "photo_uploaded":
+                return ("photo.on.rectangle", OPSStyle.Colors.primaryAccent)
+            case "photo_comment":
+                return ("text.bubble", OPSStyle.Colors.primaryAccent)
             case "task_assignment":
                 return ("person.badge.plus", OPSStyle.Colors.successStatus)
             case "project_assignment":

@@ -192,6 +192,9 @@ class PhotoCommentsViewModel: ObservableObject {
 
             // Send notifications
             await sendMentionNotifications(mentionedIds: mentionedIds, noteText: text, noteId: created.id)
+            // Notify the photo's uploader (unless they're the commenter or were
+            // already @mentioned above).
+            await sendPhotoOwnerNotification(mentionedIds: mentionedIds, noteText: text, noteId: created.id)
         } catch {
             if !(error is CancellationError) {
                 self.error = error.localizedDescription
@@ -430,6 +433,79 @@ class PhotoCommentsViewModel: ObservableObject {
             } catch {
                 print("[PHOTO COMMENTS] Failed to send mention notification to \(userId): \(error)")
             }
+        }
+    }
+
+    /// Notify the photo's uploader when someone else comments on their photo.
+    /// The uploader is resolved from `project_photos.uploaded_by` for this
+    /// photo URL. Excludes the commenter (self) and anyone already @mentioned
+    /// (they received a mention notification). Best-effort.
+    private func sendPhotoOwnerNotification(mentionedIds: [String], noteText: String, noteId: String) async {
+        guard let companyId = companyId, let currentUserId = currentUserId else { return }
+
+        // Resolve the photo's uploader from project_photos.
+        struct OwnerRow: Decodable { let uploaded_by: String? }
+        let ownerId: String?
+        do {
+            let rows: [OwnerRow] = try await SupabaseService.shared.client
+                .from("project_photos")
+                .select("uploaded_by")
+                .eq("project_id", value: projectId)
+                .eq("url", value: photoURL)
+                .limit(1)
+                .execute()
+                .value
+            ownerId = rows.first?.uploaded_by
+        } catch {
+            print("[PHOTO COMMENTS] Failed to resolve photo owner for comment notification: \(error)")
+            return
+        }
+
+        guard let ownerId = ownerId, !ownerId.isEmpty,
+              ownerId != currentUserId,
+              !mentionedIds.contains(ownerId) else { return }
+
+        let authorName = allTeamMembers.first(where: { $0.id == currentUserId })?.fullName ?? "A team member"
+        let projectName: String = {
+            guard let context = modelContext else { return "a project" }
+            let pid = projectId
+            let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == pid })
+            return (try? context.fetch(descriptor).first?.title) ?? "a project"
+        }()
+        let preview = noteText.count > 100 ? String(noteText.prefix(100)) + "..." : noteText
+
+        // In-app notification (guaranteed delivery)
+        do {
+            let dto = NotificationRepository.CreateNotificationDTO(
+                userId: ownerId,
+                companyId: companyId,
+                type: "photo_comment",
+                title: "\(authorName) commented on your photo",
+                body: "\"\(preview)\" on \(projectName)",
+                projectId: projectId,
+                noteId: noteId,
+                expenseId: nil,
+                batchId: nil,
+                deepLinkType: "projectNotes"
+            )
+            try await NotificationRepository().createNotification(dto)
+        } catch {
+            print("[PHOTO COMMENTS] Failed to create in-app photo-comment notification for \(ownerId): \(error)")
+        }
+
+        // Push (best-effort)
+        do {
+            try await OneSignalService.shared.notifyPhotoComment(
+                userId: ownerId,
+                authorName: authorName,
+                notePreview: noteText,
+                projectName: projectName,
+                projectId: projectId,
+                noteId: noteId,
+                imageUrl: photoURL
+            )
+        } catch {
+            print("[PHOTO COMMENTS] Failed to send photo-comment push to \(ownerId): \(error)")
         }
     }
 }

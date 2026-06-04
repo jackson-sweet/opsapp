@@ -266,6 +266,70 @@ class OneSignalService {
         print("[ONESIGNAL SERVICE] Note-added notification sent to \(userIds.count) team member(s)")
     }
 
+    /// Notify project team members when photos are added to the project
+    /// (excludes the uploader). Mirrors `notifyProjectNoteAdded` but for the
+    /// gallery "add photos" action. The note-attachment path opts out via
+    /// `ImageSyncManager.saveImages(notifyCrew:)`, so a photo-bearing note
+    /// never double-notifies.
+    func notifyPhotosAdded(
+        userIds: [String],
+        uploaderName: String,
+        photoCount: Int,
+        projectName: String,
+        projectId: String,
+        imageUrl: String? = nil
+    ) async throws {
+        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
+        let filtered = userIds.filter { $0 != currentUserId }
+        guard !filtered.isEmpty else { return }
+
+        let title = photoCount == 1 ? "\(uploaderName) added a photo" : "\(uploaderName) added photos"
+        let body = photoCount == 1 ? "1 photo on \(projectName)" : "\(photoCount) photos on \(projectName)"
+        try await sendToUsers(
+            userIds: filtered,
+            title: title,
+            body: body,
+            data: [
+                "type": "photo_uploaded",
+                "projectId": projectId,
+                "screen": "projectNotes"
+            ],
+            imageUrl: imageUrl
+        )
+        print("[ONESIGNAL SERVICE] Photos-added notification sent to \(filtered.count) team member(s)")
+    }
+
+    /// Notify the uploader of a photo when someone else comments on it.
+    func notifyPhotoComment(
+        userId: String,
+        authorName: String,
+        notePreview: String,
+        projectName: String,
+        projectId: String,
+        noteId: String,
+        imageUrl: String? = nil
+    ) async throws {
+        if userId == UserDefaults.standard.string(forKey: "currentUserId") {
+            print("[ONESIGNAL SERVICE] Skipping self-notification for photo comment")
+            return
+        }
+
+        let preview = notePreview.count > 80 ? String(notePreview.prefix(80)) + "..." : notePreview
+        try await sendToUser(
+            userId: userId,
+            title: "\(authorName) commented on your photo",
+            body: "\"\(preview)\" on \(projectName)",
+            data: [
+                "type": "photo_comment",
+                "projectId": projectId,
+                "noteId": noteId,
+                "screen": "projectNotes"
+            ],
+            imageUrl: imageUrl
+        )
+        print("[ONESIGNAL SERVICE] Photo-comment notification sent to user: \(userId)")
+    }
+
     /// Notify admins when a new team member joins via crew code
     func notifyTeamJoin(
         adminUserIds: [String],

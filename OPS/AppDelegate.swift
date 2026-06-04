@@ -167,11 +167,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
             } else if let type = notificationType {
                 self.routeByType(type, projectId: projectId, taskId: taskId)
             } else if let projectId = projectId {
-                NotificationCenter.default.post(
-                    name: Notification.Name("OpenProjectDetails"),
-                    object: nil,
-                    userInfo: ["projectId": projectId]
-                )
+                self.openProjectViaCoordinator(projectId)
             }
         }
     }
@@ -442,11 +438,21 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
             routeByType(type, projectId: projectId, taskId: taskId)
         } else if let projectId = projectId {
             // Default: open project details if projectId is provided
-            NotificationCenter.default.post(
-                name: Notification.Name("OpenProjectDetails"),
-                object: nil,
-                userInfo: ["projectId": projectId]
-            )
+            openProjectViaCoordinator(projectId)
+        }
+    }
+
+    /// Route a project deep link through `DeepLinkCoordinator` so it survives
+    /// cold launch and the PIN gate. A bare `NotificationCenter.post` is
+    /// dropped when no observer is attached yet (cold start) — that is the
+    /// push-tap-lands-on-home bug. The coordinator stashes the intent and
+    /// re-posts on `MainTabView.onAppear` / PIN-unlock drain. Only projects
+    /// route this way: `openProjectWithSync`/`denyProject` clear the stash,
+    /// whereas the client/invoice/estimate/task handlers don't — routing
+    /// those through the coordinator could re-fire on a later drain.
+    private func openProjectViaCoordinator(_ projectId: String) {
+        Task { @MainActor in
+            DeepLinkCoordinator.shared.receive(entity: "projects", id: projectId, scheme: "push")
         }
     }
 
@@ -455,11 +461,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         switch screen {
         case "projectDetails":
             if let projectId = projectId {
-                NotificationCenter.default.post(
-                    name: Notification.Name("OpenProjectDetails"),
-                    object: nil,
-                    userInfo: ["projectId": projectId]
-                )
+                openProjectViaCoordinator(projectId)
             }
         case "taskDetails":
             if let taskId = taskId, let projectId = projectId {
@@ -484,11 +486,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         case "projectNotes":
             // Deep link to project details (notes tab) when a mention notification is tapped
             if let projectId = projectId {
-                NotificationCenter.default.post(
-                    name: Notification.Name("OpenProjectDetails"),
-                    object: nil,
-                    userInfo: ["projectId": projectId]
-                )
+                openProjectViaCoordinator(projectId)
             }
         case "subscription", "planSelection":
             NotificationCenter.default.post(
@@ -506,11 +504,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         switch type {
         case "assignment", "update", "completion", "projectCompletion", "taskCompletion":
             if let projectId = projectId {
-                NotificationCenter.default.post(
-                    name: Notification.Name("OpenProjectDetails"),
-                    object: nil,
-                    userInfo: ["projectId": projectId]
-                )
+                openProjectViaCoordinator(projectId)
             }
         case "taskAssignment", "taskUpdate", "scheduleChange":
             if let taskId = taskId, let projectId = projectId {
@@ -521,20 +515,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 )
             } else if let projectId = projectId {
                 // Fallback to project details if no taskId
-                NotificationCenter.default.post(
-                    name: Notification.Name("OpenProjectDetails"),
-                    object: nil,
-                    userInfo: ["projectId": projectId]
-                )
+                openProjectViaCoordinator(projectId)
             }
         case "projectNoteMention", "projectNoteAdded":
             // Someone @mentioned the user or added a note to their project - open project details
             if let projectId = projectId {
-                NotificationCenter.default.post(
-                    name: Notification.Name("OpenProjectDetails"),
-                    object: nil,
-                    userInfo: ["projectId": projectId]
-                )
+                openProjectViaCoordinator(projectId)
             }
         case "dependencyCompleted":
             if let taskId = taskId, let projectId = projectId {
@@ -544,11 +530,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                     userInfo: ["taskId": taskId, "projectId": projectId]
                 )
             } else if let projectId = projectId {
-                NotificationCenter.default.post(
-                    name: Notification.Name("OpenProjectDetails"),
-                    object: nil,
-                    userInfo: ["projectId": projectId]
-                )
+                openProjectViaCoordinator(projectId)
             }
         case "teamJoin":
             NotificationCenter.default.post(
@@ -603,11 +585,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                     userInfo: ["taskId": taskId, "projectId": projectId]
                 )
             } else if let projectId = projectId {
-                NotificationCenter.default.post(
-                    name: Notification.Name("OpenProjectDetails"),
-                    object: nil,
-                    userInfo: ["projectId": projectId]
-                )
+                openProjectViaCoordinator(projectId)
             }
         case "trial_expiry", "subscription":
             NotificationCenter.default.post(

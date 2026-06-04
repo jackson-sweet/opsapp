@@ -300,7 +300,13 @@ struct PriorityQueueView: View {
     private var waterlineHandleOffset: CGFloat {
         if waterlineEngaged { return waterlineDragOffset }
         if let draggingId = draggingCardId, let dIdx = combinedIndex(of: draggingId) {
-            return cardReorderOffset(thisIndex: committedRanked, draggingIndex: dIdx)
+            // The handle lives BETWEEN index R-1 and R, so it must track whichever
+            // neighbour stays put: a card dragged from BELOW it (dIdx >= R) → follow
+            // the ranked card above (R-1); from ABOVE (dIdx < R) → follow the unranked
+            // card below (R). A single fixed index left the handle behind when the
+            // first unranked card crossed up, so the last ranked card slid over it.
+            let boundaryRef = dIdx >= committedRanked ? committedRanked - 1 : committedRanked
+            return cardReorderOffset(thisIndex: boundaryRef, draggingIndex: dIdx)
         }
         return 0
     }

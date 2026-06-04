@@ -1277,6 +1277,7 @@ class DataController: ObservableObject {
             deleteAll(FetchDescriptor<CalendarUserEvent>(), label: "CalendarUserEvent", in: context)
             deleteAll(FetchDescriptor<CalendarMirrorMap>(), label: "CalendarMirrorMap", in: context)
             deleteAll(FetchDescriptor<ProjectNote>(), label: "ProjectNote", in: context)
+            deleteAll(FetchDescriptor<ProjectPhoto>(), label: "ProjectPhoto", in: context)
             deleteAll(FetchDescriptor<EstimateLineItem>(), label: "EstimateLineItem", in: context)
             deleteAll(FetchDescriptor<InvoiceLineItem>(), label: "InvoiceLineItem", in: context)
             deleteAll(FetchDescriptor<Estimate>(), label: "Estimate", in: context)
@@ -6156,6 +6157,12 @@ class DataController: ObservableObject {
                     let annotationPredicate = #Predicate<PhotoAnnotation> { $0.projectId == projectId }
                     if let annotations = try? context.fetch(FetchDescriptor(predicate: annotationPredicate)) {
                         for annotation in annotations { context.delete(annotation) }
+                    }
+
+                    // Delete associated ProjectPhoto records (synced gallery store)
+                    let projectPhotoPredicate = #Predicate<ProjectPhoto> { $0.projectId == projectId }
+                    if let projectPhotos = try? context.fetch(FetchDescriptor(predicate: projectPhotoPredicate)) {
+                        for projectPhoto in projectPhotos { context.delete(projectPhoto) }
                     }
 
                     // Cancel pending SyncOperations for this project

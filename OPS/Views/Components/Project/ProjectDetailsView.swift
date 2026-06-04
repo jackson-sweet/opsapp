@@ -308,7 +308,7 @@ struct ProjectDetailsView: View {
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardEvaluatePrerequisites"))) { _ in
                         // Re-evaluate prerequisites with current photo count
                         wizardStateManager?.evaluateStepPrerequisites(
-                            projectPhotoCount: viewModel.project.getProjectImages().count
+                            projectPhotoCount: dataController.modelContext.map { viewModel.project.mergedGalleryImageURLs(using: $0).count } ?? viewModel.project.getProjectImages().count
                         )
                     }
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardStepChanged"))) { notification in
@@ -728,7 +728,10 @@ struct ProjectDetailsView: View {
     // MARK: - Sheet Contents
 
     private var photoViewerContent: some View {
-        let photos = project.getProjectImages()
+        // Same merged gallery list the carousel renders (synced project_photos ∪
+        // legacy CSV) so selectedPhotoIndex maps to the correct photo.
+        let photos = dataController.modelContext.map { project.mergedGalleryImageURLs(using: $0) }
+            ?? project.getProjectImages()
         let safeIndex = min(viewModel.selectedPhotoIndex, max(photos.count - 1, 0))
         return PhotoCommentViewer(
             photos: photos,
@@ -1206,7 +1209,7 @@ struct ProjectDetailsView: View {
 
         // Wizard: evaluate step prerequisites with actual photo count (auto-skip view_photo if 0 photos)
         if let mgr = wizardStateManager, mgr.isActive {
-            let photoCount = project.getProjectImages().count
+            let photoCount = dataController.modelContext.map { project.mergedGalleryImageURLs(using: $0).count } ?? project.getProjectImages().count
             mgr.evaluateStepPrerequisites(projectPhotoCount: photoCount)
         }
 

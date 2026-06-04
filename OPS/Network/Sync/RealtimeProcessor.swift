@@ -74,6 +74,7 @@ final class RealtimeProcessor: ObservableObject {
         "sub_clients",
         "task_types",
         "project_notes",
+        "project_photos",
         "project_photo_annotations",
         "deck_designs",
         // Catalog parents
@@ -325,6 +326,12 @@ final class RealtimeProcessor: ObservableObject {
                 // and the project isn't cached locally, fetch it.
                 handleMentionAccessRealtimeUpdate(noteDTO: dto, context: context)
 
+            case "project_photos":
+                let dto = try record.decodeRecord(as: ProjectPhotoDTO.self, decoder: decoder)
+                let model = dto.toModel()
+                let pendingFields = pendingFieldsForEntity(entityType: .projectPhoto, entityId: dto.id, context: context)
+                try upsertProjectPhoto(context: context, id: dto.id, model: model, pendingFields: pendingFields)
+
             case "project_photo_annotations":
                 let dto = try record.decodeRecord(as: PhotoAnnotationDTO.self, decoder: decoder)
                 let model = dto.toModel()
@@ -441,6 +448,13 @@ final class RealtimeProcessor: ObservableObject {
                     MentionAccessIndex.shared.rebuild(context: context, userId: userId)
                 }
 
+            case "project_photos":
+                let descriptor = FetchDescriptor<ProjectPhoto>(predicate: #Predicate { $0.id == id })
+                if let existing = try context.fetch(descriptor).first {
+                    existing.deletedAt = Date()
+                    try context.save()
+                }
+
             case "project_photo_annotations":
                 let descriptor = FetchDescriptor<PhotoAnnotation>(predicate: #Predicate { $0.id == id })
                 if let existing = try context.fetch(descriptor).first {
@@ -539,6 +553,10 @@ final class RealtimeProcessor: ObservableObject {
                     handleMentionAccessRealtimeUpdate(noteDTO: dto, context: context)
                 }
 
+            case "project_photos":
+                let dto = try record.decodeRecord(as: ProjectPhotoDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.projectPhoto(dto)) }
+
             case "project_photo_annotations":
                 let dto = try record.decodeRecord(as: PhotoAnnotationDTO.self, decoder: decoder)
                 Task { await actor.handleRealtimeUpdate(.photoAnnotation(dto)) }
@@ -607,7 +625,8 @@ final class RealtimeProcessor: ObservableObject {
         do {
             switch table {
             case "projects", "project_tasks", "users", "clients", "companies",
-                 "task_types", "sub_clients", "project_notes", "project_photo_annotations",
+                 "task_types", "sub_clients", "project_notes", "project_photos",
+                 "project_photo_annotations",
                  "deck_designs",
                  // Catalog parents with surrogate-id identity. catalog_snapshots
                  // is append-only (no DELETE expected) and company_default_products
@@ -1104,6 +1123,28 @@ final class RealtimeProcessor: ObservableObject {
             if !pendingFields.contains("mentionedUserIdsString")    { existing.mentionedUserIdsString = model.mentionedUserIdsString }
             if !pendingFields.contains("updatedAt")                 { existing.updatedAt = model.updatedAt }
             if !pendingFields.contains("deletedAt")                 { existing.deletedAt = model.deletedAt }
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+        try context.save()
+    }
+
+    private func upsertProjectPhoto(context: ModelContext, id: String, model: ProjectPhoto, pendingFields: Set<String>) throws {
+        let descriptor = FetchDescriptor<ProjectPhoto>(predicate: #Predicate { $0.id == id })
+        if let existing = try context.fetch(descriptor).first {
+            if !pendingFields.contains("url")             { existing.url = model.url }
+            if !pendingFields.contains("thumbnailURL")    { existing.thumbnailURL = model.thumbnailURL }
+            if !pendingFields.contains("renderedURL")     { existing.renderedURL = model.renderedURL }
+            if !pendingFields.contains("source")          { existing.source = model.source }
+            if !pendingFields.contains("caption")         { existing.caption = model.caption }
+            if !pendingFields.contains("isClientVisible") { existing.isClientVisible = model.isClientVisible }
+            if !pendingFields.contains("takenAt")         { existing.takenAt = model.takenAt }
+            if !pendingFields.contains("updatedAt")       { existing.updatedAt = model.updatedAt }
+            if !pendingFields.contains("deletedAt")       { existing.deletedAt = model.deletedAt }
             existing.lastSyncedAt = Date()
             existing.needsSync = false
         } else {

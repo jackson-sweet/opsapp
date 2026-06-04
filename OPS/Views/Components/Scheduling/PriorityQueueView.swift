@@ -47,9 +47,9 @@ struct PriorityQueueView: View {
             runBar
         }
         .background(OPSStyle.Colors.background)
-        .sheet(item: Binding(get: { vm.previewPlan.map { PlanBox(plan: $0) } }, set: { if $0 == nil { vm.previewPlan = nil } })) { box in
-            PrioritySchedulePreviewSheet(plan: box.plan, anchorDate: vm.anchorDate) {
-                Task { await vm.commit(plan: box.plan) }
+        .sheet(item: $vm.previewPlan) { preview in
+            PrioritySchedulePreviewSheet(plan: preview.plan, anchorDate: vm.anchorDate) {
+                Task { await vm.commit(plan: preview.plan) }
             }
             .environmentObject(dataController)
         }
@@ -151,11 +151,11 @@ struct PriorityQueueView: View {
     }
 
     private var emptyRankedHint: some View {
-        Text("Drag projects up to rank them, or turn on Include Unranked.")
+        Text("Drag projects above the line to rank them. The top of the queue schedules first.")
             .font(OPSStyle.Typography.caption)
             .foregroundColor(OPSStyle.Colors.tertiaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 12)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
     }
 
     // MARK: Card
@@ -219,9 +219,7 @@ struct PriorityQueueView: View {
                 Text("SCHEDULE NEXT").frame(maxWidth: .infinity)
             }
             .buttonStyle(SecondaryRunButtonStyle())
-            .disabled(vm.ranked.allSatisfy { p in
-                !p.tasks.contains { $0.deletedAt == nil && $0.status == .active && ($0.startDate == nil || $0.endDate == nil) }
-            })
+            .disabled(!vm.canScheduleNext)
 
             Button {
                 vm.buildPlan()
@@ -229,7 +227,7 @@ struct PriorityQueueView: View {
                 Text("SCHEDULE ALL").frame(maxWidth: .infinity)
             }
             .buttonStyle(PrimaryRunButtonStyle())
-            .disabled(vm.ranked.isEmpty)
+            .disabled(!vm.canScheduleAll)
         }
         .padding(16)
     }
@@ -428,9 +426,6 @@ struct PriorityQueueView: View {
         }
     }
 }
-
-/// Identifiable box so SchedulePlan can drive a `.sheet(item:)`.
-private struct PlanBox: Identifiable { let id = UUID(); let plan: SchedulePlan }
 
 private struct PrimaryRunButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {

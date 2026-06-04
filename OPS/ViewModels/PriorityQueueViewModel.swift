@@ -16,8 +16,17 @@ final class PriorityQueueViewModel: ObservableObject {
     @Published var unranked: [Project] = []      // below, default order
     @Published var includeUnranked = false
     @Published var anchorDate = Date()
-    @Published var previewPlan: SchedulePlan?
+    @Published var previewPlan: PlanPreview?
     @Published var justScheduledCount: Int?           // set after a batch commit → drives the confirmation overlay
+
+    /// Identifiable wrapper so the preview drives `.sheet(item:)` with a STABLE
+    /// identity. The old code fed `.sheet(item:)` a box whose id was a fresh
+    /// `UUID()` minted on every render, so SwiftUI saw a "new" item each redraw
+    /// and churned the sheet (dismiss → re-present). One UUID per built plan fixes it.
+    struct PlanPreview: Identifiable {
+        let id = UUID()
+        let plan: SchedulePlan
+    }
 
     private let dataController: DataController
 
@@ -101,40 +110,72 @@ final class PriorityQueueViewModel: ObservableObject {
 
     // MARK: Run
 
-    /// Ordered candidate project ids: ranked, then unranked if included.
-    private var orderedCandidateIds: [String] {
-        includeUnranked ? (ranked.map(\.id) + unranked.map(\.id)) : ranked.map(\.id)
+    /// A project still has work to auto-schedule: an active, non-deleted task
+    /// missing a start or end date. Shared by the run buttons' enable state and
+    /// the SCHEDULE NEXT selector so the UI and the engine agree on "schedulable".
+    func hasSchedulableTask(_ project: Project) -> Bool {
+        project.tasks.contains { $0.deletedAt == nil && $0.status == .active && ($0.startDate == nil || $0.endDate == nil) }
     }
 
+    /// Candidate projects for SCHEDULE ALL — ranked, plus unranked when included.
+    private var scheduleAllCandidates: [Project] {
+        includeUnranked ? ranked + unranked : ranked
+    }
+
+    /// SCHEDULE ALL is live only when some candidate actually has work to place.
+    /// (The old `!ranked.isEmpty` check both ignored INCLUDE UNRANKED and let the
+    /// button build an empty plan when every ranked task was already scheduled.)
+    var canScheduleAll: Bool { scheduleAllCandidates.contains(where: hasSchedulableTask) }
+
+    /// SCHEDULE NEXT is live only when a RANKED project still has work to place.
+    var canScheduleNext: Bool { ranked.contains(where: hasSchedulableTask) }
+
     func buildPlan() {
-        previewPlan = dataController.autoSchedulePriorityProjects(orderedProjectIds: orderedCandidateIds, anchorDate: anchorDate)
+        let plan = dataController.autoSchedulePriorityProjects(
+            orderedProjectIds: scheduleAllCandidates.map(\.id), anchorDate: anchorDate)
+        guard !plan.placements.isEmpty else {
+            // Nothing landed — don't present an empty review sheet.
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()   // beat 1: plan ready for review
+        previewPlan = PlanPreview(plan: plan)
+    }
+
+    /// Write each placement via the schedule writer. Returns the number actually
+    /// committed (a placement whose task can't be found is skipped, not counted).
+    @discardableResult
+    private func applyPlacements(_ plan: SchedulePlan) async -> Int {
+        let byId = Dictionary(dataController.getAllTasks().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var committed = 0
+        for placement in plan.placements {
+            guard let task = byId[placement.id] else { continue }
+            try? await dataController.updateTaskSchedule(
+                task: task, startDate: placement.startDate, endDate: placement.endDate, manualEdit: false)
+            committed += 1
+        }
+        return committed
     }
 
     func commit(plan: SchedulePlan) async {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        let byId = Dictionary(dataController.getAllTasks().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        for p in plan.placements {
-            guard let task = byId[p.id] else { continue }
-            try? await dataController.updateTaskSchedule(task: task, startDate: p.startDate, endDate: p.endDate, manualEdit: false)
-        }
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-        justScheduledCount = plan.placements.count
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()    // beat 1: received
+        let committed = await applyPlacements(plan)
         previewPlan = nil
+        UINotificationFeedbackGenerator().notificationOccurred(committed > 0 ? .success : .warning)  // beat 2: confirmed
+        justScheduledCount = committed
         reload()
     }
 
     /// One-at-a-time: schedule the top ranked project that still has unscheduled tasks.
     func tapToPlaceNext() async {
-        guard let project = ranked.first(where: { p in
-            p.tasks.contains { $0.deletedAt == nil && $0.status == .active && ($0.startDate == nil || $0.endDate == nil) }
-        }) else { return }
+        guard let project = ranked.first(where: hasSchedulableTask) else { return }
         let plan = dataController.autoScheduleProjectV2(project.id, anchorDate: anchorDate)
-        let byId = Dictionary(dataController.getAllTasks().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        for p in plan.placements {
-            guard let task = byId[p.id] else { continue }
-            try? await dataController.updateTaskSchedule(task: task, startDate: p.startDate, endDate: p.endDate, manualEdit: false)
-        }
+        let committed = await applyPlacements(plan)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        if committed > 0 {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            justScheduledCount = committed
+        }
         reload()
     }
 }

@@ -116,7 +116,7 @@ struct AutoScheduleManager {
             let startDate = constraints.skipWeekends
                 ? skipToWeekday(date: dependencyFloor, calendar: calendar)
                 : dependencyFloor
-            let endDate = calendar.date(byAdding: .day, value: max(effectiveDuration - 1, 0), to: startDate) ?? startDate
+            let endDate = Self.endDate(from: startDate, duration: effectiveDuration, skipWeekends: constraints.skipWeekends, calendar: calendar)
 
             let placement = TaskPlacement(
                 id: task.id,
@@ -155,7 +155,7 @@ struct AutoScheduleManager {
             calendar: calendar
         )
 
-        let endDate = calendar.date(byAdding: .day, value: max(effectiveDuration - 1, 0), to: slot) ?? slot
+        let endDate = Self.endDate(from: slot, duration: effectiveDuration, skipWeekends: constraints.skipWeekends, calendar: calendar)
 
         // Pass 3: Geographic grouping (scan for alternatives)
         let alternative = findGeographicAlternative(
@@ -255,10 +255,23 @@ struct AutoScheduleManager {
                 message: "No crew assigned — availability not checked"
             ))
 
+            // Crew availability can't sequence unassigned tasks, so without this a
+            // project's crewless tasks would all collide on the dependency floor.
+            // Stack them back-to-back after the last crewless task already placed
+            // for THIS project; cross-project crewless work still runs in parallel.
+            var floor = dependencyFloor
+            let priorCrewlessEnds = state.placed
+                .filter { $0.projectId == projectId && $0.teamMemberIds.isEmpty }
+                .map(\.endDate)
+            if let lastEnd = priorCrewlessEnds.max() {
+                let dayAfter = calendar.date(byAdding: .day, value: 1, to: lastEnd) ?? lastEnd
+                if dayAfter > floor { floor = dayAfter }
+            }
+
             let startDate = constraints.skipWeekends
-                ? skipToWeekday(date: dependencyFloor, calendar: calendar)
-                : dependencyFloor
-            let endDate = calendar.date(byAdding: .day, value: max(effectiveDuration - 1, 0), to: startDate) ?? startDate
+                ? skipToWeekday(date: floor, calendar: calendar)
+                : floor
+            let endDate = Self.endDate(from: startDate, duration: effectiveDuration, skipWeekends: constraints.skipWeekends, calendar: calendar)
 
             state.placements.append(TaskPlacement(
                 id: task.id, taskTypeId: task.taskTypeId,
@@ -303,7 +316,7 @@ struct AutoScheduleManager {
             calendar: calendar
         )
 
-        let endDate = calendar.date(byAdding: .day, value: max(effectiveDuration - 1, 0), to: slot) ?? slot
+        let endDate = Self.endDate(from: slot, duration: effectiveDuration, skipWeekends: constraints.skipWeekends, calendar: calendar)
 
         // Pass 3: Geographic alternative
         let alternative = findGeographicAlternative(
@@ -357,7 +370,10 @@ struct AutoScheduleManager {
 
         for projectId in sortedProjectIds {
             let projectTasks = provider.tasksForProject(projectId)
-            let unscheduled = projectTasks.filter { $0.startDate == nil || $0.endDate == nil }
+            // Only place active, still-unscheduled tasks. Completed/cancelled tasks
+            // with null dates are never placed; already-dated tasks of any status
+            // remain visible to dependency-floor and availability checks.
+            let unscheduled = projectTasks.filter { ($0.startDate == nil || $0.endDate == nil) && $0.schedulingIsActive }
 
             if unscheduled.isEmpty { continue }
 
@@ -585,7 +601,7 @@ struct AutoScheduleManager {
         let deferralDays = calendar.dateComponents([.day], from: primaryStart, to: altSlot).day ?? 0
         guard deferralDays > 0 else { return nil }
 
-        let altEnd = calendar.date(byAdding: .day, value: max(duration - 1, 0), to: altSlot) ?? altSlot
+        let altEnd = Self.endDate(from: altSlot, duration: duration, skipWeekends: constraints.skipWeekends, calendar: calendar)
         let avgDistance = bestWeek.value.map { $0.distance }.reduce(0, +) / Double(bestWeek.value.count)
 
         return AlternativePlacement(
@@ -635,6 +651,25 @@ struct AutoScheduleManager {
         var result = date
         while calendar.isDateInWeekend(result) {
             result = calendar.date(byAdding: .day, value: 1, to: result) ?? result
+        }
+        return result
+    }
+
+    /// Resolve an end date `duration` days long starting at `start`. When
+    /// skip-weekends is on, the span is counted in WEEKDAYS so the end date
+    /// matches the days actually reserved by `findAvailableSlot` — a 2-day task
+    /// starting Friday ends the following Monday, not Saturday. `start` is
+    /// assumed to be a weekday (every caller weekday-aligns it first).
+    private static func endDate(from start: Date, duration: Int, skipWeekends: Bool, calendar: Calendar) -> Date {
+        let span = max(duration - 1, 0)
+        guard skipWeekends, span > 0 else {
+            return calendar.date(byAdding: .day, value: span, to: start) ?? start
+        }
+        var result = start
+        var weekdaysAdded = 0
+        while weekdaysAdded < span {
+            result = calendar.date(byAdding: .day, value: 1, to: result) ?? result
+            if !calendar.isDateInWeekend(result) { weekdaysAdded += 1 }
         }
         return result
     }

@@ -226,6 +226,13 @@ final class ProjectTask {
         scheduleLocked
     }
 
+    /// SchedulableTask conformance — only active tasks are eligible for
+    /// auto-schedule placement. Completed/cancelled tasks are never placed,
+    /// even if their dates are null.
+    var schedulingIsActive: Bool {
+        status == .active
+    }
+
     /// Get team member IDs as array
     func getTeamMemberIds() -> [String] {
         return teamMemberIdsString.isEmpty ? [] : teamMemberIdsString.components(separatedBy: ",")

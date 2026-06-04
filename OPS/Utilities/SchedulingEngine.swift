@@ -26,12 +26,19 @@ protocol SchedulableTask {
     /// Cascade logic skips locked tasks — they no longer auto-shift when a
     /// predecessor moves. Defaults to false for value-typed VirtualTask.
     var schedulingLocked: Bool { get }
+    /// True when the task is eligible for placement. Auto-schedule only places
+    /// active tasks; completed/cancelled tasks are excluded from the to-place
+    /// set (but still seen as commitments). Defaults to true for value types.
+    var schedulingIsActive: Bool { get }
 }
 
 extension SchedulableTask {
     /// Default conformance for types that don't track manual edits (the
     /// scheduling engine's internal VirtualTask). Real ProjectTask overrides.
     var schedulingLocked: Bool { false }
+    /// Default conformance for value-typed tasks (VirtualTask) — always eligible.
+    /// Real ProjectTask overrides to gate on `status == .active`.
+    var schedulingIsActive: Bool { true }
 }
 
 // MARK: - SchedulingEngine

@@ -181,6 +181,7 @@ struct JobBoardView: View {
 
                     // Action row: filter + active toggle + assigned to me
                     if !tutorialMode && (selectedSection == .projects || selectedSection == .myProjects || selectedSection == .tasks || selectedSection == .kanban) {
+                        ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
                             Button(action: {
                                 if selectedSection == .tasks {
@@ -239,7 +240,7 @@ struct JobBoardView: View {
                                     )
                             }
 
-                            if selectedSection == .tasks && permissionStore.can("tasks.edit") {
+                            if selectedSection == .projects && permissionStore.can("projects.edit") {
                                 Button(action: {
                                     withAnimation(.easeInOut(duration: 0.2)) { prioritizeMode.toggle() }
                                 }) {
@@ -259,9 +260,9 @@ struct JobBoardView: View {
                                 }
                             }
 
-                            Spacer()
                         }
                         .padding(.horizontal, 16)
+                        }
                         .padding(.top, 8)
                         .padding(.bottom, 12)
                     }
@@ -293,27 +294,27 @@ struct JobBoardView: View {
                                 )
                                 .padding(.horizontal, 16)
                             case .projects:
-                                JobBoardProjectListView(
-                                    searchText: searchText,
-                                    showingFilters: $showingFilters,
-                                    showingFilterSheet: $showingProjectFilterSheet,
-                                    activeOnly: activeOnly,
-                                    assignedToMe: assignedToMe
-                                )
-                                .padding(.horizontal, 16)
-                            case .tasks:
                                 if prioritizeMode {
                                     PriorityQueueView(displayMode: .inline, dataController: dataController)
                                         .padding(.horizontal, 16)
                                 } else {
-                                    JobBoardTasksView(
+                                    JobBoardProjectListView(
                                         searchText: searchText,
                                         showingFilters: $showingFilters,
-                                        showingFilterSheet: $showingTaskFilterSheet,
+                                        showingFilterSheet: $showingProjectFilterSheet,
+                                        activeOnly: activeOnly,
                                         assignedToMe: assignedToMe
                                     )
                                     .padding(.horizontal, 16)
                                 }
+                            case .tasks:
+                                JobBoardTasksView(
+                                    searchText: searchText,
+                                    showingFilters: $showingFilters,
+                                    showingFilterSheet: $showingTaskFilterSheet,
+                                    assignedToMe: assignedToMe
+                                )
+                                .padding(.horizontal, 16)
                             case .kanban:
                                 JobBoardKanbanView(assignedToMe: assignedToMe)
                             }

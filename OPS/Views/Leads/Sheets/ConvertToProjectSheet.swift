@@ -5,18 +5,29 @@
 //  Full-detent sheet that lands when an operator commits to winning a lead.
 //  Phase 4 of the LEADS tab rebuild
 //  (docs/superpowers/plans/2026-05-19-leads-tab-rebuild.md §8.6) — RICH
-//  variant.
+//  variant. Phase 5 of WON CONVERSION (dedup + auto-naming) switched detection
+//  from local SwiftData to the SERVER `get_conversion_preflight` RPC and the
+//  project name field to AUTO-named by default.
 //
-//  Three render states are decided in `onAppear` against SwiftData + Supabase:
+//  Three render states are decided in `task` against the server preflight:
 //
-//    NORMAL              standard form (title, address, value, notes) + optional
-//                        attached-estimates section + optional tasks-preview.
-//    DUPLICATE-EXISTS    a Project already back-links to this lead. We surface
-//                        the existing project and let the operator open it; no
-//                        new project gets created.
-//    CLIENT-HAS-OTHERS   the lead's client has other projects on file. Tan
-//                        warning banner sits above the standard form; the
-//                        operator can still create.
+//    NORMAL              standard form (auto-named title, address, value, notes)
+//                        + optional attached-estimates section + optional
+//                        tasks-preview.
+//    DUPLICATE-EXISTS    a Project already back-links to this lead (preflight
+//                        `existing_linked_project`). We surface the existing
+//                        project and let the operator open it; no new project
+//                        gets created.
+//    CLIENT-HAS-OTHERS   the preflight surfaced likely-duplicate candidates
+//                        and/or other client projects. Tan warning banner sits
+//                        above the standard form; the operator can still create.
+//
+//  Auto-naming (Phase 5): the TITLE defaults to AUTO — the server derives the
+//  name from the address via `derive_project_name` (street line before the
+//  first comma) and the `projects_autoname` trigger dedups with `#N`. The sheet
+//  shows the derived name and a LIVE preview as the operator edits the address;
+//  a quiet RENAME affordance reveals a hand-edit field (sets title_is_auto =
+//  false). When auto, the operator never types a name.
 //
 //  Exit semantics (plan §2.1 Q3, restated in the Phase 4 brief):
 //
@@ -27,7 +38,7 @@
 //    review peek: investigating a related project is not a conversion.
 //
 //    × / CANCEL / drag / scrim    → markWonNoProject(actualValue)
-//    CREATE PROJECT →             → convertLeadToProject(...), stay on LEADS
+//    CREATE PROJECT →             → convertOpportunityToProject(...), stay on LEADS
 //    OPEN PROJECT → (DUPLICATE)   → mark won with existing project, then open it
 //    other-project chip           → review peek, no commit, then open it
 //
@@ -50,11 +61,26 @@ struct ConvertToProjectSheet: View {
     @State private var actualValueText: String = ""
     @State private var closingNotes: String = ""
 
+    /// Server-derived base name (`derive_project_name(address, client)`), no
+    /// `#N` dedup suffix. Captured from the preflight; used as the live-preview
+    /// fallback and the auto-name shown before the operator touches anything.
+    @State private var suggestedName: String = ""
+    /// TITLE defaults to AUTO. Flipped false the moment the operator opens
+    /// RENAME and types a name; flipped back true via USE ADDRESS.
+    @State private var titleIsAuto: Bool = true
+    /// Whether the hand-edit name input is revealed.
+    @State private var isRenaming: Bool = false
+
+    @FocusState private var nameFieldFocused: Bool
+
     // MARK: - Pre-flight state
 
-    /// nil = loading / unset. Non-nil project = DUPLICATE-EXISTS.
-    @State private var existingProject: Project?
-    @State private var clientOtherProjects: [Project] = []
+    /// Non-nil ⇒ DUPLICATE-EXISTS. The id always comes from the server
+    /// preflight; the rich card detail is hydrated best-effort (network → local
+    /// SwiftData → preflight title-only) so the sheet never crashes offline.
+    @State private var existingProject: DuplicateProjectDisplay?
+    /// Merged candidate + other-client refs (dedup by id, candidates first).
+    @State private var clientOtherProjects: [RelatedProjectRef] = []
     @State private var estimateBundles: [LeadConversionService.EstimateBundle] = []
     @State private var hasLoadedPreflight = false
 
@@ -82,12 +108,31 @@ struct ConvertToProjectSheet: View {
     }
 
     private var canCreate: Bool {
-        !titleText.trimmingCharacters(in: .whitespaces).isEmpty
-            && !isSaving
+        // Title is OPTIONAL now — auto-naming fills it server-side. Only block
+        // on an in-flight save.
+        !isSaving
     }
 
     private var totalLaborItems: Int {
         estimateBundles.reduce(0) { $0 + $1.laborItems.count }
+    }
+
+    /// The street line a hand-typed address resolves to, mirroring the server's
+    /// `derive_project_name`: substring before the first comma, trimmed. Falls
+    /// back to the server `suggested_name`, then to a neutral placeholder.
+    private var derivedNamePreview: String {
+        let trimmedAddress = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedAddress.isEmpty {
+            let streetLine = trimmedAddress
+                .components(separatedBy: ",")
+                .first?
+                .trimmingCharacters(in: .whitespaces) ?? ""
+            if !streetLine.isEmpty { return streetLine }
+            return trimmedAddress
+        }
+        let trimmedSuggested = suggestedName.trimmingCharacters(in: .whitespaces)
+        if !trimmedSuggested.isEmpty { return trimmedSuggested }
+        return "New project"
     }
 
     var body: some View {
@@ -205,7 +250,7 @@ struct ConvertToProjectSheet: View {
 
     // MARK: - Duplicate state
 
-    private func duplicateCard(existing: Project) -> some View {
+    private func duplicateCard(existing: DuplicateProjectDisplay) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 0) {
                 Text("// ")
@@ -229,11 +274,13 @@ struct ConvertToProjectSheet: View {
                 .lineLimit(2)
 
             HStack(spacing: 8) {
-                StatusBadge(
-                    status: existing.status.displayName.uppercased(),
-                    color: existing.status.color,
-                    size: .small
-                )
+                if let status = existing.status {
+                    StatusBadge(
+                        status: status.displayName.uppercased(),
+                        color: status.color,
+                        size: .small
+                    )
+                }
                 if let address = existing.address, !address.isEmpty {
                     Text(address)
                         .font(.custom("JetBrainsMono-Regular", size: 10))
@@ -300,23 +347,23 @@ struct ConvertToProjectSheet: View {
         )
     }
 
-    private func projectChip(_ project: Project) -> some View {
+    private func projectChip(_ project: RelatedProjectRef) -> some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(project.status.color)
+                .fill(project.statusColor)
                 .frame(width: 5, height: 5)
             Text(truncatedTitle(project.title))
                 .font(.custom("JetBrainsMono-Medium", size: 10))
                 .kerning(1.2)
                 .foregroundColor(OPSStyle.Colors.text)
                 .textCase(.uppercase)
-            if let created = project.createdAt {
+            if project.isLikelyDuplicate {
                 Text("·")
                     .foregroundColor(OPSStyle.Colors.textMute)
-                Text(relativeText(for: created).uppercased())
+                Text("MATCH")
                     .font(.custom("JetBrainsMono-Regular", size: 10))
                     .kerning(1.0)
-                    .foregroundColor(OPSStyle.Colors.text3)
+                    .foregroundColor(OPSStyle.Colors.tanTextM)
                     .textCase(.uppercase)
             }
         }
@@ -345,12 +392,7 @@ struct ConvertToProjectSheet: View {
 
     private var formFields: some View {
         VStack(alignment: .leading, spacing: 14) {
-            LeadField(label: "TITLE") {
-                LeadTextInput(
-                    placeholder: opportunity.contactName,
-                    text: $titleText
-                )
-            }
+            nameField
 
             LeadField(label: "ADDRESS", hint: "[OPTIONAL]") {
                 LeadTextInput(
@@ -376,6 +418,113 @@ struct ConvertToProjectSheet: View {
                     rows: 3
                 )
             }
+        }
+    }
+
+    // MARK: - Name field (auto-named by default)
+
+    private var nameField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("NAME")
+                    .font(.custom("JetBrainsMono-Medium", size: 10))
+                    .kerning(1.6)
+                    .foregroundColor(OPSStyle.Colors.text3)
+                    .textCase(.uppercase)
+                Text(titleIsAuto ? "[AUTO]" : "[CUSTOM]")
+                    .font(.custom("JetBrainsMono-Regular", size: 10))
+                    .kerning(1.6)
+                    .foregroundColor(OPSStyle.Colors.textMute)
+                    .textCase(.uppercase)
+
+                Spacer()
+
+                nameModeToggle
+            }
+
+            if titleIsAuto {
+                autoNamePreview
+            } else {
+                LeadTextInput(
+                    placeholder: derivedNamePreview,
+                    text: $titleText
+                )
+                .focused($nameFieldFocused)
+            }
+        }
+    }
+
+    /// The RENAME / USE ADDRESS toggle. ≥44pt hit area, OPSStyle-styled, quiet.
+    private var nameModeToggle: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            if titleIsAuto {
+                // Reveal hand-edit. Seed the field with the current derived
+                // name so the operator edits FROM the auto value rather than a
+                // blank, and flip to custom the moment they engage.
+                titleIsAuto = false
+                isRenaming = true
+                if titleText.trimmingCharacters(in: .whitespaces).isEmpty {
+                    titleText = derivedNamePreview
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    nameFieldFocused = true
+                }
+            } else {
+                // Revert to auto — clear the custom title, hide the field.
+                titleIsAuto = true
+                isRenaming = false
+                titleText = ""
+                nameFieldFocused = false
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: titleIsAuto ? OPSStyle.Icons.edit : OPSStyle.Icons.locationFill)
+                    .font(.system(size: 10))
+                Text(titleIsAuto ? "RENAME" : "USE ADDRESS")
+                    .font(.custom("JetBrainsMono-Medium", size: 10))
+                    .kerning(1.2)
+            }
+            .foregroundColor(OPSStyle.Colors.text2)
+            .padding(.horizontal, 8)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(titleIsAuto ? "Rename project" : "Use address for project name")
+    }
+
+    /// Quiet auto-name preview line shown in place of the input when AUTO.
+    private var autoNamePreview: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 0) {
+                Text("// ")
+                    .foregroundColor(OPSStyle.Colors.textMute)
+                Text("NAME · ")
+                    .foregroundColor(OPSStyle.Colors.text3)
+                Text(derivedNamePreview.uppercased())
+                    .foregroundColor(OPSStyle.Colors.text)
+            }
+            .font(.custom("JetBrainsMono-Medium", size: 11))
+            .kerning(1.0)
+            .lineLimit(1)
+            .padding(.horizontal, 12)
+            .frame(height: 48)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .fill(OPSStyle.Colors.surfaceInput)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
+            )
+
+            Text("Auto-named from the site address. Rename anytime.")
+                .font(.custom("JetBrainsMono-Regular", size: 10))
+                .kerning(0.4)
+                .foregroundColor(OPSStyle.Colors.textMute)
+                .lineLimit(2)
         }
     }
 
@@ -602,11 +751,32 @@ struct ConvertToProjectSheet: View {
         let companyId = opportunity.companyId
         let service = LeadConversionService(companyId: companyId)
 
-        // Local SwiftData checks (synchronous)
-        existingProject = service.existingProject(for: opportunity, in: modelContext)
-        clientOtherProjects = service.clientProjectsSummary(for: opportunity, in: modelContext)
+        // SERVER preflight — single source of truth for render state + suggested
+        // name. Replaces the prior local SwiftData duplicate/other-projects
+        // checks. Non-fatal on failure: the operator can still create a project
+        // (the convert RPC re-runs the same dedup server-side and is idempotent).
+        do {
+            let preflight = try await service.getConversionPreflight(for: opportunity)
+            suggestedName = preflight.suggestedName ?? ""
 
-        // Network fetch (estimates + line items)
+            if let linked = preflight.existingLinkedProject {
+                existingProject = await resolveDuplicateDisplay(
+                    id: linked.id,
+                    fallbackTitle: linked.title
+                )
+            }
+
+            clientOtherProjects = mergeRelatedRefs(
+                candidates: preflight.duplicateCandidates,
+                others: preflight.otherClientProjects
+            )
+        } catch {
+            // Preflight unavailable (offline / RPC error) — fall through to the
+            // plain NORMAL form. Detection still happens server-side on convert.
+            suggestedName = ""
+        }
+
+        // Network fetch (estimates + line items) — still drives the tasks preview.
         do {
             estimateBundles = try await service.estimateBundles(for: opportunity)
         } catch {
@@ -617,12 +787,78 @@ struct ConvertToProjectSheet: View {
         hasLoadedPreflight = true
     }
 
-    private func applyInitialFormValues() {
-        if titleText.isEmpty {
-            titleText = opportunity.title?.isEmpty == false
-                ? opportunity.title!
-                : opportunity.contactName
+    /// Hydrate the rich DUPLICATE-EXISTS card. Network first (canonical), then
+    /// local SwiftData by id, then a title-only fallback from the preflight so
+    /// the sheet never crashes offline.
+    private func resolveDuplicateDisplay(id: String, fallbackTitle: String?) async -> DuplicateProjectDisplay {
+        let repo = ProjectRepository(companyId: opportunity.companyId)
+        if let dto = try? await repo.fetchOne(id) {
+            let model = dto.toModel()
+            return DuplicateProjectDisplay(
+                id: model.id,
+                title: model.title,
+                address: model.address,
+                status: model.status,
+                createdAt: model.createdAt
+            )
         }
+
+        let localId = id
+        var descriptor = FetchDescriptor<Project>(
+            predicate: #Predicate<Project> { $0.id == localId }
+        )
+        descriptor.fetchLimit = 1
+        if let local = (try? modelContext.fetch(descriptor))?.first {
+            return DuplicateProjectDisplay(
+                id: local.id,
+                title: local.title,
+                address: local.address,
+                status: local.status,
+                createdAt: local.createdAt
+            )
+        }
+
+        return DuplicateProjectDisplay(
+            id: id,
+            title: fallbackTitle ?? "",
+            address: nil,
+            status: nil,
+            createdAt: nil
+        )
+    }
+
+    /// Merge candidates (likely-duplicates) + other-client projects into the
+    /// chip list. Dedup by project id, candidates first so the strongest signal
+    /// leads. Maps a status string to a ProjectStatus/color where present.
+    private func mergeRelatedRefs(
+        candidates: [PreflightCandidate],
+        others: [PreflightClientProject]
+    ) -> [RelatedProjectRef] {
+        var seen = Set<String>()
+        var refs: [RelatedProjectRef] = []
+
+        for c in candidates where seen.insert(c.projectId).inserted {
+            refs.append(RelatedProjectRef(
+                id: c.projectId,
+                title: c.title ?? "",
+                address: c.address,
+                status: nil,
+                isLikelyDuplicate: true
+            ))
+        }
+        for o in others where seen.insert(o.projectId).inserted {
+            refs.append(RelatedProjectRef(
+                id: o.projectId,
+                title: o.title ?? "",
+                address: o.address,
+                status: o.status.flatMap { Status(rawValue: $0) },
+                isLikelyDuplicate: false
+            ))
+        }
+        return refs
+    }
+
+    private func applyInitialFormValues() {
         if addressText.isEmpty {
             addressText = opportunity.address ?? ""
         }
@@ -646,11 +882,26 @@ struct ConvertToProjectSheet: View {
             do {
                 let companyId = opportunity.companyId
                 let service = LeadConversionService(companyId: companyId)
-                let project = try await service.convertLeadToProject(
+
+                // The unified convert RPC reads address/lat/lng from the
+                // opportunity row — it has no address param. So if the operator
+                // edited the address here, persist it to the opportunity FIRST
+                // or the edit (and the derived name) is dropped server-side.
+                let trimmedAddress = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
+                let originalAddress = (opportunity.address ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmedAddress != originalAddress {
+                    let repo = OpportunityRepository(companyId: companyId)
+                    _ = try? await repo.update(opportunity.id, patch: ["address": trimmedAddress])
+                    // Mirror locally so the optimistic model + the lead summary
+                    // stay coherent if the operator returns to this lead.
+                    opportunity.address = trimmedAddress.isEmpty ? nil : trimmedAddress
+                }
+
+                let trimmedTitle = titleText.trimmingCharacters(in: .whitespacesAndNewlines)
+                let project = try await service.convertOpportunityToProject(
                     lead: opportunity,
                     actualValue: parseActualValue(),
-                    title: titleText.trimmingCharacters(in: .whitespaces),
-                    address: addressText.isEmpty ? nil : addressText,
+                    titleOverride: titleIsAuto ? nil : (trimmedTitle.isEmpty ? nil : trimmedTitle),
                     notes: closingNotes.isEmpty ? nil : closingNotes,
                     userId: dataController.currentUser?.id
                 )
@@ -856,5 +1107,35 @@ private extension ConvertToProjectSheet {
         case normal
         case duplicate
         case clientHasOthers
+    }
+}
+
+// MARK: - Lightweight display models (preflight-sourced)
+
+extension ConvertToProjectSheet {
+    /// Display payload for the DUPLICATE-EXISTS card. Hydrated best-effort from
+    /// the server project row, local SwiftData, or the preflight title alone.
+    struct DuplicateProjectDisplay {
+        let id: String
+        let title: String
+        let address: String?
+        let status: Status?
+        let createdAt: Date?
+    }
+
+    /// Chip ref for the CLIENT-HAS-OTHERS list, sourced from the server
+    /// preflight (no local Project required). `isLikelyDuplicate` flags the
+    /// high/medium-confidence candidates so they read distinctly.
+    struct RelatedProjectRef: Identifiable {
+        let id: String
+        let title: String
+        let address: String?
+        let status: Status?
+        let isLikelyDuplicate: Bool
+
+        /// Status color where known; neutral hairline otherwise.
+        var statusColor: Color {
+            status?.color ?? OPSStyle.Colors.textMute
+        }
     }
 }

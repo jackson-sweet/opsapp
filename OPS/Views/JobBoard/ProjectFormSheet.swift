@@ -78,6 +78,12 @@ struct ProjectFormSheet: View {
 
     // MARK: - Form Fields
     @State private var title: String = ""
+    // Won-conversion auto-naming. True ⇒ the project name is server-derived from
+    // the address (the `projects_autoname` trigger fills it; `title_is_auto`
+    // column is live on prod). Create starts AUTO; edit hydrates from the row.
+    // Typing a non-empty name flips it false; clearing the name or tapping
+    // "use address" flips it back true.
+    @State private var titleIsAuto: Bool = true
     @State private var description: String = ""
     @State private var notes: String = ""
     @State private var address: String = ""
@@ -291,7 +297,9 @@ struct ProjectFormSheet: View {
     }
 
     private var isValid: Bool {
-        !title.isEmpty && selectedClientId != nil
+        // Name is OPTIONAL — when blank, the server auto-derives it from the
+        // address via `title_is_auto`. Only the client is required.
+        selectedClientId != nil
     }
 
     private var matchingClients: [Client] {
@@ -567,13 +575,17 @@ struct ProjectFormSheet: View {
         self.mode = mode
         self.onSave = onSave
 
-        // Pre-fill title if provided (e.g., from task form "New Project" action)
-        if let initialTitle = initialTitle, mode.isCreate {
+        // Pre-fill title if provided (e.g., from task form "New Project" action).
+        // A supplied name is a hand-set name, so opt out of auto-naming.
+        if let initialTitle = initialTitle, mode.isCreate,
+           !initialTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             _title = State(initialValue: initialTitle)
+            _titleIsAuto = State(initialValue: false)
         }
 
         if case .edit(let project) = mode {
             _title = State(initialValue: project.title)
+            _titleIsAuto = State(initialValue: project.titleIsAuto)
             _description = State(initialValue: project.projectDescription ?? "")
             _notes = State(initialValue: project.notes ?? "")
             _address = State(initialValue: project.address ?? "")
@@ -1398,7 +1410,8 @@ struct ProjectFormSheet: View {
                 Spacer()
 
                 if !tutorialMode {
-                    // Client name prefill button
+                    // Client name prefill button — a hand-set name; the
+                    // title onChange flips titleIsAuto to false.
                     Button {
                         if let name = selectedClient?.name {
                             title = name
@@ -1415,22 +1428,24 @@ struct ProjectFormSheet: View {
                     }
                     .disabled(selectedClient == nil)
 
-                    // Address prefill button
+                    // Revert-to-auto button. Clears any custom name so the
+                    // server auto-derives it from the site address. Enabled
+                    // only when a custom name is set (titleIsAuto == false).
                     Button {
-                        if let street = extractStreetNumber(from: address) {
-                            title = street
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        }
+                        title = ""
+                        titleIsAuto = true
+                        focusedField = nil
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: OPSStyle.Icons.locationFill)
                                 .font(.system(size: 10))
-                            Text("ADDRESS")
+                            Text("USE ADDRESS")
                                 .font(OPSStyle.Typography.microLabel)
                         }
-                        .foregroundColor(!address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                        .foregroundColor(!titleIsAuto ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                     }
-                    .disabled(address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(titleIsAuto)
                 }
             }
 
@@ -1452,6 +1467,13 @@ struct ProjectFormSheet: View {
                         )
                         .modifier(TutorialPulseModifier(isHighlighted: titleHighlight.isHighlighted))
                 )
+                .onChange(of: title) { _, newValue in
+                    // Auto-naming bookkeeping: a non-empty name is hand-set;
+                    // clearing it reverts to server auto-derivation. Skipped in
+                    // tutorial mode, which scripts the name step.
+                    guard !tutorialMode else { return }
+                    titleIsAuto = newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                }
                 .onSubmit {
                     // Wizard system: notify project name entered on keyboard dismiss
                     if !title.isEmpty {
@@ -1479,11 +1501,37 @@ struct ProjectFormSheet: View {
                 }
                 .wizardTarget("enter_project_name", style: .input)
 
-            // Autofill suggestions (hidden in tutorial mode)
+            // Quiet auto-name preview — shows the name the server will derive
+            // from the address while the field is blank. Hidden in tutorial.
             if !tutorialMode && title.isEmpty {
+                autoNamePreviewLine
                 autofillSuggestions
             }
         }
+    }
+
+    /// `// NAME · {derived}` metadata line. Street line from the address, else a
+    /// neutral placeholder — mirrors the server `derive_project_name`.
+    @ViewBuilder
+    private var autoNamePreviewLine: some View {
+        HStack(spacing: 0) {
+            Text("// ")
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            Text("NAME · ")
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+            Text(autoDerivedNamePreview.uppercased())
+                .foregroundColor(OPSStyle.Colors.primaryText)
+        }
+        .font(OPSStyle.Typography.smallCaption)
+        .lineLimit(1)
+    }
+
+    /// Street line a blank-name project resolves to: substring before the first
+    /// comma of the address, trimmed; "New project" when there's no address.
+    private var autoDerivedNamePreview: String {
+        if let street = extractStreetNumber(from: address) { return street }
+        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "New project" : trimmed
     }
 
     /// Quick-fill chips for project name based on client and address
@@ -2702,9 +2750,10 @@ struct ProjectFormSheet: View {
 
         // Bug 3cc5aefa — check for an existing project with the same title
         // before proceeding (create-mode only; edit-mode user is by definition
-        // already on an existing row). If one exists, prompt with a suffixed
-        // alternative; the user picks Cancel / Use suggestion / Save Anyway.
-        if case .create = mode,
+        // already on an existing row). Only for a HAND-TYPED name: when the
+        // name is auto (titleIsAuto), the server `projects_autoname` trigger
+        // dedups with a `#N` suffix, so no client-side collision prompt.
+        if case .create = mode, !titleIsAuto,
            let alternative = duplicateProjectNameAlternative(for: title) {
             suggestedAlternativeName = alternative
             showingDuplicateNameAlert = true
@@ -2826,12 +2875,14 @@ struct ProjectFormSheet: View {
                     generator.notificationOccurred(.success)
                     #endif
 
-                    // Post notification for success message overlay (only for new projects)
+                    // Post notification for success message overlay (only for new projects).
+                    // Use the resolved project title so auto-named projects (blank
+                    // input) show the derived name in the toast, not an empty string.
                     if case .create = mode {
                         NotificationCenter.default.post(
                             name: Notification.Name("ProjectCreatedSuccess"),
                             object: nil,
-                            userInfo: ["projectTitle": title]
+                            userInfo: ["projectTitle": project.title]
                         )
                         // Wizard system: notify project saved
                         NotificationCenter.default.post(
@@ -2890,13 +2941,20 @@ struct ProjectFormSheet: View {
             : UUID().uuidString.lowercased()
         print("[PROJECT_CREATE] Creating project locally with ID: \(projectId)")
 
+        // Auto-naming: when the operator left the name blank, the server
+        // `projects_autoname` trigger derives it from the address. Hold the
+        // street-line preview locally so the JobBoard card isn't blank in the
+        // window before the server-derived (and `#N`-deduped) name syncs back.
+        let localTitle = titleIsAuto ? autoDerivedNamePreview : title
+
         let project = Project(
             id: projectId,
-            title: title,
+            title: localTitle,
             status: selectedStatus
         )
 
         project.companyId = companyId
+        project.titleIsAuto = titleIsAuto
         project.client = client
         project.clientId = client.id
         project.projectDescription = description.isEmpty ? nil : description
@@ -2989,7 +3047,12 @@ struct ProjectFormSheet: View {
                 companyId: companyId,
                 clientId: client.id,
                 opportunityId: nil,
+                // `project.title` already holds the street-line preview when
+                // auto-named (satisfies the NOT NULL column); the BEFORE-INSERT
+                // `projects_autoname` trigger overwrites it with the derived +
+                // `#N`-deduped name when title_is_auto is true.
                 title: project.title,
+                titleIsAuto: titleIsAuto,
                 status: project.status.rawValue,
                 address: project.address,
                 latitude: nil,
@@ -3187,8 +3250,14 @@ struct ProjectFormSheet: View {
             throw ProjectError.missingRequiredFields
         }
 
+        // Auto-naming: blank input means the server re-derives the name from the
+        // address via the `projects_autoname` trigger. Hold the street-line
+        // preview locally so the card isn't blank before the derived name syncs.
+        let localTitle = titleIsAuto ? autoDerivedNamePreview : title
+
         await MainActor.run {
-            project.title = title
+            project.title = localTitle
+            project.titleIsAuto = titleIsAuto
             project.client = client
             project.projectDescription = description.isEmpty ? nil : description
             project.notes = notes.isEmpty ? "" : notes
@@ -3217,6 +3286,21 @@ struct ProjectFormSheet: View {
 
             try? modelContext.save()
         }
+
+        // Persist the name fields to the server. The edit form's local mutation
+        // above only marks needsSync; the canonical field-update enqueues the
+        // operation so the rename + auto flag actually reach Supabase. When
+        // auto, we send the street-line preview to satisfy the NOT NULL `title`
+        // column AND keep the local model non-blank — the BEFORE-UPDATE
+        // `projects_autoname` trigger then overwrites it with the derived +
+        // `#N`-deduped name (it ignores the sent value when title_is_auto).
+        try? await dataController.updateProjectFields(
+            projectId: project.id,
+            fields: [
+                "title": .string(localTitle),
+                "title_is_auto": .bool(titleIsAuto)
+            ]
+        )
 
         // Reconcile task add/remove/edit against the real tasks and sync each
         // change. Previously edit-mode task changes were dropped entirely.

@@ -10,7 +10,6 @@ struct PriorityQueueView: View {
 
     @State private var waterlineEngaged = false
     @State private var waterlineSteps = 0
-    @State private var waterlineDragOffset: CGFloat = 0
     private let waterlineRowHeight: CGFloat = OPSStyle.Layout.touchTargetStandard
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -82,20 +81,20 @@ struct PriorityQueueView: View {
     private var list: some View {
         List {
             Section {
-                if vm.ranked.isEmpty {
+                if displayRanked.isEmpty {
                     Text("Drag projects up to rank them, or turn on Include Unranked.")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .listRowBackground(Color.clear)
                 } else {
-                    ForEach(Array(vm.ranked.enumerated()), id: \.element.id) { idx, project in
+                    ForEach(Array(displayRanked.enumerated()), id: \.element.id) { idx, project in
                         PriorityQueueRow(project: project, rankNumber: idx + 1)
                             .listRowBackground(Color.clear)
                     }
                     .onMove { from, to in
                         guard let f = from.first else { return }
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        vm.moveRanked(projectId: vm.ranked[f].id, to: to > f ? to - 1 : to)
+                        vm.moveRanked(projectId: displayRanked[f].id, to: to > f ? to - 1 : to)
                     }
                 }
             } header: {
@@ -103,7 +102,7 @@ struct PriorityQueueView: View {
             }
 
             Section {
-                ForEach(vm.unranked, id: \.id) { project in
+                ForEach(displayUnranked, id: \.id) { project in
                     PriorityQueueRow(project: project, rankNumber: nil)
                         .listRowBackground(Color.clear)
                         .swipeActions(edge: .leading) {
@@ -121,7 +120,6 @@ struct PriorityQueueView: View {
                         .foregroundColor(waterlineEngaged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                     Spacer()
                 }
-                .offset(y: reduceMotion ? 0 : waterlineDragOffset)
                 .contentShape(Rectangle())
                 .gesture(waterlineGesture)
             }
@@ -129,6 +127,7 @@ struct PriorityQueueView: View {
         .listStyle(.plain)
         .environment(\.editMode, .constant(.active))
         .scrollContentBackground(.hidden)
+        .animation(reduceMotion ? Optional<Animation>.none : OPSStyle.Animation.standard, value: waterlineSteps)
     }
 
     private var runBar: some View {
@@ -158,6 +157,21 @@ struct PriorityQueueView: View {
         return "UNRANKED"
     }
 
+    // MARK: - Live waterline preview
+    // While the UNRANKED handle is being dragged, the ranked/unranked split is
+    // computed from a live preview so rows visibly reflow across the boundary
+    // as the finger passes each one. Committed on release via setWaterline.
+
+    private var combinedProjects: [Project] { vm.ranked + vm.unranked }
+
+    private var previewRankedCount: Int {
+        let base = vm.ranked.count + (waterlineEngaged ? waterlineSteps : 0)
+        return min(max(base, 0), combinedProjects.count)
+    }
+
+    private var displayRanked: [Project] { Array(combinedProjects.prefix(previewRankedCount)) }
+    private var displayUnranked: [Project] { Array(combinedProjects.suffix(combinedProjects.count - previewRankedCount)) }
+
     /// Long-press to engage, then drag up/down: each `rowHeight` of travel flips one
     /// row across the waterline. Drag DOWN (positive) = more ranked; UP = fewer.
     private var waterlineGesture: some Gesture {
@@ -171,30 +185,21 @@ struct PriorityQueueView: View {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     }
                 case .second(true, let drag?):
-                    let steps = Int((drag.translation.height / waterlineRowHeight).rounded())
-                    if steps != waterlineSteps {
+                    let raw = Int((drag.translation.height / waterlineRowHeight).rounded())
+                    let clamped = min(max(raw, -vm.ranked.count), vm.unranked.count)
+                    if clamped != waterlineSteps {
                         UISelectionFeedbackGenerator().selectionChanged()
-                        waterlineSteps = steps
+                        waterlineSteps = clamped
                     }
-                    let maxDown = CGFloat(vm.unranked.count) * waterlineRowHeight
-                    let maxUp = -CGFloat(vm.ranked.count) * waterlineRowHeight
-                    waterlineDragOffset = min(max(drag.translation.height, maxUp), maxDown)
                 default:
                     break
                 }
             }
             .onEnded { _ in
-                let current = vm.ranked.count
-                let total = vm.ranked.count + vm.unranked.count
-                let newCount = max(0, min(total, current + waterlineSteps))
-                if newCount != current {
+                let newCount = previewRankedCount
+                if newCount != vm.ranked.count {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    withAnimation(reduceMotion ? Optional<Animation>.none : OPSStyle.Animation.standard) {
-                        vm.setWaterline(rankedCount: newCount)
-                    }
-                }
-                withAnimation(reduceMotion ? Optional<Animation>.none : OPSStyle.Animation.standard) {
-                    waterlineDragOffset = 0
+                    vm.setWaterline(rankedCount: newCount)
                 }
                 waterlineEngaged = false
                 waterlineSteps = 0

@@ -15,6 +15,12 @@ struct PriorityQueueView: View {
     // Card drag (reorder within ranked, or cross the waterline to rank/unrank)
     @State private var draggingCardId: String?
     @State private var cardDragOffset: CGFloat = 0
+    // Safety: @GestureState auto-resets the instant a gesture ends OR is cancelled /
+    // torn down (e.g. when committing rebuilds the list). It drives the cleanup of
+    // the @State flags above so they can never get stuck "engaged" — which would
+    // otherwise leave a displaced, touch-eating handle on top of the list.
+    @GestureState private var waterlineGestureActive = false
+    @GestureState private var cardGestureActive = false
 
     @State private var selectionFeedback = UISelectionFeedbackGenerator()
     @State private var impactFeedback = UIImpactFeedbackGenerator(style: .medium)
@@ -24,7 +30,6 @@ struct PriorityQueueView: View {
     private let cardHeight: CGFloat = OPSStyle.Layout.touchTargetStandard   // 56
     private let rowSpacing: CGFloat = 8
     private var rowPitch: CGFloat { cardHeight + rowSpacing }               // 64
-    private let waterlineHandleHeight: CGFloat = 36
     private let waterlineGap: CGFloat = 44      // extra space opened at the dragged boundary
     private let fadeBelow: Double = 0.4         // unranked-below-the-line opacity during drag
 
@@ -126,6 +131,23 @@ struct PriorityQueueView: View {
             .padding(.bottom, 24)
         }
         .scrollDisabled(waterlineEngaged || draggingCardId != nil)
+        // When either gesture deactivates (lift OR cancel OR teardown), force the
+        // transient @State back to rest — guarantees the handle/cards never stick.
+        .onChange(of: waterlineGestureActive) { _, active in
+            guard !active, waterlineEngaged || waterlineSteps != 0 || waterlineDragOffset != 0 else { return }
+            withAnimation(reduceMotion ? nil : OPSStyle.Animation.standard) {
+                waterlineEngaged = false
+                waterlineSteps = 0
+                waterlineDragOffset = 0
+            }
+        }
+        .onChange(of: cardGestureActive) { _, active in
+            guard !active, draggingCardId != nil || cardDragOffset != 0 else { return }
+            withAnimation(reduceMotion ? nil : OPSStyle.Animation.standard) {
+                draggingCardId = nil
+                cardDragOffset = 0
+            }
+        }
     }
 
     private var emptyRankedHint: some View {
@@ -155,12 +177,7 @@ struct PriorityQueueView: View {
     // MARK: Waterline handle
 
     private var waterlineHandle: some View {
-        ZStack {
-            Rectangle()
-                .fill(waterlineEngaged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder)
-                .frame(height: waterlineEngaged ? 2 : 1)
-                .frame(maxWidth: .infinity)
-
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Image(systemName: "line.3.horizontal")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -171,15 +188,21 @@ struct PriorityQueueView: View {
                 Spacer()
             }
             .padding(.horizontal, 14)
+
+            // Hairline sits BELOW the label, spanning the full width.
+            Rectangle()
+                .fill(waterlineEngaged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder)
+                .frame(height: waterlineEngaged ? 2 : 1)
+                .frame(maxWidth: .infinity)
         }
-        .frame(height: waterlineHandleHeight)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
         .contentShape(Rectangle())
         .offset(y: waterlineEngaged ? waterlineDragOffset : 0)
-        .scaleEffect(waterlineEngaged ? 1.02 : 1.0)
+        .scaleEffect(waterlineEngaged ? 1.02 : 1.0, anchor: .center)
         .shadow(color: Color.black.opacity(waterlineEngaged ? 0.3 : 0),
                 radius: waterlineEngaged ? 10 : 0, x: 0, y: waterlineEngaged ? 4 : 0)
-        .zIndex(20)
+        .zIndex(waterlineEngaged ? 20 : 0)
         .gesture(waterlineGesture)
     }
 
@@ -273,11 +296,14 @@ struct PriorityQueueView: View {
     private var waterlineGesture: some Gesture {
         LongPressGesture(minimumDuration: 0.35)
             .sequenced(before: DragGesture(minimumDistance: 0))
+            .updating($waterlineGestureActive) { _, state, _ in state = true }
             .onChanged { value in
                 switch value {
                 case .first(true):
                     if !waterlineEngaged {
                         waterlineEngaged = true
+                        waterlineSteps = 0          // fresh start, regardless of how the last drag ended
+                        waterlineDragOffset = 0
                         impactFeedback.impactOccurred()
                         selectionFeedback.prepare()
                         impactFeedback.prepare()
@@ -313,11 +339,13 @@ struct PriorityQueueView: View {
     private func cardDragGesture(project: Project, combinedIndex i: Int) -> some Gesture {
         LongPressGesture(minimumDuration: 0.4)
             .sequenced(before: DragGesture(minimumDistance: 0))
+            .updating($cardGestureActive) { _, state, _ in state = true }
             .onChanged { value in
                 switch value {
                 case .first(true):
                     if draggingCardId == nil {
                         draggingCardId = project.id
+                        cardDragOffset = 0          // fresh start, regardless of how the last drag ended
                         impactFeedback.impactOccurred()
                         selectionFeedback.prepare()
                     }

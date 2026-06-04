@@ -171,7 +171,13 @@ struct PriorityQueueView: View {
                        value: cardOffsetY(combinedIndex: i, project: project))
             .animation(reduceMotion ? nil : OPSStyle.Animation.standard,
                        value: cardOpacity(combinedIndex: i, project: project))
-            .gesture(cardDragGesture(project: project, combinedIndex: i))
+            // Drag only from the trailing grip zone — the rest of the card scrolls.
+            .overlay(alignment: .trailing) {
+                Color.clear
+                    .frame(width: 56)
+                    .contentShape(Rectangle())
+                    .gesture(cardDragGesture(project: project, combinedIndex: i))
+            }
     }
 
     // MARK: Waterline handle
@@ -198,7 +204,8 @@ struct PriorityQueueView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 8)
         .contentShape(Rectangle())
-        .offset(y: waterlineEngaged ? waterlineDragOffset : 0)
+        .offset(y: waterlineHandleOffset)
+        .animation(waterlineEngaged || reduceMotion ? nil : OPSStyle.Animation.standard, value: waterlineHandleOffset)
         .scaleEffect(waterlineEngaged ? 1.02 : 1.0, anchor: .center)
         .shadow(color: Color.black.opacity(waterlineEngaged ? 0.3 : 0),
                 radius: waterlineEngaged ? 10 : 0, x: 0, y: waterlineEngaged ? 4 : 0)
@@ -287,6 +294,17 @@ struct PriorityQueueView: View {
         return 0
     }
 
+    /// The waterline handle follows the finger while it is dragged; while a CARD is
+    /// dragged it shifts with the boundary cards (its committed position is index
+    /// `committedRanked`) so a crossing card never slides over a static handle.
+    private var waterlineHandleOffset: CGFloat {
+        if waterlineEngaged { return waterlineDragOffset }
+        if let draggingId = draggingCardId, let dIdx = combinedIndex(of: draggingId) {
+            return cardReorderOffset(thisIndex: committedRanked, draggingIndex: dIdx)
+        }
+        return 0
+    }
+
     // MARK: - Gestures
 
     /// Long-press the waterline, then drag up/down. `waterlineDragOffset` follows the
@@ -337,23 +355,18 @@ struct PriorityQueueView: View {
     /// Long-press a card to lift it, then drag. Within ranked → reorder; across the
     /// waterline → rank / unrank (replaces the old swipe-to-rank).
     private func cardDragGesture(project: Project, combinedIndex i: Int) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.4)
-            .sequenced(before: DragGesture(minimumDistance: 0))
+        // Immediate drag — it lives only on the trailing grip zone (see `card`), so
+        // the rest of the card body stays free for the ScrollView to pan.
+        DragGesture(minimumDistance: 6)
             .updating($cardGestureActive) { _, state, _ in state = true }
             .onChanged { value in
-                switch value {
-                case .first(true):
-                    if draggingCardId == nil {
-                        draggingCardId = project.id
-                        cardDragOffset = 0          // fresh start, regardless of how the last drag ended
-                        impactFeedback.impactOccurred()
-                        selectionFeedback.prepare()
-                    }
-                case .second(true, let drag?):
-                    cardDragOffset = drag.translation.height
-                default:
-                    break
+                if draggingCardId == nil {
+                    draggingCardId = project.id
+                    cardDragOffset = 0          // fresh start, regardless of how the last drag ended
+                    impactFeedback.impactOccurred()
+                    selectionFeedback.prepare()
                 }
+                cardDragOffset = value.translation.height
             }
             .onEnded { _ in
                 commitCardDrag(project: project, fromIndex: i)

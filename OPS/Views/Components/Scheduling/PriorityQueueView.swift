@@ -92,7 +92,10 @@ struct PriorityQueueView: View {
                         .listRowBackground(Color.clear)
                 } else {
                     ForEach(Array(displayRanked.enumerated()), id: \.element.id) { idx, project in
-                        PriorityQueueRow(project: project, rankNumber: idx + 1)
+                        PriorityQueueRow(project: project,
+                                         rankNumber: idx + 1,
+                                         pending: pendingState(combinedIndex: idx),
+                                         isWaterline: isWaterlineRow(combinedIndex: idx))
                             .listRowBackground(Color.clear)
                     }
                     .onMove { from, to in
@@ -106,8 +109,12 @@ struct PriorityQueueView: View {
             }
 
             Section {
-                ForEach(displayUnranked, id: \.id) { project in
-                    PriorityQueueRow(project: project, rankNumber: nil)
+                ForEach(Array(displayUnranked.enumerated()), id: \.element.id) { localIdx, project in
+                    let combinedIdx = vm.ranked.count + localIdx
+                    PriorityQueueRow(project: project,
+                                     rankNumber: nil,
+                                     pending: pendingState(combinedIndex: combinedIdx),
+                                     isWaterline: isWaterlineRow(combinedIndex: combinedIdx))
                         .listRowBackground(Color.clear)
                         .swipeActions(edge: .leading) {
                             Button("Rank") { vm.rank(projectId: project.id, at: vm.ranked.count) }
@@ -133,6 +140,8 @@ struct PriorityQueueView: View {
         .scrollContentBackground(.hidden)
         .coordinateSpace(.named(Self.waterlineSpace))
         .animation(reduceMotion ? Optional<Animation>.none : OPSStyle.Animation.standard, value: waterlineSteps)
+        .animation(reduceMotion ? Optional<Animation>.none : OPSStyle.Animation.standard, value: waterlineEngaged)
+        .animation(reduceMotion ? Optional<Animation>.none : OPSStyle.Animation.standard, value: vm.ranked.count)
     }
 
     private var runBar: some View {
@@ -162,28 +171,51 @@ struct PriorityQueueView: View {
         return "UNRANKED"
     }
 
-    // MARK: - Live waterline preview
-    // While the UNRANKED handle is being dragged, the ranked/unranked split is
-    // computed from a live preview so rows visibly reflow across the boundary
-    // as the finger passes each one. Committed on release via setWaterline.
+    // MARK: - Waterline target (non-reflowing preview)
+    // The rows stay in COMMITTED order while the UNRANKED handle is dragged — they
+    // do NOT reflow. Reflowing mid-drag slid the sticky header (the drag target),
+    // which shifted the finger→row mapping and made the list oscillate. Instead the
+    // target boundary is painted in place (accent fill + waterline) and the reflow
+    // is committed once, on release, via setWaterline.
 
     private var combinedProjects: [Project] { vm.ranked + vm.unranked }
 
-    private var previewRankedCount: Int {
+    /// Where the waterline will land = committed ranked count shifted by the drag.
+    private var targetRankedCount: Int {
         let base = vm.ranked.count + (waterlineEngaged ? waterlineSteps : 0)
         return min(max(base, 0), combinedProjects.count)
     }
 
-    private var displayRanked: [Project] { Array(combinedProjects.prefix(previewRankedCount)) }
-    private var displayUnranked: [Project] { Array(combinedProjects.suffix(combinedProjects.count - previewRankedCount)) }
+    // Frozen while dragging: the rows never reflow until commit.
+    private var displayRanked: [Project] { vm.ranked }
+    private var displayUnranked: [Project] { vm.unranked }
 
-    /// Long-press to engage, then drag up/down. The finger's ABSOLUTE position is
-    /// read in a fixed coordinate space (`waterlineSpace`) — never relative to the
-    /// UNRANKED header, which itself slides as rows reflow across the boundary.
-    /// Measuring against that moving header was the source of the oscillation: each
-    /// reflow shifted the local translation by a full row and flipped the step back.
-    /// Each `rowHeight` of true travel flips one row; a deadband (`steppedWaterline`)
-    /// keeps the boundary from chattering when the finger hovers on a row midpoint.
+    /// Pending crossing state for the row at `combinedIndex` (ranked first, then
+    /// unranked). Rows that will flip side are accented (→ ranked) or dimmed
+    /// (→ unranked) so the waterline reads as moving between rows without reflow.
+    private func pendingState(combinedIndex i: Int) -> PriorityQueueRow.Pending {
+        guard waterlineEngaged else { return .none }
+        let committedRanked = vm.ranked.count
+        let willBeRanked = i < targetRankedCount
+        let isRanked = i < committedRanked
+        if isRanked && !willBeRanked { return .willUnrank }
+        if !isRanked && willBeRanked { return .willRank }
+        return .none
+    }
+
+    /// The boundary row — the first row that will be UNRANKED after commit — draws
+    /// the waterline on its top edge. Hidden when everything ends up ranked.
+    private func isWaterlineRow(combinedIndex i: Int) -> Bool {
+        waterlineEngaged && i == targetRankedCount && i < combinedProjects.count
+    }
+
+    /// Long-press to engage, then drag up/down. The rows DON'T reflow while dragging
+    /// (see `displayRanked`/`displayUnranked`), so the UNRANKED header — the drag
+    /// target — stays put and can't feed its own movement back into the measurement.
+    /// That frozen layout, not the coordinate space, is what kills the oscillation;
+    /// reading the finger's absolute position in `waterlineSpace` is belt-and-braces.
+    /// Each `rowHeight` of travel flips one row; a deadband (`steppedWaterline`) keeps
+    /// the boundary from chattering when the finger hovers on a row midpoint.
     /// Drag DOWN (positive) = more ranked; UP = fewer.
     private var waterlineGesture: some Gesture {
         LongPressGesture(minimumDuration: 0.35)
@@ -215,7 +247,7 @@ struct PriorityQueueView: View {
                 }
             }
             .onEnded { _ in
-                let newCount = previewRankedCount
+                let newCount = targetRankedCount
                 if newCount != vm.ranked.count {
                     impactFeedback.impactOccurred()            // medium on commit
                     vm.setWaterline(rankedCount: newCount)

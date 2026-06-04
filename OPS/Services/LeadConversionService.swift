@@ -30,7 +30,6 @@
 //
 
 import Foundation
-import SwiftData
 import Supabase
 
 @MainActor
@@ -47,42 +46,6 @@ final class LeadConversionService {
         self.opportunityRepo = OpportunityRepository(companyId: companyId)
         self.projectRepo = ProjectRepository(companyId: companyId)
         self.estimateRepo = EstimateRepository(companyId: companyId)
-    }
-
-    // MARK: - SwiftData lookups (pre-flight UI states)
-
-    /// Returns the locally-cached Project that already back-links to `lead`, if any.
-    /// Used by `ConvertToProjectSheet` to render the DUPLICATE-EXISTS state instead
-    /// of the form. Server-side the RPC is idempotent — a re-conversion that races
-    /// past this check will return the same existing project id rather than create
-    /// a second one.
-    func existingProject(for lead: Opportunity, in context: ModelContext) -> Project? {
-        let leadId = lead.id
-        var descriptor = FetchDescriptor<Project>(
-            predicate: #Predicate<Project> { project in
-                project.opportunityId == leadId && project.deletedAt == nil
-            }
-        )
-        descriptor.fetchLimit = 1
-        return (try? context.fetch(descriptor))?.first
-    }
-
-    /// Returns OTHER projects under the same client (excluding any project that
-    /// back-links to this lead). Drives the CLIENT-HAS-OTHERS warning banner so
-    /// the operator sees they're about to create a second project for an existing
-    /// client. Returns an empty array if the lead has no client linked yet.
-    func clientProjectsSummary(for lead: Opportunity, in context: ModelContext) -> [Project] {
-        guard let clientId = lead.clientId, !clientId.isEmpty else { return [] }
-        let leadId = lead.id
-        let descriptor = FetchDescriptor<Project>(
-            predicate: #Predicate<Project> { project in
-                project.clientId == clientId
-                    && project.deletedAt == nil
-                    && project.opportunityId != leadId
-            },
-            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
-        )
-        return (try? context.fetch(descriptor)) ?? []
     }
 
     // MARK: - Network fetches
@@ -132,7 +95,128 @@ final class LeadConversionService {
             .value
     }
 
-    // MARK: - Convert transaction (RPC-backed)
+    // MARK: - Server preflight (read-only)
+
+    /// Read-only conversion preflight. Wraps the `get_conversion_preflight`
+    /// Postgres RPC (won-conversion dedup + auto-naming, live on prod) which is
+    /// the SERVER source of truth for the convert sheet's render state:
+    ///
+    ///   - `existingLinkedProject`  this opportunity already converted → the
+    ///                              sheet renders DUPLICATE-EXISTS.
+    ///   - `duplicateCandidates`    high/medium-confidence likely-the-same
+    ///                              projects (address/title heuristics).
+    ///   - `otherClientProjects`    other live projects under the same client.
+    ///   - `suggestedName`          `derive_project_name(address, client)` base
+    ///                              preview (no `#N` dedup suffix).
+    ///
+    /// Replaces the previous LOCAL SwiftData duplicate/other-projects checks so
+    /// detection matches what the unified convert RPC will actually do.
+    func getConversionPreflight(for lead: Opportunity) async throws -> ConversionPreflight {
+        struct Params: Encodable {
+            let p_opportunity_id: String
+            let p_company_id: String
+        }
+        do {
+            return try await client
+                .rpc("get_conversion_preflight", params: Params(
+                    p_opportunity_id: lead.id,
+                    p_company_id: companyId
+                ))
+                .execute()
+                .value
+        } catch {
+            throw Self.mapRPCError(error)
+        }
+    }
+
+    // MARK: - Unified convert transaction (RPC-backed)
+
+    /// THE convert transaction. Calls the unified `convert_opportunity_to_project`
+    /// Postgres RPC directly (won-conversion superset, live on prod) — NOT the
+    /// legacy `convert_lead_to_project` shim. The RPC runs the entire conversion
+    /// (project insert, estimate relink, task materialization, site-visit photo
+    /// attach, won transition + stage_transitions row, disposition audit) in one
+    /// transaction and is idempotent: a row that already converted returns its
+    /// existing `project_id` with `alreadyConverted = true` rather than creating
+    /// a second project.
+    ///
+    /// Auto-naming: `titleOverride == nil` ⇒ the project is AUTO-named — the RPC
+    /// sets `title_is_auto = true` and the `projects_autoname` BEFORE trigger
+    /// derives the name from the opportunity address/client. A non-nil
+    /// `titleOverride` is a hand-set name (`title_is_auto = false`).
+    ///
+    /// NOTE: the RPC reads `address`/`latitude`/`longitude` from the opportunity
+    /// row (it has no address param). Callers who let the operator edit the
+    /// address MUST persist it to the opportunity BEFORE calling this, or the
+    /// edit is dropped from both the project and the derived name.
+    ///
+    /// The post-RPC fetch that hydrates the returned Project is best-effort: the
+    /// conversion already committed, so a fetch failure surfaces as
+    /// `projectCreatedButFetchFailed` (carrying the project id) rather than a
+    /// hard error — mirrors `convertLeadToProject`.
+    func convertOpportunityToProject(
+        lead: Opportunity,
+        actualValue: Double?,
+        titleOverride: String?,
+        notes: String?,
+        userId: String?
+    ) async throws -> Project {
+        struct Params: Encodable {
+            let p_company_id: String
+            let p_opportunity_id: String
+            let p_actual_value: Double?
+            let p_decided_by: String?
+            let p_notes: String?
+            let p_title_override: String?
+            let p_source_path: String
+            let p_win_opportunity: Bool
+        }
+
+        let params = Params(
+            p_company_id: companyId,
+            p_opportunity_id: lead.id,
+            p_actual_value: actualValue,
+            p_decided_by: userId,
+            p_notes: notes,
+            p_title_override: titleOverride,   // nil ⇒ auto-named
+            p_source_path: "ios",
+            p_win_opportunity: true
+        )
+
+        let result: ConvertOpportunityResult
+        do {
+            result = try await client
+                .rpc("convert_opportunity_to_project", params: params)
+                .execute()
+                .value
+        } catch {
+            throw Self.mapRPCError(error)
+        }
+
+        guard let newProjectId = result.projectId else {
+            // Both the create and already-converted paths return a project_id;
+            // a nil here means a guard fired (e.g. snapshot_mismatch) without a
+            // resolvable project. Surface it as opportunityNotFound so the sheet
+            // shows an actionable error instead of crashing on the fetch.
+            throw LeadConversionError.opportunityNotFound
+        }
+
+        // Fetch the canonical row and map to SwiftData model. The conversion
+        // already committed, so any failure here is post-success.
+        let dto: SupabaseProjectDTO
+        do {
+            dto = try await projectRepo.fetchOne(newProjectId)
+        } catch {
+            throw LeadConversionError.projectCreatedButFetchFailed(
+                projectId: newProjectId,
+                underlying: error
+            )
+        }
+
+        return dto.toModel()
+    }
+
+    // MARK: - Legacy convert transaction (RPC-backed)
 
     /// THE convert transaction. Calls the `convert_lead_to_project` Postgres
     /// RPC, then fetches the freshly-created project row to return as a Project
@@ -273,5 +357,110 @@ enum LeadConversionError: LocalizedError {
         case .projectCreatedButFetchFailed:
             return "Project created. Refresh to see it."
         }
+    }
+}
+
+// MARK: - Server preflight payload
+
+/// Typed mirror of the `get_conversion_preflight` jsonb result. All fields are
+/// defensively optional — the RPC always returns the keys, but decoding stays
+/// resilient if the contract gains/loses a field during a phased rollout.
+struct ConversionPreflight: Decodable {
+    /// Non-nil ⇒ this opportunity already converted to the named project.
+    let existingLinkedProject: PreflightLinkedProject?
+    /// Likely-the-same projects (address/title heuristics), high confidence first.
+    let duplicateCandidates: [PreflightCandidate]
+    /// Other live projects under the same client.
+    let otherClientProjects: [PreflightClientProject]
+    /// `derive_project_name(address, client)` base preview (no `#N` suffix).
+    let suggestedName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case existingLinkedProject = "existing_linked_project"
+        case duplicateCandidates   = "duplicate_candidates"
+        case otherClientProjects   = "other_client_projects"
+        case suggestedName         = "suggested_name"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        existingLinkedProject = try c.decodeIfPresent(PreflightLinkedProject.self, forKey: .existingLinkedProject)
+        duplicateCandidates = try c.decodeIfPresent([PreflightCandidate].self, forKey: .duplicateCandidates) ?? []
+        otherClientProjects = try c.decodeIfPresent([PreflightClientProject].self, forKey: .otherClientProjects) ?? []
+        suggestedName = try c.decodeIfPresent(String.self, forKey: .suggestedName)
+    }
+}
+
+/// The project this opportunity already converted to (DUPLICATE-EXISTS state).
+struct PreflightLinkedProject: Decodable {
+    let id: String
+    let title: String?
+}
+
+/// A likely-duplicate project surfaced by the server heuristics.
+struct PreflightCandidate: Decodable {
+    let projectId: String
+    let title: String?
+    let address: String?
+    /// "high" | "medium".
+    let confidence: String?
+    let signals: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case projectId = "project_id"
+        case title, address, confidence, signals
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        projectId = try c.decode(String.self, forKey: .projectId)
+        title = try c.decodeIfPresent(String.self, forKey: .title)
+        address = try c.decodeIfPresent(String.self, forKey: .address)
+        confidence = try c.decodeIfPresent(String.self, forKey: .confidence)
+        signals = try c.decodeIfPresent([String].self, forKey: .signals) ?? []
+    }
+}
+
+/// Another live project under the same client.
+struct PreflightClientProject: Decodable {
+    let projectId: String
+    let title: String?
+    let address: String?
+    let status: String?
+
+    enum CodingKeys: String, CodingKey {
+        case projectId = "project_id"
+        case title, address, status
+    }
+}
+
+// MARK: - Unified convert result payload
+
+/// Typed mirror of the `convert_opportunity_to_project` jsonb result. The count
+/// fields are absent on the guard/already-converted branches, so all are
+/// optional except the booleans that the create branch always emits.
+struct ConvertOpportunityResult: Decodable {
+    let converted: Bool?
+    let alreadyConverted: Bool?
+    let projectId: String?
+    let dispositionId: String?
+    let relinkedEstimates: Int?
+    let materializedTasks: Int?
+    let attachedPhotos: Int?
+    let linkedExisting: Bool?
+    let won: Bool?
+    let guardReason: String?
+
+    enum CodingKeys: String, CodingKey {
+        case converted
+        case alreadyConverted   = "already_converted"
+        case projectId          = "project_id"
+        case dispositionId      = "disposition_id"
+        case relinkedEstimates  = "relinked_estimates"
+        case materializedTasks  = "materialized_tasks"
+        case attachedPhotos     = "attached_photos"
+        case linkedExisting     = "linked_existing"
+        case won
+        case guardReason        = "guard_reason"
     }
 }

@@ -213,6 +213,11 @@ struct SupabaseProjectDTO: Codable, Identifiable {
     let clientId: String?
     let opportunityId: String?
     let title: String
+    /// Server marker — true when `title` was machine-derived from address/client
+    /// by the `projects_autoname` trigger (won-conversion dedup + auto-naming).
+    /// A hand-set name stamps this false. Nullable here so projects synced down
+    /// before the column existed still decode (defaults to false in `toModel`).
+    var titleIsAuto: Bool? = nil
     let status: String
     let address: String?
     let latitude: Double?
@@ -243,6 +248,7 @@ struct SupabaseProjectDTO: Codable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case id, title, status, address, latitude, longitude, notes, description, duration
+        case titleIsAuto    = "title_is_auto"
         case bubbleId       = "bubble_id"
         case companyId      = "company_id"
         case clientId       = "client_id"

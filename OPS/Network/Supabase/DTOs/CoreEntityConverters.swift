@@ -212,6 +212,7 @@ extension SupabaseProjectDTO {
         project.companyId = companyId
         project.clientId = clientId
         project.opportunityId = opportunityId
+        project.titleIsAuto = titleIsAuto ?? false
         project.address = address
         project.latitude = latitude
         project.longitude = longitude

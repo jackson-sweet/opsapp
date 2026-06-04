@@ -5543,6 +5543,8 @@ class DataController: ObservableObject {
             switch key {
             case "title":
                 if case .string(let v) = value { project.title = v }
+            case "title_is_auto":
+                if case .bool(let v) = value { project.titleIsAuto = v }
             case "status":
                 if case .string(let v) = value { project.status = Status(rawValue: v) ?? project.status }
             case "address":
@@ -5700,6 +5702,7 @@ class DataController: ObservableObject {
         ]
         if let v = dto.clientId { changedFields["client_id"] = v }
         if let v = dto.opportunityId { changedFields["opportunity_id"] = v }
+        if let v = dto.titleIsAuto { changedFields["title_is_auto"] = v }
         if let v = dto.address { changedFields["address"] = v }
         if let v = dto.latitude { changedFields["latitude"] = v }
         if let v = dto.longitude { changedFields["longitude"] = v }

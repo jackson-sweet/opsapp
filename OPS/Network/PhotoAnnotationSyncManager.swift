@@ -79,6 +79,22 @@ class PhotoAnnotationSyncManager {
         // Render drawing to transparent PNG
         let pngData = renderDrawingToPNG(drawing: drawing, size: imageSize)
 
+        // Cleared to empty. `renderDrawingToPNG` returns nil when the drawing
+        // has no strokes, so falling through to the upload path would keep the
+        // OLD overlay URL on an existing row (the markup stays visible — the
+        // reported bug) or write a junk empty row on a new one. Treat an empty
+        // save as "remove the markup".
+        if pngData == nil {
+            return try await applyEmptyDrawingClear(
+                existingAnnotationId: existingAnnotationId,
+                photoURL: photoURL,
+                projectId: projectId,
+                companyId: companyId,
+                authorId: authorId,
+                modelContext: modelContext
+            )
+        }
+
         // Try to upload to S3
         var annotationURL: String? = nil
         if let pngData = pngData {
@@ -207,6 +223,116 @@ class PhotoAnnotationSyncManager {
         }
 
         return model
+    }
+
+    // MARK: - Cleared Drawing
+
+    /// Handle a save whose drawing is empty (the user tapped CLEAR, then DONE).
+    /// Reverts the photo to its raw original and, for a pure PencilKit
+    /// annotation, soft-deletes the row so the markup disappears on teammates'
+    /// devices too. A dimensioned capture is preserved (its markup is the
+    /// dimensions, shown via the rendered deliverable — not the source overlay).
+    private func applyEmptyDrawingClear(
+        existingAnnotationId: String?,
+        photoURL: String,
+        projectId: String,
+        companyId: String,
+        authorId: String,
+        modelContext: ModelContext
+    ) async throws -> PhotoAnnotation {
+        let existing: PhotoAnnotation? = existingAnnotationId.flatMap { id in
+            let descriptor = FetchDescriptor<PhotoAnnotation>(predicate: #Predicate { $0.id == id })
+            return try? modelContext.fetch(descriptor).first
+        }
+
+        let action = AnnotationClearPlanner.plan(
+            existingAnnotationId: existingAnnotationId,
+            hasDimensions: existing?.dimensionsData != nil
+        )
+
+        switch action {
+        case .ignore:
+            // Nothing was ever saved — don't create an empty row. Return a
+            // transient, un-persisted placeholder; callers ignore the result.
+            return PhotoAnnotation(
+                projectId: projectId,
+                companyId: companyId,
+                photoURL: photoURL,
+                authorId: authorId
+            )
+
+        case .preserveDimensioned:
+            // Keep the dimensioned row + its dimensions intact.
+            return existing ?? PhotoAnnotation(
+                projectId: projectId,
+                companyId: companyId,
+                photoURL: photoURL,
+                authorId: authorId
+            )
+
+        case .softDelete:
+            guard let existingId = existingAnnotationId else {
+                return PhotoAnnotation(projectId: projectId, companyId: companyId, photoURL: photoURL, authorId: authorId)
+            }
+            let now = Date()
+            if let existing {
+                existing.deletedAt = now
+                existing.updatedAt = now
+                existing.localDrawingData = nil
+                existing.needsSync = ProjectPhotoAnnotationDeletePlanner.shouldMarkNeedsSyncAfterLocalDelete(
+                    annotationID: existingId
+                )
+                try? modelContext.save()
+            }
+
+            // Drop the local overlay cache + durable composite, and revert the
+            // in-memory display to the raw original so mounted thumbnails/viewers
+            // listening for .annotationsComposited shed the markup immediately.
+            _ = ImageFileManager.shared.deleteImage(localID: "overlay_\(existingId)")
+            ImageFileManager.shared.deleteCompositedImage(forURL: photoURL)
+            let cacheKey = photoURL.hasPrefix("//") ? "https:" + photoURL : photoURL
+            if let raw = ImageFileManager.shared.loadImage(localID: cacheKey) {
+                ImageCache.shared.set(raw, forKey: cacheKey)
+            } else {
+                ImageCache.shared.remove(forKey: cacheKey)
+            }
+            NotificationCenter.default.post(name: .annotationsComposited, object: nil)
+
+            // Best-effort remote soft-delete. Local-only ids never reached the
+            // server; the needsSync sweeper retries the rest if this fails.
+            if !ProjectPhotoAnnotationDeletePlanner.isLocalOnlyAnnotationID(existingId) {
+                do {
+                    try await PhotoAnnotationRepository(companyId: companyId).softDelete(existingId)
+                    if let existing {
+                        existing.needsSync = false
+                        existing.lastSyncedAt = Date()
+                        try? modelContext.save()
+                    }
+                } catch {
+                    await AutoBugReporter.shared.reportIfPermanent(
+                        error,
+                        screen: "PhotoAnnotationSyncManager.applyEmptyDrawingClear",
+                        suspectedFile: "PhotoAnnotationSyncManager.swift",
+                        summary: "Cleared-annotation soft-delete failed for \(existingId): \(error.localizedDescription)",
+                        metadata: [
+                            "annotation_id": existingId,
+                            "project_id": projectId,
+                            "company_id": companyId
+                        ]
+                    )
+                    DebugLogger.shared.log(
+                        "Cleared-annotation soft-delete failed for \(existingId): \(error)",
+                        level: .warning,
+                        category: "PhotoAnnotationSyncManager"
+                    )
+                }
+            }
+
+            if let existing { return existing }
+            let placeholder = PhotoAnnotation(id: existingId, projectId: projectId, companyId: companyId, photoURL: photoURL, authorId: authorId)
+            placeholder.deletedAt = now
+            return placeholder
+        }
     }
 
     // MARK: - Render Drawing
@@ -582,5 +708,26 @@ enum AnnotationSyncError: Error, LocalizedError {
         case .uploadFailed: return "Failed to upload annotation"
         case .invalidURL: return "Invalid upload URL"
         }
+    }
+}
+
+// MARK: - Cleared-drawing decision
+
+/// Pure decision for what a cleared (empty) drawing save should do. Kept
+/// separate from `saveAnnotation` so the branch logic is unit-testable without
+/// SwiftData or the network.
+enum AnnotationClearPlanner {
+    enum Action: Equatable {
+        /// No existing annotation — nothing to remove, don't create an empty row.
+        case ignore
+        /// Dimensioned capture — preserve the row + its dimensions.
+        case preserveDimensioned
+        /// Pure PencilKit annotation — soft-delete the row.
+        case softDelete
+    }
+
+    static func plan(existingAnnotationId: String?, hasDimensions: Bool) -> Action {
+        guard existingAnnotationId != nil else { return .ignore }
+        return hasDimensions ? .preserveDimensioned : .softDelete
     }
 }

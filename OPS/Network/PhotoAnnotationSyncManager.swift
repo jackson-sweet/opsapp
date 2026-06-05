@@ -291,7 +291,9 @@ class PhotoAnnotationSyncManager {
     /// Composite all annotations for a project into the in-memory image cache.
     /// Uses locally-cached overlay PNGs when available (instant), falls back to download.
     /// Call from ProjectDetailsView.onAppear so gallery thumbnails show annotations,
-    /// and from PhotoCommentViewer.onAppear for the full-screen viewer.
+    /// from ProjectPhotosGrid.task so the full-screen grid re-composites after any
+    /// ImageCache eviction, and from PhotoCommentViewer.onAppear for the viewer.
+    /// Posts `.annotationsComposited` once per composited photo (see the loop).
     func preCompositeAnnotations(projectId: String, modelContext: ModelContext) async {
         let descriptor = FetchDescriptor<PhotoAnnotation>(
             predicate: #Predicate {

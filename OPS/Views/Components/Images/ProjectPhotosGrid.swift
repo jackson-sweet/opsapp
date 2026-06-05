@@ -152,7 +152,19 @@ struct ProjectPhotosGrid: View {
             }
             .navigationBarTitle("Project Photos", displayMode: .inline)
             .navigationBarItems(trailing: Button("Done") { dismiss() })
-            .task(id: project.id) { await refreshDimensionedURLs() }
+            .task(id: project.id) {
+                await refreshDimensionedURLs()
+                // Re-composite on the grid's own appearance. ProjectDetailsView
+                // pre-composites when the project opens, but full-resolution
+                // composites can be evicted from ImageCache before the user
+                // drills into this full-screen grid. Compositing again here
+                // re-posts .annotationsComposited per photo while these
+                // thumbnails are mounted, so markup shows without a tap-through.
+                await PhotoAnnotationSyncManager.shared.preCompositeAnnotations(
+                    projectId: project.id,
+                    modelContext: modelContext
+                )
+            }
             .onReceive(NotificationCenter.default.publisher(for: .annotationsComposited)) { _ in
                 Task { await refreshDimensionedURLs() }
             }

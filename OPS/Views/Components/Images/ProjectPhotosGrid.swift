@@ -332,11 +332,16 @@ struct PhotoThumbnail: View {
         .id(url)
     }
 
-    /// Re-read the image from the in-memory cache (may now include annotation overlay).
+    /// Re-read the image after a composite pass. In-memory first; then the
+    /// durable on-disk composite, so a thumbnail whose cache entry was already
+    /// evicted still swaps in the markup when `.annotationsComposited` fires.
     private func reloadFromCache() {
         let cacheKey = url.hasPrefix("//") ? "https:" + url : url
         if let updated = ImageCache.shared.get(forKey: cacheKey) {
             image = updated
+        } else if let composited = ImageFileManager.shared.loadCompositedImage(forURL: url) {
+            image = composited
+            ImageCache.shared.set(composited, forKey: cacheKey)
         }
     }
 
@@ -371,6 +376,20 @@ struct PhotoThumbnail: View {
             DispatchQueue.main.async {
                 self.isLoading = false
                 self.image = cachedImage
+            }
+            return
+        }
+
+        // Durable annotated composite (markup flattened onto the photo), checked
+        // BEFORE the raw original. The in-memory cache holds barely one full-
+        // resolution composite, so a thumbnail scrolled into view long after the
+        // .annotationsComposited posts fired would otherwise resolve the raw and
+        // lose its marks. The on-disk composite makes markup mount-time durable.
+        if let composited = ImageFileManager.shared.loadCompositedImage(forURL: url) {
+            DispatchQueue.main.async {
+                self.isLoading = false
+                self.image = composited
+                ImageCache.shared.set(composited, forKey: cacheKey)
             }
             return
         }
@@ -656,6 +675,17 @@ struct SinglePhotoView: View {
             return
         }
 
+        // Durable annotated composite before the raw original — keeps markup
+        // visible in the full-screen viewer after NSCache eviction.
+        if let composited = ImageFileManager.shared.loadCompositedImage(forURL: url) {
+            DispatchQueue.main.async {
+                self.isLoading = false
+                self.image = composited
+                ImageCache.shared.set(composited, forKey: cacheKey)
+            }
+            return
+        }
+
         // Then try to load from file system using ImageFileManager
         if let loadedImage = ImageFileManager.shared.loadImage(localID: url) {
             DispatchQueue.main.async {
@@ -875,6 +905,15 @@ extension ProjectPhotosGrid {
             annotation.needsSync = ProjectPhotoAnnotationDeletePlanner.shouldMarkNeedsSyncAfterLocalDelete(
                 annotationID: annotation.id
             )
+
+            // Invalidate the durable markup composite immediately so the disk
+            // bytes are reclaimed now and nothing serves the deleted markup
+            // before the next preComposite reconciliation pass runs.
+            ImageFileManager.shared.deleteCompositedImage(forURL: annotation.photoURL)
+            let cacheKey = annotation.photoURL.hasPrefix("//")
+                ? "https:" + annotation.photoURL
+                : annotation.photoURL
+            ImageCache.shared.remove(forKey: cacheKey)
         }
 
         let candidates = matches.map {

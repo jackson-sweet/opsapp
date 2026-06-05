@@ -140,6 +140,10 @@ class PhotoAnnotationSyncManager {
                 }
 
                 if annotationURL != nil {
+                    // Invalidate the now-stale durable composite so preComposite
+                    // regenerates it from the freshly-uploaded overlay rather
+                    // than serving the pre-edit markup from disk.
+                    ImageFileManager.shared.deleteCompositedImage(forURL: photoURL)
                     await preCompositeAnnotations(projectId: projectId, modelContext: modelContext)
                 }
 
@@ -167,6 +171,7 @@ class PhotoAnnotationSyncManager {
             }
 
             if annotationURL != nil {
+                ImageFileManager.shared.deleteCompositedImage(forURL: photoURL)
                 await preCompositeAnnotations(projectId: projectId, modelContext: modelContext)
             }
 
@@ -197,6 +202,7 @@ class PhotoAnnotationSyncManager {
         }
 
         if annotationURL != nil {
+            ImageFileManager.shared.deleteCompositedImage(forURL: photoURL)
             await preCompositeAnnotations(projectId: projectId, modelContext: modelContext)
         }
 
@@ -295,18 +301,45 @@ class PhotoAnnotationSyncManager {
     /// ImageCache eviction, and from PhotoCommentViewer.onAppear for the viewer.
     /// Posts `.annotationsComposited` once per composited photo (see the loop).
     func preCompositeAnnotations(projectId: String, modelContext: ModelContext) async {
-        let descriptor = FetchDescriptor<PhotoAnnotation>(
+        // Active markup annotations for this project (non-deleted).
+        let activeDescriptor = FetchDescriptor<PhotoAnnotation>(
             predicate: #Predicate {
                 $0.projectId == projectId && $0.deletedAt == nil
             }
         )
-        guard let annotations = try? modelContext.fetch(descriptor), !annotations.isEmpty else { return }
+        let annotations = (try? modelContext.fetch(activeDescriptor)) ?? []
+
+        // Cache keys that legitimately carry markup right now — used to spare a
+        // photo's composite during the deleted-row reconciliation below when the
+        // same photo also still has a live annotation.
+        var activeCompositeKeys = Set<String>()
 
         for annotation in annotations {
             guard let plan = PhotoAnnotationCompositePlan(
                 photoURL: annotation.photoURL,
                 annotationURL: annotation.annotationURL
             ) else { continue }
+            let cacheKey = plan.cacheKey
+            activeCompositeKeys.insert(cacheKey)
+
+            // Freshness short-circuit: a durable composite newer than the
+            // annotation's last change is still valid. Re-rendering a full-
+            // resolution composite is expensive (≈48 MB) and would thrash the
+            // budget evictor on every gallery open, so skip it — just make sure
+            // the in-memory display cache is warm and nudge any mounted
+            // thumbnail to re-read. Local edits delete the composite up front
+            // (see saveAnnotation) and remote edits bump `updatedAt`, so a stale
+            // composite never survives this check.
+            let lastChange = annotation.updatedAt ?? annotation.createdAt
+            if let compositeMTime = ImageFileManager.shared.compositedImageModificationDate(forURL: cacheKey),
+               compositeMTime >= lastChange {
+                if ImageCache.shared.get(forKey: cacheKey) == nil,
+                   let durable = ImageFileManager.shared.loadCompositedImage(forURL: cacheKey) {
+                    ImageCache.shared.set(durable, forKey: cacheKey)
+                }
+                NotificationCenter.default.post(name: .annotationsComposited, object: nil)
+                continue
+            }
 
             // Load the original, un-composited image. A remote device may
             // receive the annotation row before it has ever opened the source
@@ -338,7 +371,19 @@ class PhotoAnnotationSyncManager {
                 overlay.draw(in: CGRect(origin: .zero, size: originalSize))
             }
 
-            ImageCache.shared.set(composited, forKey: plan.cacheKey)
+            ImageCache.shared.set(composited, forKey: cacheKey)
+
+            // Persist the composite so ANY thumbnail can resolve markup the
+            // instant it mounts — independent of NSCache eviction or mount
+            // timing. This is the durability tier: the in-memory cache holds
+            // barely one full-resolution composite, so a thumbnail scrolled into
+            // view long after the post fired would otherwise fall back to the
+            // raw photo. JPEG (opaque, quality 0.9) keeps the file ~5-6× smaller
+            // than a lossless PNG of the same 12 MP frame, which matters because
+            // every composite counts against the photo storage budget.
+            if let jpeg = composited.jpegData(compressionQuality: 0.9) {
+                _ = ImageFileManager.shared.saveCompositedImage(jpeg, forURL: cacheKey)
+            }
 
             // Notify per photo, not once after the loop. Composites are full
             // source resolution (a 12MP photo ≈ 48 MB) and ImageCache is an
@@ -351,8 +396,64 @@ class PhotoAnnotationSyncManager {
             // been evicted, leaving thumbnails showing the raw photo.
             NotificationCenter.default.post(name: .annotationsComposited, object: nil)
         }
+
+        // Reconcile soft-deleted markup: drop durable composites for photos
+        // whose annotations are all deleted. Driven by SwiftData `deletedAt`, so
+        // it converges for every delete path — gallery long-press, sync merge,
+        // realtime — without hooking each one.
+        invalidateDeletedComposites(
+            projectId: projectId,
+            activeCompositeKeys: activeCompositeKeys,
+            modelContext: modelContext
+        )
     }
 
+    /// Remove durable composites for annotations that have been soft-deleted and
+    /// have no surviving markup sibling on the same photo. Reverts the in-memory
+    /// display to the raw original (when cached) so a mounted thumbnail listening
+    /// for `.annotationsComposited` drops the now-deleted markup instead of
+    /// keeping its stale captured copy.
+    private func invalidateDeletedComposites(
+        projectId: String,
+        activeCompositeKeys: Set<String>,
+        modelContext: ModelContext
+    ) {
+        let deletedDescriptor = FetchDescriptor<PhotoAnnotation>(
+            predicate: #Predicate {
+                $0.projectId == projectId && $0.deletedAt != nil
+            }
+        )
+        guard let deleted = try? modelContext.fetch(deletedDescriptor), !deleted.isEmpty else { return }
+
+        var invalidated = false
+        for annotation in deleted {
+            let cacheKey = annotation.photoURL.hasPrefix("//")
+                ? "https:" + annotation.photoURL
+                : annotation.photoURL
+            guard !activeCompositeKeys.contains(cacheKey) else { continue }
+            guard ImageFileManager.shared.compositedImageExists(forURL: cacheKey) else { continue }
+
+            _ = ImageFileManager.shared.deleteCompositedImage(forURL: cacheKey)
+            if let raw = ImageFileManager.shared.loadImage(localID: cacheKey) {
+                ImageCache.shared.set(raw, forKey: cacheKey)
+            } else {
+                ImageCache.shared.remove(forKey: cacheKey)
+            }
+            invalidated = true
+        }
+
+        if invalidated {
+            NotificationCenter.default.post(name: .annotationsComposited, object: nil)
+        }
+    }
+
+    /// Resolve the RAW, un-composited base for `plan`. Sources are raw-only: the
+    /// url-keyed disk original, else a fresh download saved under that same key.
+    /// The in-memory `ImageCache[cacheKey]` is deliberately NOT consulted — that
+    /// slot holds the flattened composite for display, and reusing it as a base
+    /// would draw the new overlay over already-composited pixels (doubled
+    /// markup). Durable composites make raw eviction (composite surviving) more
+    /// likely, so this raw-only guarantee matters.
     private func loadBaseImage(for plan: PhotoAnnotationCompositePlan) async -> UIImage? {
         for localID in plan.baseLocalIDs {
             if let image = ImageFileManager.shared.loadImage(localID: localID) {
@@ -360,16 +461,11 @@ class PhotoAnnotationSyncManager {
             }
         }
 
-        if let cached = ImageCache.shared.get(forKey: plan.cacheKey) {
-            return cached
-        }
-
         guard let baseURL = plan.baseRemoteURL,
               let (data, _) = try? await URLSession.shared.data(from: baseURL),
               let downloaded = UIImage(data: data) else { return nil }
 
         _ = ImageFileManager.shared.saveImage(data: data, localID: plan.cacheKey)
-        ImageCache.shared.set(downloaded, forKey: plan.cacheKey)
         return downloaded
     }
 

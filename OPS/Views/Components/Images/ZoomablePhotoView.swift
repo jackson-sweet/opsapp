@@ -56,6 +56,16 @@ struct ZoomablePhotoView: View {
             return
         }
 
+        // Durable annotated composite (markup flattened onto the photo), checked
+        // BEFORE the raw original so markup survives NSCache eviction and the
+        // viewer doesn't drop back to the unmarked photo on a fresh mount.
+        if let composited = ImageFileManager.shared.loadCompositedImage(forURL: url) {
+            image = composited
+            ImageCache.shared.set(composited, forKey: cacheKey)
+            isLoading = false
+            return
+        }
+
         // File system
         if let loaded = ImageFileManager.shared.loadImage(localID: url) ?? ImageFileManager.shared.loadImage(localID: cacheKey) {
             image = loaded

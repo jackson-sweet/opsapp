@@ -832,7 +832,10 @@ struct PhotoCommentViewer: View {
         let url = photos[currentIndex]
         let cacheKey = url.hasPrefix("//") ? "https:" + url : url
 
+        // Share what the user sees: prefer the durable annotated composite over
+        // the raw original so exported photos carry their markup.
         guard let image = ImageCache.shared.get(forKey: cacheKey)
+                ?? ImageFileManager.shared.loadCompositedImage(forURL: url)
                 ?? ImageFileManager.shared.loadImage(localID: url)
                 ?? ImageFileManager.shared.loadImage(localID: cacheKey) else { return }
 

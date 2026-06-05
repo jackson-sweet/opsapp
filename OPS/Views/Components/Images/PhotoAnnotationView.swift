@@ -93,9 +93,12 @@ struct PhotoAnnotationView: View {
     private func loadImage() async {
         guard loadedImage == nil, !loadFailed else { return }
         let cacheKey = photoURL.hasPrefix("//") ? "https:" + photoURL : photoURL
+        // Load the RAW original only (disk first, network below). The in-memory
+        // ImageCache[cacheKey] is intentionally not consulted — it holds the
+        // flattened composite for display, and drawing on top of it would bake
+        // the existing markup into the base, doubling it on the next save.
         if let cached = ImageFileManager.shared.loadImage(localID: photoURL)
-            ?? ImageFileManager.shared.loadImage(localID: cacheKey)
-            ?? ImageCache.shared.get(forKey: cacheKey) {
+            ?? ImageFileManager.shared.loadImage(localID: cacheKey) {
             loadedImage = cached
             return
         }

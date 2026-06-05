@@ -123,7 +123,14 @@ class PhotoDownloadManager: ObservableObject {
             activeDownloads[url] = 1.0
             let saved = ImageFileManager.shared.saveImage(data: data, localID: cacheKey)
             if saved {
-                if let image = UIImage(data: data) {
+                // Keep the in-memory display slot consistent with the reader
+                // ladder (composite-first). If this photo already has a durable
+                // markup composite — e.g. the raw was budget-evicted while the
+                // composite survived and we're re-fetching the raw now — don't
+                // shadow it with the unmarked photo; otherwise cache the raw.
+                if let composite = ImageFileManager.shared.loadCompositedImage(forURL: url) {
+                    ImageCache.shared.set(composite, forKey: cacheKey)
+                } else if let image = UIImage(data: data) {
                     ImageCache.shared.set(image, forKey: cacheKey)
                 }
             }
@@ -149,6 +156,9 @@ class PhotoDownloadManager: ObservableObject {
         let cacheKey = url.hasPrefix("//") ? "https:" + url : url
         ImageCache.shared.remove(forKey: cacheKey)
         let result = ImageFileManager.shared.deleteImage(localID: cacheKey)
+        // Reclaim the derived markup composite alongside the raw original — a
+        // composite without its source is orphaned bytes against the budget.
+        _ = ImageFileManager.shared.deleteCompositedImage(forURL: url)
         cacheVersion += 1
         return result
     }
@@ -196,12 +206,16 @@ class PhotoDownloadManager: ObservableObject {
         for candidate in candidates {
             if currentUsage <= targetBudget { break }
             let cacheKey = candidate.url.hasPrefix("//") ? "https:" + candidate.url : candidate.url
-            guard let fileSize = ImageFileManager.shared.imageFileSize(localID: cacheKey), fileSize > 0 else {
-                continue  // File not on disk — not a real eviction candidate
+            // Mirror enforceCapacityPolicy: raw + composite are freed together.
+            let rawSize = ImageFileManager.shared.imageFileSize(localID: cacheKey) ?? 0
+            let compositeSize = ImageFileManager.shared.compositedImageFileSize(forURL: candidate.url) ?? 0
+            let totalSize = rawSize + compositeSize
+            guard totalSize > 0 else {
+                continue  // Nothing on disk — not a real eviction candidate
             }
             count += 1
-            bytes += fileSize
-            currentUsage -= fileSize
+            bytes += totalSize
+            currentUsage -= totalSize
         }
         return (count, bytes)
     }
@@ -257,11 +271,16 @@ class PhotoDownloadManager: ObservableObject {
             if currentUsage <= budget { break }
 
             let cacheKey = candidate.url.hasPrefix("//") ? "https:" + candidate.url : candidate.url
-            // Skip candidates not actually on disk. Without this guard, missing/
+            // Account for the raw original AND its derived markup composite —
+            // removeFromDevice deletes both, so both count toward bytes freed.
+            // Skip candidates with nothing on disk. Without this guard, missing/
             // zero-byte files still invoke removeFromDevice but contribute 0 to
             // bytesFreed, so the loop exhausts all candidates while
             // currentUsage never drops below budget.
-            guard let fileSize = ImageFileManager.shared.imageFileSize(localID: cacheKey), fileSize > 0 else {
+            let rawSize = ImageFileManager.shared.imageFileSize(localID: cacheKey) ?? 0
+            let compositeSize = ImageFileManager.shared.compositedImageFileSize(forURL: candidate.url) ?? 0
+            let totalSize = rawSize + compositeSize
+            guard totalSize > 0 else {
                 continue
             }
 
@@ -274,8 +293,8 @@ class PhotoDownloadManager: ObservableObject {
                 print("[PhotoDownloadManager] Evicted project-date=\(dateStr) url=…\(urlTail)")
 
                 deleted += 1
-                bytesFreed += fileSize
-                currentUsage -= fileSize
+                bytesFreed += totalSize
+                currentUsage -= totalSize
             }
         }
 

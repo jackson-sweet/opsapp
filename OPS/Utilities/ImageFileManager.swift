@@ -78,8 +78,17 @@ class ImageFileManager {
             return imagesDirectory.appendingPathComponent(encodedID)
         }
 
-        // Handle already-encoded remote URLs (e.g., "remote_xxxxx")
-        if localID.hasPrefix("remote_") {
+        // Handle already-encoded remote URLs (e.g., "remote_xxxxx") plus the two
+        // derived caches that live beside them as opaque, pre-encoded filenames:
+        //   overlay_<annotationId>          — transparent PNG markup overlay
+        //   composited_remote_<hash><tail>  — flattened photo+markup display image
+        // These previously fell through to the `nil` return below, so every
+        // saveImage / loadImage with such a key was a silent no-op (overlays
+        // re-downloaded on every composite; composites had nowhere durable to
+        // live). Treating them as direct filenames closes both gaps.
+        if localID.hasPrefix("remote_")
+            || localID.hasPrefix("overlay_")
+            || localID.hasPrefix("composited_") {
             return imagesDirectory.appendingPathComponent(localID)
         }
 
@@ -128,10 +137,14 @@ class ImageFileManager {
     }
 
     /// True if `localID` represents a remote (server-side) photo that's been
-    /// downloaded into the local cache. These are subject to the photo storage
-    /// budget; local upload-pending images are not.
+    /// downloaded into the local cache, OR a flattened markup composite derived
+    /// from one. Both are subject to the photo storage budget. Local
+    /// upload-pending images and the tiny `overlay_` PNGs are not — overlays are
+    /// the only local copy of pending markup and re-downloading them defeats the
+    /// instant-composite cache.
     private func isRemoteCacheKey(_ localID: String) -> Bool {
-        localID.hasPrefix("http") || localID.hasPrefix("//") || localID.hasPrefix("remote_")
+        localID.hasPrefix("http") || localID.hasPrefix("//")
+            || localID.hasPrefix("remote_") || localID.hasPrefix("composited_")
     }
 
     /// Pinned URLs serialised by PhotoDownloadManager. Stored as a Set<String>
@@ -147,7 +160,11 @@ class ImageFileManager {
         var filenames = Set<String>()
         for url in urls {
             let normalized = url.hasPrefix("//") ? "https:" + url : url
-            filenames.insert(encodeRemoteURL(normalized))
+            let remoteName = encodeRemoteURL(normalized)
+            filenames.insert(remoteName)
+            // A pinned photo's flattened markup composite is pinned too — keep
+            // the annotated version available offline alongside the original.
+            filenames.insert("composited_" + remoteName)
         }
         return filenames
     }
@@ -184,7 +201,11 @@ class ImageFileManager {
         var candidates: [Candidate] = []
         for case let fileURL as URL in enumerator {
             let name = fileURL.lastPathComponent
-            guard name.hasPrefix("remote_"), !pinned.contains(name) else { continue }
+            // Both raw remote originals (`remote_…`) and their flattened markup
+            // composites (`composited_remote_…`) are reclaimable — composites
+            // regenerate from raw+overlay on the next preComposite pass.
+            let isCandidate = name.hasPrefix("remote_") || name.hasPrefix("composited_")
+            guard isCandidate, !pinned.contains(name) else { continue }
             guard let values = try? fileURL.resourceValues(
                 forKeys: [.contentModificationDateKey, .totalFileAllocatedSizeKey]
             ) else { continue }
@@ -305,6 +326,71 @@ class ImageFileManager {
         return size
     }
 
+    /// Last-modified timestamp of a cached file, without decoding it. Used by
+    /// the compositor's freshness check (composite mtime vs annotation
+    /// `updatedAt`) to skip re-rendering unchanged markup.
+    func imageModificationDate(localID: String) -> Date? {
+        guard let fileURL = getFileURL(for: localID) else { return nil }
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+              let date = attrs[.modificationDate] as? Date else { return nil }
+        return date
+    }
+
+    // MARK: - Composited Markup Cache (durable annotation overlay)
+    //
+    // A composite is the source photo with its PencilKit markup flattened on
+    // top, persisted so any thumbnail can resolve markup the instant it mounts —
+    // independent of the volatile in-memory `ImageCache` (a 50 MB NSCache that
+    // holds barely one full-resolution composite). The on-disk composite is a
+    // SEPARATE asset from the raw original (distinct `composited_` filename), so
+    // the two coexist: readers resolve composite-first, raw-second; base-image
+    // loaders and the annotation editor always read the raw. Keyed by the photo
+    // URL via `encodeRemoteURL`, so a photo's composite shares the raw's hash
+    // identity (pin-mapping + eviction skip work without reversing the hash).
+
+    /// On-disk localID for a photo's flattened markup composite.
+    /// `encodeRemoteURL` normalises (`//` → `https:`) and hashes, so every
+    /// reader/writer that passes the source URL addresses the same file.
+    private func compositedLocalID(forURL url: String) -> String {
+        "composited_" + encodeRemoteURL(url)
+    }
+
+    /// Persist a flattened photo+markup composite for `url`. Budget-enforced
+    /// (the `composited_` key is a remote-cache key), so a large composite can
+    /// evict older reclaimable images to stay under the user's quota.
+    @discardableResult
+    func saveCompositedImage(_ data: Data, forURL url: String) -> Bool {
+        saveImage(data: data, localID: compositedLocalID(forURL: url))
+    }
+
+    /// Load the durable markup composite for `url`, if one is on disk.
+    func loadCompositedImage(forURL url: String) -> UIImage? {
+        loadImage(localID: compositedLocalID(forURL: url))
+    }
+
+    /// Lightweight existence check for a photo's composite (no decode).
+    func compositedImageExists(forURL url: String) -> Bool {
+        imageExists(localID: compositedLocalID(forURL: url))
+    }
+
+    /// Composite file size in bytes, or nil if absent.
+    func compositedImageFileSize(forURL url: String) -> Int64? {
+        imageFileSize(localID: compositedLocalID(forURL: url))
+    }
+
+    /// Composite last-modified timestamp, or nil if absent. Drives the
+    /// compositor's "skip if the composite is newer than the annotation" check.
+    func compositedImageModificationDate(forURL url: String) -> Date? {
+        imageModificationDate(localID: compositedLocalID(forURL: url))
+    }
+
+    /// Remove a photo's durable composite (invalidation on edit / soft-delete /
+    /// raw eviction). Returns true if the file is gone afterward.
+    @discardableResult
+    func deleteCompositedImage(forURL url: String) -> Bool {
+        deleteImage(localID: compositedLocalID(forURL: url))
+    }
+
     /// Get the raw data for an image
     func getImageData(localID: String) -> Data? {
         guard let fileURL = getFileURL(for: localID) else {
@@ -392,7 +478,10 @@ class ImageFileManager {
             
             var deletedCount = 0
             for file in files {
-                if file.lastPathComponent.hasPrefix("remote_") {
+                let name = file.lastPathComponent
+                // Sweep both raw remote originals and their derived composites —
+                // a composite without its raw is just orphaned bytes.
+                if name.hasPrefix("remote_") || name.hasPrefix("composited_") {
                     try fileManager.removeItem(at: file)
                     deletedCount += 1
                 }

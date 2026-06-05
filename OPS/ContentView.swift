@@ -39,6 +39,13 @@ struct ContentView: View {
     // owns AppSetupScreen) or on app foreground — only an explicit returning
     // login arms it.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Set the instant a returning login is initiated, BEFORE we know it will
+    /// succeed. It scopes the gate to returning logins only: the gate arms when
+    /// the post-login initial sync actually begins (`isPerformingInitialSync`
+    /// flips true) AND this flag is set — so an onboarding sync or a foreground
+    /// refresh never trips it. Cleared the moment the gate arms (consumed) or
+    /// the login is abandoned.
+    @State private var pendingReturningLogin = false
     /// `true` while the preload gate is covering the authenticated app.
     @State private var workspacePreloadActive = false
     /// When the gate was armed — drives the minimum-dwell floor below.
@@ -96,17 +103,19 @@ struct ContentView: View {
 
     // MARK: - Workspace Preload Gate Control
 
-    /// Arms the returning-login preload gate. Called the instant a returning
-    /// login establishes authentication (cached-account login here, plus the
-    /// email/Apple/Google flips reported by `LoginView` via `onAuthenticated`).
-    /// Guarded so onboarding and ordinary foregrounds never trigger it.
+    /// Arms the returning-login preload gate so it covers the initial sync.
+    /// Two callers: cached-account login (offline gate) arms directly, and the
+    /// `isPerformingInitialSync` watcher arms it the instant a returning login's
+    /// sync begins — scoped by `pendingReturningLogin` so onboarding and ordinary
+    /// foregrounds never trigger it.
     private func armWorkspacePreload() {
         guard !workspacePreloadActive else { return }
+        pendingReturningLogin = false // consumed — the gate is now up
         workspacePreloadActive = true
         workspacePreloadArmedAt = Date()
 
         // Watchdog ceiling. The gate's own escape hatch hands the user an
-        // "ENTER ANYWAY" button at 10s; this independent timer guarantees the
+        // "ENTER ANYWAY" button at 20s; this independent timer guarantees the
         // gate can never persist indefinitely even if no one taps it (e.g. the
         // phone is set down mid-sync). 30s is comfortably past a healthy sync.
         workspacePreloadWatchdog?.cancel()
@@ -128,12 +137,40 @@ struct ContentView: View {
     /// Reveals the app *if* the load has settled AND the minimum dwell has
     /// elapsed. Called from the sync-signal watchers and the post-dwell check.
     private func attemptRevealWorkspace() {
-        guard workspacePreloadActive, isWorkspaceReady else { return }
+        // `isAuthenticated` is the load-bearing guard for arm-on-sync-start: the
+        // initial sync runs INSIDE login() and the auth flip is deliberately
+        // deferred to AFTER it (DataController.fetchUserFromAPI). Until that flip
+        // the app isn't mounted yet — only the login page sits behind the gate —
+        // and `isWorkspaceReady` reads true both before the sync starts and in
+        // the ~0.8s window between sync-end and the flip. Revealing in either
+        // window would flash the login page. Holding for `isAuthenticated`
+        // collapses both races: it's true only once the app is genuinely ready.
+        guard workspacePreloadActive, dataController.isAuthenticated, isWorkspaceReady else { return }
         if let armedAt = workspacePreloadArmedAt,
            Date().timeIntervalSince(armedAt) < workspacePreloadMinimumDwell {
             return // still within the dwell floor — the post-dwell check will retry
         }
         forceRevealWorkspace()
+    }
+
+    /// Tears the gate down WITHOUT revealing the app — for logins that end
+    /// without entering: a wrong password, a cancelled social sign-in, or a
+    /// route into onboarding. Also clears the pending-arm flag so a later,
+    /// unrelated sync can't resurrect the gate. No success haptic (nothing was
+    /// achieved); the underlying login/landing page simply returns.
+    private func disarmWorkspacePreload() {
+        pendingReturningLogin = false
+        workspacePreloadWatchdog?.cancel()
+        workspacePreloadWatchdog = nil
+        workspacePreloadArmedAt = nil
+        guard workspacePreloadActive else { return }
+        if reduceMotion {
+            workspacePreloadActive = false
+        } else {
+            withAnimation(OPSStyle.Animation.standard) {
+                workspacePreloadActive = false
+            }
+        }
     }
 
     /// Unconditionally dismisses the preload gate and reveals the app. Fires a
@@ -230,17 +267,27 @@ struct ContentView: View {
                         onboardingManagerInstance = OnboardingManager(dataController: dataController)
                         showABTestOnboarding = true
                     },
-                    onAuthenticated: {
-                        // Returning login authenticated — arm the preload gate so
-                        // the app reveals only once the initial sync settles.
-                        armWorkspacePreload()
+                    onLoginInitiated: {
+                        // Returning login started — mark it pending so the gate
+                        // arms the instant the initial sync begins, covering the
+                        // sync rather than freezing the login button (bug 95bf7c82).
+                        pendingReturningLogin = true
+                    },
+                    onLoginAbandoned: {
+                        // Login ended without entering the app (wrong password,
+                        // cancelled sign-in, or a route into onboarding) — tear
+                        // the gate down and clear the pending flag.
+                        disarmWorkspacePreload()
                     }
                 )
                 .environmentObject(appState)
                 .environmentObject(locationManager)
             } else if !dataController.isAuthenticated {
                 // General unauthenticated state → landing page
-                LandingView(onAuthenticated: { armWorkspacePreload() })
+                LandingView(
+                    onLoginInitiated: { pendingReturningLogin = true },
+                    onLoginAbandoned: { disarmWorkspacePreload() }
+                )
                     .environmentObject(appState)
                     .environmentObject(locationManager)
             } else {
@@ -319,6 +366,22 @@ struct ContentView: View {
                 showABTestOnboarding = false
                 onboardingManagerInstance = nil
             }
+            // The returning-login gate holds for `isAuthenticated` (see
+            // attemptRevealWorkspace) and the deferred auth flip lands at the END
+            // of the initial sync. Re-anchor the dwell floor here so the gate
+            // holds a final beat for MainTabView/HomeView to mount and assert its
+            // first project load — revealing straight to a ready Home instead of
+            // flashing a half-loaded one for the instant before onAppear runs.
+            // The isLoadingProjects watcher reveals once that (now-local, fast)
+            // load settles; this post-dwell re-check covers the nothing-to-load
+            // case.
+            if isAuthenticated, workspacePreloadActive {
+                workspacePreloadArmedAt = Date()
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: UInt64(workspacePreloadMinimumDwell * 1_000_000_000))
+                    attemptRevealWorkspace()
+                }
+            }
         }
         // Watch for changes to the location denied state
         .onChange(of: locationManager.isLocationDenied) { _, isDenied in
@@ -356,7 +419,16 @@ struct ContentView: View {
         // additionally floored by a minimum dwell (see `attemptRevealWorkspace`)
         // so the gate can't blink away during the brief window between the
         // auth-flip and HomeView asserting its project-load state.
-        .onChange(of: dataController.isPerformingInitialSync) { _, _ in
+        .onChange(of: dataController.isPerformingInitialSync) { _, isSyncing in
+            // Arm the gate the instant the post-login initial sync begins — but
+            // only when a returning login set it in motion (pendingReturningLogin),
+            // never for onboarding or a foreground refresh. This is where the long
+            // sync starts inside login()/loginWithApple/loginWithGoogle, so the
+            // gate now covers the sync instead of the login button freezing behind
+            // a spinner (bug 95bf7c82).
+            if isSyncing, pendingReturningLogin, !workspacePreloadActive {
+                armWorkspacePreload()
+            }
             attemptRevealWorkspace()
         }
         .onChange(of: appState.isLoadingProjects) { _, _ in
@@ -365,6 +437,7 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("LogoutInitiated"))) { _ in
             // Logout clears the gate so a stale preload can't bleed into the
             // landing page or the next account's session.
+            pendingReturningLogin = false
             workspacePreloadWatchdog?.cancel()
             workspacePreloadWatchdog = nil
             workspacePreloadArmedAt = nil

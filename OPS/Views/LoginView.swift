@@ -19,11 +19,15 @@ struct LoginView: View {
     var onBack: (() -> Void)?
     /// Called when login succeeds but user hasn't completed onboarding (no company)
     var onNeedsOnboarding: (() -> Void)?
-    /// Called at the exact moment a returning login flips authentication on
-    /// (email/password, Apple, or Google). Lets the host arm the workspace
-    /// preload gate so the user isn't dropped into the app mid-sync
-    /// (bug 95bf7c82). Fired immediately before `isAuthenticated` is set true.
-    var onAuthenticated: (() -> Void)?
+    /// Called the instant a returning login is initiated — after credentials are
+    /// accepted (email submitted, or a social provider returns), before the long
+    /// initial sync. Lets the host arm the workspace-preload gate so the sync is
+    /// covered, not the login button (bug 95bf7c82).
+    var onLoginInitiated: (() -> Void)?
+    /// Called when a login attempt ends WITHOUT entering the app — wrong
+    /// password, cancelled social sign-in, or a route into onboarding — so the
+    /// host can disarm the gate.
+    var onLoginAbandoned: (() -> Void)?
 
     @State private var username = ""
     @State private var password = ""
@@ -31,7 +35,6 @@ struct LoginView: View {
     @State private var errorMessage: String?
     @State private var showError = false
     @State private var showForgotPassword = false
-    @State private var showLoginSuccess = false
 
     var body: some View {
         ZStack {
@@ -182,15 +185,7 @@ struct LoginView: View {
             .padding(40)
             .dismissKeyboardOnTap()
 
-            // Login success overlay
-            if showLoginSuccess {
-                LoginSuccessView()
-                    .transition(.opacity)
-                    .zIndex(2)
-            }
-
         }
-        .animation(.easeInOut, value: showLoginSuccess)
         .sheet(isPresented: $showForgotPassword) {
             ForgotPasswordView(prefilledEmail: username)
         }
@@ -210,6 +205,10 @@ struct LoginView: View {
 
         isLoggingIn = true
         errorMessage = nil
+        // Mark the returning login pending. ContentView arms the workspace gate
+        // only when the initial sync actually begins — a wrong password never
+        // gets that far, so the gate never wrongly appears (bug 95bf7c82).
+        onLoginInitiated?()
 
         Task {
             let (success, loginError) = await dataController.login(username: username, password: password)
@@ -218,26 +217,20 @@ struct LoginView: View {
                 isLoggingIn = false
 
                 if success {
-                    showLoginSuccess = true
-
+                    // The gate is already covering the initial sync (armed when it
+                    // began); the deferred auth flip inside login() reveals the app.
+                    // Setting auth here is a no-op for completed-onboarding users
+                    // (already flipped) and the established fall-through otherwise.
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        showLoginSuccess = false
-                        onAuthenticated?()
-                        dataController.isAuthenticated = true
-                    }
+                    dataController.isAuthenticated = true
                 } else if loginError == nil && dataController.currentUser != nil {
-                    // Login succeeded but user hasn't completed onboarding (no company).
-                    // Route them to onboarding to finish setup.
-                    showLoginSuccess = true
+                    // Login succeeded but user hasn't completed onboarding (no
+                    // company). Disarm the gate and route them to onboarding.
+                    onLoginAbandoned?()
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        showLoginSuccess = false
-                        onNeedsOnboarding?()
-                    }
+                    onNeedsOnboarding?()
                 } else {
+                    onLoginAbandoned?()
                     errorMessage = loginError ?? "Incorrect email or password. Please try again."
                     showError = true
                 }
@@ -264,22 +257,27 @@ struct LoginView: View {
 
             do {
                 let appleResult = try await AppleSignInManager.shared.signIn(presenting: window)
+                // Provider accepted the user — mark the login pending so the gate
+                // arms when loginWithApple's initial sync begins (bug 95bf7c82).
+                onLoginInitiated?()
                 let success = await dataController.loginWithApple(appleResult: appleResult)
 
                 isLoggingIn = false
 
                 if success {
-                    onAuthenticated?()
                     dataController.isAuthenticated = true
                 } else if dataController.currentUser != nil {
-                    // Login succeeded but onboarding incomplete — route to onboarding
+                    // Login succeeded but onboarding incomplete — disarm and route.
+                    onLoginAbandoned?()
                     onNeedsOnboarding?()
                 } else {
+                    onLoginAbandoned?()
                     errorMessage = "No account found. Please sign up with your company first."
                     showError = true
                 }
             } catch {
                 isLoggingIn = false
+                onLoginAbandoned?()
                 if let authError = error as? ASAuthorizationError, authError.code == .canceled {
                     // User canceled — ignore
                 } else {
@@ -307,22 +305,27 @@ struct LoginView: View {
 
             do {
                 let googleUser = try await GoogleSignInManager.shared.signIn(presenting: rootViewController)
+                // Provider accepted the user — mark the login pending so the gate
+                // arms when loginWithGoogle's initial sync begins (bug 95bf7c82).
+                onLoginInitiated?()
                 let success = await dataController.loginWithGoogle(googleUser: googleUser)
 
                 isLoggingIn = false
 
                 if success {
-                    onAuthenticated?()
                     dataController.isAuthenticated = true
                 } else if dataController.currentUser != nil {
-                    // Login succeeded but onboarding incomplete — route to onboarding
+                    // Login succeeded but onboarding incomplete — disarm and route.
+                    onLoginAbandoned?()
                     onNeedsOnboarding?()
                 } else {
+                    onLoginAbandoned?()
                     errorMessage = "No account found. Please sign up with your company first."
                     showError = true
                 }
             } catch {
                 isLoggingIn = false
+                onLoginAbandoned?()
                 if let gidError = error as? GIDSignInError, gidError.code == .canceled {
                     // User canceled — ignore
                 } else {

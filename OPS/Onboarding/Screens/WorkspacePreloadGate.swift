@@ -30,10 +30,12 @@ struct WorkspacePreloadGate: View {
     /// the gate and reveals the app immediately.
     var onEnterAnyway: () -> Void
 
-    /// Seconds the user waits before the escape hatch appears. Long enough that
-    /// a healthy sync reveals the app first; short enough that a stalled sync
-    /// never feels like a trap.
-    private static let escapeHatchDelay: TimeInterval = 10.0
+    /// Seconds the user waits before the escape hatch appears. The gate now
+    /// arms at the START of the initial sync (covering its full duration), so a
+    /// healthy ~15s sync reveals the app on its own well before this fires —
+    /// keeping the hatch out of the normal path. It only surfaces for a genuinely
+    /// stalled sync, and stays comfortably under the 30s ContentView watchdog.
+    private static let escapeHatchDelay: TimeInterval = 20.0
 
     /// Fixed footprint reserved for the escape hatch (button height + gap +
     /// caption) so the content above doesn't shift when the button appears.

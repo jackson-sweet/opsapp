@@ -21,11 +21,15 @@ struct LandingView: View {
     @EnvironmentObject private var locationManager: LocationManager
     @EnvironmentObject private var variantManager: OnboardingVariantManager
 
-    /// Fired the instant a returning login establishes authentication, so the
-    /// parent (ContentView) can arm the workspace preload gate before the app is
-    /// revealed (bug 95bf7c82). Optional + nil-default so other call sites are
-    /// unaffected.
-    var onAuthenticated: (() -> Void)? = nil
+    /// Fired the instant a returning login is initiated — after the credentials
+    /// are accepted (email submitted, or a social provider returns), before the
+    /// long initial sync. Lets the host (ContentView) arm the workspace-preload
+    /// gate so the sync is covered, not the login button (bug 95bf7c82).
+    var onLoginInitiated: (() -> Void)? = nil
+    /// Fired when a login attempt ends WITHOUT entering the app — wrong password,
+    /// cancelled social sign-in, or a route into onboarding — so the host can
+    /// disarm the gate. Optional + nil-default so other call sites are unaffected.
+    var onLoginAbandoned: (() -> Void)? = nil
 
     // Login states
     @State private var username = ""
@@ -42,7 +46,6 @@ struct LandingView: View {
     @State private var showLoginMode = false
     @State private var pageScale: CGFloat = 1.0
     @State private var showForgotPassword = false
-    @State private var showLoginSuccess = false
     @State private var hasAppeared = false
 
     var body: some View {
@@ -331,13 +334,6 @@ struct LandingView: View {
 
 
 
-            // Login success overlay
-            if showLoginSuccess {
-                LoginSuccessView()
-                    .transition(.opacity)
-                    .zIndex(2)
-            }
-
             // Onboarding overlay - streamlined A/B test flow
             if showOnboarding, let manager = onboardingManager {
                 OnboardingABTestCoordinator(
@@ -369,7 +365,6 @@ struct LandingView: View {
         }
         .animation(hasAppeared ? .easeInOut(duration: 0.35) : nil, value: showLoginMode)
         .animation(.easeInOut, value: showOnboarding)
-        .animation(.easeInOut, value: showLoginSuccess)
         .sheet(isPresented: $showForgotPassword) {
             ForgotPasswordView(prefilledEmail: username)
         }
@@ -401,6 +396,10 @@ struct LandingView: View {
 
         isLoggingIn = true
         errorMessage = nil
+        // Mark the returning login pending. ContentView arms the workspace gate
+        // only when the initial sync actually begins — a wrong password never
+        // gets that far, so the gate never wrongly appears (bug 95bf7c82).
+        onLoginInitiated?()
 
         Task {
             do {
@@ -410,28 +409,25 @@ struct LandingView: View {
                     isLoggingIn = false
 
                     if success {
-                        // Returning login established — arm the workspace preload
-                        // gate so initial data loads behind it (bug 95bf7c82).
-                        onAuthenticated?()
-                        showLoginSuccess = true
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        // A login can also succeed for a user who still needs to
+                        // finish onboarding — route them there and disarm the gate.
+                        // The completed-onboarding case needs nothing here: the gate
+                        // is already covering the sync (armed when it began) and the
+                        // deferred auth flip at the end of the sync reveals the app.
+                        let (shouldShowOnboarding, manager) = OnboardingManager.shouldShowOnboarding(dataController: dataController)
+                        if shouldShowOnboarding {
+                            onLoginAbandoned?()
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                            onboardingManager = manager ?? OnboardingManager(dataController: dataController)
+                            showLoginMode = false
+                            pageScale = 1.0
 
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                            showLoginSuccess = false
-
-                            let (shouldShowOnboarding, manager) = OnboardingManager.shouldShowOnboarding(dataController: dataController)
-
-                            if shouldShowOnboarding {
-                                onboardingManager = manager ?? OnboardingManager(dataController: dataController)
-                                showLoginMode = false
-                                pageScale = 1.0
-
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                    showOnboarding = true
-                                }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                showOnboarding = true
                             }
                         }
                     } else {
+                        onLoginAbandoned?()
                         errorMessage = loginError ?? "Incorrect email or password. Please try again."
                         showError = true
                     }
@@ -439,12 +435,14 @@ struct LandingView: View {
             } catch let authError as AuthError {
                 await MainActor.run {
                     isLoggingIn = false
+                    onLoginAbandoned?()
                     errorMessage = authError.localizedDescription
                     showError = true
                 }
             } catch {
                 await MainActor.run {
                     isLoggingIn = false
+                    onLoginAbandoned?()
                     errorMessage = "Login failed: \(error.localizedDescription)"
                     showError = true
                 }
@@ -494,17 +492,22 @@ struct LandingView: View {
 
             do {
                 let appleResult = try await AppleSignInManager.shared.signIn(presenting: window)
+                // Provider accepted the user — mark the login pending so the gate
+                // arms when loginWithApple's initial sync begins (bug 95bf7c82).
+                onLoginInitiated?()
                 let success = await dataController.loginWithApple(appleResult: appleResult)
 
                 isLoggingIn = false
 
                 if !success {
+                    onLoginAbandoned?()
                     errorMessage = "No account found. Please sign up with your company first."
                     showError = true
                 } else {
                     let (shouldShowOnboarding, _) = OnboardingManager.shouldShowOnboarding(dataController: dataController)
 
                     if shouldShowOnboarding {
+                        onLoginAbandoned?()
                         onboardingManager = OnboardingManager(dataController: dataController)
                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                         showLoginMode = false
@@ -514,12 +517,12 @@ struct LandingView: View {
                             showOnboarding = true
                         }
                     } else {
-                        onAuthenticated?()
                         dataController.isAuthenticated = true
                     }
                 }
             } catch {
                 isLoggingIn = false
+                onLoginAbandoned?()
                 if let authError = error as? ASAuthorizationError, authError.code == .canceled {
                     // User canceled
                 } else {
@@ -545,17 +548,22 @@ struct LandingView: View {
 
             do {
                 let googleUser = try await GoogleSignInManager.shared.signIn(presenting: rootViewController)
+                // Provider accepted the user — mark the login pending so the gate
+                // arms when loginWithGoogle's initial sync begins (bug 95bf7c82).
+                onLoginInitiated?()
                 let success = await dataController.loginWithGoogle(googleUser: googleUser)
 
                 isLoggingIn = false
 
                 if !success {
+                    onLoginAbandoned?()
                     errorMessage = "No account found. Please sign up with your company first."
                     showError = true
                 } else {
                     let (shouldShowOnboarding, _) = OnboardingManager.shouldShowOnboarding(dataController: dataController)
 
                     if shouldShowOnboarding {
+                        onLoginAbandoned?()
                         onboardingManager = OnboardingManager(dataController: dataController)
                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                         showLoginMode = false
@@ -565,12 +573,12 @@ struct LandingView: View {
                             showOnboarding = true
                         }
                     } else {
-                        onAuthenticated?()
                         dataController.isAuthenticated = true
                     }
                 }
             } catch {
                 isLoggingIn = false
+                onLoginAbandoned?()
                 if let gidError = error as? GIDSignInError, gidError.code == .canceled {
                     // User canceled
                 } else {

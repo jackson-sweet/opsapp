@@ -300,7 +300,6 @@ class PhotoAnnotationSyncManager {
         )
         guard let annotations = try? modelContext.fetch(descriptor), !annotations.isEmpty else { return }
 
-        var didComposite = false
         for annotation in annotations {
             guard let plan = PhotoAnnotationCompositePlan(
                 photoURL: annotation.photoURL,
@@ -338,10 +337,16 @@ class PhotoAnnotationSyncManager {
             }
 
             ImageCache.shared.set(composited, forKey: plan.cacheKey)
-            didComposite = true
-        }
 
-        if didComposite {
+            // Notify per photo, not once after the loop. Composites are full
+            // source resolution (a 12MP photo ≈ 48 MB) and ImageCache is an
+            // NSCache with a 50 MB cost limit, so inserting the next composite
+            // can evict this one right away. Posting now — synchronously, while
+            // this composite is the freshest cache entry — lets each mounted
+            // PhotoThumbnail capture its own image into @State (via
+            // reloadFromCache) before the next iteration can evict it. A single
+            // post after the loop would arrive once most composites had already
+            // been evicted, leaving thumbnails showing the raw photo.
             NotificationCenter.default.post(name: .annotationsComposited, object: nil)
         }
     }

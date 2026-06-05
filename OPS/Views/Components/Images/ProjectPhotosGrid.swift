@@ -271,7 +271,6 @@ struct PhotoThumbnail: View {
     var isDimensioned: Bool = false
     @State private var image: UIImage?
     @State private var isLoading = true
-    private let id = UUID() // Unique identifier to prevent view reuse
 
     var body: some View {
         ZStack {
@@ -308,7 +307,17 @@ struct PhotoThumbnail: View {
         .onReceive(NotificationCenter.default.publisher(for: .annotationsComposited)) { _ in
             reloadFromCache()
         }
-        .id("\(url)-\(id)") // Force unique view identity with URL and UUID
+        // Identity is the photo URL alone. An earlier fix keyed identity on
+        // "\(url)-\(UUID())" to force a reload when the URL changed — but the
+        // per-instance UUID is regenerated on every struct init, so every
+        // parent re-render minted a fresh identity. That discarded @State
+        // (the composited markup grabbed via .annotationsComposited) and tore
+        // down the subscription, so the raw photo loaded back in. The gallery
+        // carousel re-renders constantly (reactive @Query / @ObservedObject),
+        // which is why markup never stuck on thumbnails. Keying on `url` alone
+        // still forces a reload when the URL changes, while letting the
+        // composited image survive re-renders.
+        .id(url)
     }
 
     /// Re-read the image from the in-memory cache (may now include annotation overlay).

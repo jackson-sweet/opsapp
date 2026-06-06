@@ -6,6 +6,7 @@ import SwiftData
 struct PropertySheetView: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var showingNestedMaterialPicker = false
 
     // Catalog data — feeds the metadata-field pickers when the company has
     // a default Product configured for the surface context. When the
@@ -45,7 +46,10 @@ struct PropertySheetView: View {
             }
         }
         .presentationDetents([.medium, .large])
-        .onChange(of: viewModel.activeLevelIndex) { _ in
+        .sheet(isPresented: $showingNestedMaterialPicker) {
+            MaterialPickerSheet(viewModel: viewModel)
+        }
+        .onChange(of: viewModel.activeLevelIndex) { _, _ in
             // Dismiss when level switches — edge/vertex references may belong to the previous level
             dismiss()
         }
@@ -56,6 +60,11 @@ struct PropertySheetView: View {
     @ViewBuilder
     private var edgeProperties: some View {
         let selectedIds = Array(viewModel.selection.selectedEdgeIds)
+        let selectedEdges = selectedIds.compactMap { viewModel.findEdge(byId: $0) }
+        let houseEdgeIds = selectedEdges.filter { $0.edgeType == .houseEdge }.map(\.id)
+        let parapetEdgeIds = selectedEdges
+            .filter { $0.edgeType == .deckEdge && $0.railingConfig?.railingType == .parapetWall }
+            .map(\.id)
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             sectionHeader("Edge Properties", icon: "line.diagonal")
 
@@ -65,6 +74,19 @@ struct PropertySheetView: View {
             // The per-edge cards below own Type in single-select.
             if selectedIds.count > 1 {
                 bulkEdgeTypeControl(edgeIds: selectedIds)
+            }
+
+            materialPickerEntry(
+                title: "Material",
+                detail: selectedIds.count == 1 ? "Assign catalog material to this edge" : "Assign catalog material to selected edges"
+            )
+
+            if selectedIds.count > 1, !houseEdgeIds.isEmpty {
+                houseCladdingPicker(edgeIds: houseEdgeIds, activeMaterial: commonHouseMaterial(for: houseEdgeIds))
+            }
+
+            if selectedIds.count > 1, !parapetEdgeIds.isEmpty {
+                parapetFinishPicker(edgeIds: parapetEdgeIds, activeMaterial: commonParapetMaterial(for: parapetEdgeIds))
             }
 
             ForEach(selectedIds, id: \.self) { edgeId in
@@ -110,8 +132,8 @@ struct PropertySheetView: View {
                         // House cladding picker — only shown for house edges.
                         // Bug 3d72ce0b — surfaces a tactile picker so the
                         // user sees the rendered wall material in 2D and 3D.
-                        if edge.edgeType == .houseEdge {
-                            houseCladdingPicker(edgeId: edgeId, edge: edge)
+                        if edge.edgeType == .houseEdge, selectedIds.count == 1 {
+                            houseCladdingPicker(edgeIds: [edgeId], activeMaterial: edge.houseEdgeMaterial)
                         }
 
                         // Free-text label rendered as the secondary line on
@@ -125,7 +147,7 @@ struct PropertySheetView: View {
                             // Railing / parapet. House edges cannot carry
                             // railing configuration; switching to house edge
                             // clears any legacy railing state in the view model.
-                            railingSection(edgeId: edgeId, edge: edge)
+                            railingSection(edgeId: edgeId, edge: edge, showMaterialControls: selectedIds.count == 1)
                         }
 
                         Divider().background(OPSStyle.Colors.separator)
@@ -175,7 +197,7 @@ struct PropertySheetView: View {
     }
 
     @ViewBuilder
-    private func railingSection(edgeId: String, edge: DeckEdge) -> some View {
+    private func railingSection(edgeId: String, edge: DeckEdge, showMaterialControls: Bool) -> some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack {
                 Text("Railing")
@@ -197,7 +219,9 @@ struct PropertySheetView: View {
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                 if railing.railingType == .parapetWall {
-                    parapetFinishPicker(edgeId: edgeId, railing: railing)
+                    if showMaterialControls {
+                        parapetFinishPicker(edgeIds: [edgeId], activeMaterial: railing.wallMaterial)
+                    }
                 } else {
                     // Post spacing
                     HStack {
@@ -364,7 +388,7 @@ struct PropertySheetView: View {
     }
 
     @ViewBuilder
-    private func parapetFinishPicker(edgeId: String, railing: RailingConfig) -> some View {
+    private func parapetFinishPicker(edgeIds: [String], activeMaterial: HouseEdgeMaterial?) -> some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("Finish")
                 .font(OPSStyle.Typography.smallCaption)
@@ -373,7 +397,7 @@ struct PropertySheetView: View {
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(HouseEdgeMaterial.allCases, id: \.self) { material in
                     Button {
-                        viewModel.setRailingWallMaterial(edgeId, material: material)
+                        viewModel.setRailingWallMaterial(edgeIds, material: material)
                     } label: {
                         VStack(spacing: 4) {
                             RoundedRectangle(cornerRadius: 4)
@@ -382,16 +406,16 @@ struct PropertySheetView: View {
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 4)
                                         .stroke(
-                                            railing.wallMaterial == material
+                                            activeMaterial == material
                                                 ? OPSStyle.Colors.primaryAccent
                                                 : Color.white.opacity(0.15),
-                                            lineWidth: railing.wallMaterial == material ? 2 : 1
+                                            lineWidth: activeMaterial == material ? 2 : 1
                                         )
                                 )
                             Text(material.displayName)
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(
-                                    railing.wallMaterial == material
+                                    activeMaterial == material
                                         ? OPSStyle.Colors.primaryText
                                         : OPSStyle.Colors.secondaryText
                                 )
@@ -411,7 +435,7 @@ struct PropertySheetView: View {
     /// hatch color, the 3D wall fill, and the floating "HOUSE" label tone.
     /// None means "no material picked yet" and renders the neutral fallback.
     @ViewBuilder
-    private func houseCladdingPicker(edgeId: String, edge: DeckEdge) -> some View {
+    private func houseCladdingPicker(edgeIds: [String], activeMaterial: HouseEdgeMaterial?) -> some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("Cladding")
                 .font(OPSStyle.Typography.smallCaption)
@@ -420,10 +444,10 @@ struct PropertySheetView: View {
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(HouseEdgeMaterial.allCases, id: \.self) { material in
                     Button {
-                        if edge.houseEdgeMaterial == material {
-                            viewModel.setHouseEdgeMaterial(edgeId, material: nil)
+                        if activeMaterial == material {
+                            viewModel.setHouseEdgeMaterial(edgeIds, material: nil)
                         } else {
-                            viewModel.setHouseEdgeMaterial(edgeId, material: material)
+                            viewModel.setHouseEdgeMaterial(edgeIds, material: material)
                         }
                     } label: {
                         VStack(spacing: 4) {
@@ -433,16 +457,16 @@ struct PropertySheetView: View {
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 4)
                                         .stroke(
-                                            edge.houseEdgeMaterial == material
+                                            activeMaterial == material
                                                 ? OPSStyle.Colors.primaryAccent
                                                 : Color.white.opacity(0.15),
-                                            lineWidth: edge.houseEdgeMaterial == material ? 2 : 1
+                                            lineWidth: activeMaterial == material ? 2 : 1
                                         )
                                 )
                             Text(material.displayName)
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(
-                                    edge.houseEdgeMaterial == material
+                                    activeMaterial == material
                                         ? OPSStyle.Colors.primaryText
                                         : OPSStyle.Colors.secondaryText
                                 )
@@ -452,6 +476,12 @@ struct PropertySheetView: View {
                         .frame(maxWidth: .infinity)
                     }
                 }
+            }
+
+            if edgeIds.count > 1 {
+                Text("Applies to \(edgeIds.count) selected edges")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
             }
         }
     }
@@ -518,8 +548,14 @@ struct PropertySheetView: View {
 
     @ViewBuilder
     private var footprintProperties: some View {
+        let summary = viewModel.selectedSurfaceSummary
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             sectionHeader("Surface Properties", icon: "square.fill")
+
+            materialPickerEntry(
+                title: "Material",
+                detail: "Assign catalog material to selected surfaces"
+            )
 
             // Surface label — the field worker's own name for this area
             // ("BBQ pad", "Hot tub deck"). Floats over the canvas via the
@@ -527,15 +563,26 @@ struct PropertySheetView: View {
             surfaceLabelField
 
             // Area display
-            if let area = viewModel.totalArea {
-                HStack {
-                    Text("Area")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Spacer()
-                    Text(DimensionEngine.formatArea(area, system: viewModel.drawingData.config.measurementSystem))
-                        .font(.system(size: 20, weight: .bold, design: .monospaced))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+            if let summary {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    HStack {
+                        Text("Area")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        Spacer()
+                        Text(DimensionEngine.formatArea(summary.areaSquareInches, system: viewModel.drawingData.config.measurementSystem))
+                            .font(.system(size: 20, weight: .bold, design: .monospaced))
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                    HStack {
+                        Text("Perimeter")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        Spacer()
+                        Text(DimensionEngine.format(summary.perimeterInches, system: viewModel.drawingData.config.measurementSystem))
+                            .font(.system(size: 16, weight: .bold, design: .monospaced))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
                 }
                 .padding(OPSStyle.Layout.spacing3)
                 .background(OPSStyle.Colors.cardBackground)
@@ -548,13 +595,14 @@ struct PropertySheetView: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
-                if viewModel.drawingData.footprint.assignedItems.isEmpty {
-                    Text("No items assigned. Use the assignment wheel to add surfacing materials.")
+                let assignedItems = summary?.assignedItems ?? []
+                if assignedItems.isEmpty {
+                    Text("No surface material assigned.")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .padding(.vertical, OPSStyle.Layout.spacing2)
                 } else {
-                    ForEach(viewModel.drawingData.footprint.assignedItems) { item in
+                    ForEach(assignedItems) { item in
                         HStack {
                             Text(item.name)
                                 .font(OPSStyle.Typography.caption)
@@ -674,6 +722,56 @@ struct PropertySheetView: View {
     }
 
     // MARK: - Helpers
+
+    @ViewBuilder
+    private func materialPickerEntry(title: String, detail: String) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Image(systemName: "shippingbox")
+                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                Text(title)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Text(detail)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+
+            Spacer()
+
+            Button {
+                showingNestedMaterialPicker = true
+            } label: {
+                Text("Choose")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.buttonText)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
+                    .background(OPSStyle.Colors.primaryAccent)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+            }
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.cardBackground)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+    }
+
+    private func commonHouseMaterial(for edgeIds: [String]) -> HouseEdgeMaterial? {
+        let materials = edgeIds.map { viewModel.findEdge(byId: $0)?.houseEdgeMaterial }
+        guard let first = materials.first,
+              materials.allSatisfy({ $0 == first }) else { return nil }
+        return first
+    }
+
+    private func commonParapetMaterial(for edgeIds: [String]) -> HouseEdgeMaterial? {
+        let materials = edgeIds.map { viewModel.findEdge(byId: $0)?.railingConfig?.wallMaterial }
+        guard let first = materials.first,
+              materials.allSatisfy({ $0 == first }) else { return nil }
+        return first
+    }
 
     @ViewBuilder
     private func sectionHeader(_ title: String, icon: String) -> some View {

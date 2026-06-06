@@ -20,6 +20,8 @@ struct DeckTab2DView: View {
     @State private var measurementMode: Bool = false
     @State private var measurementStart: CGPoint?
     @State private var measurementEnd: CGPoint?
+    @State private var surfaceInspectionMode: Bool = false
+    @State private var inspectedSurface: SurfaceInspectionReadout?
 
     private let canvasSize: CGFloat = 4800
 
@@ -52,12 +54,17 @@ struct DeckTab2DView: View {
                     isDrawing: false
                 )
             }
-            // Tap gesture for measurement. Only active when ruler mode is
-            // toggled on so it doesn't interfere with pan/zoom.
+            // Tap gesture for measurement / surface inspection. Only active
+            // when a tool mode is toggled on so it doesn't interfere with
+            // pan/zoom.
             .simultaneousGesture(
-                measurementMode
+                (measurementMode || surfaceInspectionMode)
                     ? SpatialTapGesture().onEnded { value in
-                        recordMeasurementTap(at: value.location, in: geometry.size)
+                        if measurementMode {
+                            recordMeasurementTap(at: value.location, in: geometry.size)
+                        } else {
+                            recordSurfaceInspectionTap(at: value.location, in: geometry.size)
+                        }
                     }
                     : nil
             )
@@ -112,12 +119,12 @@ struct DeckTab2DView: View {
                     // shows its own assignment (DECK-NEW-1 follow-up).
                     let levelSurfaces = level.detectedSurfaces
                     if !levelSurfaces.isEmpty {
-                        let primary = primarySurfaceId(among: levelSurfaces)
+                        let primary = DeckSurfaceInspector.primarySurfaceId(among: levelSurfaces)
                         for face in levelSurfaces {
-                            let resolved = resolvedReadOnlySurface(
+                            let resolved = DeckSurfaceInspector.resolvedPayload(
                                 detected: face,
                                 persisted: level.surfaces,
-                                legacy: level.footprint,
+                                legacyFootprint: level.footprint,
                                 isLegacyPrimary: face.id == primary
                             )
                             drawLevelSurfaceFill(
@@ -148,8 +155,14 @@ struct DeckTab2DView: View {
                 let surfaces = drawingData.detectedSurfaces
                 if !surfaces.isEmpty {
                     let persisted = drawingData.surfaces
+                    let primary = DeckSurfaceInspector.primarySurfaceId(among: surfaces)
                     for face in surfaces {
-                        let resolved = resolvedReadOnlySurface(detected: face, persisted: persisted, legacy: drawingData.footprint, isLegacyPrimary: face.id == primarySurfaceId(among: surfaces))
+                        let resolved = DeckSurfaceInspector.resolvedPayload(
+                            detected: face,
+                            persisted: persisted,
+                            legacyFootprint: drawingData.footprint,
+                            isLegacyPrimary: face.id == primary
+                        )
                         drawSurfaceFill(context: context, positions: face.positions, assignedItems: resolved.assignedItems, label: resolved.label)
                     }
                 } else if drawingData.isClosed {
@@ -285,48 +298,6 @@ struct DeckTab2DView: View {
         if let l = resolvedLabel {
             drawSurfaceLabel(context: context, positions: positions, label: l)
         }
-    }
-
-    /// Resolved per-surface payload for the read-only viewer. Mirrors
-    /// `DeckCanvasView.resolveSurface` — exact vertex-set first, then best
-    /// Jaccard, falling back to the legacy footprint payload only on the
-    /// primary face for unmigrated drawings. DECK-NEW-1 follow-up.
-    private struct ResolvedReadOnlySurface {
-        let assignedItems: [AssignedItem]
-        let label: String?
-    }
-
-    private func resolvedReadOnlySurface(
-        detected: DetectedSurface,
-        persisted: [DeckSurface],
-        legacy: DeckFootprint,
-        isLegacyPrimary: Bool
-    ) -> ResolvedReadOnlySurface {
-        let dSet = Set(detected.vertexIds)
-        if let exact = persisted.first(where: { $0.vertexIds == dSet }) {
-            return ResolvedReadOnlySurface(assignedItems: exact.assignedItems, label: exact.label)
-        }
-        var best: (s: DeckSurface, j: Double)? = nil
-        for p in persisted {
-            let inter = dSet.intersection(p.vertexIds).count
-            let union = dSet.union(p.vertexIds).count
-            guard union > 0 else { continue }
-            let j = Double(inter) / Double(union)
-            if j > (best?.j ?? -1) { best = (p, j) }
-        }
-        if let m = best, m.j >= SurfaceReconciler.rebindThreshold {
-            return ResolvedReadOnlySurface(assignedItems: m.s.assignedItems, label: m.s.label)
-        }
-        if isLegacyPrimary {
-            return ResolvedReadOnlySurface(assignedItems: legacy.assignedItems, label: legacy.label)
-        }
-        return ResolvedReadOnlySurface(assignedItems: [], label: nil)
-    }
-
-    /// Largest detected surface — used to attribute legacy footprint
-    /// payloads to a single face for unmigrated drawings.
-    private func primarySurfaceId(among surfaces: [DetectedSurface]) -> String? {
-        surfaces.max(by: { abs(PolygonMath.signedArea(vertices: $0.positions)) < abs(PolygonMath.signedArea(vertices: $1.positions)) })?.id
     }
 
     /// Surface label — small monochrome pill at the surface centroid.
@@ -619,6 +590,82 @@ struct DeckTab2DView: View {
                        style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
     }
 
+    // MARK: - Surface Inspection
+
+    private struct SurfaceInspectionReadout: Equatable {
+        let id: String
+        let title: String
+        let areaText: String
+        let perimeterText: String
+        let materialText: String
+        let levelText: String?
+    }
+
+    private func recordSurfaceInspectionTap(at location: CGPoint, in viewportSize: CGSize) {
+        let canvasLoc = canvasPoint(from: location, viewportSize: viewportSize)
+        inspectedSurface = surfaceInspectionReadout(at: canvasLoc)
+    }
+
+    private func surfaceInspectionReadout(at point: CGPoint) -> SurfaceInspectionReadout? {
+        let scale = drawingData.effectiveScaleFactor
+        let hit: (face: DetectedSurface, payload: DeckResolvedSurfacePayload, levelName: String?)?
+
+        if drawingData.isMultiLevel {
+            var candidates: [(DetectedSurface, DeckResolvedSurfacePayload, String?)] = []
+            for level in drawingData.levels {
+                let surfaces = level.detectedSurfaces
+                let primary = DeckSurfaceInspector.primarySurfaceId(among: surfaces)
+                for face in surfaces where PolygonMath.pointInPolygon(point, vertices: face.positions) {
+                    let payload = DeckSurfaceInspector.resolvedPayload(
+                        detected: face,
+                        persisted: level.surfaces,
+                        legacyFootprint: level.footprint,
+                        isLegacyPrimary: face.id == primary
+                    )
+                    candidates.append((face, payload, level.name))
+                }
+            }
+            hit = candidates.min(by: {
+                PolygonMath.area(vertices: $0.0.positions) < PolygonMath.area(vertices: $1.0.positions)
+            })
+        } else {
+            let surfaces = drawingData.detectedSurfaces
+            let primary = DeckSurfaceInspector.primarySurfaceId(among: surfaces)
+            let candidates = surfaces.compactMap { face -> (DetectedSurface, DeckResolvedSurfacePayload, String?)? in
+                guard PolygonMath.pointInPolygon(point, vertices: face.positions) else { return nil }
+                let payload = DeckSurfaceInspector.resolvedPayload(
+                    detected: face,
+                    persisted: drawingData.surfaces,
+                    legacyFootprint: drawingData.footprint,
+                    isLegacyPrimary: face.id == primary
+                )
+                return (face, payload, nil)
+            }
+            hit = candidates.min(by: {
+                PolygonMath.area(vertices: $0.0.positions) < PolygonMath.area(vertices: $1.0.positions)
+            })
+        }
+
+        guard let hit else { return nil }
+        let area = PolygonMath.realWorldArea(vertices: hit.face.positions, scaleFactor: scale)
+        let perimeter = PolygonMath.perimeter(vertices: hit.face.positions) / scale
+        let title: String = {
+            let trimmed = hit.payload.label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return trimmed.isEmpty ? "Surface" : trimmed
+        }()
+        let material = hit.payload.assignedItems.first?.name
+            ?? hit.payload.boardMaterial.replacingOccurrences(of: "_", with: " ").capitalized
+
+        return SurfaceInspectionReadout(
+            id: hit.payload.persistedId ?? hit.face.id,
+            title: title,
+            areaText: DimensionEngine.formatArea(area, system: drawingData.config.measurementSystem),
+            perimeterText: DimensionEngine.format(perimeter, system: drawingData.config.measurementSystem),
+            materialText: material,
+            levelText: hit.levelName
+        )
+    }
+
     // MARK: - Bug 033b5328 — Measurement Tool
 
     /// Convert a viewport-space tap location to canvas-space coordinates.
@@ -838,30 +885,66 @@ struct DeckTab2DView: View {
     @ViewBuilder
     private func measurementToolOverlay(viewportSize: CGSize) -> some View {
         VStack(alignment: .trailing, spacing: 8) {
-            Button {
-                measurementMode.toggle()
-                if !measurementMode {
-                    measurementStart = nil
-                    measurementEnd = nil
+            HStack(spacing: 8) {
+                Button {
+                    measurementMode.toggle()
+                    if measurementMode {
+                        surfaceInspectionMode = false
+                        inspectedSurface = nil
+                    } else {
+                        measurementStart = nil
+                        measurementEnd = nil
+                    }
+                } label: {
+                    Image(systemName: "ruler")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(measurementMode ? .black : .white)
+                        .frame(width: 40, height: 40)
+                        .background(
+                            Circle().fill(
+                                measurementMode
+                                    ? OPSStyle.Colors.warningStatus
+                                    : Color.black.opacity(0.6)
+                            )
+                        )
+                        .overlay(
+                            Circle().stroke(
+                                measurementMode ? Color.clear : Color.white.opacity(0.2),
+                                lineWidth: 1
+                            )
+                        )
                 }
-            } label: {
-                Image(systemName: "ruler")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(measurementMode ? .black : .white)
-                    .frame(width: 40, height: 40)
-                    .background(
-                        Circle().fill(
-                            measurementMode
-                                ? OPSStyle.Colors.warningStatus
-                                : Color.black.opacity(0.6)
+                .accessibilityLabel("Measure distance")
+
+                Button {
+                    surfaceInspectionMode.toggle()
+                    if surfaceInspectionMode {
+                        measurementMode = false
+                        measurementStart = nil
+                        measurementEnd = nil
+                    } else {
+                        inspectedSurface = nil
+                    }
+                } label: {
+                    Image(systemName: "info.square")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(surfaceInspectionMode ? .black : .white)
+                        .frame(width: 40, height: 40)
+                        .background(
+                            Circle().fill(
+                                surfaceInspectionMode
+                                    ? OPSStyle.Colors.primaryAccent
+                                    : Color.black.opacity(0.6)
+                            )
                         )
-                    )
-                    .overlay(
-                        Circle().stroke(
-                            measurementMode ? Color.clear : Color.white.opacity(0.2),
-                            lineWidth: 1
+                        .overlay(
+                            Circle().stroke(
+                                surfaceInspectionMode ? Color.clear : Color.white.opacity(0.2),
+                                lineWidth: 1
+                            )
                         )
-                    )
+                }
+                .accessibilityLabel("Inspect surface")
             }
 
             if let hint = measurementHintText {
@@ -873,10 +956,64 @@ struct DeckTab2DView: View {
                     .background(Color.black.opacity(0.6))
                     .cornerRadius(4)
             }
+
+            if let hint = surfaceHintText {
+                Text(hint)
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.6))
+                    .cornerRadius(4)
+            }
+
+            if let inspectedSurface {
+                surfaceReadoutCard(inspectedSurface)
+            }
         }
         .padding(.top, 16)
         .padding(.trailing, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+    }
+
+    private func surfaceReadoutCard(_ readout: SurfaceInspectionReadout) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(readout.title.uppercased())
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Spacer(minLength: 12)
+                Text(readout.areaText)
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+            }
+            HStack {
+                Text("PERIM")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Text(readout.perimeterText)
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Spacer(minLength: 8)
+                Text(readout.materialText.uppercased())
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineLimit(1)
+            }
+            if let level = readout.levelText {
+                Text(level.uppercased())
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: 260)
+        .background(Color.black.opacity(0.72))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.35), lineWidth: 1)
+        )
+        .cornerRadius(6)
     }
 
     /// Hint shown beside the ruler toggle when measurement mode is on.
@@ -884,9 +1021,14 @@ struct DeckTab2DView: View {
     /// misread as a conditional view branch.
     private var measurementHintText: String? {
         guard measurementMode else { return nil }
-        if measurementStart == nil { return "TAP — SNAPS TO POINTS" }
-        if measurementEnd == nil { return "TAP — SNAPS ⊥ ∥" }
+        if measurementStart == nil { return "TAP POINT" }
+        if measurementEnd == nil { return "TAP END" }
         if drawingData.scaleFactor == nil { return "NO SCALE CALIBRATED" }
         return "TAP TO RESET"
+    }
+
+    private var surfaceHintText: String? {
+        guard surfaceInspectionMode else { return nil }
+        return inspectedSurface == nil ? "TAP SURFACE" : "TAP ANOTHER SURFACE"
     }
 }

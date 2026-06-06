@@ -113,6 +113,34 @@ final class DeckBuilderRegressionTests: XCTestCase {
         XCTAssertEqual(Double(wallBox?.height ?? 0), 8.0 * 0.3048, accuracy: 0.01)
     }
 
+    func testSceneBuilder_elevatedHouseEdgeAddsGradeWallBelowDeck() throws {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1.0
+        data.overallElevation = 3.0
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 144, y: 0)),
+            DeckVertex(id: "v3", position: CGPoint(x: 144, y: 144)),
+            DeckVertex(id: "v4", position: CGPoint(x: 0, y: 144)),
+        ]
+        data.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2", edgeType: .houseEdge, houseEdgeMaterial: .stucco),
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4"),
+            DeckEdge(id: "e4", startVertexId: "v4", endVertexId: "v1"),
+        ]
+
+        let scene = DeckSceneBuilder.buildScene(from: data)
+        let houseWall = try XCTUnwrap(scene.rootNode.childNode(withName: "houseWall", recursively: true))
+        let gradeWall = try XCTUnwrap(scene.rootNode.childNode(withName: "houseWallToGrade", recursively: true))
+        let houseBox = try XCTUnwrap(houseWall.geometry as? SCNBox)
+        let gradeBox = try XCTUnwrap(gradeWall.geometry as? SCNBox)
+
+        XCTAssertEqual(Double(houseBox.height), 8.0 * 0.3048, accuracy: 0.01)
+        XCTAssertEqual(Double(gradeBox.height), 3.0 * 0.3048, accuracy: 0.01)
+        XCTAssertEqual(gradeWall.position.y, Float(3.0 * 0.3048 / 2.0), accuracy: 0.01)
+    }
+
     func testBuiltInLinearStandards_onlyExposeParapetAsDefaultRailing() {
         let ids = BuiltInMaterial.linearStandards.map(\.id)
 
@@ -339,6 +367,34 @@ final class DeckBuilderRegressionTests: XCTestCase {
         XCTAssertEqual(viewModel.findEdge(byId: "e3")?.edgeType, .deckEdge)
     }
 
+    func testSetHouseEdgeMaterial_batchAppliesToAllSelectedHouseEdgesWithSingleUndo() {
+        var data = DeckDrawingData()
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 120, y: 0)),
+            DeckVertex(id: "v3", position: CGPoint(x: 120, y: 120)),
+            DeckVertex(id: "v4", position: CGPoint(x: 0, y: 120)),
+        ]
+        data.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2", edgeType: .houseEdge),
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3", edgeType: .houseEdge),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4", edgeType: .deckEdge),
+        ]
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        viewModel.selection.selectedEdgeIds = ["e1", "e2", "e3"]
+
+        viewModel.setHouseEdgeMaterial(["e1", "e2", "e3"], material: .hardie)
+
+        XCTAssertEqual(viewModel.findEdge(byId: "e1")?.houseEdgeMaterial, .hardie)
+        XCTAssertEqual(viewModel.findEdge(byId: "e2")?.houseEdgeMaterial, .hardie)
+        XCTAssertNil(viewModel.findEdge(byId: "e3")?.houseEdgeMaterial)
+
+        viewModel.undo()
+        XCTAssertNil(viewModel.findEdge(byId: "e1")?.houseEdgeMaterial)
+        XCTAssertNil(viewModel.findEdge(byId: "e2")?.houseEdgeMaterial)
+        XCTAssertNil(viewModel.findEdge(byId: "e3")?.houseEdgeMaterial)
+    }
+
     // MARK: - 3D cut-stringer profile (sawtooth seats; never above the treads)
 
     func testCutStringerProfile_sawtoothSeatsAndUnderside() {
@@ -475,6 +531,85 @@ final class DeckBuilderRegressionTests: XCTestCase {
         ]
 
         XCTAssertEqual(EstimateGeneratorService.calculateAreaSqFt(drawingData: data), 180.0, accuracy: 0.5)
+    }
+
+    func testSelectedSurfaceSummaryUsesSelectedPersistedItemsAndArea() throws {
+        var data = disconnectedSurfaceDrawingData()
+        var persisted = SurfaceReconciler.reconcile(detected: data.detectedSurfaces, persisted: [])
+        let smallSurfaceVertexIds: Set<String> = ["b1", "b2", "b3", "b4"]
+        let selectedSurfaceIndex = try XCTUnwrap(
+            persisted.firstIndex(where: { $0.vertexIds == smallSurfaceVertexIds })
+        )
+        persisted[selectedSurfaceIndex].label = "Landing"
+        persisted[selectedSurfaceIndex].assignedItems = [
+            AssignedItem(
+                id: "item-pvc",
+                name: "PVC deck board",
+                unitType: .squareFoot,
+                unitPrice: nil,
+                taskTypeId: nil,
+                taskTypeColor: "#8195B5"
+            )
+        ]
+        data.surfaces = persisted
+
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        viewModel.selection.selectedSurfaceIds = [persisted[selectedSurfaceIndex].id]
+
+        let summary = try XCTUnwrap(viewModel.selectedSurfaceSummary)
+        XCTAssertEqual(summary.surfaceCount, 1)
+        XCTAssertEqual(summary.title, "Landing")
+        XCTAssertEqual(summary.areaSquareInches, 72.0 * 72.0, accuracy: 0.001)
+        XCTAssertEqual(summary.perimeterInches, 72.0 * 4.0, accuracy: 0.001)
+        XCTAssertEqual(summary.assignedItems.map(\.name), ["PVC deck board"])
+    }
+
+    func testCopyPasteSelectionStagesGeometryBeforeCommit() {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1.0
+        data.config.snappingEnabled = false
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 100, y: 0)),
+            DeckVertex(id: "v3", position: CGPoint(x: 100, y: 100)),
+            DeckVertex(id: "v4", position: CGPoint(x: 0, y: 100)),
+        ]
+        data.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2"),
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4"),
+            DeckEdge(id: "e4", startVertexId: "v4", endVertexId: "v1"),
+        ]
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        viewModel.selection.selectedEdgeIds = ["e1", "e2"]
+
+        XCTAssertTrue(viewModel.copySelection())
+        XCTAssertTrue(viewModel.canPasteSelection)
+
+        let originalVertexIds = Set(viewModel.drawingData.vertices.map(\.id))
+        let originalEdgeIds = Set(viewModel.drawingData.edges.map(\.id))
+        viewModel.beginPaste(at: CGPoint(x: 300, y: 300))
+
+        XCTAssertNotNil(viewModel.pendingPastePreview)
+        XCTAssertEqual(viewModel.drawingData.vertices.count, 4)
+        XCTAssertEqual(viewModel.drawingData.edges.count, 4)
+
+        viewModel.beginPendingPasteMove(at: CGPoint(x: 300, y: 300))
+        viewModel.updatePendingPasteMove(to: CGPoint(x: 360, y: 360))
+        viewModel.endPendingPasteMove()
+        viewModel.commitPendingPaste()
+
+        XCTAssertNil(viewModel.pendingPastePreview)
+        XCTAssertEqual(viewModel.drawingData.vertices.count, 7)
+        XCTAssertEqual(viewModel.drawingData.edges.count, 6)
+        XCTAssertTrue(viewModel.selection.selectedEdgeIds.isDisjoint(with: originalEdgeIds))
+        XCTAssertEqual(viewModel.selection.selectedEdgeIds.count, 2)
+
+        let pastedVertices = viewModel.drawingData.vertices.filter { !originalVertexIds.contains($0.id) }
+        XCTAssertEqual(pastedVertices.count, 3)
+        XCTAssertTrue(pastedVertices.contains { $0.position == CGPoint(x: 310, y: 310) })
+        XCTAssertTrue(pastedVertices.contains { $0.position == CGPoint(x: 410, y: 310) })
+        XCTAssertTrue(pastedVertices.contains { $0.position == CGPoint(x: 410, y: 410) })
     }
 
     // MARK: - Selection is pruned when undo/redo removes the selected element
@@ -774,5 +909,31 @@ final class DeckBuilderRegressionTests: XCTestCase {
             title: "Regression deck",
             drawingDataJSON: drawingData.toJSON()
         )
+    }
+
+    private func disconnectedSurfaceDrawingData() -> DeckDrawingData {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1.0
+        data.vertices = [
+            DeckVertex(id: "a1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "a2", position: CGPoint(x: 144, y: 0)),
+            DeckVertex(id: "a3", position: CGPoint(x: 144, y: 144)),
+            DeckVertex(id: "a4", position: CGPoint(x: 0, y: 144)),
+            DeckVertex(id: "b1", position: CGPoint(x: 240, y: 0)),
+            DeckVertex(id: "b2", position: CGPoint(x: 312, y: 0)),
+            DeckVertex(id: "b3", position: CGPoint(x: 312, y: 72)),
+            DeckVertex(id: "b4", position: CGPoint(x: 240, y: 72)),
+        ]
+        data.edges = [
+            DeckEdge(id: "ae1", startVertexId: "a1", endVertexId: "a2"),
+            DeckEdge(id: "ae2", startVertexId: "a2", endVertexId: "a3"),
+            DeckEdge(id: "ae3", startVertexId: "a3", endVertexId: "a4"),
+            DeckEdge(id: "ae4", startVertexId: "a4", endVertexId: "a1"),
+            DeckEdge(id: "be1", startVertexId: "b1", endVertexId: "b2"),
+            DeckEdge(id: "be2", startVertexId: "b2", endVertexId: "b3"),
+            DeckEdge(id: "be3", startVertexId: "b3", endVertexId: "b4"),
+            DeckEdge(id: "be4", startVertexId: "b4", endVertexId: "b1"),
+        ]
+        return data
     }
 }

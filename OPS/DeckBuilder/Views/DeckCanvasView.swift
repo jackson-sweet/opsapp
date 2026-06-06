@@ -144,7 +144,7 @@ struct DeckCanvasView: View {
         edgePan.maxSpeed = Self.edgePanMaxSpeed
         edgePan.isDragActive = {
             switch viewModel.drawingMode {
-            case .drawing, .draggingVertex, .selecting, .lassoing, .movingSelection: return true
+            case .drawing, .draggingVertex, .selecting, .lassoing, .movingSelection, .movingPendingPaste: return true
             case .idle: return false
             }
         }
@@ -166,6 +166,8 @@ struct DeckCanvasView: View {
                 viewModel.updateLasso(to: canvasPt)
             case .movingSelection:
                 viewModel.updateSelectionMove(to: canvasPt)
+            case .movingPendingPaste:
+                viewModel.updatePendingPasteMove(to: canvasPt)
             case .idle:
                 break
             }
@@ -257,6 +259,11 @@ struct DeckCanvasView: View {
             }
 
             // Marquee selection rectangle (canvas space)
+            if let preview = viewModel.pendingPastePreview {
+                drawPendingPastePreview(context: context, preview: preview)
+            }
+
+            // Marquee selection rectangle (canvas space)
             if case .selecting(let rect) = viewModel.drawingMode, rect.width > 0 || rect.height > 0 {
                 drawMarqueeRect(context: context, rect: rect)
             }
@@ -289,6 +296,56 @@ struct DeckCanvasView: View {
         context.stroke(path, with: .color(OPSStyle.Colors.primaryAccent.opacity(0.7)),
                         style: StrokeStyle(lineWidth: stroke,
                                            dash: [scaledSize(6, min: 4, max: 10), scaledSize(3, min: 2, max: 6)]))
+    }
+
+    private func drawPendingPastePreview(context: GraphicsContext, preview: DeckPastePreview) {
+        let vertexLookup = Dictionary(uniqueKeysWithValues: preview.vertices.map { ($0.id, $0) })
+        let fillColor = OPSStyle.Colors.primaryAccent.opacity(0.12)
+        let strokeColor = OPSStyle.Colors.warningStatus.opacity(0.9)
+        let strokeWidth = scaledSize(2, min: 1, max: 3)
+        let dash = [scaledSize(8, min: 5, max: 12), scaledSize(5, min: 3, max: 8)]
+
+        for surface in preview.surfaces {
+            let positions = surface.vertexIds.compactMap { vertexLookup[$0]?.position }
+            guard positions.count >= 3 else { continue }
+            var path = Path()
+            path.move(to: positions[0])
+            for point in positions.dropFirst() {
+                path.addLine(to: point)
+            }
+            path.closeSubpath()
+            context.fill(path, with: .color(fillColor), style: FillStyle(eoFill: false))
+            context.stroke(path, with: .color(strokeColor.opacity(0.6)),
+                           style: StrokeStyle(lineWidth: strokeWidth, dash: dash))
+        }
+
+        for edge in preview.edges {
+            guard let start = vertexLookup[edge.startVertexId],
+                  let end = vertexLookup[edge.endVertexId] else { continue }
+            var path = Path()
+            path.move(to: start.position)
+            path.addLine(to: end.position)
+            context.stroke(path, with: .color(strokeColor),
+                           style: StrokeStyle(lineWidth: strokeWidth, dash: dash))
+        }
+
+        let vertexRadius = scaledSize(4, min: 2.5, max: 7)
+        for vertex in preview.vertices {
+            let rect = CGRect(
+                x: vertex.position.x - vertexRadius,
+                y: vertex.position.y - vertexRadius,
+                width: vertexRadius * 2,
+                height: vertexRadius * 2
+            )
+            context.fill(Path(ellipseIn: rect), with: .color(strokeColor.opacity(0.25)))
+            context.stroke(Path(ellipseIn: rect), with: .color(strokeColor), lineWidth: scaledSize(1, min: 0.75, max: 2))
+        }
+
+        context.stroke(
+            Path(preview.bounds),
+            with: .color(strokeColor.opacity(0.5)),
+            style: StrokeStyle(lineWidth: scaledSize(1, min: 0.75, max: 2), dash: dash)
+        )
     }
 
     // MARK: - Grid (visible region only)
@@ -380,9 +437,9 @@ struct DeckCanvasView: View {
         let persisted = viewModel.drawingData.surfaces
         let legacyFootprint = viewModel.drawingData.footprint
         let selectedIds = viewModel.selection.selectedSurfaceIds
-        let primaryId = primarySurfaceId(among: surfaces)
+        let primaryId = DeckSurfaceInspector.primarySurfaceId(among: surfaces)
         for detected in surfaces {
-            let resolved = resolveSurface(
+            let resolved = DeckSurfaceInspector.resolvedPayload(
                 detected: detected,
                 persisted: persisted,
                 legacyFootprint: legacyFootprint,
@@ -404,9 +461,9 @@ struct DeckCanvasView: View {
         let persisted = level.surfaces
         let legacyFootprint = level.footprint
         let selectedIds = viewModel.selection.selectedSurfaceIds
-        let primaryId = primarySurfaceId(among: surfaces)
+        let primaryId = DeckSurfaceInspector.primarySurfaceId(among: surfaces)
         for detected in surfaces {
-            let resolved = resolveSurface(
+            let resolved = DeckSurfaceInspector.resolvedPayload(
                 detected: detected,
                 persisted: persisted,
                 legacyFootprint: legacyFootprint,
@@ -420,62 +477,6 @@ struct DeckCanvasView: View {
                 label: resolved.label
             )
         }
-    }
-
-    private struct ResolvedSurface {
-        let persistedId: String?
-        let assignedItems: [AssignedItem]
-        let label: String?
-    }
-
-    /// Looks up the persisted `DeckSurface` payload for a detected face.
-    /// Falls back to the legacy footprint store (only on the primary face)
-    /// while a drawing predates DECK-NEW-1's reconciliation pass — that
-    /// state should resolve itself the next time `save()` runs.
-    private func resolveSurface(
-        detected: DetectedSurface,
-        persisted: [DeckSurface],
-        legacyFootprint: DeckFootprint,
-        isLegacyPrimary: Bool
-    ) -> ResolvedSurface {
-        let dSet = Set(detected.vertexIds)
-        if let exact = persisted.first(where: { $0.vertexIds == dSet }) {
-            return ResolvedSurface(persistedId: exact.id, assignedItems: exact.assignedItems, label: exact.label)
-        }
-
-        var best: (surface: DeckSurface, jaccard: Double)? = nil
-        for p in persisted {
-            let intersection = dSet.intersection(p.vertexIds).count
-            let union = dSet.union(p.vertexIds).count
-            guard union > 0 else { continue }
-            let jaccard = Double(intersection) / Double(union)
-            if jaccard > (best?.jaccard ?? -1) {
-                best = (p, jaccard)
-            }
-        }
-        if let match = best, match.jaccard >= SurfaceReconciler.rebindThreshold {
-            return ResolvedSurface(
-                persistedId: match.surface.id,
-                assignedItems: match.surface.assignedItems,
-                label: match.surface.label
-            )
-        }
-
-        // Pre-reconciliation fallback: legacy footprint payload applies to
-        // whichever face is the primary (largest), nothing on the others.
-        if isLegacyPrimary {
-            return ResolvedSurface(
-                persistedId: nil,
-                assignedItems: legacyFootprint.assignedItems,
-                label: legacyFootprint.label
-            )
-        }
-        return ResolvedSurface(persistedId: nil, assignedItems: [], label: nil)
-    }
-
-    /// Largest surface by signed area magnitude.
-    private func primarySurfaceId(among surfaces: [DetectedSurface]) -> String? {
-        surfaces.max(by: { abs(PolygonMath.signedArea(vertices: $0.positions)) < abs(PolygonMath.signedArea(vertices: $1.positions)) })?.id
     }
 
     private func drawOneSurface(
@@ -1388,7 +1389,9 @@ struct DeckCanvasView: View {
                     || (viewModel.activeTool == .tapSelect && viewModel.marqueeShape == .lasso)
                 if !drawingStarted {
                     drawingStarted = true
-                    if viewModel.isSelectionMoveArmed && !viewModel.selection.isEmpty {
+                    if viewModel.pendingPastePreview != nil {
+                        viewModel.beginPendingPasteMove(at: startPoint)
+                    } else if viewModel.isSelectionMoveArmed && !viewModel.selection.isEmpty {
                         viewModel.beginSelectionMove(at: startPoint)
                     } else if useLasso {
                         viewModel.beginLasso(at: startPoint)
@@ -1397,7 +1400,9 @@ struct DeckCanvasView: View {
                     }
                     edgePan.startTracking(location: value.location)
                 }
-                if case .movingSelection = viewModel.drawingMode {
+                if case .movingPendingPaste = viewModel.drawingMode {
+                    viewModel.updatePendingPasteMove(to: point)
+                } else if case .movingSelection = viewModel.drawingMode {
                     viewModel.updateSelectionMove(to: point)
                 } else if useLasso {
                     viewModel.updateLasso(to: point)
@@ -1409,7 +1414,9 @@ struct DeckCanvasView: View {
             .onEnded { _ in
                 let useLasso = (viewModel.activeTool == .lasso)
                     || (viewModel.activeTool == .tapSelect && viewModel.marqueeShape == .lasso)
-                if case .movingSelection = viewModel.drawingMode {
+                if case .movingPendingPaste = viewModel.drawingMode {
+                    viewModel.endPendingPasteMove()
+                } else if case .movingSelection = viewModel.drawingMode {
                     viewModel.endSelectionMove()
                 } else if useLasso {
                     viewModel.endLasso()

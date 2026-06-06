@@ -132,6 +132,148 @@ enum SurfaceReconciler {
     }
 }
 
+struct DeckResolvedSurfacePayload: Equatable {
+    let persistedId: String?
+    let assignedItems: [AssignedItem]
+    let label: String?
+    let color: String
+    let boardMaterial: String
+}
+
+struct DeckSurfaceSelectionSummary: Equatable {
+    let surfaceCount: Int
+    let title: String
+    let areaSquareInches: Double
+    let perimeterInches: Double
+    let assignedItems: [AssignedItem]
+    let label: String?
+    let color: String?
+    let boardMaterial: String?
+
+    var areaSquareFeet: Double { areaSquareInches / 144.0 }
+}
+
+enum DeckSurfaceInspector {
+    static func primarySurfaceId(among surfaces: [DetectedSurface]) -> String? {
+        surfaces.max(by: {
+            abs(PolygonMath.signedArea(vertices: $0.positions)) < abs(PolygonMath.signedArea(vertices: $1.positions))
+        })?.id
+    }
+
+    static func resolvedPayload(
+        detected: DetectedSurface,
+        persisted: [DeckSurface],
+        legacyFootprint: DeckFootprint,
+        isLegacyPrimary: Bool
+    ) -> DeckResolvedSurfacePayload {
+        let dSet = Set(detected.vertexIds)
+        if let exact = persisted.first(where: { $0.vertexIds == dSet }) {
+            return DeckResolvedSurfacePayload(
+                persistedId: exact.id,
+                assignedItems: exact.assignedItems,
+                label: exact.label,
+                color: exact.color,
+                boardMaterial: exact.boardMaterial
+            )
+        }
+
+        var best: (surface: DeckSurface, jaccard: Double)?
+        for surface in persisted {
+            let intersection = dSet.intersection(surface.vertexIds).count
+            let union = dSet.union(surface.vertexIds).count
+            guard union > 0 else { continue }
+            let jaccard = Double(intersection) / Double(union)
+            if jaccard > (best?.jaccard ?? -1) {
+                best = (surface, jaccard)
+            }
+        }
+
+        if let match = best, match.jaccard >= SurfaceReconciler.rebindThreshold {
+            return DeckResolvedSurfacePayload(
+                persistedId: match.surface.id,
+                assignedItems: match.surface.assignedItems,
+                label: match.surface.label,
+                color: match.surface.color,
+                boardMaterial: match.surface.boardMaterial
+            )
+        }
+
+        if isLegacyPrimary {
+            return DeckResolvedSurfacePayload(
+                persistedId: nil,
+                assignedItems: legacyFootprint.assignedItems,
+                label: legacyFootprint.label,
+                color: "Brown",
+                boardMaterial: "composite"
+            )
+        }
+
+        return DeckResolvedSurfacePayload(
+            persistedId: nil,
+            assignedItems: [],
+            label: nil,
+            color: "Brown",
+            boardMaterial: "composite"
+        )
+    }
+
+    static func summary(
+        selectedSurfaceIds: Set<String>,
+        detectedSurfaces: [DetectedSurface],
+        persistedSurfaces: [DeckSurface],
+        legacyFootprint: DeckFootprint,
+        scaleFactor: Double
+    ) -> DeckSurfaceSelectionSummary? {
+        guard !detectedSurfaces.isEmpty else { return nil }
+
+        let primaryId = primarySurfaceId(among: detectedSurfaces)
+        let resolved = detectedSurfaces.map { detected -> (DetectedSurface, DeckResolvedSurfacePayload) in
+            (
+                detected,
+                resolvedPayload(
+                    detected: detected,
+                    persisted: persistedSurfaces,
+                    legacyFootprint: legacyFootprint,
+                    isLegacyPrimary: detected.id == primaryId
+                )
+            )
+        }
+
+        let selected = resolved.filter { _, payload in
+            payload.persistedId.map { selectedSurfaceIds.contains($0) } ?? false
+        }
+        let targets = selected.isEmpty && selectedSurfaceIds.isEmpty ? resolved : selected
+        guard !targets.isEmpty else { return nil }
+
+        let area = targets.reduce(0.0) { total, pair in
+            total + PolygonMath.realWorldArea(vertices: pair.0.positions, scaleFactor: scaleFactor)
+        }
+        let perimeter = targets.reduce(0.0) { total, pair in
+            total + PolygonMath.perimeter(vertices: pair.0.positions) / scaleFactor
+        }
+        let items = targets.flatMap { $0.1.assignedItems }
+        let firstPayload = targets.first?.1
+        let title: String
+        if targets.count == 1 {
+            let trimmed = firstPayload?.label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            title = trimmed.isEmpty ? "Selected Surface" : trimmed
+        } else {
+            title = "\(targets.count) Surfaces"
+        }
+
+        return DeckSurfaceSelectionSummary(
+            surfaceCount: targets.count,
+            title: title,
+            areaSquareInches: area,
+            perimeterInches: perimeter,
+            assignedItems: items,
+            label: firstPayload?.label,
+            color: firstPayload?.color,
+            boardMaterial: firstPayload?.boardMaterial
+        )
+    }
+}
+
 enum SurfaceDetector {
 
     /// Find every closed face in the edge graph. Returns an empty array when

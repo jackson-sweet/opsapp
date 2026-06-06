@@ -56,6 +56,10 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var isSelectionMoveArmed: Bool = false
     private var selectionMoveStart: CGPoint?
     private var selectionMoveOriginalVertices: [String: CGPoint] = [:]
+    @Published private(set) var selectionClipboard: DeckSelectionClipboard?
+    @Published private(set) var pendingPastePreview: DeckPastePreview?
+    private var pendingPasteMoveStart: CGPoint?
+    private var pendingPasteMoveOriginalPreview: DeckPastePreview?
     /// Fixed drag-start anchor for the active marquee. The running
     /// `.selecting(rect:)` can't double as the anchor — once a reversing drag
     /// pulls the rect origin to a min corner, that corner is no longer the
@@ -466,6 +470,21 @@ class DeckBuilderViewModel: ObservableObject {
         let positions = drawingData.orderedPositions
         guard !PolygonMath.isSelfIntersecting(vertices: positions) else { return nil }
         return PolygonMath.realWorldArea(vertices: positions, scaleFactor: scale)
+    }
+
+    var selectedSurfaceSummary: DeckSurfaceSelectionSummary? {
+        DeckSurfaceInspector.summary(
+            selectedSurfaceIds: selection.selectedSurfaceIds,
+            detectedSurfaces: activeSurfaces,
+            persistedSurfaces: activePersistedSurfaces,
+            legacyFootprint: activeFootprint,
+            scaleFactor: drawingData.effectiveScaleFactor
+        )
+    }
+
+    var canPasteSelection: Bool {
+        guard let clipboard = selectionClipboard else { return false }
+        return !clipboard.isEmpty && pendingPastePreview == nil
     }
 
     var totalPerimeter: Double? {
@@ -1541,6 +1560,146 @@ class DeckBuilderViewModel: ObservableObject {
         save()
     }
 
+    // MARK: - Copy / Paste Selection
+
+    @discardableResult
+    func copySelection() -> Bool {
+        guard let clipboard = buildSelectionClipboard(), !clipboard.isEmpty else { return false }
+        selectionClipboard = clipboard
+        hapticLight()
+        return true
+    }
+
+    func beginPaste() {
+        guard let clipboard = selectionClipboard else { return }
+        let target = CGPoint(x: clipboard.center.x + 48, y: clipboard.center.y + 48)
+        beginPaste(at: target)
+    }
+
+    func beginPaste(at point: CGPoint) {
+        guard let clipboard = selectionClipboard, !clipboard.isEmpty else { return }
+        pendingPastePreview = clipboard.preview(centeredAt: point)
+        pendingPasteMoveStart = nil
+        pendingPasteMoveOriginalPreview = nil
+        selection.clear()
+        isSelectionMoveArmed = false
+        drawingMode = .idle
+        activeTool = .tapSelect
+        hapticLight()
+    }
+
+    func beginPendingPasteMove(at point: CGPoint) {
+        guard let preview = pendingPastePreview else { return }
+        pendingPasteMoveStart = point
+        pendingPasteMoveOriginalPreview = preview
+        drawingMode = .movingPendingPaste
+        alignmentGuides = []
+    }
+
+    func updatePendingPasteMove(to point: CGPoint) {
+        guard case .movingPendingPaste = drawingMode,
+              let start = pendingPasteMoveStart,
+              var preview = pendingPasteMoveOriginalPreview else { return }
+        preview.translate(by: CGSize(width: point.x - start.x, height: point.y - start.y))
+        pendingPastePreview = preview
+    }
+
+    func endPendingPasteMove() {
+        guard case .movingPendingPaste = drawingMode else { return }
+        drawingMode = .idle
+        pendingPasteMoveStart = nil
+        pendingPasteMoveOriginalPreview = nil
+        alignmentGuides = []
+        hapticLight()
+    }
+
+    func commitPendingPaste() {
+        guard let preview = pendingPastePreview, !preview.isEmpty else { return }
+        pushUndo("paste selection")
+
+        var vertices = activeVertices
+        vertices.append(contentsOf: preview.vertices)
+        activeVertices = vertices
+
+        var edges = activeEdges
+        edges.append(contentsOf: preview.edges)
+        activeEdges = edges
+
+        if !preview.surfaces.isEmpty {
+            var surfaces = activePersistedSurfaces
+            surfaces.append(contentsOf: preview.surfaces)
+            activePersistedSurfaces = surfaces
+        }
+
+        reconcileSurfaces()
+
+        selection.clear()
+        selection.selectedVertexIds = Set(preview.vertices.map(\.id))
+        selection.selectedEdgeIds = Set(preview.edges.map(\.id))
+        let liveSurfaceIds = Set(activePersistedSurfaces.map(\.id))
+        selection.selectedSurfaceIds = Set(preview.surfaces.map(\.id)).intersection(liveSurfaceIds)
+
+        pendingPastePreview = nil
+        pendingPasteMoveStart = nil
+        pendingPasteMoveOriginalPreview = nil
+        drawingMode = .idle
+        activeTool = .tapSelect
+        hapticMedium()
+        save()
+    }
+
+    func cancelPendingPaste() {
+        pendingPastePreview = nil
+        pendingPasteMoveStart = nil
+        pendingPasteMoveOriginalPreview = nil
+        if case .movingPendingPaste = drawingMode {
+            drawingMode = .idle
+        }
+        hapticLight()
+    }
+
+    private func buildSelectionClipboard() -> DeckSelectionClipboard? {
+        var vertexIds = selection.selectedVertexIds
+        var edgeIds = selection.selectedEdgeIds
+        let selectedSurfaces = activePersistedSurfaces.filter { selection.selectedSurfaceIds.contains($0.id) }
+
+        for edge in activeEdges where edgeIds.contains(edge.id) {
+            vertexIds.insert(edge.startVertexId)
+            vertexIds.insert(edge.endVertexId)
+        }
+
+        for surface in selectedSurfaces {
+            vertexIds.formUnion(surface.vertexIds)
+            for edge in activeEdges where surface.vertexIds.contains(edge.startVertexId)
+                && surface.vertexIds.contains(edge.endVertexId) {
+                edgeIds.insert(edge.id)
+            }
+        }
+
+        let vertices = activeVertices.filter { vertexIds.contains($0.id) }
+        guard !vertices.isEmpty else { return nil }
+        let liveVertexIds = Set(vertices.map(\.id))
+        let edges = activeEdges.filter {
+            edgeIds.contains($0.id)
+                && liveVertexIds.contains($0.startVertexId)
+                && liveVertexIds.contains($0.endVertexId)
+        }
+        let surfaces = selectedSurfaces.filter { $0.vertexIds.isSubset(of: liveVertexIds) }
+        let xs = vertices.map { $0.position.x }
+        let ys = vertices.map { $0.position.y }
+        guard let minX = xs.min(),
+              let maxX = xs.max(),
+              let minY = ys.min(),
+              let maxY = ys.max() else { return nil }
+
+        return DeckSelectionClipboard(
+            vertices: vertices,
+            edges: edges,
+            surfaces: surfaces,
+            bounds: CGRect(x: minX, y: minY, width: max(maxX - minX, 1), height: max(maxY - minY, 1))
+        )
+    }
+
     private func selectedMoveVertexIds() -> Set<String> {
         var ids = selection.selectedVertexIds
         for edge in activeEdges where selection.selectedEdgeIds.contains(edge.id) {
@@ -1961,31 +2120,73 @@ class DeckBuilderViewModel: ObservableObject {
     /// 2D hatch color, 3D wall fill, and house-edge label. No-op when the
     /// edge is not a house edge.
     func setHouseEdgeMaterial(_ edgeId: String, material: HouseEdgeMaterial?) {
-        guard var edge = activeEdge(byId: edgeId), edge.edgeType == .houseEdge else { return }
+        setHouseEdgeMaterial([edgeId], material: material)
+    }
+
+    func setHouseEdgeMaterial(_ edgeIds: [String], material: HouseEdgeMaterial?) {
+        let ids = edgeIds.filter {
+            guard let edge = activeEdge(byId: $0) else { return false }
+            return edge.edgeType == .houseEdge
+        }
+        guard !ids.isEmpty else { return }
         pushUndo("set house cladding")
-        edge.houseEdgeMaterial = material
-        activeUpdateEdge(edge)
+        for id in ids {
+            guard var edge = activeEdge(byId: id) else { continue }
+            edge.houseEdgeMaterial = material
+            activeUpdateEdge(edge)
+        }
+        if ids.count > 1 {
+            let label = material?.displayName ?? "Cladding cleared"
+            showAssignmentConfirmation("\(label) applied to \(ids.count) house edges")
+        }
         save()
     }
 
     func setRailing(_ edgeId: String, config: RailingConfig?) {
-        guard var edge = activeEdge(byId: edgeId) else { return }
-        guard config == nil || edge.edgeType == .deckEdge else { return }
+        setRailing([edgeId], config: config)
+    }
+
+    func setRailing(_ edgeIds: [String], config: RailingConfig?) {
+        let ids = edgeIds.filter {
+            guard let edge = activeEdge(byId: $0) else { return false }
+            return config == nil || edge.edgeType == .deckEdge
+        }
+        guard !ids.isEmpty else { return }
         pushUndo("set railing")
-        edge.railingConfig = config
-        activeUpdateEdge(edge)
+        for id in ids {
+            guard var edge = activeEdge(byId: id) else { continue }
+            edge.railingConfig = config
+            activeUpdateEdge(edge)
+        }
+        if ids.count > 1, let config {
+            showAssignmentConfirmation("\(config.railingType.displayName) applied to \(ids.count) edges")
+        }
         save()
     }
 
     func setRailingWallMaterial(_ edgeId: String, material: HouseEdgeMaterial) {
-        guard var edge = activeEdge(byId: edgeId),
-              edge.edgeType == .deckEdge,
-              var railing = edge.railingConfig,
-              railing.railingType == .parapetWall else { return }
+        setRailingWallMaterial([edgeId], material: material)
+    }
+
+    func setRailingWallMaterial(_ edgeIds: [String], material: HouseEdgeMaterial) {
+        let ids = edgeIds.filter {
+            guard let edge = activeEdge(byId: $0),
+                  edge.edgeType == .deckEdge,
+                  edge.railingConfig?.railingType == .parapetWall else { return false }
+            return true
+        }
+        guard !ids.isEmpty else { return }
         pushUndo("set parapet finish")
-        railing.wallMaterial = material
-        edge.railingConfig = railing
-        activeUpdateEdge(edge)
+        for id in ids {
+            guard var edge = activeEdge(byId: id),
+                  var railing = edge.railingConfig else { continue }
+            railing.wallMaterial = material
+            edge.railingConfig = railing
+            activeUpdateEdge(edge)
+        }
+        if ids.count > 1 {
+            showAssignmentConfirmation("\(material.displayName) applied to \(ids.count) parapet edges")
+        }
         save()
     }
 
@@ -3414,7 +3615,6 @@ class DeckBuilderViewModel: ObservableObject {
     func prepareShareImage() async {
         let (clientId, _) = resolveProjectContext()
         let clientName = resolveClientName(clientId: clientId)
-        let companyName = resolveCompanyName()
 
         guard let image = DeckShareRenderer.renderShareImage(
             drawingData: drawingData,

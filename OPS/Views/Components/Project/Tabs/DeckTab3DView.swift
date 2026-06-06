@@ -249,6 +249,22 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
                 // (bug fb007839 — supersedes a40556a7, which set it to 9').
                 let houseWallHeight = houseWallCapM.map { min(8.0 * feetToMeters, $0) }
                     ?? (8.0 * feetToMeters)
+                let wallColor = edge.houseEdgeMaterial.map { UIColor(hex: $0.fillHex) }
+                    ?? UIColor(red: 136/255, green: 136/255, blue: 136/255, alpha: 0.8)
+                if levelDeckY > 0.01 {
+                    addWall(
+                        scene: scene,
+                        midX: midX,
+                        midZ: midZ,
+                        angle: angle,
+                        length: length,
+                        bottomY: 0,
+                        height: levelDeckY,
+                        thickness: 0.05,
+                        color: wallColor.withAlphaComponent(0.35),
+                        name: "houseWallToGrade"
+                    )
+                }
                 addWall(
                     scene: scene,
                     midX: midX,
@@ -258,8 +274,8 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
                     bottomY: levelDeckY,
                     height: houseWallHeight,
                     thickness: 0.05,
-                    color: edge.houseEdgeMaterial.map { UIColor(hex: $0.fillHex) }
-                        ?? UIColor(red: 136/255, green: 136/255, blue: 136/255, alpha: 0.8)
+                    color: wallColor,
+                    name: "houseWall"
                 )
             } else if let railing = edge.railingConfig, railing.railingType == .parapetWall {
                 let wallHeight = Float(max(24.0, min(48.0, railing.postHeight))) * inchesToMeters
@@ -528,7 +544,8 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         bottomY: Float,
         height: Float,
         thickness: Float,
-        color: UIColor
+        color: UIColor,
+        name: String? = nil
     ) {
         guard height > 0, length > 0 else { return }
         let wallGeo = SCNBox(width: CGFloat(thickness), height: CGFloat(height), length: CGFloat(length), chamferRadius: 0)
@@ -540,6 +557,7 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         // +angle, not -angle: the box length axis must aim down the edge.
         // See the beam-orientation note in renderFallbackLevel.
         wallNode.eulerAngles.y = angle
+        wallNode.name = name
         scene.rootNode.addChildNode(wallNode)
     }
 

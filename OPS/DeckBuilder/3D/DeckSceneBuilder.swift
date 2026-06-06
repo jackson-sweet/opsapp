@@ -1185,11 +1185,6 @@ struct DeckSceneBuilder {
         // level: the wall is capped there so it stops at the underside of
         // the deck above instead of spearing through it. This supersedes
         // bug a40556a7, which had fixed the wall height at 9'.
-        let wallHeight = maxHeightM.map { min(houseWallHeightM, $0) } ?? houseWallHeightM
-        guard wallHeight > 0 else { return }
-        let wallBottom = deckElevationM
-        let wallTop = deckElevationM + wallHeight
-
         // Bug 3d72ce0b — cladding material drives wall color. Stucco / hardie
         // / wood-vertical map to their `fillHex` tone (defined on the enum);
         // unset edges fall back to the neutral gray so legacy designs still
@@ -1198,6 +1193,27 @@ struct DeckSceneBuilder {
             guard let mat = material else { return houseWallColor }
             return UIColor(hex: mat.fillHex)
         }()
+
+        // Elevated decks attached to a house need the wall plane to continue
+        // down to grade. This is intentionally separate from the 8' wall above
+        // deck so tests and scene consumers can distinguish cladding above the
+        // walking surface from the foundation/skirt plane below it.
+        if deckElevationM > 0.01 {
+            let gradeNode = buildSpanningBox(
+                from: start, to: end,
+                yCenter: deckElevationM / 2,
+                width: 0.05,
+                height: deckElevationM,
+                material: makeMaterial(color: wallColor.withAlphaComponent(0.35))
+            )
+            gradeNode.name = "houseWallToGrade"
+            parent.addChildNode(gradeNode)
+        }
+
+        let wallHeight = maxHeightM.map { min(houseWallHeightM, $0) } ?? houseWallHeightM
+        guard wallHeight > 0 else { return }
+        let wallBottom = deckElevationM
+        let wallTop = deckElevationM + wallHeight
 
         let wallNode = buildSpanningBox(
             from: start, to: end,

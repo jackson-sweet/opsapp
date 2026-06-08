@@ -72,10 +72,6 @@ class AppState: ObservableObject {
     /// sheet animation is still unwinding.
     @Published var pendingRailDeepLink: String? = nil
 
-    // MARK: - Bug Reporting
-    @Published var showingBugReport: Bool = false
-    @Published var bugReportScreenshot: UIImage?
-
     // MARK: - Projects Needing Tasks Review
     /// Sheet presented when the user taps the rail notification for the
     /// "accepted projects with no tasks" alert. Mounted at MainTabView so
@@ -288,9 +284,12 @@ class AppState: ObservableObject {
         self.showingGlobalCompletionChecklist = false
         self.unreadNotificationCount = 0
         self.showingNotifications = false
-        self.showingBugReport = false
-        self.bugReportScreenshot = nil
         self.showProjectsNeedingTasksReview = false
+        // Tear down the shake-to-report overlay window if it's up, so a
+        // logout doesn't leave it floating over the login screen.
+        Task { @MainActor in
+            BugReportPresenter.shared.dismiss()
+        }
         // Purge any pending deep link so the next signed-in user cannot
         // inherit a link that was sent to the previous account. The
         // coordinator is MainActor-isolated; resetForLogout is called

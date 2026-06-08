@@ -196,17 +196,26 @@ final class BugReportCaptureService {
 
     /// Capture the current screen as a UIImage
     func captureScreenshot() -> UIImage? {
-        guard let windowScene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first,
-              let window = windowScene.windows.first(where: { $0.isKeyWindow })
-        else {
-            DebugLogger.shared.log("Failed to find key window for screenshot", level: .error, category: "BugReport")
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        guard let windowScene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first else {
+            DebugLogger.shared.log("Failed to find window scene for screenshot", level: .error, category: "BugReport")
+            return nil
+        }
+
+        // Capture the app's primary window — the `.normal`-level window that
+        // hosts app content (including any presented sheet). This deliberately
+        // excludes keyboard / text-effects windows (which become key while
+        // editing) and the bug-report overlay window (which sits above
+        // `.normal`), so a shake with the keyboard up still grabs the real
+        // screen instead of an empty system window.
+        let appWindows = windowScene.windows.filter { !$0.isHidden && $0.windowLevel == .normal }
+        guard let window = appWindows.first(where: { $0.isKeyWindow }) ?? appWindows.first else {
+            DebugLogger.shared.log("Failed to find app window for screenshot", level: .error, category: "BugReport")
             return nil
         }
 
         let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
-        let image = renderer.image { context in
+        let image = renderer.image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
         }
         return image

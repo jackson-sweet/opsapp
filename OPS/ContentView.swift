@@ -857,14 +857,11 @@ struct PINGatedView: View {
             PhotoStorageManagementView(allProjects: currentCompanyProjects())
                 .environmentObject(dataController)
         }
-        // MARK: - Bug Report Sheet (Shake-to-Report)
-        .sheet(isPresented: $appState.showingBugReport, onDismiss: {
-            appState.bugReportScreenshot = nil
-        }) {
-            BugReportSheet(screenshot: appState.bugReportScreenshot)
-                .environmentObject(appState)
-                .environmentObject(dataController)
-        }
+        // MARK: - Bug Report (Shake-to-Report)
+        // The report is presented on a dedicated overlay window by
+        // BugReportPresenter (not a SwiftUI `.sheet`) so it can appear above
+        // any open sheet/cover and is never blocked by the sheet-on-sheet
+        // deadlock. See BugReportPresenter.swift.
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in
             handleShake()
         }
@@ -920,27 +917,35 @@ struct PINGatedView: View {
     // MARK: - Shake Handler
 
     private func handleShake() {
-        // Debounce: ignore shakes within 3 seconds
+        // Debounce: a single physical shake can emit several motionEnded events,
+        // and removing the isKeyWindow gate means multiple windows may post.
+        // Collapse that burst into one trigger.
         let now = Date()
-        guard now.timeIntervalSince(lastShakeTime) > 3.0 else { return }
+        guard now.timeIntervalSince(lastShakeTime) > 1.5 else { return }
 
         // Don't trigger during tutorial
         // TutorialStateManager is not available here as EnvironmentObject,
         // but we can check via the dataController or UserDefaults
         if appState.shouldRestartTutorial { return }
 
-        // Don't trigger if already showing
-        guard !appState.showingBugReport else { return }
+        // Don't trigger if the report is already up. Guarding on the presenter
+        // (not a SwiftUI binding) means a blocked/failed presentation can never
+        // leave a stuck flag that silently kills every future shake.
+        guard !BugReportPresenter.shared.isPresenting else { return }
 
         // Don't trigger if not authenticated
         guard dataController.isAuthenticated else { return }
 
         lastShakeTime = now
 
-        // Capture screenshot BEFORE showing the sheet
+        // Capture the current screen (including any open sheet) before the
+        // report window steals key status, then present above everything.
         let screenshot = BugReportCaptureService.shared.captureScreenshot()
-        appState.bugReportScreenshot = screenshot
-        appState.showingBugReport = true
+        BugReportPresenter.shared.present(
+            screenshot: screenshot,
+            appState: appState,
+            dataController: dataController
+        )
 
         DebugLogger.shared.log("Bug report triggered via shake", level: .info, category: "BugReport")
     }

@@ -524,7 +524,15 @@ final class OutboundProcessor {
     }
 
     static func sanitizedProjectTaskPayloadForSync(_ payload: [String: Any]) -> [String: Any] {
-        payload.filter { Self.validProjectTaskColumns.contains($0.key) }
+        // Every outbound task create/update on the OutboundProcessor path passes
+        // through here. Re-anchor all-day start_date/end_date to LOCAL midnight so
+        // no write persists an off-day instant (renders a day off on web). Shared
+        // with the DataActor path via SupabaseDate.anchoringScheduleDates so the
+        // two outbound paths cannot drift. Idempotent. Tasks are all-day today;
+        // gate on all_day when timed tasks ship.
+        SupabaseDate.anchoringScheduleDates(
+            payload.filter { Self.validProjectTaskColumns.contains($0.key) }
+        )
     }
 
     private func handleUser(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {

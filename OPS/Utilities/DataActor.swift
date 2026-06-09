@@ -3952,7 +3952,13 @@ actor DataActor {
 
     private func handleProjectTask(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
         let repo = TaskRepository(companyId: companyId)
-        let sanitizedPayload = payload.filter { Self.validProjectTaskColumns.contains($0.key) }
+        // Active outbound path (FeatureFlags.useDataActor default true). Re-anchor
+        // all-day start_date/end_date to LOCAL midnight via the shared helper so
+        // this path matches OutboundProcessor and no write persists an off-day
+        // instant.
+        let sanitizedPayload = SupabaseDate.anchoringScheduleDates(
+            payload.filter { Self.validProjectTaskColumns.contains($0.key) }
+        )
 
         switch operationType {
         case "create":

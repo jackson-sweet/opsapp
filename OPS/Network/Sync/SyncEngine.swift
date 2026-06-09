@@ -597,6 +597,11 @@ final class SyncEngine {
             return
         }
 
+        // Safety net: recover any task whose local edit never produced an
+        // outbound op (needsSync set without recordOperation) before reading the
+        // pending queue, so a future bypass can't silently drop a write.
+        enqueueOrphanedTaskWrites()
+
         let pending = getPendingOperations()
         guard !pending.isEmpty else {
             print("[SYNC_ENGINE] No pending operations to push")
@@ -622,6 +627,65 @@ final class SyncEngine {
         }
 
         refreshPendingCount()
+    }
+
+    /// Safety net for the persistence invariant. Task sync runs off the
+    /// recordOperation queue; `needsSync` alone is a conflict-resolution flag
+    /// with NO outbound sweep for tasks (only photos have one). If any code path
+    /// ever mutates a task and sets needsSync WITHOUT recordOperation, the edit
+    /// would silently never reach the server (the historical
+    /// handleTaskScheduleUpdate bug). This finds such orphans — needsSync with no
+    /// pending op — re-enqueues their schedule state, and logs each so a new
+    /// bypass surfaces immediately instead of losing data silently.
+    func enqueueOrphanedTaskWrites() {
+        guard let modelContext else { return }
+        let orphans: [ProjectTask]
+        do {
+            orphans = try modelContext.fetch(
+                FetchDescriptor<ProjectTask>(
+                    predicate: #Predicate { $0.needsSync == true && $0.deletedAt == nil }
+                )
+            )
+        } catch {
+            print("[SYNC_ENGINE] Orphan-task sweep fetch failed: \(error)")
+            return
+        }
+        guard !orphans.isEmpty else { return }
+
+        // A canonical write sets needsSync AND records an op in one synchronous
+        // step, so a needsSync task WITH a pending op is normal. Skip those, and
+        // skip ones created in the last 30s to avoid racing an in-flight create.
+        let graceCutoff = Date().addingTimeInterval(-30)
+        let writer = ISO8601DateFormatter()
+        writer.formatOptions = [.withInternetDateTime]
+
+        for task in orphans {
+            if let created = task.createdAt, created > graceCutoff { continue }
+            if hasPendingOperation(entityId: task.id) { continue }
+
+            print("[SYNC_ENGINE] WARNING: orphaned task write (needsSync, no pending op): \(task.id) — re-driving schedule. A code path mutated this task without recordOperation.")
+
+            var fields: [String: Any] = ["duration": task.duration]
+            fields["start_date"] = task.startDate.map { writer.string(from: $0) } ?? NSNull()
+            fields["end_date"] = task.endDate.map { writer.string(from: $0) } ?? NSNull()
+
+            _ = recordOperation(
+                entityType: .projectTask,
+                entityId: task.id,
+                operationType: "update",
+                changedFields: fields
+            )
+        }
+    }
+
+    /// True if a pending SyncOperation already exists for this entity id.
+    private func hasPendingOperation(entityId: String) -> Bool {
+        guard let modelContext else { return false }
+        let eid = entityId.lowercased()
+        let descriptor = FetchDescriptor<SyncOperation>(
+            predicate: #Predicate { $0.entityId == eid && $0.status == "pending" }
+        )
+        return ((try? modelContext.fetchCount(descriptor)) ?? 0) > 0
     }
 
     /// Drains local artifact queues that do not use `SyncOperation` rows.

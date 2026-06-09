@@ -609,10 +609,22 @@ class ProjectDetailsViewModel: ObservableObject {
     // MARK: - Schedule
 
     func handleTaskScheduleUpdate(startDate: Date, endDate: Date) {
-        guard let task = selectedTask else { return }
-        task.updateDates(startDate: startDate, endDate: endDate)
-        task.needsSync = true
-        try? dataController?.modelContext?.save()
+        guard let task = selectedTask, let dataController else { return }
+        // Route through updateTaskSchedule — the single source of truth, which
+        // enqueues an outbound SyncOperation via recordOperation. The previous
+        // implementation only mutated the local model and set needsSync, but
+        // needsSync is a conflict-resolution flag, NOT an outbound trigger: there
+        // is no needsSync sweep for project_tasks (only photos have one), so the
+        // schedule updated on-device but never reached the server.
+        Task { @MainActor in
+            do {
+                try await dataController.updateTaskSchedule(
+                    task: task, startDate: startDate, endDate: endDate
+                )
+            } catch {
+                print("[PROJECT_DETAILS] Failed to sync task schedule update: \(error)")
+            }
+        }
     }
 
     // MARK: - Photos

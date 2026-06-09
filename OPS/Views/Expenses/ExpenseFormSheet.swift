@@ -107,6 +107,25 @@ struct ExpenseFormSheet: View {
         expenseStatus == .approved || expenseStatus == .reimbursed
     }
 
+    /// Uploader-only edit rule: an existing expense may be edited only by the
+    /// person who submitted it — regardless of role. Owners / office review via
+    /// approve / reject; they don't edit a teammate's line. A brand-new expense
+    /// is always editable by its author. (Server RLS still grants edit to
+    /// full-access roles — align it + web for true enforcement.)
+    private var canEditExpense: Bool {
+        guard let exp = editing else { return true }
+        guard let uid = dataController.currentUser?.id, !uid.isEmpty else { return false }
+        return exp.submittedBy == uid
+    }
+
+    /// Resolves a user id (submitter / approver / rejecter) to a display name
+    /// for attribution lines. Nil when the user isn't cached locally — callers
+    /// fall back to hiding the name rather than showing a raw id.
+    private func personName(_ userId: String?) -> String? {
+        guard let id = userId, !id.isEmpty else { return nil }
+        return dataController.getUser(id: id)?.fullName
+    }
+
     private var receiptImage: UIImage? {
         guard !receiptQueue.isEmpty, queueIndex < receiptQueue.count else { return nil }
         return receiptQueue[queueIndex]
@@ -117,9 +136,10 @@ struct ExpenseFormSheet: View {
             ZStack(alignment: .bottom) {
                 ScrollView {
                     VStack(spacing: OPSStyle.Layout.spacing4) {
-                        // APPROVAL STATUS BANNER
+                        // APPROVAL STATUS BANNER + who added it
                         if editing != nil {
                             approvalBanner
+                            submitterLine
                         }
 
                         // RECEIPT PHOTO
@@ -823,31 +843,45 @@ struct ExpenseFormSheet: View {
                     }
                     .frame(maxWidth: .infinity)
                 } else if isViewMode {
-                    // Viewing draft/submitted/rejected — EDIT + the one finalize action.
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) { isViewMode = false }
-                    } label: {
-                        Text("EDIT")
-                            .font(OPSStyle.Typography.button)
-                    }
-                    .opsSecondaryButtonStyle()
+                    if canEditExpense {
+                        // Viewing your own draft/submitted/rejected — EDIT + the one finalize action.
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { isViewMode = false }
+                        } label: {
+                            Text("EDIT")
+                                .font(OPSStyle.Typography.button)
+                        }
+                        .opsSecondaryButtonStyle()
 
-                    if expenseStatus == .draft {
-                        Button {
-                            Task { await save(submit: true) }
-                        } label: {
-                            Text("ADD")
-                                .font(OPSStyle.Typography.button)
+                        if expenseStatus == .draft {
+                            Button {
+                                Task { await save(submit: true) }
+                            } label: {
+                                Text("ADD")
+                                    .font(OPSStyle.Typography.button)
+                            }
+                            .opsPrimaryButtonStyle()
+                        } else if expenseStatus == .rejected {
+                            Button {
+                                Task { await save(submit: true) }
+                            } label: {
+                                Text("RESUBMIT")
+                                    .font(OPSStyle.Typography.button)
+                            }
+                            .opsPrimaryButtonStyle()
                         }
-                        .opsPrimaryButtonStyle()
-                    } else if expenseStatus == .rejected {
-                        Button {
-                            Task { await save(submit: true) }
-                        } label: {
-                            Text("RESUBMIT")
-                                .font(OPSStyle.Typography.button)
+                    } else {
+                        // A teammate's expense — view only. Owners/office act via
+                        // approve/reject, not by editing the submitter's line.
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            Image(systemName: OPSStyle.Icons.lockFill)
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            Text("VIEW ONLY")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
-                        .opsPrimaryButtonStyle()
+                        .frame(maxWidth: .infinity)
                     }
                 } else {
                     // Editing draft/submitted/rejected.
@@ -925,11 +959,33 @@ struct ExpenseFormSheet: View {
         }
     }
 
-    private func approvalText(prefix: String, by person: String?) -> String {
-        if let person = person, !person.isEmpty {
-            return "\(prefix) BY \(person.uppercased())"
+    private func approvalText(prefix: String, by personId: String?) -> String {
+        if let name = personName(personId) {
+            return "\(prefix) BY \(name.uppercased())"
         }
         return prefix
+    }
+
+    // MARK: - Submitter Attribution
+
+    /// "ADDED BY {NAME}" — surfaces who created the expense on every state
+    /// (drafts included, where there's no approval banner). Hidden when the
+    /// submitter can't be resolved locally.
+    @ViewBuilder
+    private var submitterLine: some View {
+        if let name = personName(editing?.submittedBy) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: OPSStyle.Icons.teamMember)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Text("ADDED BY \(name.uppercased())")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Spacer()
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.top, OPSStyle.Layout.spacing3)
+        }
     }
 
     private func approvalBannerCard(icon: String, color: Color, text: String) -> some View {

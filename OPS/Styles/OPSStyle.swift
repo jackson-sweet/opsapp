@@ -754,6 +754,7 @@ enum OPSStyle {
         static let receipt          = "doc.text.viewfinder"
         static let clockFill        = "clock.fill"
         static let exclamationmarkCircleFill = "exclamationmark.circle.fill"
+        static let lockFill         = "lock.fill"
     }
 
     // MARK: - Wizard

@@ -698,6 +698,13 @@ class ProjectDetailsViewModel: ObservableObject {
         }
     }
 
+    /// Display name of whoever submitted an expense, for the project list's
+    /// attribution line. Nil when the submitter isn't cached locally — we hide
+    /// the line rather than surface a raw user id.
+    func submitterName(for expense: ExpenseDTO) -> String? {
+        dataController?.getUser(id: expense.submittedBy)?.fullName
+    }
+
     // MARK: - Task Team
 
     func loadTaskTeamMembers() {

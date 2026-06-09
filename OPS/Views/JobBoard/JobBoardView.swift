@@ -25,6 +25,9 @@ struct JobBoardView: View {
     @State private var activeOnly = false
     @State private var assignedToMe = false
     @State private var prioritizeMode = false
+    @State private var selectedProjectStatuses: Set<Status> = []
+    @State private var selectedProjectTeamMemberIds: Set<String> = []
+    @AppStorage("projectListSortOrder") private var projectSortOptionRaw: String = ProjectSortOption.latestEdited.rawValue
 
     // Payment review state
     @State private var showPaymentReview: Bool = false
@@ -80,6 +83,22 @@ struct JobBoardView: View {
 
     private var completedTaskCount: Int {
         dataController.getAllTasks().filter { $0.status == .completed }.count
+    }
+
+    private var projectSortOption: Binding<ProjectSortOption> {
+        Binding<ProjectSortOption>(
+            get: { ProjectSortOption(rawValue: projectSortOptionRaw) ?? .latestEdited },
+            set: { projectSortOptionRaw = $0.rawValue }
+        )
+    }
+
+    private var availableProjectTeamMembers: [User] {
+        guard let companyId = dataController.currentUser?.companyId else { return [] }
+        return dataController.getTeamMembers(companyId: companyId)
+    }
+
+    private var hasActiveProjectFilters: Bool {
+        !selectedProjectStatuses.isEmpty || !selectedProjectTeamMemberIds.isEmpty
     }
 
     private var isPaymentReviewLocked: Bool {
@@ -275,7 +294,9 @@ struct JobBoardView: View {
                             JobBoardProjectListView(
                                 searchText: searchText,
                                 showingFilters: $showingFilters,
-                                showingFilterSheet: $showingProjectFilterSheet,
+                                selectedStatuses: $selectedProjectStatuses,
+                                selectedTeamMemberIds: $selectedProjectTeamMemberIds,
+                                sortOption: projectSortOption,
                                 activeOnly: activeOnly,
                                 assignedToMe: assignedToMe
                             )
@@ -288,7 +309,9 @@ struct JobBoardView: View {
                                 JobBoardProjectListView(
                                     searchText: searchText,
                                     showingFilters: $showingFilters,
-                                    showingFilterSheet: $showingProjectFilterSheet,
+                                    selectedStatuses: $selectedProjectStatuses,
+                                    selectedTeamMemberIds: $selectedProjectTeamMemberIds,
+                                    sortOption: projectSortOption,
                                     activeOnly: activeOnly,
                                     assignedToMe: assignedToMe
                                 )
@@ -301,7 +324,9 @@ struct JobBoardView: View {
                                     JobBoardProjectListView(
                                         searchText: searchText,
                                         showingFilters: $showingFilters,
-                                        showingFilterSheet: $showingProjectFilterSheet,
+                                        selectedStatuses: $selectedProjectStatuses,
+                                        selectedTeamMemberIds: $selectedProjectTeamMemberIds,
+                                        sortOption: projectSortOption,
                                         activeOnly: activeOnly,
                                         assignedToMe: assignedToMe
                                     )
@@ -316,7 +341,12 @@ struct JobBoardView: View {
                                 )
                                 .padding(.horizontal, 16)
                             case .kanban:
-                                JobBoardKanbanView(assignedToMe: assignedToMe)
+                                JobBoardKanbanView(
+                                    activeOnly: activeOnly,
+                                    assignedToMe: assignedToMe,
+                                    selectedStatuses: selectedProjectStatuses,
+                                    selectedTeamMemberIds: selectedProjectTeamMemberIds
+                                )
                             }
                         }
                     }
@@ -385,6 +415,19 @@ struct JobBoardView: View {
                     .environmentObject(appState)
                     .environmentObject(PermissionStore.shared)
             }
+            .sheet(isPresented: $showingProjectFilterSheet) {
+                ProjectListFilterSheet(
+                    selectedStatuses: $selectedProjectStatuses,
+                    selectedTeamMemberIds: $selectedProjectTeamMemberIds,
+                    sortOption: projectSortOption,
+                    availableTeamMembers: availableProjectTeamMembers
+                )
+                .environmentObject(dataController)
+                .onDisappear {
+                    showingFilters = hasActiveProjectFilters
+                    NotificationCenter.default.post(name: Notification.Name("WizardJobBoardFilterOpened"), object: nil)
+                }
+            }
             .sheet(isPresented: $showPaymentReview) {
                 ProjectPaymentReviewView(
                     overdueProjects: overdueProjects,
@@ -435,6 +478,12 @@ struct JobBoardView: View {
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenUnscheduledReview"))) { _ in
                 computeUnscheduledTasks()
                 showUnscheduledReview = true
+            }
+            .onChange(of: selectedProjectStatuses) { _, _ in
+                showingFilters = hasActiveProjectFilters
+            }
+            .onChange(of: selectedProjectTeamMemberIds) { _, _ in
+                showingFilters = hasActiveProjectFilters
             }
         }
 
@@ -502,8 +551,13 @@ struct JobBoardView: View {
         }
 
         unscheduledTasks = allTasks.filter { task in
+            // Only surface schedulable work for ACTIVE projects. A project that
+            // hasn't been accepted yet (`.rfq`/`.estimated`) or is finished
+            // (`.completed`/`.closed`/`.archived`) must not feed the review/
+            // auto-schedule flow — mirrors `isJobBoardTaskListVisible`.
             task.status == .active
                 && task.deletedAt == nil
+                && (task.project?.status.isActive ?? false)
                 && (task.startDate == nil || task.getTeamMemberIds().isEmpty)
         }
         .sorted { ($0.project?.title ?? "") < ($1.project?.title ?? "") }

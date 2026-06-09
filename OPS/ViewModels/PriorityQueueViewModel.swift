@@ -35,10 +35,14 @@ final class PriorityQueueViewModel: ObservableObject {
         reload()
     }
 
-    /// Load active (non-terminal, non-deleted) projects, split by waterline.
+    /// Load schedulable (accepted / in-progress, non-deleted) projects, split by
+    /// waterline. Pre-acceptance projects (`.rfq`, `.estimated`) haven't been
+    /// greenlit, so auto-scheduling their tasks would assign dates to work that
+    /// isn't accepted yet — they're excluded here on the same `Status.isActive`
+    /// rule the job board task list uses (`isJobBoardTaskListVisible`).
     func reload() {
         let active = dataController.getProjects().filter {
-            $0.deletedAt == nil && $0.status != .completed && $0.status != .closed && $0.status != .archived
+            $0.deletedAt == nil && $0.status.isActive
         }
         ranked = active.filter { $0.priorityRank != nil }.sorted { lhs, rhs in
             let lr = lhs.priorityRank ?? 0, rr = rhs.priorityRank ?? 0

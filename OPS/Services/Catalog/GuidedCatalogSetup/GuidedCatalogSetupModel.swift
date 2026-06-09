@@ -168,6 +168,14 @@ final class GuidedCatalogSetupModel: ObservableObject {
         return ((sell - cost) / sell) * 100
     }
 
+    /// Currency string for display (whole dollars when even, else 2 decimals).
+    nonisolated func formatMoney(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.maximumFractionDigits = value.rounded() == value ? 0 : 2
+        return formatter.string(from: NSNumber(value: value)) ?? "$0"
+    }
+
     // MARK: - Draft persistence (mirror GuidedStockSetupModel)
 
     private var draftContext: CatalogSetupDraftContext? {

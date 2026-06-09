@@ -4,9 +4,9 @@
 //
 //  State machine for the Guided Catalog Setup flow: survey → plan → modules →
 //  done. Owns the BusinessProfile, the derived module list, the current
-//  module's working set of product-line drafts, the lines committed this run,
-//  draft persistence/resume, and the product-create action. Mirrors the
-//  GuidedStockSetupModel pattern. Not the overlay Wizard System.
+//  module's working set of product-line drafts, the lines + assemblies
+//  committed this run, draft persistence/resume, and the create actions.
+//  Mirrors the GuidedStockSetupModel pattern. Not the overlay Wizard System.
 //
 
 import Foundation
@@ -19,7 +19,8 @@ final class GuidedCatalogSetupModel: ObservableObject {
     @Published var phase: GuidedCatalogPhase = .survey(questionIndex: 0)
     @Published var profile: BusinessProfile?
     @Published var productLines: [ProductLineDraft] = []   // current module's working set
-    @Published var savedLines: [SavedProductLine] = []     // committed to the catalog this run
+    @Published var savedLines: [SavedProductLine] = []     // service/good lines committed this run
+    @Published var savedAssemblies: [SavedAssembly] = []   // packages committed this run
     @Published var isSaving = false
     @Published var errorMessage: String?
 
@@ -47,6 +48,7 @@ final class GuidedCatalogSetupModel: ObservableObject {
 
     var savedServiceCount: Int { savedLines.filter { $0.kind == .service }.count }
     var savedGoodCount: Int { savedLines.filter { $0.kind == .good }.count }
+    var savedAssemblyCount: Int { savedAssemblies.count }
 
     // MARK: - Navigation
 
@@ -76,12 +78,13 @@ final class GuidedCatalogSetupModel: ObservableObject {
 
     // MARK: - Summary
 
-    /// "2 services · 3 goods" — only non-zero parts, correct singular/plural.
-    nonisolated static func summaryLine(services: Int, goods: Int) -> String {
+    /// "2 packages · 3 services · 1 good" — only non-zero parts, correct plural.
+    nonisolated static func summaryLine(services: Int, goods: Int, assemblies: Int = 0) -> String {
         func part(_ n: Int, _ singular: String, _ plural: String) -> String? {
             n > 0 ? "\(n) \(n == 1 ? singular : plural)" : nil
         }
         let parts = [
+            part(assemblies, "package", "packages"),
             part(services, "service", "services"),
             part(goods, "good", "goods")
         ].compactMap { $0 }
@@ -151,7 +154,118 @@ final class GuidedCatalogSetupModel: ObservableObject {
         }
     }
 
-    // MARK: - Money helpers (mirror GuidedProductSetupFlow)
+    // MARK: - Save an assembly (fixed-price package = materials + labor)
+
+    func isDuplicateAssemblyName(_ raw: String) -> Bool {
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return false }
+        return savedAssemblies.contains {
+            $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalized
+        }
+    }
+
+    func saveAssembly(_ draft: AssemblyDraft, modelContext: ModelContext) async {
+        guard !isSaving else { return }
+        let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, let price = parseMoney(draft.priceText) else { return }
+        guard !isDuplicateAssemblyName(name) else { return }
+
+        isSaving = true
+        defer { isSaving = false }
+        errorMessage = nil
+
+        let productRepo = ProductRepository(companyId: companyId)
+        let catalogRepo = CatalogRepository(companyId: companyId)
+        let bundleRepo = ProductBundleItemRepository(companyId: companyId)
+        let richnessRepo = ProductRichnessRepository(companyId: companyId)
+
+        // 1. The package product — one fixed all-in price.
+        var packageDTO = CreateProductDTO(
+            companyId: companyId, name: name, description: nil,
+            basePrice: price, unitCost: nil, unit: nil,
+            pricingUnit: ProductPricingUnit.flatRate.rawValue, unitId: nil,
+            category: nil, categoryId: nil, sku: nil, thumbnailUrl: nil,
+            kind: ProductCategory.bundle.derivedKindRaw,
+            type: ProductCategory.bundle.derivedType.rawValue,
+            isTaxable: ProductCategory.bundle.defaultTaxable,
+            taskTypeId: draft.taskTypeId, taskTypeRef: draft.taskTypeId, linkedCatalogItemId: nil)
+        packageDTO.bundlePricingMode = BundlePricingMode.override.rawValue
+
+        do {
+            let package = try await productRepo.create(packageDTO)
+            modelContext.insert(package.toModel())
+
+            var failures = 0
+
+            // 2. Materials → family + variant + product_materials recipe row.
+            for material in draft.materials {
+                let matName = material.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !matName.isEmpty else { continue }
+                do {
+                    let family = try await catalogRepo.createFamily(CreateCatalogItemDTO(
+                        companyId: companyId, categoryId: nil, name: matName, description: nil,
+                        defaultPrice: nil, defaultUnitCost: parseMoney(material.costText),
+                        defaultWarningThreshold: nil, defaultCriticalThreshold: nil,
+                        defaultUnitId: material.unitId))
+                    let variant = try await catalogRepo.createVariant(CreateCatalogVariantDTO(
+                        companyId: companyId, catalogItemId: family.id, sku: nil, quantity: 0,
+                        priceOverride: nil, unitCostOverride: nil,
+                        warningThreshold: nil, criticalThreshold: nil, unitId: material.unitId))
+                    _ = try await richnessRepo.createMaterial(CreateProductMaterialDTO(
+                        productId: package.id, catalogVariantId: variant.id, catalogItemId: nil,
+                        variantSelector: nil, quantityPerUnit: parseMoney(material.qtyText) ?? 1,
+                        scaledByOptionId: nil, unitId: material.unitId, notes: nil))
+                } catch {
+                    failures += 1
+                    print("[GuidedCatalogSetupModel] material commit failed for \(matName): \(error)")
+                }
+            }
+
+            // 3. Labor → service product + bundle item (quantity = hours).
+            for (index, labor) in draft.labor.enumerated() {
+                let labName = labor.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !labName.isEmpty else { continue }
+                do {
+                    let laborDTO = CreateProductDTO(
+                        companyId: companyId, name: labName, description: nil,
+                        basePrice: parseMoney(labor.sellText) ?? 0, unitCost: parseMoney(labor.costText),
+                        unit: nil, pricingUnit: ProductPricingUnit.hour.rawValue, unitId: nil,
+                        category: nil, categoryId: nil, sku: nil, thumbnailUrl: nil,
+                        kind: ProductCategory.service.derivedKindRaw,
+                        type: ProductCategory.service.derivedType.rawValue,
+                        isTaxable: ProductCategory.service.defaultTaxable,
+                        taskTypeId: nil, taskTypeRef: nil, linkedCatalogItemId: nil)
+                    let laborProduct = try await productRepo.create(laborDTO)
+                    modelContext.insert(laborProduct.toModel())
+                    _ = try await bundleRepo.create(CreateProductBundleItemDTO(
+                        id: UUID().uuidString, companyId: companyId,
+                        bundleProductId: package.id, childProductId: laborProduct.id,
+                        quantity: parseMoney(labor.hoursText) ?? 1, displayOrder: index))
+                } catch {
+                    failures += 1
+                    print("[GuidedCatalogSetupModel] labor commit failed for \(labName): \(error)")
+                }
+            }
+
+            try? modelContext.save()
+            let margin = assemblyMarginPercent(priceText: draft.priceText,
+                                               materials: draft.materials, labor: draft.labor)
+            savedAssemblies.append(SavedAssembly(id: package.id, name: package.name,
+                                                 sell: package.basePrice, marginPercent: margin))
+            if failures > 0 {
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                errorMessage = "// PACKAGE SAVED — \(failures) ITEM\(failures == 1 ? "" : "S") FAILED, ADD THEM IN THE CATALOG"
+            } else {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+            persist()
+        } catch {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Money + margin helpers (mirror GuidedProductSetupFlow)
 
     func parseMoney(_ raw: String) -> Double? {
         let cleaned = raw
@@ -166,6 +280,26 @@ final class GuidedCatalogSetupModel: ObservableObject {
     func marginPercent(sellText: String, costText: String) -> Double? {
         guard let sell = parseMoney(sellText), sell > 0, let cost = parseMoney(costText) else { return nil }
         return ((sell - cost) / sell) * 100
+    }
+
+    /// Total cost of an assembly's materials + labor.
+    func assemblyCost(materials: [AssemblyMaterialDraft], labor: [AssemblyLaborDraft]) -> Double {
+        let materialCost = materials.reduce(0.0) {
+            $0 + (parseMoney($1.costText) ?? 0) * (parseMoney($1.qtyText) ?? 0)
+        }
+        let laborCost = labor.reduce(0.0) {
+            $0 + (parseMoney($1.costText) ?? 0) * (parseMoney($1.hoursText) ?? 0)
+        }
+        return materialCost + laborCost
+    }
+
+    /// Live margin percent for an assembly: (price − total cost) / price.
+    func assemblyMarginPercent(priceText: String,
+                               materials: [AssemblyMaterialDraft],
+                               labor: [AssemblyLaborDraft]) -> Double? {
+        guard let price = parseMoney(priceText), price > 0 else { return nil }
+        let cost = assemblyCost(materials: materials, labor: labor)
+        return ((price - cost) / price) * 100
     }
 
     /// Currency string for display (whole dollars when even, else 2 decimals).
@@ -190,7 +324,8 @@ final class GuidedCatalogSetupModel: ObservableObject {
             phase: phase,
             profile: profile,
             productLines: productLines,
-            savedLines: savedLines
+            savedLines: savedLines,
+            savedAssemblies: savedAssemblies
         )
         do { try draftStore.save(snapshot) }
         catch { print("[GuidedCatalogSetupModel] draft persist failed: \(error)") }
@@ -205,6 +340,7 @@ final class GuidedCatalogSetupModel: ObservableObject {
             profile = snapshot.profile
             productLines = snapshot.productLines
             savedLines = snapshot.savedLines
+            savedAssemblies = snapshot.savedAssemblies
             return true
         } catch {
             print("[GuidedCatalogSetupModel] draft restore failed: \(error)")
@@ -226,10 +362,10 @@ final class GuidedCatalogSetupModel: ObservableObject {
 
     /// Fires once, only when something was actually created this run.
     func postCompletionNotification() {
-        guard !didPostCompletion, !savedLines.isEmpty else { return }
+        guard !didPostCompletion, !(savedLines.isEmpty && savedAssemblies.isEmpty) else { return }
         guard !userId.isEmpty, !companyId.isEmpty else { return }
         didPostCompletion = true
-        let body = "\(GuidedCatalogSetupModel.summaryLine(services: savedServiceCount, goods: savedGoodCount)) saved for estimating."
+        let body = "\(GuidedCatalogSetupModel.summaryLine(services: savedServiceCount, goods: savedGoodCount, assemblies: savedAssemblyCount)) saved for estimating."
         let userId = self.userId
         let companyId = self.companyId
         Task {

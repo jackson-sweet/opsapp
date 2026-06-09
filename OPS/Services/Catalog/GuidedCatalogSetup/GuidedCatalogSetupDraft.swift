@@ -69,6 +69,14 @@ struct SavedProductLine: Codable, Equatable, Identifiable {
     var sell: Double
 }
 
+/// An assembly (fixed-price package) committed this run.
+struct SavedAssembly: Codable, Equatable, Identifiable {
+    var id: String
+    var name: String
+    var sell: Double
+    var marginPercent: Double?
+}
+
 /// Where the guide is. Codable so a quit mid-flow resumes at the same phase.
 enum GuidedCatalogPhase: Codable, Equatable {
     case survey(questionIndex: Int)
@@ -79,7 +87,7 @@ enum GuidedCatalogPhase: Codable, Equatable {
 
 /// Persisted draft of an in-progress guided catalog setup.
 struct GuidedCatalogSetupDraftSnapshot: Codable, Equatable {
-    static let currentSchemaVersion = 1
+    static let currentSchemaVersion = 2
 
     var schemaVersion: Int
     var context: CatalogSetupDraftContext
@@ -88,6 +96,7 @@ struct GuidedCatalogSetupDraftSnapshot: Codable, Equatable {
     var profile: BusinessProfile?
     var productLines: [ProductLineDraft]
     var savedLines: [SavedProductLine]
+    var savedAssemblies: [SavedAssembly]
 
     init(schemaVersion: Int = GuidedCatalogSetupDraftSnapshot.currentSchemaVersion,
          context: CatalogSetupDraftContext,
@@ -95,7 +104,8 @@ struct GuidedCatalogSetupDraftSnapshot: Codable, Equatable {
          phase: GuidedCatalogPhase,
          profile: BusinessProfile?,
          productLines: [ProductLineDraft],
-         savedLines: [SavedProductLine]) {
+         savedLines: [SavedProductLine],
+         savedAssemblies: [SavedAssembly] = []) {
         self.schemaVersion = schemaVersion
         self.context = context
         self.updatedAt = updatedAt
@@ -103,6 +113,7 @@ struct GuidedCatalogSetupDraftSnapshot: Codable, Equatable {
         self.profile = profile
         self.productLines = productLines
         self.savedLines = savedLines
+        self.savedAssemblies = savedAssemblies
     }
 }
 

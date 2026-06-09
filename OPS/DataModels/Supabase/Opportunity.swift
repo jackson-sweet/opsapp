@@ -86,6 +86,16 @@ class Opportunity: Identifiable {
     var isDeleted: Bool { deletedAt != nil }
     var isArchived: Bool { archivedAt != nil }
 
+    /// Best human label for this lead: the contact name, falling back to the
+    /// title (an email/inquiry subject line) and then a stable placeholder.
+    /// Used by every lead surface so a blank `contactName` never surfaces as
+    /// "Unnamed lead" while a real title exists.
+    var displayContactName: String {
+        if !contactName.isEmpty { return contactName }
+        if let title, !title.isEmpty { return title }
+        return "Unnamed lead"
+    }
+
     // MARK: - Init
 
     init(

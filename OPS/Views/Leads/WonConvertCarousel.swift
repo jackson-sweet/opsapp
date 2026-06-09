@@ -143,7 +143,7 @@ struct WonConvertCard: View {
                 wonBadge
                 VStack(alignment: .leading, spacing: 4) {
                     eyebrow
-                    Text(lead.contactName.isEmpty ? "Unnamed lead" : lead.contactName)
+                    Text(lead.displayContactName)
                         .font(.custom("Mohave-Medium", size: 15))
                         .foregroundColor(OPSStyle.Colors.text)
                         .lineLimit(1)
@@ -159,7 +159,7 @@ struct WonConvertCard: View {
             // Read the card header as one element; CONVERT / LATER remain
             // separate focusable buttons below. (review W-4)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Won lead, \(lead.contactName.isEmpty ? (lead.title ?? "Unnamed lead") : lead.contactName), ready to convert to a project")
+            .accessibilityLabel("Won lead, \(lead.displayContactName), ready to convert to a project")
 
             HStack(spacing: 8) {
                 Button(action: {

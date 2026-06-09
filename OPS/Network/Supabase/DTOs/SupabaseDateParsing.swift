@@ -82,4 +82,27 @@ enum SupabaseDate {
         f.formatOptions = [.withInternetDateTime]
         return f
     }()
+
+    /// JSONDecoder whose date strategy tolerates every Supabase wire format
+    /// (fractional seconds, plain internet date-time, and date-only columns).
+    ///
+    /// Needed for DTOs that decode `Date` directly (e.g. CalendarUserEventDTO):
+    /// the Supabase SDK's PostgREST decoder handles those on the REST path, but
+    /// Realtime payloads are decoded with our own JSONDecoder — a plain decoder
+    /// would fail on ISO strings. Build one of these per consumer and reuse it.
+    static func makeISODecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let raw = try container.decode(String.self)
+            if let date = parse(raw) ?? parseDateOnly(raw) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unparseable Supabase date: \(raw)"
+            )
+        }
+        return decoder
+    }
 }

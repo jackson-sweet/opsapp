@@ -55,6 +55,12 @@ final class RealtimeProcessor: ObservableObject {
     private let supabase: SupabaseClient
     private let decoder = JSONDecoder()
 
+    /// Decoder for DTOs that decode `Date` directly (CalendarUserEventDTO).
+    /// The plain `decoder` above works for DTOs that keep dates as String;
+    /// realtime payload dates are ISO strings, so Date-typed DTOs need the
+    /// Supabase-tolerant strategy.
+    private static let userEventDecoder = SupabaseDate.makeISODecoder()
+
     /// Tables that filter on `company_id=eq.<companyId>`.
     ///
     /// Catalog Option A — only parent tables (those with a direct `company_id`
@@ -252,6 +258,10 @@ final class RealtimeProcessor: ObservableObject {
                 let model = dto.toModel()
                 let pendingFields = pendingFieldsForEntity(entityType: .project, entityId: dto.id, context: context)
                 try upsertProject(context: context, id: dto.id, dto: dto, model: model, pendingFields: pendingFields)
+                // Legacy path saves on mainContext, which never fires the
+                // actor's didSave rebroadcast — post the inbound signal
+                // directly so snapshot caches (calendar) invalidate.
+                InboundChangeSignal.post(entityNames: ["Project"])
 
             case "project_tasks":
                 let dto = try record.decodeRecord(as: SupabaseProjectTaskDTO.self, decoder: decoder)
@@ -264,6 +274,7 @@ final class RealtimeProcessor: ObservableObject {
                 model.id = id
                 let pendingFields = pendingFieldsForEntity(entityType: .projectTask, entityId: id, context: context)
                 try upsertProjectTask(context: context, id: id, model: model, pendingFields: pendingFields)
+                InboundChangeSignal.post(entityNames: ["ProjectTask"])
                 Task { @MainActor in
                     await CalendarMirrorService.shared.mirrorEvent(opsId: id, source: .projectTask)
                 }
@@ -297,6 +308,7 @@ final class RealtimeProcessor: ObservableObject {
                 let model = dto.toModel()
                 let pendingFields = pendingFieldsForEntity(entityType: .taskType, entityId: dto.id, context: context)
                 try upsertTaskType(context: context, id: dto.id, model: model, pendingFields: pendingFields)
+                InboundChangeSignal.post(entityNames: ["TaskType"])
 
             case "sub_clients":
                 let dto = try record.decodeRecord(as: SupabaseSubClientDTO.self, decoder: decoder)
@@ -391,6 +403,7 @@ final class RealtimeProcessor: ObservableObject {
                     existing.deletedAt = Date()
                     try context.save()
                 }
+                InboundChangeSignal.post(entityNames: ["Project"])
 
             case "project_tasks":
                 let descriptor = FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id == id })
@@ -398,6 +411,7 @@ final class RealtimeProcessor: ObservableObject {
                     existing.deletedAt = Date()
                     try context.save()
                 }
+                InboundChangeSignal.post(entityNames: ["ProjectTask"])
                 Task { @MainActor in
                     await CalendarMirrorService.shared.unmirrorEvent(opsId: id)
                 }
@@ -429,6 +443,7 @@ final class RealtimeProcessor: ObservableObject {
                     existing.deletedAt = Date()
                     try context.save()
                 }
+                InboundChangeSignal.post(entityNames: ["TaskType"])
 
             case "sub_clients":
                 let descriptor = FetchDescriptor<SubClient>(predicate: #Predicate { $0.id == id })
@@ -516,7 +531,13 @@ final class RealtimeProcessor: ObservableObject {
                 // Bug G9 — client-side scope guards removed. See "projects" case.
                 let dto = try record.decodeRecord(as: SupabaseProjectTaskDTO.self, decoder: decoder)
                 print("[DUPE_TRACE] RT.dispatch id=\(dto.id) → DataActor.handleRealtimeUpdate(.task)")
-                Task { await actor.handleRealtimeUpdate(.task(dto)) }
+                Task {
+                    await actor.handleRealtimeUpdate(.task(dto))
+                    // Legacy-path parity (see handleUpsert): refresh the
+                    // iPhone-Calendar mirror AFTER the merge lands so a
+                    // teammate's reschedule moves the mirrored event too.
+                    await CalendarMirrorService.shared.mirrorEvent(opsId: dto.id.lowercased(), source: .projectTask)
+                }
 
             case "users":
                 let dto = try record.decodeRecord(as: SupabaseUserDTO.self, decoder: decoder)
@@ -605,6 +626,20 @@ final class RealtimeProcessor: ObservableObject {
                 NotificationCenter.default.post(name: .expenseUpdated, object: nil)
                 NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
             case "calendar_user_events":
+                // Merge the row so a time-off / personal-event change is live
+                // (the legacy path deferred to the next pullDelta). The local
+                // store and CalendarViewModel.loadUserEvents only ever hold
+                // the CURRENT user's events (fetchForUser scope) — the
+                // company-wide realtime filter also delivers teammates' rows,
+                // so those are skipped to preserve visibility semantics.
+                let dto = try record.decodeRecord(as: CalendarUserEventDTO.self, decoder: Self.userEventDecoder)
+                if let userId = self.userId, dto.userId == userId {
+                    Task {
+                        await actor.handleRealtimeUpdate(.calendarUserEvent(dto))
+                        // Legacy-path parity: refresh the iPhone-Calendar mirror.
+                        await CalendarMirrorService.shared.reconcileAll()
+                    }
+                }
                 NotificationCenter.default.post(name: .calendarEventUpdated, object: nil)
             case "notifications":
                 NotificationCenter.default.post(name: .notificationReceived, object: nil)
@@ -624,7 +659,7 @@ final class RealtimeProcessor: ObservableObject {
         struct IdPayload: Decodable { let id: String }
         do {
             switch table {
-            case "projects", "project_tasks", "users", "clients", "companies",
+            case "projects", "users", "clients", "companies",
                  "task_types", "sub_clients", "project_notes", "project_photos",
                  "project_photo_annotations",
                  "deck_designs",
@@ -636,10 +671,27 @@ final class RealtimeProcessor: ObservableObject {
                 let payload = try action.decodeOldRecord(as: IdPayload.self, decoder: decoder)
                 Task { await actor.softDeleteFromRealtime(table: table, id: payload.id) }
 
+            case "project_tasks":
+                let payload = try action.decodeOldRecord(as: IdPayload.self, decoder: decoder)
+                Task {
+                    await actor.softDeleteFromRealtime(table: table, id: payload.id)
+                    // Legacy-path parity (see handleDelete): drop the mirrored
+                    // iPhone-Calendar event for the deleted task.
+                    await CalendarMirrorService.shared.unmirrorEvent(opsId: payload.id)
+                }
+
             case "expenses", "expense_batches":
                 NotificationCenter.default.post(name: .expenseUpdated, object: nil)
                 NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
             case "calendar_user_events":
+                // Soft-delete the local row (only the current user's events
+                // ever exist locally — see upsert case) and drop the mirrored
+                // iPhone-Calendar event. Legacy parity plus live local removal.
+                let payload = try action.decodeOldRecord(as: IdPayload.self, decoder: decoder)
+                Task {
+                    await actor.softDeleteFromRealtime(table: table, id: payload.id)
+                    await CalendarMirrorService.shared.unmirrorEvent(opsId: payload.id)
+                }
                 NotificationCenter.default.post(name: .calendarEventUpdated, object: nil)
             case "notifications":
                 NotificationCenter.default.post(name: .notificationReceived, object: nil)

@@ -102,6 +102,7 @@ actor DataActor {
         .deckDesign,
         .estimate,
         .invoice,
+        .calendarUserEvent,   // Bug 1 — user-created time-off / personal events
         // Catalog backbone — units/tags/categories before items, items before
         // their option/value/variant/junction children. Matches
         // InboundProcessor.syncOrder so the dependency contract is identical
@@ -152,6 +153,13 @@ actor DataActor {
     /// main-side tracker to absorb and dispatch.
     private var spotlightDirty: [String: Set<String>] = [:]
     private var spotlightDeleted: [String: Set<String>] = [:]
+
+    /// Entity names merged during the current batch sync (delta or full).
+    /// Flushed as ONE `.inboundDataMerged` post after linkAllRelationships so
+    /// snapshot-cache consumers (calendar) rebuild exactly once per sync pass
+    /// and never observe unlinked relationships. Realtime merges bypass this
+    /// and post per-event (their merges rewire relationships inline).
+    private var inboundMergedEntityNames: Set<String> = []
 
     /// Record an entity as dirty for Spotlight. Clears any prior deletion for
     /// this id — a later upsert supersedes an earlier deletion within the same pass.
@@ -224,6 +232,7 @@ actor DataActor {
         // Reset spotlight accumulator at start (matches InboundProcessor behavior).
         spotlightDirty.removeAll()
         spotlightDeleted.removeAll()
+        inboundMergedEntityNames.removeAll()
 
         let capabilities = await CatalogSchemaCapabilityGate.refresh(companyId: companyId)
         let repos = repositories(companyId: companyId)
@@ -257,6 +266,8 @@ actor DataActor {
         // Link FK columns into SwiftData relationship references inside a transaction.
         linkAllRelationships()
 
+        flushInboundChangeSignal()
+
         onProgress?(.photoAnnotation, 1.0)
         print("[DataActor] ======== FULL SYNC COMPLETE ========")
     }
@@ -280,6 +291,7 @@ actor DataActor {
         // Reset spotlight accumulator at start (matches InboundProcessor behavior).
         spotlightDirty.removeAll()
         spotlightDeleted.removeAll()
+        inboundMergedEntityNames.removeAll()
 
         let capabilities = await CatalogSchemaCapabilityGate.refresh(companyId: companyId)
         let repos = repositories(companyId: companyId)
@@ -310,7 +322,17 @@ actor DataActor {
 
         linkAllRelationships()
 
+        flushInboundChangeSignal()
+
         print("[DataActor] ======== DELTA SYNC COMPLETE ========")
+    }
+
+    /// Posts the entity names accumulated by this batch sync as a single
+    /// `.inboundDataMerged` signal — AFTER linkAllRelationships so the
+    /// resulting repaint can never observe unlinked relationships.
+    private func flushInboundChangeSignal() {
+        InboundChangeSignal.post(entityNames: inboundMergedEntityNames)
+        inboundMergedEntityNames.removeAll()
     }
 
     // MARK: - Per-Entity Sync Router
@@ -337,6 +359,8 @@ actor DataActor {
             try await syncProjects(since: since, repos: repos)
         case .projectTask:
             try await syncTasks(since: since, repos: repos)
+        case .calendarUserEvent:
+            try await syncCalendarUserEvents(repos: repos)
         case .subClient:
             try await syncSubClients(since: since, repos: repos)
         case .projectNote:
@@ -731,7 +755,66 @@ actor DataActor {
                 try mergeTaskType(dto: dto)
             }
         }
+        inboundMergedEntityNames.insert("TaskType")
         print("[DataActor] Merged \(dtos.count) task types")
+    }
+
+    // MARK: - Calendar User Events (time off / personal)
+
+    /// Pull the current user's CalendarUserEvents and merge them into local
+    /// SwiftData. Verbatim port of InboundProcessor.syncCalendarUserEvents
+    /// (Bug 1) — this entity was missing from the actor's syncOrder, so user
+    /// events never synced inbound while FeatureFlags.useDataActor was on.
+    /// ±12-month window around today; `since` is intentionally unused because
+    /// the legacy path re-pulls the window every delta cycle and the actor
+    /// path must behave identically.
+    private func syncCalendarUserEvents(repos: InboundRepositories) async throws {
+        let userId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+        guard !userId.isEmpty else { return }
+
+        let cal = Calendar.current
+        let now = Date()
+        guard let windowStart = cal.date(byAdding: .year, value: -1, to: now),
+              let windowEnd   = cal.date(byAdding: .year, value: 1,  to: now) else { return }
+
+        let dtos = try await repos.calendarUserEvent.fetchForUser(userId, from: windowStart, to: windowEnd)
+        guard !dtos.isEmpty else { return }
+
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergeCalendarUserEvent(dto: dto)
+            }
+        }
+        inboundMergedEntityNames.insert("CalendarUserEvent")
+        print("[DataActor] Merged \(dtos.count) calendar user events")
+    }
+
+    /// Field merge matching InboundProcessor.syncCalendarUserEvents exactly:
+    /// pending local edits (needsSync) win until pushed; soft-deleted rows
+    /// are never inserted. Shared by the delta/full path above and the
+    /// realtime path (RealtimeUpdate.calendarUserEvent).
+    private func mergeCalendarUserEvent(dto: CalendarUserEventDTO) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<CalendarUserEvent>(
+            predicate: #Predicate { $0.id == id }
+        )
+        if let existing = try modelContext.fetch(descriptor).first {
+            guard !existing.needsSync else { return }
+            existing.title      = dto.title
+            existing.startDate  = dto.startDate
+            existing.endDate    = dto.endDate
+            existing.allDay     = dto.allDay
+            existing.notes      = dto.notes
+            existing.status     = dto.status
+            existing.reviewedBy = dto.reviewedBy
+            existing.reviewedAt = dto.reviewedAt
+            existing.deletedAt  = dto.deletedAt
+            existing.seriesId   = dto.seriesId
+            existing.lastSyncedAt = Date()
+        } else {
+            guard dto.deletedAt == nil else { return }
+            modelContext.insert(dto.toModel())
+        }
     }
 
     private func mergeTaskType(dto: SupabaseTaskTypeDTO) throws {
@@ -806,6 +889,7 @@ actor DataActor {
                 try mergeProject(dto: dto)
             }
         }
+        inboundMergedEntityNames.insert("Project")
         print("[DataActor] Merged \(dtos.count) projects (scope: \(scope))")
     }
 
@@ -942,6 +1026,7 @@ actor DataActor {
                 try mergeTask(dto: dto)
             }
         }
+        inboundMergedEntityNames.insert("ProjectTask")
         print("[DataActor] Merged \(dtos.count) tasks (scope: \(scope))")
     }
 
@@ -3532,8 +3617,13 @@ actor DataActor {
                 case .catalogOrder(let dto):            try mergeCatalogOrder(dto: dto)
                 case .companyDefaultProduct(let dto):   try mergeCompanyDefaultProduct(dto: dto)
                 case .product(let dto):                 try ProductSyncLocalStore.merge(dto: dto, context: modelContext)
+                case .calendarUserEvent(let dto):       try mergeCalendarUserEvent(dto: dto)
                 }
             }
+            // Tell snapshot-cache consumers (calendar) the merge landed.
+            // Per-event is safe here: realtime merges rewire relationships
+            // inline, and the router debounces bursts.
+            InboundChangeSignal.post(entityNames: [update.mergedEntityName])
         } catch {
             print("[DataActor] Realtime merge failed: \(error)")
         }
@@ -3592,6 +3682,10 @@ actor DataActor {
                     if let m = try modelContext.fetch(FetchDescriptor<DeckDesign>(predicate: #Predicate { $0.id == id })).first {
                         m.deletedAt = Date()
                     }
+                case "calendar_user_events":
+                    if let m = try modelContext.fetch(FetchDescriptor<CalendarUserEvent>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
                 case "catalog_categories":
                     if let m = try modelContext.fetch(FetchDescriptor<CatalogCategory>(predicate: #Predicate { $0.id == id })).first {
                         m.deletedAt = Date()
@@ -3624,6 +3718,13 @@ actor DataActor {
                 default:
                     break
                 }
+            }
+            // Route the soft-delete to snapshot-cache consumers (calendar) the
+            // same way upserts are routed. Posting when the row wasn't local is
+            // a rare, debounced no-op repaint — acceptable over threading a
+            // found-flag through every case.
+            if let entityName = InboundChangeSignal.entityName(forTable: table) {
+                InboundChangeSignal.post(entityNames: [entityName])
             }
         } catch {
             print("[DataActor] Realtime soft-delete failed for \(table) \(id): \(error)")
@@ -4560,6 +4661,7 @@ enum RealtimeUpdate: Sendable {
     case catalogOrder(CatalogOrderDTO)
     case companyDefaultProduct(CompanyDefaultProductDTO)
     case product(ProductDTO)
+    case calendarUserEvent(CalendarUserEventDTO)
 }
 
 // MARK: - Inbound Repositories Helper
@@ -4593,6 +4695,7 @@ struct InboundRepositories {
     let productBundleItem: ProductBundleItemRepository
     let defaultProduct: CompanyDefaultProductRepository
     let order: CatalogOrderRepository
+    let calendarUserEvent: CalendarUserEventRepository
 
     init(companyId: String) {
         self.companyId = companyId
@@ -4620,6 +4723,7 @@ struct InboundRepositories {
         self.productBundleItem = ProductBundleItemRepository(companyId: companyId)
         self.defaultProduct = CompanyDefaultProductRepository(companyId: companyId)
         self.order = CatalogOrderRepository(companyId: companyId)
+        self.calendarUserEvent = CalendarUserEventRepository(companyId: companyId)
     }
 }
 

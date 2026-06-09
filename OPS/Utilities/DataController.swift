@@ -73,6 +73,14 @@ class DataController: ObservableObject {
     /// Created alongside dataActor; published for views to observe.
     @Published private(set) var refreshBridge: MainContextRefreshBridge?
 
+    /// Routes `.inboundDataMerged` (server data saved locally by Realtime /
+    /// delta / full sync — actor or legacy path alike) to the calendar's
+    /// existing refresh chains. Without this, snapshot caches like
+    /// CalendarViewModel.dayTaskCache only invalidate on LOCAL edits, so a
+    /// teammate's reschedule lands in SwiftData but never repaints the
+    /// schedule until the user changes weeks or pull-to-refreshes.
+    private(set) var inboundChangeRouter: InboundChangeRouter?
+
     private var cancellables = Set<AnyCancellable>()
 
     // Cancellable data wipe scheduled during logout — cancelled if re-login starts
@@ -214,6 +222,25 @@ class DataController: ObservableObject {
         //     immediately upon connectivity restore; SyncEngine.dataActor
         //     must be bound before that happens.
         //
+        // Route inbound merge signals (Realtime / delta / full sync) to the
+        // calendar's existing refresh chains. Created on BOTH the actor and
+        // legacy paths — every inbound merge site posts the same signal.
+        // Callbacks fire on main (the router is main-confined), matching how
+        // updateTaskSchedule toggles after local edits.
+        if self.inboundChangeRouter == nil {
+            self.inboundChangeRouter = InboundChangeRouter(
+                onCalendarTasksChanged: { [weak self] in
+                    self?.scheduledTasksDidChange.toggle()
+                },
+                onUserEventsChanged: {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("CalendarUserEventsDidChange"),
+                        object: nil
+                    )
+                }
+            )
+        }
+
         // The @ModelActor-synthesized init runs synchronously; only configure()
         // is async. Actor methods are FIFO-serialized, so scheduling configure()
         // first guarantees it runs before any queued cleanup/sync method.

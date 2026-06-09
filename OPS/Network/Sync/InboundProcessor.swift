@@ -784,6 +784,9 @@ final class InboundProcessor {
         for dto in dtos {
             try mergeTaskType(dto: dto, context: context)
         }
+        if !dtos.isEmpty {
+            InboundChangeSignal.post(entityNames: ["TaskType"])
+        }
         print("[InboundProcessor] Merged \(dtos.count) task types")
     }
 
@@ -850,6 +853,9 @@ final class InboundProcessor {
         let dtos = try await projectRepo.fetchAll(since: since, scope: scope, userId: userId)
         for dto in dtos {
             try mergeProject(dto: dto, context: context)
+        }
+        if !dtos.isEmpty {
+            InboundChangeSignal.post(entityNames: ["Project"])
         }
         print("[InboundProcessor] Merged \(dtos.count) projects (scope: \(scope))")
     }
@@ -1027,6 +1033,9 @@ final class InboundProcessor {
         let dtos = try await taskRepo.fetchAll(since: since, scope: scope, userId: userId)
         for dto in dtos {
             try mergeTask(dto: dto, context: context)
+        }
+        if !dtos.isEmpty {
+            InboundChangeSignal.post(entityNames: ["ProjectTask"])
         }
         print("[InboundProcessor] Merged \(dtos.count) tasks (scope: \(scope))")
     }

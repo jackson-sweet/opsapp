@@ -136,9 +136,12 @@ class ProjectNotesViewModel: ObservableObject {
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
         let all = (try? context.fetch(descriptor)) ?? []
-        // Only surface annotations that carry a visible note — drawing-only
-        // annotations (no text) aren't meaningful in a text feed.
-        annotations = all.filter { !$0.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        // Surface annotations that carry markup OR a text note (see
+        // AnnotationFeedPolicy). Drawing-only markups now show as "marked up a
+        // photo"; pure dimensioned captures (no overlay, no note) stay out.
+        annotations = all.filter {
+            AnnotationFeedPolicy.belongsInFeed(annotationURL: $0.annotationURL, note: $0.note)
+        }
     }
 
     // MARK: - Pending Images

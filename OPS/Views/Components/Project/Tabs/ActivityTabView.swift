@@ -461,7 +461,7 @@ private struct AnnotationEntryView: View {
                     Text(authorName)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                    Text("commented on a photo")
+                    Text(AnnotationFeedPolicy.actionLabel(annotationURL: annotation.annotationURL))
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
@@ -489,11 +489,16 @@ private struct AnnotationEntryView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
 
-                // Note text
-                Text(annotation.note)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+                // Note text — omitted for a markup-only card; the marked-up
+                // thumbnail carries the meaning on its own.
+                if !annotation.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(annotation.note)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Spacer(minLength: 0)
+                }
             }
         }
         .padding(14)

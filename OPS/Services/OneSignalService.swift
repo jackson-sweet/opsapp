@@ -124,6 +124,27 @@ class OneSignalService {
         print("[ONESIGNAL SERVICE] Schedule change notification sent to \(filteredUserIds.count) users")
     }
 
+    /// One summary push per crew member after a bulk auto-schedule run — replaces
+    /// the per-task push (one per task per member) that flooded the connection.
+    /// Each member gets a single push carrying their own moved-task count.
+    func notifyScheduleBatchUpdate(userMoveCounts: [String: Int]) async {
+        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
+        for (userId, count) in userMoveCounts where userId != currentUserId && count > 0 {
+            let body = count == 1
+                ? "1 of your tasks was rescheduled"
+                : "\(count) of your tasks were rescheduled"
+            try? await sendToUsers(
+                userIds: [userId],
+                title: "Schedule updated",
+                body: body,
+                data: [
+                    "type": "scheduleChange",
+                    "screen": "jobBoard"
+                ]
+            )
+        }
+    }
+
     /// Notify project team when a task is completed (workflow handoff)
     func notifyTaskCompletion(
         userIds: [String],

@@ -185,6 +185,31 @@ struct ContentView: View {
         workspacePreloadWatchdog = nil
         workspacePreloadArmedAt = nil
 
+        // The escape hatch ("ENTER ANYWAY") and the watchdog can force-reveal
+        // WHILE the post-login initial sync is still in flight — before
+        // DataController's deferred auth flip (fetchUserFromAPI) fires at the end
+        // of that sync. In that window `isAuthenticated` is still false, so the
+        // screen BEHIND the gate is the login/landing page, NOT the app. Tearing
+        // the gate down alone dumps the user back onto the still-spinning login
+        // button (the reported escape-hatch bug). Flip auth here — but only for an
+        // app-bound login, the SAME predicate the deferred flip uses, so we never
+        // fast-forward a still-onboarding user into a half-built app — so the
+        // authenticated app mounts behind the gate as it crossfades out and the
+        // remaining sync finishes in the background, exactly as the button's
+        // caption promises. Clearing the login-routing flags in the same mutation
+        // routes the Group straight to PINGatedView, with no one-frame flash of
+        // LoginView (checked ahead of the `!isAuthenticated` branch). Safe to mount
+        // mid-sync: the initial sync writes on the DataActor's own context
+        // (FeatureFlags.useDataActor, default on), not the main context HomeView
+        // reads. The gated reveal path is unaffected — it already holds for
+        // `isAuthenticated`, so this branch is a no-op there.
+        if !dataController.isAuthenticated, DataController.isAppBound(dataController.currentUser) {
+            showExistingLogin = false
+            showABTestOnboarding = false
+            onboardingManagerInstance = nil
+            dataController.isAuthenticated = true
+        }
+
         // Haptic is not motion — it fires regardless of Reduce Motion.
         UINotificationFeedbackGenerator().notificationOccurred(.success)
 

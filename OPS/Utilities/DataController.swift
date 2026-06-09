@@ -897,6 +897,26 @@ class DataController: ObservableObject {
         }
     }
 
+    /// Whether a freshly-fetched user is "app-bound" — destined for the main app
+    /// (MainTabView) rather than the onboarding flow. Single source of truth for
+    /// the post-login authentication flip: `fetchUserFromAPI` defers that flip to
+    /// the END of the initial sync, and the returning-login workspace preload
+    /// gate's "ENTER ANYWAY" escape hatch consults the SAME predicate to
+    /// fast-forward a stalled sync into the app — so the hatch can never reveal a
+    /// login the deferred flip wouldn't also have. App-bound = server-onboarded
+    /// (`hasCompletedAppOnboarding`), belongs to a company, and has a resolved
+    /// user type; a partial join (a company without the server ACK) resumes
+    /// onboarding instead.
+    ///
+    /// `nonisolated`: a pure function of the passed-in user that touches no actor
+    /// state, so the `@MainActor` login path, the gate, and the tests can all use
+    /// it without an isolation hop.
+    nonisolated static func isAppBound(_ user: User?) -> Bool {
+        guard let user else { return false }
+        let hasCompany = !(user.companyId ?? "").isEmpty
+        return user.hasCompletedAppOnboarding && hasCompany && user.userType != nil
+    }
+
     @MainActor
     private func fetchUserFromAPI(userId: String) async throws {
         let crashlytics = Crashlytics.crashlytics()
@@ -1001,8 +1021,7 @@ class DataController: ObservableObject {
         await MainActor.run {
             isPerformingInitialSync = true
         }
-        let hasCompany = !(user.companyId ?? "").isEmpty
-        let shouldFlipAuthentication = user.hasCompletedAppOnboarding && hasCompany && user.userType != nil
+        let shouldFlipAuthentication = DataController.isAppBound(user)
 
         // Fetch company data if needed
         if isConnected, let companyId = user.companyId, !companyId.isEmpty {

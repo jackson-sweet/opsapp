@@ -3892,9 +3892,11 @@ class DataController: ObservableObject {
             changedFields: changedFields
         )
 
-        // Send schedule change notification if dates actually changed
+        // Send schedule change notification if dates actually changed — but
+        // skip terminal tasks (a completed or cancelled task moving shouldn't
+        // ping the crew).
         let datesChanged = previousStartDate != startDate || previousEndDate != endDate
-        if datesChanged, let project = project {
+        if datesChanged, !task.status.isTerminal, let project = project {
             let teamMemberIds = task.getTeamMemberIds()
             if !teamMemberIds.isEmpty {
                 let capturedTaskName = task.displayTitle

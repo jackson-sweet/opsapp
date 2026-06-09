@@ -12,7 +12,7 @@ import SwiftUI
 struct GuidedSetupDoneView: View {
     @ObservedObject var model: GuidedCatalogSetupModel
 
-    private var hasResults: Bool { !model.savedLines.isEmpty }
+    private var hasResults: Bool { !model.savedLines.isEmpty || !model.savedAssemblies.isEmpty }
 
     var body: some View {
         ScrollView {
@@ -58,7 +58,8 @@ struct GuidedSetupDoneView: View {
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Text(GuidedCatalogSetupModel.summaryLine(services: model.savedServiceCount,
-                                                     goods: model.savedGoodCount))
+                                                     goods: model.savedGoodCount,
+                                                     assemblies: model.savedAssemblyCount))
                 .font(OPSStyle.Typography.cardTitle)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -70,32 +71,42 @@ struct GuidedSetupDoneView: View {
 
     private var savedList: some View {
         VStack(spacing: OPSStyle.Layout.spacing1) {
+            ForEach(model.savedAssemblies) { assembly in
+                savedRow(name: assembly.name,
+                         detail: assembly.marginPercent.map { "PACKAGE · \(Int($0.rounded()))% margin" } ?? "PACKAGE",
+                         sell: assembly.sell)
+            }
             ForEach(model.savedLines) { line in
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(line.name)
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .lineLimit(1)
-                        Text(line.kind.displayLabel)
-                            .font(OPSStyle.Typography.metadata)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
-                    Spacer()
-                    Text(model.formatMoney(line.sell))
-                        .font(OPSStyle.Typography.metadata)
-                        .monospacedDigit()
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-                .padding(OPSStyle.Layout.spacing2)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                savedRow(name: line.name, detail: line.kind.displayLabel, sell: line.sell)
             }
         }
+    }
+
+    private func savedRow(name: String, detail: String, sell: Double) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .lineLimit(1)
+                Text(detail)
+                    .font(OPSStyle.Typography.metadata)
+                    .monospacedDigit()
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            Spacer()
+            Text(model.formatMoney(sell))
+                .font(OPSStyle.Typography.metadata)
+                .monospacedDigit()
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+        }
+        .padding(OPSStyle.Layout.spacing2)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
 
     private var emptyState: some View {
@@ -109,9 +120,9 @@ struct GuidedSetupDoneView: View {
 
 #Preview {
     let model = GuidedCatalogSetupModel(companyId: "preview", userId: "preview")
+    model.savedAssemblies = [SavedAssembly(id: "a1", name: "Rail install", sell: 1500, marginPercent: 62)]
     model.savedLines = [
-        SavedProductLine(id: "1", name: "Standard clean", kind: .service, sell: 200),
-        SavedProductLine(id: "2", name: "Deep clean", kind: .service, sell: 350)
+        SavedProductLine(id: "1", name: "Standard clean", kind: .service, sell: 200)
     ]
     return ZStack {
         OPSStyle.Colors.backgroundGradient.ignoresSafeArea()

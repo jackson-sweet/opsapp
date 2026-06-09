@@ -24,7 +24,6 @@ struct GuidedCatalogSetupFlow: View {
     @AppStorage("catalog.selectedSegment") private var selectedSegmentRaw: String = "STOCK"
 
     @State private var showResumePrompt = false
-    @State private var showNewBundle = false
 
     init(companyId: String, userId: String) {
         _model = StateObject(wrappedValue: GuidedCatalogSetupModel(companyId: companyId, userId: userId))
@@ -36,9 +35,6 @@ struct GuidedCatalogSetupFlow: View {
             content
         }
         .trackScreen("Catalog.GuidedSetup")
-        .sheet(isPresented: $showNewBundle) {
-            NewBundleSheet().environmentObject(dataController)
-        }
         .onAppear {
             if permissionStore.can("catalog.products.manage") && model.hasDraftToResume {
                 showResumePrompt = true
@@ -102,10 +98,7 @@ struct GuidedCatalogSetupFlow: View {
             case .goods:
                 ProductLineModuleView(model: model, kind: .good, isOnline: dataController.isConnected)
             case .assembly:
-                handoff(eyebrow: "JOB PACKAGES",
-                        title: "PACKAGE YOUR JOBS",
-                        body: "Bundle materials and labor into one fixed-price line customers buy.",
-                        actionLabel: "BUILD A PACKAGE") { showNewBundle = true }
+                AssemblyModuleView(model: model, isOnline: dataController.isConnected)
             case .stock:
                 handoff(eyebrow: "YOUR STOCK",
                         title: "COUNT YOUR STOCK",

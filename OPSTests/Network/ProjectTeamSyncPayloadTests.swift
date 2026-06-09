@@ -52,4 +52,68 @@ final class ProjectTeamSyncPayloadTests: XCTestCase {
 
         XCTAssertTrue(missing.isEmpty)
     }
+
+    // MARK: - Per-task optimistic mirror of project-team RPC delta
+
+    /// Removing a member that lived on only one task must empty that task, not
+    /// flatten every task to the surviving project team. (task A:[alice],
+    /// B:[bob]; remove alice → A:[], B:[bob] — never A:[bob], B:[bob].)
+    func testTaskCrewAfterRemovalDoesNotCrossAssignSurvivingMember() {
+        let taskA = DataController.projectTaskTeamMemberIdsAfterServerAssignment(
+            currentTaskMemberIds: ["alice"],
+            removedMemberIds: ["alice"],
+            addedMemberIds: []
+        )
+        let taskB = DataController.projectTaskTeamMemberIdsAfterServerAssignment(
+            currentTaskMemberIds: ["bob"],
+            removedMemberIds: ["alice"],
+            addedMemberIds: []
+        )
+
+        XCTAssertEqual(taskA, [])
+        XCTAssertEqual(taskB, ["bob"])
+    }
+
+    /// Adding a member adds them to every task, but unchanged members keep their
+    /// per-task differentiation. (task A:[alice], B:[alice,bob]; add carol →
+    /// A:[alice,carol], B:[alice,bob,carol] — bob is never spread onto task A.)
+    func testTaskCrewAfterAdditionPreservesPerTaskDifferentiation() {
+        let taskA = DataController.projectTaskTeamMemberIdsAfterServerAssignment(
+            currentTaskMemberIds: ["alice"],
+            removedMemberIds: [],
+            addedMemberIds: ["carol"]
+        )
+        let taskB = DataController.projectTaskTeamMemberIdsAfterServerAssignment(
+            currentTaskMemberIds: ["alice", "bob"],
+            removedMemberIds: [],
+            addedMemberIds: ["carol"]
+        )
+
+        XCTAssertEqual(taskA, ["alice", "carol"])
+        XCTAssertEqual(taskB, ["alice", "bob", "carol"])
+    }
+
+    /// A simultaneous add + remove applies both deltas per task without
+    /// resurrecting the removed member or duplicating the added one.
+    func testTaskCrewAppliesAddAndRemoveDeltaTogether() {
+        let result = DataController.projectTaskTeamMemberIdsAfterServerAssignment(
+            currentTaskMemberIds: ["alice", "bob"],
+            removedMemberIds: ["alice"],
+            addedMemberIds: ["carol", "bob"]
+        )
+
+        XCTAssertEqual(result, ["bob", "carol"])
+    }
+
+    /// Output is lowercased and sorted to match Postgres's stored uuid casing
+    /// and `array_agg(distinct member_id order by member_id)` ordering.
+    func testTaskCrewNormalizesCasingAndSortsResult() {
+        let result = DataController.projectTaskTeamMemberIdsAfterServerAssignment(
+            currentTaskMemberIds: ["Bob", "ALICE"],
+            removedMemberIds: [],
+            addedMemberIds: ["Carol"]
+        )
+
+        XCTAssertEqual(result, ["alice", "bob", "carol"])
+    }
 }

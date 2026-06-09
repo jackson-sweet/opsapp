@@ -4372,9 +4372,21 @@ class DataController: ObservableObject {
         }
 
         applyProjectTeamMembersCache(project: project, memberIds: targetMemberIds)
+        // Mirror the server's true per-task effect instead of flattening every
+        // task to the target set. `remove_project_team_member` stripped the
+        // removed members from EVERY non-deleted task; `assign_project_team_member`
+        // added the added members to every task in `taskIds` (the full active-task
+        // set, or the freshly created assignment task). Members present in both the
+        // old and new project team are left untouched, so per-task differentiation
+        // is preserved — blanket-setting wrongly cross-assigned unchanged members.
         for task in project.tasks where task.deletedAt == nil {
-            task.setTeamMemberIds(targetMemberIds)
-            task.teamMembers = fetchUsersById(targetMemberIds)
+            let updatedIds = Self.projectTaskTeamMemberIdsAfterServerAssignment(
+                currentTaskMemberIds: task.getTeamMemberIds(),
+                removedMemberIds: removedMemberIds,
+                addedMemberIds: addedMemberIds
+            )
+            task.setTeamMemberIds(updatedIds)
+            task.teamMembers = fetchUsersById(updatedIds)
             task.needsSync = false
             task.lastSyncedAt = Date()
         }
@@ -4382,6 +4394,26 @@ class DataController: ObservableObject {
         project.needsSync = false
         project.lastSyncedAt = Date()
         try modelContext?.save()
+    }
+
+    /// Computes a single task's crew after the project-level team editor's server
+    /// delta is applied, mirroring the `assign_project_team_member` /
+    /// `remove_project_team_member` RPCs: removed members are stripped from every
+    /// non-deleted task, added members are added to every active task, and members
+    /// present in both the old and new project team are left in place so per-task
+    /// differentiation survives. Lowercased + sorted to match Postgres's
+    /// `array_agg(distinct member_id order by member_id)`.
+    static func projectTaskTeamMemberIdsAfterServerAssignment(
+        currentTaskMemberIds: [String],
+        removedMemberIds: [String],
+        addedMemberIds: [String]
+    ) -> [String] {
+        let removed = Set(removedMemberIds.map { $0.lowercased() })
+        let added = Set(addedMemberIds.map { $0.lowercased() })
+        return Set(currentTaskMemberIds.map { $0.lowercased() })
+            .subtracting(removed)
+            .union(added)
+            .sorted()
     }
 
     @MainActor

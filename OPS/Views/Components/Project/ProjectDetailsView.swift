@@ -311,6 +311,14 @@ struct ProjectDetailsView: View {
                             projectPhotoCount: dataController.modelContext.map { viewModel.project.mergedGalleryImageURLs(using: $0).count } ?? viewModel.project.getProjectImages().count
                         )
                     }
+                    .onReceive(NotificationCenter.default.publisher(for: .opsExpensesDidChange)) { _ in
+                        // An expense was added/edited (this project's add sheet, the
+                        // global FAB) or arrived via realtime. The expenses tab reads
+                        // `projectExpenses` — a separate cache from
+                        // ExpenseViewModel.expenses — so refetch it live instead of
+                        // waiting for the tab's onAppear `.task` to re-run on reopen.
+                        Task { await viewModel.loadExpenses() }
+                    }
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardStepChanged"))) { notification in
                         guard let mgr = wizardStateManager,
                               mgr.isActive,

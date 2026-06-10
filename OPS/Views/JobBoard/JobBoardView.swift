@@ -321,28 +321,42 @@ struct JobBoardView: View {
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
+                            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                     .wizardTarget("open_filters")
 
                     Button(action: {
                         withAnimation(.easeInOut(duration: 0.2)) { activeOnly.toggle() }
                     }) {
                         JobBoardFilterPill(title: "ACTIVE ONLY", isOn: activeOnly)
+                            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
 
                     Button(action: {
                         withAnimation(.easeInOut(duration: 0.2)) { assignedToMe.toggle() }
                     }) {
                         JobBoardFilterPill(title: "ASSIGNED TO ME", isOn: assignedToMe)
+                            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
 
                     if selectedSection == .projects && permissionStore.can("projects.edit") {
                         Button(action: {
                             withAnimation(.easeInOut(duration: 0.2)) { prioritizeMode.toggle() }
                         }) {
                             JobBoardFilterPill(title: "PRIORITIZE", isOn: prioritizeMode)
+                                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                                .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                     }
+
+                    Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 16)
             }

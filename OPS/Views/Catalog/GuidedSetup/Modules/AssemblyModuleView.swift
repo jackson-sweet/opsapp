@@ -64,7 +64,7 @@ struct AssemblyModuleView: View {
 
     private var disabledReason: String? {
         if model.isSaving { return nil }
-        if !isOnline { return "// OFFLINE — SAVE BLOCKED" }
+        if !isOnline { return "// OFFLINE — SAVES PAUSED" }
         if model.isDuplicateAssemblyName(draft.name) { return "// NAME ALREADY USED" }
         if draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || priceAmount == nil {
             return "// NAME AND PRICE REQUIRED"

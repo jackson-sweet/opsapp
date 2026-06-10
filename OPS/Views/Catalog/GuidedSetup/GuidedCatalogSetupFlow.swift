@@ -200,7 +200,7 @@ struct GuidedCatalogSetupFlow: View {
                 Text("// OFFLINE")
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Text("You can keep moving. Saving starts when the connection is back.")
+                Text("Adding pauses until you're back online. Your place is saved.")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }

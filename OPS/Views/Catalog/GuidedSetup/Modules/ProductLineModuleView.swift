@@ -74,7 +74,7 @@ struct ProductLineModuleView: View {
 
     private var disabledReason: String? {
         if model.isSaving { return nil }
-        if !isOnline { return "// OFFLINE — SAVE BLOCKED" }
+        if !isOnline { return "// OFFLINE — SAVES PAUSED" }
         if model.isDuplicateName(draft.name) { return "// NAME ALREADY USED" }
         if draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sellAmount == nil {
             return kind == .service ? "// NAME AND RATE REQUIRED" : "// NAME AND PRICE REQUIRED"

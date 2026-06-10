@@ -13,20 +13,41 @@ struct JobBoardKanbanView: View {
     @EnvironmentObject private var dataController: DataController
     @Query private var allProjects: [Project]
     @State private var expandedStatus: Status? = nil
+    var activeOnly: Bool = false
     var assignedToMe: Bool = false
+    var selectedStatuses: Set<Status> = []
+    var selectedTeamMemberIds: Set<String> = []
 
     /// Active statuses only (no Closed, Archived)
     private let displayStatuses: [Status] = [
         .rfq, .estimated, .accepted, .inProgress, .completed
     ]
 
-    /// Projects excluding Closed, Archived, and soft-deleted
-    private var activeProjects: [Project] {
-        var filtered = allProjects.filter { $0.status != .closed && $0.status != .archived && $0.deletedAt == nil }
-        if assignedToMe, let userId = dataController.currentUser?.id {
-            filtered = filtered.filter { $0.getTeamMemberIds().contains(userId) }
+    /// Status bars to render. Honors the ACTIVE ONLY toggle (drops any
+    /// non-active status) and the filter sheet's status selection, so the
+    /// board's bars track the action-row filters instead of always showing
+    /// the full set.
+    private var visibleStatuses: [Status] {
+        displayStatuses.filter { status in
+            if activeOnly && !status.isActive { return false }
+            if !selectedStatuses.isEmpty && !selectedStatuses.contains(status) { return false }
+            return true
         }
-        return filtered
+    }
+
+    /// Projects excluding Closed, Archived, and soft-deleted — run through the
+    /// same active / assigned-to-me / status / team filters the action row and
+    /// filter sheet expose, via the shared JobBoardProjectFiltering helper so
+    /// the board matches the project list's filtering rules exactly.
+    private var activeProjects: [Project] {
+        JobBoardProjectFiltering.kanbanProjects(
+            from: allProjects,
+            activeOnly: activeOnly,
+            assignedToMe: assignedToMe,
+            currentUserId: dataController.currentUser?.id,
+            selectedStatuses: selectedStatuses,
+            selectedTeamMemberIds: selectedTeamMemberIds
+        )
     }
 
     private var totalCount: Int { max(activeProjects.count, 1) }
@@ -47,7 +68,7 @@ struct JobBoardKanbanView: View {
             // Bump to spacing3 (16pt) so each status bar reads as its own
             // standalone card.
             VStack(spacing: OPSStyle.Layout.spacing3) {
-                ForEach(displayStatuses, id: \.self) { status in
+                ForEach(visibleStatuses, id: \.self) { status in
                     KanbanStatusBar(
                         status: status,
                         count: projects(for: status).count,

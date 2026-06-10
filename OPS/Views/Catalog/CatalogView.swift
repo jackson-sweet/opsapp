@@ -49,6 +49,7 @@ struct CatalogView: View {
     @State private var showSetupFlow: Bool = false
     @State private var setupMissingMappingKey: String?
     @State private var showGuidedSetup: Bool = false
+    @State private var showGuidedCatalogSetup: Bool = false
     @State private var showImport: Bool = false
 
     private var selectedSegment: CatalogSegment {
@@ -117,6 +118,13 @@ struct CatalogView: View {
         }
         .fullScreenCover(isPresented: $showGuidedSetup) {
             GuidedStockSetupFlow(
+                companyId: dataController.currentUser?.companyId ?? "",
+                userId: dataController.currentUser?.id ?? ""
+            )
+            .environmentObject(dataController)
+        }
+        .fullScreenCover(isPresented: $showGuidedCatalogSetup) {
+            GuidedCatalogSetupFlow(
                 companyId: dataController.currentUser?.companyId ?? "",
                 userId: dataController.currentUser?.id ?? ""
             )
@@ -219,6 +227,9 @@ struct CatalogView: View {
                 }
                 if showSetupSection {
                     Section("SETUP") {
+                        Button { showGuidedCatalogSetup = true } label: {
+                            Label("Set up your catalog", systemImage: "checklist")
+                        }
                         Button { showSetupFlow = true } label: {
                             Label("Stock Setup", systemImage: "square.grid.3x3")
                         }

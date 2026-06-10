@@ -334,12 +334,14 @@ struct GuidedCatalogSetupFlow: View {
     }
 
     private func viewCatalog() {
+        model.clearDraft()
         selectedSegmentRaw = "PRODUCTS"
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         dismiss()
     }
 
     private func finish() {
+        model.clearDraft()
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         dismiss()
     }

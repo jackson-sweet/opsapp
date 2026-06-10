@@ -427,7 +427,11 @@ struct ProjectDetailsView: View {
                         onReschedule: { viewModel.showingTaskScheduler = true },
                         onContact: { viewModel.showingClientContact = true },
                         onAddTask: { viewModel.showingAddTaskSheet = true },
-                        onDeckDesign: permissionStore.isFeatureEnabled("deck_builder") ? { showingDeckCreationPicker = true } : nil,
+                        onDeckDesign: ProjectQuickActionPermissionGate.canShowDeckAction(
+                            featureEnabled: permissionStore.isFeatureEnabled("deck_builder"),
+                            canCreate: permissionStore.can("deck_builder.create", requiredScope: "assigned"),
+                            canEdit: permissionStore.can("deck_builder.edit", requiredScope: "assigned")
+                        ) ? { showingDeckCreationPicker = true } : nil,
                         // LiDAR Dimensioned Photo Capture (spec §3.1) — gated
                         // by `MeasureActionButton.shouldRender` so flag + capability
                         // checks stay in one place. Same logic as Home's

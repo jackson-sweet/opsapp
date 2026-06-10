@@ -402,7 +402,10 @@ struct JobBoardView: View {
                     .padding(.horizontal, 16)
                 case .kanban:
                     JobBoardKanbanView(
-                        assignedToMe: assignedToMe
+                        activeOnly: activeOnly,
+                        assignedToMe: assignedToMe,
+                        selectedStatuses: selectedProjectStatuses,
+                        selectedTeamMemberIds: selectedProjectTeamMemberIds
                     )
                 }
             }

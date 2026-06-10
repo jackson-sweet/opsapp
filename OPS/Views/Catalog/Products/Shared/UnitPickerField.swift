@@ -30,15 +30,19 @@ struct UnitPickerField: View {
                     Label("Flat rate", systemImage: selectedUnitId == nil ? "checkmark" : "")
                 }
             }
-            ForEach(companyUnits) { unit in
-                Button {
-                    selectedUnitId = unit.id
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                } label: {
-                    if selectedUnitId == unit.id {
-                        Label(unit.display, systemImage: "checkmark")
-                    } else {
-                        Text(unit.display)
+            ForEach(Self.orderedDimensions, id: \.self) { dimension in
+                if !units(in: dimension).isEmpty {
+                    Section(dimensionTitle(dimension)) {
+                        ForEach(units(in: dimension)) { unit in
+                            unitButton(unit)
+                        }
+                    }
+                }
+            }
+            if !otherDimensionUnits.isEmpty {
+                Section("Other") {
+                    ForEach(otherDimensionUnits) { unit in
+                        unitButton(unit)
                     }
                 }
             }
@@ -53,6 +57,49 @@ struct UnitPickerField: View {
             }
         } label: {
             menuLabel(text: selectedDisplay)
+        }
+    }
+
+    // MARK: - Dimension grouping
+
+    /// Dimension order for the grouped menu, most-common first. Mirrors the
+    /// `catalog_units.dimension` CHECK values.
+    private static let orderedDimensions = ["count", "length", "area", "volume", "mass", "time"]
+
+    private func units(in dimension: String) -> [CatalogUnit] {
+        companyUnits.filter { $0.dimension == dimension }
+    }
+
+    /// Any units carrying a dimension outside the known set — surfaced under
+    /// an "Other" section so nothing silently disappears from the picker.
+    private var otherDimensionUnits: [CatalogUnit] {
+        let known = Set(Self.orderedDimensions)
+        return companyUnits.filter { !known.contains($0.dimension) }
+    }
+
+    private func dimensionTitle(_ dimension: String) -> String {
+        switch dimension {
+        case "count":  return "Count"
+        case "length": return "Length"
+        case "area":   return "Area"
+        case "volume": return "Volume"
+        case "mass":   return "Weight"
+        case "time":   return "Time"
+        default:       return dimension.capitalized
+        }
+    }
+
+    @ViewBuilder
+    private func unitButton(_ unit: CatalogUnit) -> some View {
+        Button {
+            selectedUnitId = unit.id
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } label: {
+            if selectedUnitId == unit.id {
+                Label(unit.display, systemImage: "checkmark")
+            } else {
+                Text(unit.display)
+            }
         }
     }
 

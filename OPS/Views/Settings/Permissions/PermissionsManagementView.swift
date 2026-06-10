@@ -55,6 +55,13 @@ struct PermissionsManagementView: View {
                         .environmentObject(dataController)
                 }
             }
+            // Bug e6004ed0: clip the tab-content container to the viewport so
+            // no descendant (a long role or member name) can overflow
+            // horizontally and produce sideways scroll on the Permissions
+            // screen. Belt-and-suspenders on top of per-row truncation
+            // (be2b9e23 / 45a9c534).
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
         }
         .trackScreen("Settings.Permissions")
         .navigationBarBackButtonHidden(true)

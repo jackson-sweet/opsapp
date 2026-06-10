@@ -265,6 +265,15 @@ final class ProjectTask {
     func canEdit(user: User) -> Bool {
         return PermissionStore.shared.can("tasks.edit")
     }
+
+    /// Whether the current user may edit THIS task's *schedule* (start/end dates,
+    /// reschedule, cascade, extend, clear). Gated on `calendar.edit`, scope-aware
+    /// on the task's assignees — see `PermissionStore.canEditSchedule`. Distinct
+    /// from `canEdit` (tasks.edit): a Crew member may edit task fields and change
+    /// status but never move the task on the calendar.
+    var canEditSchedule: Bool {
+        PermissionStore.shared.canEditSchedule(assigneeIds: getTeamMemberIds())
+    }
     
     /// Check if user can update status
     func canUpdateStatus(user: User) -> Bool {

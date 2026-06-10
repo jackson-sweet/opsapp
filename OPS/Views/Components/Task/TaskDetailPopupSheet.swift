@@ -217,6 +217,8 @@ struct TaskDetailPopupSheet: View {
 
     private var datesRow: some View {
         Button(action: {
+            // Scheduling is gated on calendar.edit, scope-aware on this task.
+            guard task.canEditSchedule else { return }
             onScheduleTap?(task)
         }) {
             HStack(spacing: 12) {

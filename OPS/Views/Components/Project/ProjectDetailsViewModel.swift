@@ -609,7 +609,9 @@ class ProjectDetailsViewModel: ObservableObject {
     // MARK: - Schedule
 
     func handleTaskScheduleUpdate(startDate: Date, endDate: Date) {
-        guard let task = selectedTask, let dataController else { return }
+        // Scheduling is gated on calendar.edit, scope-aware (own-scope → only the
+        // user's own tasks). Definitive gate for every reschedule entry point.
+        guard let task = selectedTask, let dataController, task.canEditSchedule else { return }
         // Route through updateTaskSchedule — the single source of truth, which
         // enqueues an outbound SyncOperation via recordOperation. The previous
         // implementation only mutated the local model and set needsSync, but

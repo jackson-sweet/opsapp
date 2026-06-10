@@ -533,7 +533,9 @@ struct TaskDetailsView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             Button(action: {
-                if permissionStore.can("tasks.edit") {
+                // Scheduling is gated on calendar.edit (scope-aware), not tasks.edit:
+                // a Crew member may edit task fields but never move it on the calendar.
+                if task.canEditSchedule {
                     showingScheduler = true
                 }
             }) {
@@ -566,8 +568,8 @@ struct TaskDetailsView: View {
 
                         Spacer()
 
-                        // Chevron indicator for users with edit permission
-                        if permissionStore.can("tasks.edit") {
+                        // Chevron indicator for users who can reschedule (calendar.edit)
+                        if task.canEditSchedule {
                             Image(systemName: OPSStyle.Icons.chevronRight)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -609,7 +611,7 @@ struct TaskDetailsView: View {
             }
             .buttonStyle(PlainButtonStyle())
             .id(refreshTrigger)
-            .allowsHitTesting(permissionStore.can("tasks.edit"))
+            .allowsHitTesting(task.canEditSchedule)
         }
     }
 
@@ -1018,6 +1020,7 @@ struct TaskDetailsView: View {
     // MARK: - Schedule Update
 
     private func handleScheduleUpdate(startDate: Date, endDate: Date) {
+        guard task.canEditSchedule else { return }
         print("🔄 Task handleScheduleUpdate called - New dates: \(startDate) to \(endDate)")
 
         // Set dates directly on the task
@@ -1062,6 +1065,7 @@ struct TaskDetailsView: View {
     }
 
     private func handleClearDates() {
+        guard task.canEditSchedule else { return }
         print("🗑️ handleClearDates called - Clearing task dates")
 
         let projectId = task.project?.id

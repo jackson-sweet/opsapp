@@ -154,7 +154,10 @@ struct UnscheduledTaskReviewView: View {
             if !tasks.isEmpty && !showAllDone {
                 TaskReviewCardStack(
                     tasks: tasks,
-                    hasCalendarAccess: true,
+                    // Swipe-to-schedule is gated on calendar.edit (any grant shows
+                    // the affordance; the schedule mutations are gated per-task).
+                    // Crew / Unassigned (no grant) review without a schedule swipe.
+                    hasCalendarAccess: PermissionStore.shared.canEditAnySchedule,
                     onSwipe: handleSwipe,
                     onTapCard: { task in
                         selectedTask = task
@@ -863,6 +866,7 @@ struct UnscheduledTaskReviewView: View {
     }
 
     private func autoScheduleTask(_ task: ProjectTask) {
+        guard task.canEditSchedule else { return }
         // Bug adc0feb3 — realtime sync can land a schedule on the task
         // between the operator opening this review and swiping the card.
         // Re-running the scheduler here would overwrite the dates that
@@ -934,6 +938,7 @@ struct UnscheduledTaskReviewView: View {
     }
 
     private func manuallySchedule(_ task: ProjectTask, startDate: Date, endDate: Date) {
+        guard task.canEditSchedule else { return }
         Task {
             do {
                 try await dataController.updateTaskSchedule(

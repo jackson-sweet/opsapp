@@ -95,6 +95,34 @@ class PermissionStore: ObservableObject {
         return false
     }
 
+    // MARK: - Schedule-Edit Gate
+
+    /// Whether the current user may mutate the *schedule* (start/end dates,
+    /// reschedule, cascade, extend, clear) of an entity with the given assignee
+    /// ids. Scheduling is gated on `calendar.edit` across every surface — Crew and
+    /// Unassigned (no grant) can never reschedule; they only change status.
+    /// Scope-aware:
+    ///   - "all"              → may reschedule any entity
+    ///   - "own" / "assigned" → only entities the user is assigned to (their id is
+    ///                          among the assignee / team_member_ids)
+    ///   - no grant / flag-blocked → false
+    /// `assigneeIds` are matched case-insensitively (ids are stored lowercased to
+    /// match Postgres uuid casing). Per-entity gate — pair with `canEditAnySchedule`
+    /// for section/affordance visibility.
+    func canEditSchedule(assigneeIds: [String]) -> Bool {
+        guard let granted = scope(for: "calendar.edit") else { return false }
+        if granted == "all" { return true }
+        guard let uid = currentUserId?.lowercased() else { return false }
+        return assigneeIds.contains { $0.lowercased() == uid }
+    }
+
+    /// True when the user holds *any* `calendar.edit` grant (all / assigned / own).
+    /// Use to show or hide schedule-mutation affordances and sections; gate the
+    /// actual mutation per-entity with `canEditSchedule(assigneeIds:)`.
+    var canEditAnySchedule: Bool {
+        scope(for: "calendar.edit") != nil
+    }
+
     // MARK: - Load from Cache
 
     /// Load permissions from Keychain cache. Call on app startup for instant availability.

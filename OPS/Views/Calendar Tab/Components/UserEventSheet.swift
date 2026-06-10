@@ -124,13 +124,21 @@ struct UserEventSheet: View {
     /// helpers in DataController instead of creating new rows.
     private var isEditing: Bool { editingEvent != nil }
 
-    /// Gates every schedule mutation in this sheet (create-save, edit-save,
-    /// and the calendar date-cell tap). Held by Admin/Office/Operator/Owner;
-    /// Crew + Unassigned lack it, so the sheet renders read-only for them —
-    /// SAVE is disabled and the recurrence + time pickers are hidden.
-    /// Uses the singleton directly so there's no @EnvironmentObject injection
-    /// risk (mirrors CalendarEventCard's `canModify`).
-    private var canModify: Bool { PermissionStore.shared.can("calendar.edit") }
+    /// Gates every schedule mutation in this sheet (create-save, edit-save, and
+    /// the calendar date-cell tap). Gated on calendar.edit, scope-aware: in edit
+    /// mode an own-scope user may only edit personal events they own or
+    /// participate in; in create mode the new event belongs to the current user,
+    /// so any grant suffices. Crew + Unassigned lack the grant, so the sheet
+    /// renders read-only — SAVE disabled, recurrence + time pickers hidden. Uses
+    /// the singleton directly (no @EnvironmentObject injection risk).
+    private var canModify: Bool {
+        if let event = editingEvent {
+            return PermissionStore.shared.canEditSchedule(
+                assigneeIds: [event.userId] + (event.teamMemberIds ?? [])
+            )
+        }
+        return PermissionStore.shared.canEditAnySchedule
+    }
 
     // MARK: - Init
 

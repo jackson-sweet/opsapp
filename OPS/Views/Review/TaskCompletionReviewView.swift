@@ -30,8 +30,11 @@ struct TaskCompletionReviewView: View {
     @State private var celebrationScale: CGFloat = 0
     @State private var celebrationOpacity: Double = 0
 
+    /// Screen-level gate for the swipe-up "Reschedule" affordance and legend hint:
+    /// true when the user holds any calendar.edit grant. The actual reschedule is
+    /// gated per-task in `handleSwipe` (own-scope → only the user's own tasks).
     private var hasCalendarAccess: Bool {
-        permissionStore.can("calendar.edit")
+        permissionStore.canEditAnySchedule
     }
 
     var body: some View {
@@ -380,7 +383,14 @@ struct TaskCompletionReviewView: View {
             NotificationCenter.default.post(name: Notification.Name("WizardTaskSwipedLeft"), object: nil)
             break
         case .up:
-            // Reschedule — decrement count, will re-increment on complete/dismiss.
+            // Reschedule — gated per-task on calendar.edit (own-scope users may
+            // reschedule only their own tasks). A swipe-up on a task the user
+            // can't reschedule falls through to a no-op skip.
+            guard task.canEditSchedule else {
+                NotificationCenter.default.post(name: Notification.Name("WizardTaskSwipedLeft"), object: nil)
+                break
+            }
+            // Decrement count, will re-increment on complete/dismiss.
             // WizardTaskSwipedUp is deferred to the reschedule sheet callbacks
             // so the wizard doesn't advance while the sheet is still visible.
             reviewedCount -= 1

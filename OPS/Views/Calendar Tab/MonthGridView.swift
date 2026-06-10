@@ -351,14 +351,70 @@ struct MonthGridView: View {
         return dates[span.startDayIndex]
     }
 
+    /// Whether the current user may reschedule the task behind this span. Gated
+    /// on calendar.edit, scope-aware (own-scope → only the user's own tasks).
+    /// Non-task spans (personal user events, `userevent:` ids) don't resolve to a
+    /// task and return false — they expose no push / reschedule surface here.
+    private func canEditSchedule(for span: WeekEventSpan) -> Bool {
+        guard let task = dataController.getTask(id: span.eventId) else { return false }
+        return task.canEditSchedule
+    }
+
+    /// Event badges for one week. Extracted from the month-grid body so EventBar's
+    /// initializer doesn't inflate that deeply-nested week expression past the
+    /// Swift type-checker's budget. Reschedule (push / pull / pick date) is gated
+    /// per-task on calendar.edit via `canEditSchedule(for:)`.
+    @ViewBuilder
+    private func eventBars(_ weekSpans: [WeekEventSpan], dates: [Date?], dayWidth: CGFloat) -> some View {
+        ForEach(weekSpans) { span in
+            let spanCanModify: Bool = canEditSchedule(for: span)
+            EventBar(
+                span: span,
+                cellHeight: cellHeight,
+                dayWidth: dayWidth,
+                onTap: {
+                    // Forward to the day cell so the day sheet still opens when
+                    // users tap a badge — preserves the previous "badge is
+                    // non-interactive" behavior.
+                    if let tapDate = dayDateForSpan(span, dates: dates) {
+                        sheetDate = IdentifiableDate(date: tapDate)
+                        NotificationCenter.default.post(
+                            name: Notification.Name("WizardCalendarMonthDayTapped"),
+                            object: nil
+                        )
+                    }
+                },
+                onPushDays: { days in
+                    pushTaskByDays(eventId: span.eventId, days: days)
+                },
+                onOpenReschedule: {
+                    if let task = dataController.getTask(id: span.eventId) {
+                        rescheduleTarget = RescheduleTarget(id: task.id, task: task)
+                    }
+                },
+                onOpenDayDetails: {
+                    // Open the day sheet anchored at the event's first day in the
+                    // visible week so the user lands on the same place as a normal
+                    // day-cell tap.
+                    if let firstDate = dates[span.startDayIndex] {
+                        sheetDate = IdentifiableDate(date: firstDate)
+                    }
+                },
+                canModify: spanCanModify
+            )
+            .offset(x: dayWidth * CGFloat(span.startDayIndex), y: 26 + (CGFloat(span.row) * eventRowHeight(for: cellHeight)))
+        }
+    }
+
     /// Push (or pull) a task by N days using the existing scheduling engine
     /// and the single-source-of-truth update path on DataController. Triggers
     /// medium haptic on intent, success haptic when the update commits.
     private func pushTaskByDays(eventId: String, days: Int) {
-        // Schedule mutations are gated on calendar.edit. Crew / Unassigned
-        // (who lack it) get no push/pull surface — bail before any state change.
-        guard PermissionStore.shared.can("calendar.edit") else { return }
+        // Schedule mutations are gated on calendar.edit, scope-aware: own-scope
+        // users may push only their own tasks. Crew / Unassigned (no grant) get
+        // no push/pull surface — bail before any state change.
         guard let task = dataController.getTask(id: eventId) else { return }
+        guard task.canEditSchedule else { return }
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
@@ -644,44 +700,7 @@ struct MonthGridView: View {
                                                     }
                                                 }
 
-                                                ForEach(weekSpans) { span in
-                                                    EventBar(
-                                                        span: span,
-                                                        cellHeight: cellHeight,
-                                                        dayWidth: dayWidth,
-                                                        onTap: {
-                                                            // Forward to the day cell so the day sheet
-                                                            // still opens when users tap a badge —
-                                                            // preserves the previous "badge is non-
-                                                            // interactive" behavior.
-                                                            if let tapDate = dayDateForSpan(span, dates: dates) {
-                                                                sheetDate = IdentifiableDate(date: tapDate)
-                                                                NotificationCenter.default.post(
-                                                                    name: Notification.Name("WizardCalendarMonthDayTapped"),
-                                                                    object: nil
-                                                                )
-                                                            }
-                                                        },
-                                                        onPushDays: { days in
-                                                            pushTaskByDays(eventId: span.eventId, days: days)
-                                                        },
-                                                        onOpenReschedule: {
-                                                            if let task = dataController.getTask(id: span.eventId) {
-                                                                rescheduleTarget = RescheduleTarget(id: task.id, task: task)
-                                                            }
-                                                        },
-                                                        onOpenDayDetails: {
-                                                            // Open the day sheet anchored at the
-                                                            // event's first day in the visible week
-                                                            // so the user lands on the same place
-                                                            // as a normal day-cell tap.
-                                                            if let firstDate = dates[span.startDayIndex] {
-                                                                sheetDate = IdentifiableDate(date: firstDate)
-                                                            }
-                                                        }
-                                                    )
-                                                    .offset(x: dayWidth * CGFloat(span.startDayIndex), y: 26 + (CGFloat(span.row) * eventRowHeight(for: cellHeight)))
-                                                }
+                                                eventBars(weekSpans, dates: dates, dayWidth: dayWidth)
 
                                                 ForEach(moreIndicators) { indicator in
                                                     MoreEventsIndicatorView(indicator: indicator, cellHeight: cellHeight, dayWidth: dayWidth)
@@ -1232,12 +1251,12 @@ struct EventBar: View {
     var onOpenReschedule: (() -> Void)? = nil
     var onOpenDayDetails: (() -> Void)? = nil
 
-    // Schedule mutations (push / pull / pick new date) are gated on
-    // calendar.edit. Crew / Unassigned lack it and get no reschedule surface.
-    // Singleton form — always available, no @EnvironmentObject injection risk.
-    private var canModify: Bool {
-        PermissionStore.shared.can("calendar.edit")
-    }
+    // Schedule mutations (push / pull / pick new date) are gated per-task on
+    // calendar.edit (scope-aware). Computed by the parent, which can resolve the
+    // task behind the span; defaults false so non-task spans (personal user
+    // events) and preview / tutorial callers expose no reschedule surface. Crew /
+    // Unassigned never receive a grant.
+    var canModify: Bool = false
 
     private enum DisplayLevel {
         case level1  // < 120: compact dots
@@ -1670,11 +1689,11 @@ struct EventDetailCard: View {
     @State private var hasTriggeredHaptic = false
     @State private var isPressed = false
 
-    // Reschedule is a schedule mutation — gated on calendar.edit. Crew /
-    // Unassigned (who lack it) get no Reschedule action from the long-press
-    // dialog. Singleton form — no @EnvironmentObject injection risk.
+    // Reschedule is a schedule mutation — gated on calendar.edit, scope-aware on
+    // this task (own-scope → only the user's own tasks). Crew / Unassigned (no
+    // grant) get no Reschedule action from the long-press dialog.
     private var canModify: Bool {
-        PermissionStore.shared.can("calendar.edit")
+        task.canEditSchedule
     }
 
     private var eventColor: Color {

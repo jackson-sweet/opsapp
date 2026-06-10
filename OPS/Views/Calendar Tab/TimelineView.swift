@@ -24,8 +24,6 @@ struct TimelineView: View {
     @State private var draggedTaskId: String?
     @State private var dragOffset: CGFloat = 0
 
-    private var canModify: Bool { PermissionStore.shared.can("calendar.edit") }
-
     var totalHeight: CGFloat {
         CGFloat(endHour - startHour) * hourHeight
     }
@@ -86,7 +84,7 @@ struct TimelineView: View {
             .padding(.leading, 52)
             .padding(.trailing, 8)
             .offset(y: yOffset + (draggedTaskId == task.id ? dragOffset : 0))
-            .gesture(canModify ? timeDragGesture(for: task, yOffset: yOffset) : nil)
+            .gesture(task.canEditSchedule ? timeDragGesture(for: task, yOffset: yOffset) : nil)
     }
 
     private func timeDragGesture(for task: ProjectTask, yOffset: CGFloat) -> some Gesture {
@@ -140,7 +138,7 @@ struct TimelineView: View {
     }
 
     private func updateTaskTime(_ task: ProjectTask, newStartTime: Date) {
-        guard canModify else { return }
+        guard task.canEditSchedule else { return }
 
         let duration = task.endTime.timeIntervalSince(task.startTime)
         let newEndTime = newStartTime.addingTimeInterval(duration)

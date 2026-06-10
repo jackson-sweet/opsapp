@@ -83,10 +83,12 @@ struct DayPageView: View {
     @EnvironmentObject var dataController: DataController
     let isActivePage: Bool
 
-    /// Only users with `calendar.edit` may push / extend / cascade / clear task
-    /// schedules from the calendar. Crew + Unassigned lack it (read-only on the
-    /// calendar). Mirrors CalendarEventCard's gate; enforced at every mutation.
-    private var canModify: Bool { PermissionStore.shared.can("calendar.edit") }
+    /// Section-level gate for the multi-select bulk action bar: true when the user
+    /// holds *any* `calendar.edit` grant. Per-task scheduling is gated more tightly
+    /// by `ProjectTask.canEditSchedule` (own-scope → only the user's own tasks),
+    /// and the bulk push / extend handlers filter each task by that. Crew +
+    /// Unassigned have no grant and never see schedule-mutation affordances.
+    private var canModify: Bool { PermissionStore.shared.canEditAnySchedule }
 
     /// Drives the recurring-event scope sheet. Identifiable so it can be
     /// fed straight into a `.sheet(item:)`.
@@ -482,7 +484,7 @@ struct DayPageView: View {
 
         if isOngoing {
             card
-        } else if canModify {
+        } else if task.canEditSchedule {
             card
                 .offset(x: swipeOffset[task.id] ?? 0)
                 .background(alignment: .leading) {
@@ -861,7 +863,7 @@ struct DayPageView: View {
 
                         Spacer()
 
-                        if canModify && selectedTaskIds.count == 1 {
+                        if selectedTaskForScheduler?.canEditSchedule == true {
                             OPSActionBarButton(
                                 icon: "calendar",
                                 label: "SCHEDULE"
@@ -918,7 +920,8 @@ struct DayPageView: View {
             for taskId in ids {
                 let predicate = #Predicate<ProjectTask> { $0.id == taskId }
                 let descriptor = FetchDescriptor<ProjectTask>(predicate: predicate)
-                if let task = try? ctx.fetch(descriptor).first {
+                // Per-task scope gate: own-scope users push only their own tasks.
+                if let task = try? ctx.fetch(descriptor).first, task.canEditSchedule {
                     try? await dataController.pushTask(task, byDays: days)
                 }
             }
@@ -939,7 +942,7 @@ struct DayPageView: View {
             for taskId in ids {
                 let predicate = #Predicate<ProjectTask> { $0.id == taskId }
                 let descriptor = FetchDescriptor<ProjectTask>(predicate: predicate)
-                if let task = try? ctx.fetch(descriptor).first,
+                if let task = try? ctx.fetch(descriptor).first, task.canEditSchedule,
                    let start = task.startDate,
                    let end = task.endDate,
                    let newEnd = cal.date(byAdding: .day, value: days, to: end) {
@@ -957,7 +960,7 @@ struct DayPageView: View {
     // MARK: - Push / Cascade / Extend
 
     private func extendTask(_ task: ProjectTask, days: Int) {
-        guard canModify else { return }
+        guard task.canEditSchedule else { return }
         guard let start = task.startDate,
               let end = task.endDate,
               let newEnd = Calendar.current.date(byAdding: .day, value: days, to: end) else { return }
@@ -969,7 +972,7 @@ struct DayPageView: View {
     }
 
     private func pushTask(_ task: ProjectTask, days: Int) {
-        guard canModify else { return }
+        guard task.canEditSchedule else { return }
         // Compute new start before the async push mutates the task
         let cal = Calendar.current
         let newStart = cal.date(byAdding: .day, value: days, to: task.startDate ?? Date()) ?? Date()
@@ -997,7 +1000,7 @@ struct DayPageView: View {
     }
 
     private func pushTaskWithCascade(_ task: ProjectTask, days: Int) {
-        guard canModify else { return }
+        guard task.canEditSchedule else { return }
         let allTasks = dataController.getTasksForProject(task.projectId)
         let newDates = SchedulingEngine.pushByDays(task: task, days: days)
         let cascade = SchedulingEngine.calculateCascade(
@@ -1067,7 +1070,7 @@ struct DayPageView: View {
     /// Clear scheduled dates on a task (used by the Reschedule sheet's
     /// Clear button). Mirrors the pattern in CalendarEventCard.clearTaskDates.
     private func clearTaskDates(task: ProjectTask) {
-        guard canModify else { return }
+        guard task.canEditSchedule else { return }
         task.startDate = nil
         task.endDate = nil
         task.duration = 0

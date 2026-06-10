@@ -1053,12 +1053,15 @@ struct UniversalJobBoardCard: View {
                 Button("Add Task") {
                     showingTaskForm = true
                 }
+            }
 
-                if case .project(let project) = cardType,
-                   UniversalSearchScheduleTargeting.target(forProject: project) != .unavailable {
-                    Button("Reschedule") {
-                        handleRescheduleForProject()
-                    }
+            // Reschedule is gated on calendar.edit (scope-aware on the project),
+            // not projects.edit — scheduling authority is separate from editing.
+            if case .project(let project) = cardType,
+               project.canEditSchedule,
+               UniversalSearchScheduleTargeting.target(forProject: project) != .unavailable {
+                Button("Reschedule") {
+                    handleRescheduleForProject()
                 }
             }
 
@@ -1116,7 +1119,9 @@ struct UniversalJobBoardCard: View {
                 showingProjectDetails = true
             }
 
-            if canModify {
+            // Reschedule is gated on calendar.edit (scope-aware on the task),
+            // not projects.edit — a user may edit the task but not move it.
+            if case .task(let task) = cardType, task.canEditSchedule {
                 Button("Reschedule") {
                     showingScheduler = true
                 }
@@ -1175,6 +1180,7 @@ struct UniversalJobBoardCard: View {
                         Task {
                             do {
                                 // Update dates directly on the task
+                                guard selectedTask.canEditSchedule else { return }
                                 try await dataController.updateTaskSchedule(task: selectedTask, startDate: startDate, endDate: endDate)
 
                                 // Update parent project dates if necessary
@@ -1198,6 +1204,7 @@ struct UniversalJobBoardCard: View {
                         // Clear task dates
                         Task {
                             do {
+                                guard selectedTask.canEditSchedule else { return }
                                 // Clear dates directly on the task
                                 await MainActor.run {
                                     selectedTask.startDate = nil
@@ -1261,6 +1268,7 @@ struct UniversalJobBoardCard: View {
                     Task {
                         do {
                             // Update dates directly on the task
+                            guard task.canEditSchedule else { return }
                             try await dataController.updateTaskSchedule(task: task, startDate: startDate, endDate: endDate)
 
                             // Update parent project dates if necessary
@@ -1284,6 +1292,7 @@ struct UniversalJobBoardCard: View {
                     // Clear task dates
                     Task {
                         do {
+                            guard task.canEditSchedule else { return }
                             print("🗑️ [JOB_BOARD] Clearing task dates")
 
                             // Update locally
@@ -1343,6 +1352,7 @@ struct UniversalJobBoardCard: View {
     /// Checks if project has tasks and shows appropriate UI
     private func handleRescheduleForProject() {
         guard case .project(let project) = cardType else { return }
+        guard project.canEditSchedule else { return }
 
         let activeTasks = UniversalSearchScheduleTargeting.schedulableTasks(forProject: project)
 

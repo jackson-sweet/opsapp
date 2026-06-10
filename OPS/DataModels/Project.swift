@@ -167,6 +167,13 @@ final class Project: Identifiable {
     func setTeamMemberIds(_ ids: [String]) {
         teamMemberIdsString = ids.map { $0.lowercased() }.joined(separator: ",")
     }
+
+    /// Whether the current user may edit THIS project's *schedule* (start/end
+    /// dates, reschedule). Gated on `calendar.edit`, scope-aware on the project's
+    /// team — see `PermissionStore.canEditSchedule`.
+    var canEditSchedule: Bool {
+        PermissionStore.shared.canEditSchedule(assigneeIds: getTeamMemberIds())
+    }
     
     // Project images accessor methods
     func getProjectImageURLs() -> [String] {

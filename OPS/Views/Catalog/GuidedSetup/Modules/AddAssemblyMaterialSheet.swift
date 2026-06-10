@@ -277,6 +277,15 @@ struct AddAssemblyMaterialSheet: View {
 
         CatalogFieldLabel("Your cost")
         moneyField($costText, placeholder: "0")
+
+        CatalogFieldLabel("Unit")
+        UnitPickerField(
+            selectedUnitId: $unitId,
+            companyUnits: companyUnits,
+            canCreateNew: true,
+            onCreateRequested: { showingUnitCreate = true },
+            allowFlatRate: true
+        )
     }
 
     // MARK: - Build draft

@@ -342,6 +342,64 @@ final class GuidedCatalogSetupModel: ObservableObject {
         return formatter.string(from: NSNumber(value: value)) ?? "$0"
     }
 
+    // MARK: - Default unit seeding (cold-start companies have none)
+
+    /// The starter unit pack: (display, dimension, abbreviation). Cold-start
+    /// companies have zero `catalog_units` (no signup seeder), which strands
+    /// operators inventing hour/each/foot one detour at a time. Mapped through
+    /// `pricingUnit(for:)` where an enum case exists (HR→hour, DAY→day,
+    /// EA→each, FT→linearFoot, SQ FT→sqft); CU YD/TON carry their unit id +
+    /// label on the product (pricing stays flat-rate — no volume/mass enum case).
+    static let defaultUnitPack: [(display: String, dimension: String, abbreviation: String)] = [
+        ("HR",    "time",   "hr"),
+        ("DAY",   "time",   "day"),
+        ("EA",    "count",  "ea"),
+        ("FT",    "length", "ft"),
+        ("SQ FT", "area",   "sq ft"),
+        ("CU YD", "volume", "cu yd"),
+        ("TON",   "mass",   "ton")
+    ]
+
+    /// Pack entries missing for this company (case-insensitive on dimension +
+    /// display, so an existing "ft" is never duplicated by "FT").
+    static func missingDefaultUnits(existing: [CatalogUnit])
+        -> [(display: String, dimension: String, abbreviation: String)] {
+        let have = Set(existing.map { "\($0.dimension.lowercased())|\($0.display.lowercased())" })
+        return defaultUnitPack.filter { !have.contains("\($0.dimension.lowercased())|\($0.display.lowercased())") }
+    }
+
+    private var didSeedUnits = false
+
+    /// Idempotent, online-only. Creates any missing starter units remotely and
+    /// inserts them locally so the modules' @Query pickers refresh immediately.
+    func seedDefaultUnitsIfNeeded(existing: [CatalogUnit], modelContext: ModelContext) {
+        guard !didSeedUnits, !companyId.isEmpty else { return }
+        let missing = Self.missingDefaultUnits(existing: existing)
+        guard !missing.isEmpty else { didSeedUnits = true; return }
+        didSeedUnits = true
+        let companyId = self.companyId
+        let baseSort = (existing.map(\.sortOrder).max() ?? 0)
+        let repo = CatalogRepository(companyId: companyId)
+        Task {
+            for (offset, spec) in missing.enumerated() {
+                do {
+                    let dto = CreateCatalogUnitDTO(
+                        companyId: companyId, display: spec.display,
+                        abbreviation: spec.abbreviation, dimension: spec.dimension,
+                        isDefault: false, sortOrder: baseSort + offset + 1)
+                    let created = try await repo.createUnit(dto)
+                    let model = created.toModel()
+                    model.lastSyncedAt = Date()
+                    model.needsSync = false
+                    modelContext.insert(model)
+                } catch {
+                    print("[GuidedCatalogSetupModel] unit seed failed for \(spec.display): \(error)")
+                }
+            }
+            try? modelContext.save()
+        }
+    }
+
     // MARK: - Draft persistence (mirror GuidedStockSetupModel)
 
     private var draftContext: CatalogSetupDraftContext? {

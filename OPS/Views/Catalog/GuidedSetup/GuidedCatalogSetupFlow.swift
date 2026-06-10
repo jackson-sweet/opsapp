@@ -13,13 +13,20 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct GuidedCatalogSetupFlow: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reducedMotion
     @ObservedObject private var permissionStore = PermissionStore.shared
     @StateObject private var model: GuidedCatalogSetupModel
+    @Query private var allUnits: [CatalogUnit]
+
+    private var companyUnits: [CatalogUnit] {
+        allUnits.filter { $0.companyId == model.companyId && $0.deletedAt == nil }
+    }
 
     @AppStorage("catalog.selectedSegment") private var selectedSegmentRaw: String = "STOCK"
 
@@ -295,6 +302,9 @@ struct GuidedCatalogSetupFlow: View {
     // MARK: - Actions
 
     private func startPlan() {
+        if dataController.isConnected {
+            model.seedDefaultUnitsIfNeeded(existing: companyUnits, modelContext: modelContext)
+        }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         withAnimation(flowAnimation) { model.confirmPlan() }
     }

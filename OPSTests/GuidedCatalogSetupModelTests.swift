@@ -83,4 +83,19 @@ final class GuidedCatalogSetupModelTests: XCTestCase {
         XCTAssertEqual(GuidedCatalogSetupModel.summaryLine(services: 2, goods: 3), "2 services · 3 goods")
         XCTAssertEqual(GuidedCatalogSetupModel.summaryLine(services: 0, goods: 0), "Nothing built")
     }
+
+    // MARK: - Default unit seeding
+
+    func test_missingDefaultUnits_skipsExistingCaseInsensitive() {
+        let ft = CatalogUnit(companyId: "c", display: "ft", dimension: "length")
+        let missing = GuidedCatalogSetupModel.missingDefaultUnits(existing: [ft])
+        XCTAssertFalse(missing.contains { $0.display == "FT" })          // existing ft not re-seeded
+        XCTAssertTrue(missing.contains { $0.display == "HR" })           // still seeds the rest
+        XCTAssertEqual(missing.count, GuidedCatalogSetupModel.defaultUnitPack.count - 1)
+    }
+
+    func test_missingDefaultUnits_emptyCompany_seedsWholePack() {
+        XCTAssertEqual(GuidedCatalogSetupModel.missingDefaultUnits(existing: []).count,
+                       GuidedCatalogSetupModel.defaultUnitPack.count)
+    }
 }

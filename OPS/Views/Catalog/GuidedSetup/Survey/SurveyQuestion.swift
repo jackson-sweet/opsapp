@@ -13,7 +13,7 @@
 
 import Foundation
 
-enum SurveyQuestionID: String, CaseIterable, Equatable {
+enum SurveyQuestionID: String, CaseIterable, Equatable, Codable {
     case sells
     case pricing
     case materials
@@ -39,7 +39,7 @@ struct SurveyOption: Identifiable, Equatable {
 }
 
 /// Answers accumulated as the user taps through. Finalized into a BusinessProfile.
-struct SurveyAnswers: Equatable {
+struct SurveyAnswers: Equatable, Codable {
     var sells: BusinessSells?
     var pricing: BusinessPricing?
     var materialUse: BusinessMaterialUse?

@@ -87,7 +87,7 @@ enum GuidedCatalogPhase: Codable, Equatable {
 
 /// Persisted draft of an in-progress guided catalog setup.
 struct GuidedCatalogSetupDraftSnapshot: Codable, Equatable {
-    static let currentSchemaVersion = 2
+    static let currentSchemaVersion = 3
 
     var schemaVersion: Int
     var context: CatalogSetupDraftContext
@@ -97,6 +97,10 @@ struct GuidedCatalogSetupDraftSnapshot: Codable, Equatable {
     var productLines: [ProductLineDraft]
     var savedLines: [SavedProductLine]
     var savedAssemblies: [SavedAssembly]
+    // Survey progress, so BACK-from-plan and quit-and-resume keep every answer.
+    var surveyAnswers: SurveyAnswers
+    var surveyQuestion: SurveyQuestionID
+    var surveyHistory: [SurveyQuestionID]
 
     init(schemaVersion: Int = GuidedCatalogSetupDraftSnapshot.currentSchemaVersion,
          context: CatalogSetupDraftContext,
@@ -105,7 +109,10 @@ struct GuidedCatalogSetupDraftSnapshot: Codable, Equatable {
          profile: BusinessProfile?,
          productLines: [ProductLineDraft],
          savedLines: [SavedProductLine],
-         savedAssemblies: [SavedAssembly] = []) {
+         savedAssemblies: [SavedAssembly] = [],
+         surveyAnswers: SurveyAnswers = SurveyAnswers(),
+         surveyQuestion: SurveyQuestionID = SurveyFlow.firstQuestion,
+         surveyHistory: [SurveyQuestionID] = []) {
         self.schemaVersion = schemaVersion
         self.context = context
         self.updatedAt = updatedAt
@@ -114,6 +121,9 @@ struct GuidedCatalogSetupDraftSnapshot: Codable, Equatable {
         self.productLines = productLines
         self.savedLines = savedLines
         self.savedAssemblies = savedAssemblies
+        self.surveyAnswers = surveyAnswers
+        self.surveyQuestion = surveyQuestion
+        self.surveyHistory = surveyHistory
     }
 }
 

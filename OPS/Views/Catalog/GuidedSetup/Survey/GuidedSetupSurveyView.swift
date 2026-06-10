@@ -15,12 +15,8 @@ struct GuidedSetupSurveyView: View {
     @ObservedObject var model: GuidedCatalogSetupModel
     @Environment(\.accessibilityReduceMotion) private var reducedMotion
 
-    @State private var answers = SurveyAnswers()
-    @State private var current: SurveyQuestionID = SurveyFlow.firstQuestion
-    @State private var history: [SurveyQuestionID] = []
-
     var body: some View {
-        let q = SurveyFlow.content(current)
+        let q = SurveyFlow.content(model.surveyQuestion)
         ScrollView {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                 header(eyebrow: q.eyebrow, prompt: q.prompt)
@@ -31,7 +27,7 @@ struct GuidedSetupSurveyView: View {
                     }
                 }
 
-                if !history.isEmpty {
+                if !model.surveyHistory.isEmpty {
                     backButton
                 }
             }
@@ -40,7 +36,7 @@ struct GuidedSetupSurveyView: View {
             .padding(.bottom, OPSStyle.Layout.spacing4)
             .frame(maxWidth: .infinity, alignment: .leading)
             .transition(transition)
-            .animation(flowAnimation, value: current)
+            .animation(flowAnimation, value: model.surveyQuestion)
         }
     }
 
@@ -106,23 +102,21 @@ struct GuidedSetupSurveyView: View {
 
     private func select(_ option: SurveyOption) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        var updated = answers
-        SurveyFlow.apply(option.value, to: &updated)
-        answers = updated
+        SurveyFlow.apply(option.value, to: &model.surveyAnswers)
 
-        if let next = SurveyFlow.next(after: current, answers: updated) {
-            history.append(current)
-            withAnimation(flowAnimation) { current = next }
-        } else if let profile = SurveyFlow.finalize(updated) {
+        if let next = SurveyFlow.next(after: model.surveyQuestion, answers: model.surveyAnswers) {
+            model.surveyHistory.append(model.surveyQuestion)
+            withAnimation(flowAnimation) { model.surveyQuestion = next }
+        } else if let profile = SurveyFlow.finalize(model.surveyAnswers) {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             model.completeSurvey(with: profile)
         }
     }
 
     private func goBack() {
-        guard let previous = history.popLast() else { return }
+        guard let previous = model.surveyHistory.popLast() else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        withAnimation(flowAnimation) { current = previous }
+        withAnimation(flowAnimation) { model.surveyQuestion = previous }
     }
 
     private var flowAnimation: SwiftUI.Animation {

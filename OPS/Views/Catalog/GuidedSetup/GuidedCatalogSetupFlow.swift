@@ -57,6 +57,8 @@ struct GuidedCatalogSetupFlow: View {
                 model.profile = nil
                 model.productLines = []
                 model.savedLines = []
+                model.savedAssemblies = []
+                model.resetSurvey()
             }
         } message: {
             Text("You have an unfinished catalog setup.")

@@ -24,6 +24,20 @@ final class GuidedCatalogSetupModel: ObservableObject {
     @Published var isSaving = false
     @Published var errorMessage: String?
 
+    // Survey progress lives here (not in the view's @State) so stepping BACK from
+    // the plan — which re-creates the survey view — keeps every answer intact,
+    // and a quit-and-resume restores the exact question.
+    @Published var surveyAnswers = SurveyAnswers()
+    @Published var surveyQuestion: SurveyQuestionID = SurveyFlow.firstQuestion
+    @Published var surveyHistory: [SurveyQuestionID] = []
+
+    /// Wipe survey progress (used by "Start over").
+    func resetSurvey() {
+        surveyAnswers = SurveyAnswers()
+        surveyQuestion = SurveyFlow.firstQuestion
+        surveyHistory = []
+    }
+
     private var didPostCompletion = false
 
     let companyId: String
@@ -419,7 +433,10 @@ final class GuidedCatalogSetupModel: ObservableObject {
             profile: profile,
             productLines: productLines,
             savedLines: savedLines,
-            savedAssemblies: savedAssemblies
+            savedAssemblies: savedAssemblies,
+            surveyAnswers: surveyAnswers,
+            surveyQuestion: surveyQuestion,
+            surveyHistory: surveyHistory
         )
         do { try draftStore.save(snapshot) }
         catch { print("[GuidedCatalogSetupModel] draft persist failed: \(error)") }
@@ -435,6 +452,9 @@ final class GuidedCatalogSetupModel: ObservableObject {
             productLines = snapshot.productLines
             savedLines = snapshot.savedLines
             savedAssemblies = snapshot.savedAssemblies
+            surveyAnswers = snapshot.surveyAnswers
+            surveyQuestion = snapshot.surveyQuestion
+            surveyHistory = snapshot.surveyHistory
             return true
         } catch {
             print("[GuidedCatalogSetupModel] draft restore failed: \(error)")

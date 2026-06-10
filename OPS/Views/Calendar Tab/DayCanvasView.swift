@@ -890,12 +890,15 @@ struct DayPageView: View {
     private func bulkPush(days: Int) {
         guard let ctx = dataController.modelContext else { return }
         let ids = selectedTaskIds
+        // A week-sized bulk push is a calendar-week move (exactly +7, weekday
+        // preserved, never weekend-normalized); day nudges stay on pushByDays.
+        let preserveCalendarWeek = days != 0 && days % 7 == 0
         Task {
             for taskId in ids {
                 let predicate = #Predicate<ProjectTask> { $0.id == taskId }
                 let descriptor = FetchDescriptor<ProjectTask>(predicate: predicate)
                 if let task = try? ctx.fetch(descriptor).first {
-                    try? await dataController.pushTask(task, byDays: days)
+                    try? await dataController.pushTask(task, byDays: days, preserveCalendarWeeks: preserveCalendarWeek)
                 }
             }
             await MainActor.run {
@@ -943,12 +946,21 @@ struct DayPageView: View {
     }
 
     private func pushTask(_ task: ProjectTask, days: Int) {
-        // Compute new start before the async push mutates the task
-        let cal = Calendar.current
-        let newStart = cal.date(byAdding: .day, value: days, to: task.startDate ?? Date()) ?? Date()
+        // A week-sized push preserves the weekday (exactly +7, never
+        // weekend-normalized); day nudges stay on the plain day engine.
+        // Compute the landing date the same way it commits so the banner
+        // reports where the task actually lands.
+        let preserveCalendarWeek = days != 0 && days % 7 == 0
+        let newStart: Date
+        if preserveCalendarWeek {
+            newStart = SchedulingEngine.pushByCalendarWeeks(task: task, weeks: days / 7).newStart
+        } else {
+            let cal = Calendar.current
+            newStart = cal.date(byAdding: .day, value: days, to: task.startDate ?? Date()) ?? Date()
+        }
 
         Task {
-            try? await dataController.pushTask(task, byDays: days)
+            try? await dataController.pushTask(task, byDays: days, preserveCalendarWeeks: preserveCalendarWeek)
         }
 
         postScheduleBanner(task: task, newDate: newStart, action: "pushed to")

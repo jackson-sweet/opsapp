@@ -367,15 +367,15 @@ struct TaskRescheduleSheet: View {
                 pushChip(label: "+1D", days: 1, hint: "Push start date by one day")
                 pushChip(label: "+2D", days: 2, hint: "Push start date by two days")
                 pushChip(label: "+3D", days: 3, hint: "Push start date by three days")
-                pushChip(label: "+1W", days: 7, hint: "Push start date by one week")
+                pushChip(label: "+1W", days: 7, hint: "Push start date by one week", preserveCalendarWeek: true)
             }
         }
     }
 
-    private func pushChip(label: String, days: Int, hint: String) -> some View {
+    private func pushChip(label: String, days: Int, hint: String, preserveCalendarWeek: Bool = false) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            handlePush(days: days)
+            handlePush(days: days, preserveCalendarWeek: preserveCalendarWeek)
         } label: {
             Text(label)
                 .font(OPSStyle.Typography.dataValue)
@@ -481,8 +481,12 @@ struct TaskRescheduleSheet: View {
 
     // MARK: - Push Logic
 
-    private func handlePush(days: Int) {
-        let newDates = SchedulingEngine.pushByDays(task: task, days: days)
+    private func handlePush(days: Int, preserveCalendarWeek: Bool = false) {
+        // A week push preserves the weekday (exactly +7, no weekend-normalize);
+        // day nudges use the plain day engine.
+        let newDates = preserveCalendarWeek
+            ? SchedulingEngine.pushByCalendarWeeks(task: task, weeks: days / 7)
+            : SchedulingEngine.pushByDays(task: task, days: days)
 
         // Get project tasks for cascade calculation
         let projectTasks = getProjectTasks()

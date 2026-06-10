@@ -3964,10 +3964,28 @@ class DataController: ObservableObject {
     }
 
     /// Push a single task by N days (no cascade).
+    ///
+    /// `preserveCalendarWeeks` routes a week-sized push through the calendar-week
+    /// engine so "+1 week" lands exactly 7 days out on the same weekday and is
+    /// never weekend-normalized — keeping every week affordance identical and
+    /// avoiding the +9 over-advance on weekend-anchored tasks.
     @MainActor
-    func pushTask(_ task: ProjectTask, byDays days: Int, skipWeekends: Bool? = nil) async throws {
-        let skip = skipWeekends ?? (getCurrentCompany()?.skipWeekendsInAutoSchedule ?? false)
-        let result = SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: skip)
+    func pushTask(
+        _ task: ProjectTask,
+        byDays days: Int,
+        skipWeekends: Bool? = nil,
+        preserveCalendarWeeks: Bool = false
+    ) async throws {
+        let result: (newStart: Date, newEnd: Date)
+        if preserveCalendarWeeks {
+            // `days` is a whole-week magnitude here; `days / 7` preserves sign
+            // (a future backward week push stays backward) and matches the
+            // derivation used on every other surface.
+            result = SchedulingEngine.pushByCalendarWeeks(task: task, weeks: days / 7)
+        } else {
+            let skip = skipWeekends ?? (getCurrentCompany()?.skipWeekendsInAutoSchedule ?? false)
+            result = SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: skip)
+        }
         try await updateTaskSchedule(task: task, startDate: result.newStart, endDate: result.newEnd)
     }
 
@@ -3975,17 +3993,24 @@ class DataController: ObservableObject {
     /// Returns the cascade result so UI can show preview / enable undo.
     @MainActor
     @discardableResult
-    func pushTaskWithCascade(_ task: ProjectTask, byDays days: Int) async throws -> SchedulingEngine.CascadeResult {
+    func pushTaskWithCascade(
+        _ task: ProjectTask,
+        byDays days: Int,
+        preserveCalendarWeeks: Bool = false
+    ) async throws -> SchedulingEngine.CascadeResult {
         let skip = getCurrentCompany()?.skipWeekendsInAutoSchedule ?? false
-        let calendar = Calendar.current
 
-        guard let start = task.startDate else {
+        guard task.startDate != nil else {
             throw SchedulingError.noStartDate
         }
 
-        var newStart = calendar.date(byAdding: .day, value: days, to: start)!
-        if skip { newStart = SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: true).newStart }
-        let newEnd = calendar.date(byAdding: .day, value: max(task.duration - 1, 0), to: newStart)!
+        // A week push preserves the weekday and skips weekend-normalization;
+        // a day push honors the company skip-weekends setting.
+        let pushedDates = preserveCalendarWeeks
+            ? SchedulingEngine.pushByCalendarWeeks(task: task, weeks: days / 7)
+            : SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: skip)
+        let newStart = pushedDates.newStart
+        let newEnd = pushedDates.newEnd
 
         let projectTasks = getTasksForProject(task.projectId)
 

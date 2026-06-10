@@ -41,6 +41,31 @@ struct QuickAddSuggestionsRail: View {
         Dictionary(uniqueKeysWithValues: allUsers.map { ($0.id, $0) })
     }
 
+    /// Lowercased ids of the company's current, non-removed, active members —
+    /// the canonical "team members" set (mirrors DataController.getTeamMembers:
+    /// companyId match, deletedAt == nil, isActive != false). Lowercased to
+    /// match the ids stored in ProjectTask.teamMemberIdsString.
+    private var activeMemberIds: Set<String> {
+        Set(
+            allUsers
+                .filter {
+                    $0.companyId == project.companyId &&
+                    $0.deletedAt == nil &&
+                    $0.isActive != false
+                }
+                .map { $0.id.lowercased() }
+        )
+    }
+
+    /// True when this user is a current, non-removed, active member of the
+    /// project's company — the gate for whether their avatar/id may be shown
+    /// or committed. Catches members deactivated AFTER the engine ran.
+    private func isActiveMember(_ user: User) -> Bool {
+        user.companyId == project.companyId &&
+        user.deletedAt == nil &&
+        user.isActive != false
+    }
+
     private var suggestions: [TaskSuggestion] {
         guard canEdit, !tutorialMode else { return [] }
         _ = dismissBump  // tie state to recompute on dismissal
@@ -48,12 +73,24 @@ struct QuickAddSuggestionsRail: View {
         let computed = TaskSuggestionEngine.suggestions(
             context: modelContext,
             companyId: project.companyId,
+            activeMemberIds: activeMemberIds,
             for: project
         )
 
         // Drop any whose task type the user no longer has access to — the
         // chip needs the display name and color from the TaskType row.
         return computed.filter { taskTypeById[$0.taskTypeId] != nil }
+    }
+
+    /// Resolve a suggestion's crew to displayable Users, dropping any id whose
+    /// User is missing OR no longer an active member of the company. The engine
+    /// already emits only active ids, but a member can be deactivated between
+    /// the engine running and this render — this is the last guard.
+    private func activeMembers(for suggestion: TaskSuggestion) -> [User] {
+        suggestion.teamMemberIds.compactMap { id in
+            guard let user = userById[id], isActiveMember(user) else { return nil }
+            return user
+        }
     }
 
     var body: some View {
@@ -87,7 +124,7 @@ struct QuickAddSuggestionsRail: View {
                     mode: .create,
                     preselectedProjectId: project.id,
                     prefilledTaskTypeId: suggestion.taskTypeId,
-                    prefilledTeamMemberIds: suggestion.teamMemberIds,
+                    prefilledTeamMemberIds: activeMembers(for: suggestion).map { $0.id.lowercased() },
                     onSave: { _ in }
                 )
                 .environmentObject(dataController)
@@ -102,7 +139,7 @@ struct QuickAddSuggestionsRail: View {
         let taskType = taskTypeById[suggestion.taskTypeId]
         let displayName = taskType?.display ?? "Task"
         let chipColor = Color(hex: taskType?.color ?? "") ?? OPSStyle.Colors.primaryAccent
-        let members: [User] = suggestion.teamMemberIds.compactMap { userById[$0] }
+        let members: [User] = activeMembers(for: suggestion)
 
         Button(action: { commit(suggestion) }) {
             HStack(spacing: 0) {
@@ -184,6 +221,13 @@ struct QuickAddSuggestionsRail: View {
         guard canEdit else { return }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
+        // Final guard: commit only members still active in the company. The
+        // engine emits active ids, but one could have been deactivated since
+        // it ran — never assign a removed member to a new task. Preserves the
+        // engine's lowercased, sorted ordering.
+        let activeCrew = activeMembers(for: suggestion)
+        let committedMemberIds = activeCrew.map { $0.id.lowercased() }
+
         let taskType = taskTypeById[suggestion.taskTypeId]
         let taskTypeColor = taskType?.color ?? "#59779F"
 
@@ -195,7 +239,7 @@ struct QuickAddSuggestionsRail: View {
             status: .active,
             taskColor: taskTypeColor
         )
-        newTask.setTeamMemberIds(suggestion.teamMemberIds)
+        newTask.setTeamMemberIds(committedMemberIds)
         newTask.displayOrder = (project.tasks.map { $0.displayOrder }.max() ?? -1) + 1
 
         modelContext.insert(newTask)
@@ -204,14 +248,10 @@ struct QuickAddSuggestionsRail: View {
 
         // Hydrate teamMembers relationship so the new row renders avatars
         // immediately, matching TaskFormSheet.saveTask's behaviour
-        // (TaskFormSheet.swift ~1467-1473).
-        let ids = suggestion.teamMemberIds
-        if !ids.isEmpty {
-            let descriptor = FetchDescriptor<User>(
-                predicate: #Predicate<User> { user in ids.contains(user.id) }
-            )
-            newTask.teamMembers = (try? modelContext.fetch(descriptor)) ?? []
-        }
+        // (TaskFormSheet.swift ~1467-1473). Use the already-resolved active
+        // crew rather than re-fetching, so a just-deactivated member can't
+        // slip back in.
+        newTask.teamMembers = activeCrew
 
         newTask.needsSync = true
         try? modelContext.save()
@@ -227,7 +267,7 @@ struct QuickAddSuggestionsRail: View {
             status: newTask.status.rawValue,
             taskColor: newTask.taskColor,
             displayOrder: newTask.displayOrder,
-            teamMemberIds: suggestion.teamMemberIds,
+            teamMemberIds: committedMemberIds,
             sourceLineItemId: nil,
             sourceEstimateId: nil,
             startDate: nil,

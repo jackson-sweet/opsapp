@@ -1054,20 +1054,20 @@ final class InboundProcessor {
                 entityType: .projectTask,
                 entityId: id,
                 fields: [
-                    "status", "taskNotes", "customTitle", "taskColor",
-                    "taskTypeId", "startDate", "endDate", "duration",
-                    "displayOrder", "teamMemberIdsString",
-                    "sourceLineItemId", "sourceEstimateId",
-                    "dependencyOverridesJSON", "startTime", "endTime", "deletedAt"
+                    "status", "task_notes", "custom_title", "task_color",
+                    "task_type_id", "start_date", "end_date", "duration",
+                    "display_order", "team_member_ids",
+                    "source_line_item_id", "source_estimate_id",
+                    "dependency_overrides", "start_time", "end_time", "deleted_at"
                 ],
                 context: context
             )
 
             if accept.contains("status") { existing.status = TaskStatus(rawValue: dto.status) ?? .active }
-            if accept.contains("taskNotes") { existing.taskNotes = dto.taskNotes }
-            if accept.contains("customTitle") { existing.customTitle = dto.customTitle }
-            if accept.contains("taskColor") { existing.taskColor = dto.taskColor ?? "#59779F" }
-            if accept.contains("taskTypeId") {
+            if accept.contains("task_notes") { existing.taskNotes = dto.taskNotes }
+            if accept.contains("custom_title") { existing.customTitle = dto.customTitle }
+            if accept.contains("task_color") { existing.taskColor = dto.taskColor ?? "#59779F" }
+            if accept.contains("task_type_id") {
                 existing.taskTypeId = dto.taskTypeId ?? ""
                 // Rewire TaskType `@Relationship` to match the new id. The
                 // end-of-sync `linkAllRelationships` pass also does this, but
@@ -1083,11 +1083,11 @@ final class InboundProcessor {
                     existing.taskType = nil
                 }
             }
-            if accept.contains("startDate") { existing.startDate = dto.startDate.flatMap { SupabaseDate.parse($0) } }
-            if accept.contains("endDate") { existing.endDate = dto.endDate.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("start_date") { existing.startDate = dto.startDate.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("end_date") { existing.endDate = dto.endDate.flatMap { SupabaseDate.parse($0) } }
             if accept.contains("duration") { existing.duration = dto.duration ?? 1 }
-            if accept.contains("displayOrder") { existing.displayOrder = dto.displayOrder ?? 0 }
-            if accept.contains("teamMemberIdsString") {
+            if accept.contains("display_order") { existing.displayOrder = dto.displayOrder ?? 0 }
+            if accept.contains("team_member_ids") {
                 existing.teamMemberIdsString = (dto.teamMemberIds ?? []).joined(separator: ",")
                 // Rewire `teamMembers` to match the new id string. See the
                 // equivalent block in DataActor.mergeTask for rationale.
@@ -1103,30 +1103,30 @@ final class InboundProcessor {
                     }
                 }
             }
-            if accept.contains("sourceLineItemId") { existing.sourceLineItemId = dto.sourceLineItemId }
-            if accept.contains("sourceEstimateId") { existing.sourceEstimateId = dto.sourceEstimateId }
-            if accept.contains("dependencyOverridesJSON") {
+            if accept.contains("source_line_item_id") { existing.sourceLineItemId = dto.sourceLineItemId }
+            if accept.contains("source_estimate_id") { existing.sourceEstimateId = dto.sourceEstimateId }
+            if accept.contains("dependency_overrides") {
                 if let overrides = dto.dependencyOverrides, !overrides.isEmpty,
                    let data = try? JSONEncoder().encode(overrides),
                    let json = String(data: data, encoding: .utf8) {
                     existing.dependencyOverridesJSON = json
                 }
             }
-            if accept.contains("startTime") {
+            if accept.contains("start_time") {
                 if let st = dto.startTime {
                     if let parsed = Self.parseTime(st) {
                         existing.startTime = parsed
                     }
                 }
             }
-            if accept.contains("endTime") {
+            if accept.contains("end_time") {
                 if let et = dto.endTime {
                     if let parsed = Self.parseTime(et) {
                         existing.endTime = parsed
                     }
                 }
             }
-            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("deleted_at") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
 
             existing.lastSyncedAt = Date()
             // Only clear needsSync if there are no pending SyncOperations for this entity

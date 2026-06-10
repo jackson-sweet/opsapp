@@ -2,7 +2,7 @@
 //  RoleDetailView.swift
 //  OPS
 //
-//  Edit permissions for a specific role. Groups 19 permissions by category.
+//  Edit permissions for a specific role. Groups the granular permissions by category.
 //  Toggle on/off and set scope (ALL / ASSIGNED / OWN).
 //
 
@@ -31,6 +31,13 @@ enum PermissionRegistry {
         PermissionDefinition(id: "clients.edit", label: "Edit Clients", category: "Clients"),
         // Estimates
         PermissionDefinition(id: "estimates.create", label: "Create Estimates", category: "Estimates"),
+        // Invoices
+        PermissionDefinition(id: "invoices.view", label: "View Invoices", category: "Invoices"),
+        PermissionDefinition(id: "invoices.create", label: "Create Invoices", category: "Invoices"),
+        PermissionDefinition(id: "invoices.edit", label: "Edit Invoices", category: "Invoices"),
+        PermissionDefinition(id: "invoices.send", label: "Send Invoices", category: "Invoices"),
+        PermissionDefinition(id: "invoices.record_payment", label: "Record Payments", category: "Invoices"),
+        PermissionDefinition(id: "invoices.delete", label: "Delete Invoices", category: "Invoices"),
         // Expenses
         PermissionDefinition(id: "expenses.create", label: "Create Expenses", category: "Expenses"),
         // Pipeline
@@ -105,6 +112,7 @@ enum PermissionRegistry {
     static let categoryFeatureFlag: [String: String] = [
         "Pipeline": "pipeline",
         "Estimates": "estimates",
+        "Invoices": "pipeline",
         "Deck Builder": "deck_builder",
     ]
 
@@ -119,6 +127,7 @@ enum PermissionRegistry {
         case "Tasks": return OPSStyle.Icons.task
         case "Clients": return OPSStyle.Icons.subClient
         case "Estimates": return OPSStyle.Icons.estimateDoc
+        case "Invoices": return OPSStyle.Icons.invoiceReceipt
         case "Expenses": return OPSStyle.Icons.expense
         case "Pipeline": return OPSStyle.Icons.accountingChart
         case "Calendar": return OPSStyle.Icons.calendar
@@ -160,6 +169,12 @@ private let permissionSearchTags: [String: [String]] = [
     "clients.create":               ["new client", "add client", "customer"],
     "clients.edit":                 ["modify client", "update client", "customer"],
     "estimates.create":             ["new estimate", "quote", "proposal"],
+    "invoices.view":                ["invoice", "bill", "billing"],
+    "invoices.create":              ["new invoice", "bill", "billing"],
+    "invoices.edit":                ["modify invoice", "update invoice", "bill"],
+    "invoices.send":                ["send invoice", "email invoice", "deliver"],
+    "invoices.record_payment":      ["record payment", "log payment", "mark paid", "collect"],
+    "invoices.delete":              ["remove invoice", "void invoice"],
     "expenses.create":              ["new expense", "add expense", "receipt"],
     "pipeline.view":                ["funnel", "leads", "opportunity"],
     "pipeline.manage":              ["funnel", "leads", "opportunity"],

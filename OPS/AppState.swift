@@ -104,8 +104,11 @@ class AppState: ObservableObject {
     /// Returns true if completion can proceed directly, false if checklist sheet will be shown.
     @discardableResult
     func requestProjectCompletion(_ project: Project) -> Bool {
-        // Check for incomplete tasks (excluding cancelled)
-        let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
+        // Check for tasks that genuinely block completion (excludes terminal
+        // — completed/cancelled — and soft-deleted tasks). Shares the exact
+        // predicate the checklist sheet consumes so the gate and the sheet
+        // never disagree.
+        let incompleteTasks = project.tasksBlockingCompletion
 
         if !incompleteTasks.isEmpty {
             // Has incomplete tasks - show checklist sheet

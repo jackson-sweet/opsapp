@@ -62,29 +62,10 @@ struct CascadePreviewSheet: View {
                         isPrimary: true
                     )
 
-                    if !cascadeChanges.isEmpty {
-                        // Cascade divider
-                        HStack(spacing: 8) {
-                            Image(systemName: "arrow.turn.down.right")
-                                .font(.system(size: 12))
-                            Text("Dependent tasks")
-                                .font(OPSStyle.Typography.smallCaption)
-                            Spacer()
-                        }
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 4)
-
-                        ForEach(cascadeChanges) { change in
-                            changeRow(
-                                taskName: taskName(for: change.id),
-                                oldStart: change.oldStartDate,
-                                newStart: change.newStartDate,
-                                newEnd: change.newEndDate,
-                                isPrimary: false
-                            )
-                        }
-                    }
+                    // Jobs moving because they share a crew member with the
+                    // pushed job, then jobs moving because of a dependency.
+                    cascadeGroup(title: "Same crew", changes: crewChanges)
+                    cascadeGroup(title: "Dependent tasks", changes: dependencyChanges)
                 }
                 .padding(.vertical, 12)
             }
@@ -141,6 +122,42 @@ struct CascadePreviewSheet: View {
             .padding(.bottom, 16)
         }
         .background(OPSStyle.Colors.background)
+    }
+
+    private var crewChanges: [SchedulingEngine.CascadeResult.TaskDateChange] {
+        cascadeChanges.filter { $0.reason == .crew }
+    }
+
+    private var dependencyChanges: [SchedulingEngine.CascadeResult.TaskDateChange] {
+        cascadeChanges.filter { $0.reason == .dependency }
+    }
+
+    /// A labelled group of cascade rows (e.g. "Same crew"). Renders nothing when
+    /// the group is empty so only the reasons that actually apply are shown.
+    @ViewBuilder
+    private func cascadeGroup(title: String, changes: [SchedulingEngine.CascadeResult.TaskDateChange]) -> some View {
+        if !changes.isEmpty {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.turn.down.right")
+                    .font(.system(size: 12))
+                Text(title)
+                    .font(OPSStyle.Typography.smallCaption)
+                Spacer()
+            }
+            .foregroundColor(OPSStyle.Colors.tertiaryText)
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
+
+            ForEach(changes) { change in
+                changeRow(
+                    taskName: taskName(for: change.id),
+                    oldStart: change.oldStartDate,
+                    newStart: change.newStartDate,
+                    newEnd: change.newEndDate,
+                    isPrimary: false
+                )
+            }
+        }
     }
 
     @ViewBuilder

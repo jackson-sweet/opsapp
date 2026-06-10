@@ -44,7 +44,7 @@ struct CalendarSchedulerSheet: View {
 
     // Quick push / cascade state
     @State private var cascadeEnabled: Bool = false
-    @State private var cascadeResult: SchedulingEngine.CascadeResult?
+    @State private var cascadePlan: DataController.CascadePlan?
     @State private var showingCascadePreview: Bool = false
     @State private var pendingPushDays: Int = 0
     @State private var pendingPushPreservesCalendarWeek: Bool = false
@@ -166,18 +166,13 @@ struct CalendarSchedulerSheet: View {
             loadScheduledTasks()
         }
         .sheet(isPresented: $showingCascadePreview) {
-            if let cascade = cascadeResult, case .task(let task) = itemType {
-                let pushedDates = quickPushDates(
-                    for: task,
-                    days: pendingPushDays,
-                    preserveCalendarWeek: pendingPushPreservesCalendarWeek
-                )
+            if let plan = cascadePlan, case .task(let task) = itemType {
                 CascadePreviewSheet(
                     pushedTaskName: task.displayTitle,
                     pushedTaskOldStart: task.startDate,
-                    pushedTaskNewStart: pushedDates.newStart,
-                    pushedTaskNewEnd: pushedDates.newEnd,
-                    cascadeChanges: cascade.changes,
+                    pushedTaskNewStart: plan.pushedNewStart,
+                    pushedTaskNewEnd: plan.pushedNewEnd,
+                    cascadeChanges: plan.cascade.changes,
                     onConfirm: {
                         Task {
                             try? await dataController.pushTaskWithCascade(
@@ -778,17 +773,17 @@ struct CalendarSchedulerSheet: View {
                 quickPushButton(label: "+1W", days: 7, preserveCalendarWeek: true)
             }
 
-            // Cascade toggle (only for tasks with dependents)
+            // Cascade toggle (only when a push could ripple the crew or dependents)
             if case .task(let task) = itemType {
-                let dependentCount = countDependentTasks(for: task)
-                if dependentCount > 0 {
+                let affectedCount = cascadeAffectedCount(for: task)
+                if affectedCount > 0 {
                     HStack {
                         Toggle(isOn: $cascadeEnabled) {
                             HStack(spacing: 6) {
-                                Text("Push dependent tasks")
+                                Text("Move the crew's jobs")
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                                Text("\(dependentCount)")
+                                Text("\(affectedCount)")
                                     .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 6)
@@ -840,24 +835,17 @@ struct CalendarSchedulerSheet: View {
     private func handleQuickPush(days: Int, preserveCalendarWeek: Bool = false) {
         guard case .task(let task) = itemType else { return }
 
-        let result = quickPushDates(for: task, days: days, preserveCalendarWeek: preserveCalendarWeek)
-
-        if cascadeEnabled {
-            let allTasks = dataController.getTasksForProject(task.projectId)
-            let cascade = SchedulingEngine.calculateCascade(
-                pushedTaskId: task.id,
-                newStartDate: result.newStart,
-                newEndDate: result.newEnd,
-                allProjectTasks: allTasks
-            )
-
-            if showCascadePreviewPref && !cascade.changes.isEmpty {
-                cascadeResult = cascade
+        // With cascade on, plan the full ripple (crew + dependencies) so the
+        // preview and the optimistic update match exactly what commits.
+        if cascadeEnabled,
+           let plan = dataController.planCascade(for: task, byDays: days, preserveCalendarWeeks: preserveCalendarWeek) {
+            if showCascadePreviewPref && !plan.cascade.changes.isEmpty {
+                cascadePlan = plan
                 pendingPushDays = days
                 pendingPushPreservesCalendarWeek = preserveCalendarWeek
                 showingCascadePreview = true
             } else {
-                onScheduleUpdate(result.newStart, result.newEnd)
+                onScheduleUpdate(plan.pushedNewStart, plan.pushedNewEnd)
                 Task {
                     try? await dataController.pushTaskWithCascade(
                         task,
@@ -868,17 +856,34 @@ struct CalendarSchedulerSheet: View {
                 isPresented = false
             }
         } else {
+            let result = quickPushDates(for: task, days: days, preserveCalendarWeek: preserveCalendarWeek)
             onScheduleUpdate(result.newStart, result.newEnd)
             isPresented = false
         }
     }
 
-    private func countDependentTasks(for task: ProjectTask) -> Int {
-        let allTasks = dataController.getTasksForProject(task.projectId)
-        return allTasks.filter { other in
+    /// Count of jobs a cascade push could ripple — same-crew jobs scheduled on
+    /// or after this one (across projects), plus task-type dependents. Drives
+    /// whether the cascade toggle appears and the badge it shows.
+    private func cascadeAffectedCount(for task: ProjectTask) -> Int {
+        let dependents = dataController.getTasksForProject(task.projectId).filter { other in
             other.id != task.id &&
             other.effectiveDependencies.contains { $0.dependsOnTaskTypeId == task.taskTypeId }
-        }.count
+        }
+        var ids = Set(dependents.map(\.id))
+
+        let crew = task.schedulingTeamMemberIds
+        if let start = task.startDate, !crew.isEmpty {
+            let calendar = Calendar.current
+            let anchor = calendar.startOfDay(for: start)
+            for other in dataController.getActiveTasksForCompany() where other.id != task.id && !other.schedulingLocked {
+                guard !other.schedulingTeamMemberIds.isDisjoint(with: crew),
+                      let otherStart = other.startDate,
+                      calendar.startOfDay(for: otherStart) >= anchor else { continue }
+                ids.insert(other.id)
+            }
+        }
+        return ids.count
     }
 
     // MARK: - Helper Methods

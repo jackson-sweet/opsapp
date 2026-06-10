@@ -51,12 +51,20 @@ struct SchedulingEngine {
         let changes: [TaskDateChange]
 
         struct TaskDateChange: Identifiable {
+            /// Why this task is moving — drives the grouped cascade preview.
+            enum Reason {
+                /// Shares a crew member with the pushed task (forward consolidation).
+                case crew
+                /// Task-type dependency on a task that moved.
+                case dependency
+            }
             let id: String
             let taskTypeId: String
             let oldStartDate: Date?
             let oldEndDate: Date?
             let newStartDate: Date
             let newEndDate: Date
+            var reason: Reason = .dependency
         }
     }
 
@@ -118,17 +126,26 @@ struct SchedulingEngine {
 
     /// Calculate cascade effects when a task is pushed.
     /// Returns all tasks that need to move (not including the pushed task itself).
+    /// - Parameter seededDates: tasks already repositioned by an earlier pass
+    ///   (e.g. crew consolidation). These are used as the baseline a dependency
+    ///   must beat to move a task further, and are read when resolving a moved
+    ///   predecessor's date — so a dependency only ever pushes a task *later*
+    ///   than its crew-shifted position, never earlier. Crew-seeded tasks are
+    ///   NOT emitted here; the caller owns those change records.
     static func calculateCascade(
         pushedTaskId: String,
         newStartDate: Date,
         newEndDate: Date,
         allProjectTasks: [any SchedulableTask],
-        skipWeekends: Bool = false
+        skipWeekends: Bool = false,
+        seededDates: [String: (start: Date, end: Date)] = [:]
     ) -> CascadeResult {
         let calendar = Calendar.current
 
-        // Track new dates for all tasks
-        var newDates: [String: (start: Date, end: Date)] = [:]
+        // Track new dates for all tasks. Seed the pushed task plus any
+        // pre-positioned (crew-shifted) tasks so the dependency pass reads
+        // their new dates and only pushes further when a dependency demands it.
+        var newDates: [String: (start: Date, end: Date)] = seededDates
         newDates[pushedTaskId] = (newStartDate, newEndDate)
 
         // Topological sort
@@ -160,9 +177,13 @@ struct SchedulingEngine {
                 }
             }
 
+            // Baseline is the task's crew-shifted position when present, else its
+            // current start — so a dependency only moves it further forward.
+            let baselineStart = newDates[task.id]?.start ?? task.startDate
+
             // If this task needs to move forward
             if let earliest = latestEarliestStart,
-               let currentStart = task.startDate,
+               let currentStart = baselineStart,
                earliest > currentStart {
                 var adjustedStart = earliest
                 if skipWeekends {
@@ -177,12 +198,120 @@ struct SchedulingEngine {
                     oldStartDate: task.startDate,
                     oldEndDate: task.endDate,
                     newStartDate: adjustedStart,
-                    newEndDate: adjustedEnd
+                    newEndDate: adjustedEnd,
+                    reason: .dependency
                 ))
             }
         }
 
         return CascadeResult(changes: changes)
+    }
+
+    // MARK: - Crew Consolidation
+
+    /// Forward-only consolidation of a crew member's schedule after a push.
+    ///
+    /// When a task is cascade-pushed, the rest of that task's crew's jobs pack
+    /// tightly forward to close the gap the push opens — but no job is ever
+    /// moved earlier than its current start (the field-safe direction: pushing
+    /// a job later is safe; pulling one earlier can break a customer/material
+    /// commitment). Cross-project: evaluates the full task set passed in.
+    ///
+    /// Locked crew jobs are treated as fixed obstacles — never moved, always
+    /// packed around — so two auto-moved jobs can never land on the same day.
+    /// Completed/cancelled and crew-disjoint jobs are ignored. Returns one
+    /// `.crew` change per task that actually moves (excludes the pushed task).
+    static func calculateCrewConsolidation(
+        pushedTask: any SchedulableTask,
+        pushedOriginalStart: Date,
+        pushedNewStart: Date,
+        pushedNewEnd: Date,
+        allTasks: [any SchedulableTask],
+        skipWeekends: Bool = false
+    ) -> [CascadeResult.TaskDateChange] {
+        let calendar = Calendar.current
+        let crew = pushedTask.schedulingTeamMemberIds
+        guard !crew.isEmpty else { return [] }
+
+        let anchorDay = calendar.startOfDay(for: pushedOriginalStart)
+
+        // Crew jobs at/after the pushed job's original day, excluding the pushed
+        // job and crew-disjoint/inactive jobs. Locked jobs stay in as obstacles.
+        let window = allTasks.filter { task in
+            guard task.id != pushedTask.id,
+                  task.schedulingIsActive,
+                  !task.schedulingTeamMemberIds.isDisjoint(with: crew),
+                  let start = task.startDate else { return false }
+            return calendar.startOfDay(for: start) >= anchorDay
+        }.sorted { a, b in
+            let sa = a.startDate ?? Date.distantFuture
+            let sb = b.startDate ?? Date.distantFuture
+            if sa != sb { return sa < sb }
+            if a.displayOrder != b.displayOrder { return a.displayOrder < b.displayOrder }
+            return a.id < b.id
+        }
+
+        // Day-ranges occupied by locked crew jobs — moved jobs pack around them.
+        let lockedRanges: [(start: Date, end: Date)] = window.compactMap { task in
+            guard task.schedulingLocked, let start = task.startDate else { return nil }
+            let end = task.endDate ?? start
+            return (calendar.startOfDay(for: start), calendar.startOfDay(for: end))
+        }
+
+        var changes: [CascadeResult.TaskDateChange] = []
+        var cursorEnd = calendar.startOfDay(for: pushedNewEnd)
+
+        for task in window where !task.schedulingLocked {
+            guard let originalStart = task.startDate else { continue }
+            let originalDay = calendar.startOfDay(for: originalStart)
+            let dayAfterCursor = calendar.date(byAdding: .day, value: 1, to: cursorEnd) ?? cursorEnd
+            // Forward-only floor: a job never starts before its own current day.
+            let earliest = max(dayAfterCursor, originalDay)
+
+            // If the pack hasn't caught up to this job, leave it exactly where it
+            // is (never pulled earlier, never normalized off a weekend it already
+            // sits on) — UNLESS it already overlaps a locked crew job, in which
+            // case it must pack forward around that obstacle.
+            if earliest == originalDay {
+                let stayEnd = calendar.date(byAdding: .day, value: max(task.duration - 1, 0), to: originalDay) ?? originalDay
+                let overlapsLocked = lockedRanges.contains { rangesOverlap(originalDay, stayEnd, $0.start, $0.end) }
+                if !overlapsLocked {
+                    cursorEnd = max(cursorEnd, stayEnd)
+                    continue
+                }
+            }
+
+            // The job must move forward to clear the previous job (or a locked
+            // obstacle) — land it in the next free slot, dodging weekends and
+            // locked crew jobs, never earlier than its own current day.
+            let targetDay = nextFreeDay(
+                from: earliest,
+                duration: task.duration,
+                lockedRanges: lockedRanges,
+                skipWeekends: skipWeekends,
+                calendar: calendar
+            )
+            let placedEnd = calendar.date(byAdding: .day, value: max(task.duration - 1, 0), to: targetDay) ?? targetDay
+            cursorEnd = max(cursorEnd, placedEnd)
+
+            let shiftDays = calendar.dateComponents([.day], from: originalDay, to: targetDay).day ?? 0
+            guard shiftDays != 0 else { continue }
+
+            // Preserve the stored time-of-day by shifting the original date.
+            let newStart = calendar.date(byAdding: .day, value: shiftDays, to: originalStart) ?? originalStart
+            let newEnd = calendar.date(byAdding: .day, value: max(task.duration - 1, 0), to: newStart) ?? newStart
+            changes.append(CascadeResult.TaskDateChange(
+                id: task.id,
+                taskTypeId: task.taskTypeId,
+                oldStartDate: task.startDate,
+                oldEndDate: task.endDate,
+                newStartDate: newStart,
+                newEndDate: newEnd,
+                reason: .crew
+            ))
+        }
+
+        return changes
     }
 
     // MARK: - Auto-Schedule
@@ -339,5 +468,37 @@ struct SchedulingEngine {
             result = calendar.date(byAdding: .day, value: 1, to: result) ?? result
         }
         return result
+    }
+
+    /// Advance a start day forward until the `[start, start+duration-1]` span
+    /// clears every weekend (when enabled) and every locked crew job range.
+    /// Used by crew consolidation to pack moved jobs into truly-free slots.
+    private static func nextFreeDay(
+        from start: Date,
+        duration: Int,
+        lockedRanges: [(start: Date, end: Date)],
+        skipWeekends: Bool,
+        calendar: Calendar
+    ) -> Date {
+        var day = start
+        // Bounded loop — a year of working days is far past any real schedule.
+        for _ in 0..<366 {
+            if skipWeekends && calendar.isDateInWeekend(day) {
+                day = calendar.date(byAdding: .day, value: 1, to: day) ?? day
+                continue
+            }
+            let endDay = calendar.date(byAdding: .day, value: max(duration - 1, 0), to: day) ?? day
+            if let conflict = lockedRanges.first(where: { rangesOverlap(day, endDay, $0.start, $0.end) }) {
+                day = calendar.date(byAdding: .day, value: 1, to: conflict.end) ?? day
+                continue
+            }
+            return day
+        }
+        return day
+    }
+
+    /// Inclusive overlap test for two day-ranges.
+    private static func rangesOverlap(_ aStart: Date, _ aEnd: Date, _ bStart: Date, _ bEnd: Date) -> Bool {
+        aStart <= bEnd && bStart <= aEnd
     }
 }

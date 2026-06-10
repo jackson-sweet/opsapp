@@ -3963,6 +3963,21 @@ class DataController: ObservableObject {
         return (try? ctx.fetch(descriptor)) ?? []
     }
 
+    /// All schedulable (non-deleted, status == .active) tasks for the current
+    /// user's company. The candidate set for crew consolidation, which ripples
+    /// a crew member's jobs across every project they work on.
+    func getActiveTasksForCompany() -> [ProjectTask] {
+        guard let companyId = currentUser?.companyId else { return [] }
+        return getAllTasks().filter { $0.companyId == companyId && $0.status == .active }
+    }
+
+    /// All non-deleted tasks for the current user's company, any status. Used by
+    /// undo so a cascaded task that has since changed state can still be restored.
+    func getCompanyTasks() -> [ProjectTask] {
+        guard let companyId = currentUser?.companyId else { return [] }
+        return getAllTasks().filter { $0.companyId == companyId }
+    }
+
     /// Push a single task by N days (no cascade).
     ///
     /// `preserveCalendarWeeks` routes a week-sized push through the calendar-week
@@ -3989,20 +4004,28 @@ class DataController: ObservableObject {
         try await updateTaskSchedule(task: task, startDate: result.newStart, endDate: result.newEnd)
     }
 
-    /// Push a task by N days and cascade to all dependent tasks.
-    /// Returns the cascade result so UI can show preview / enable undo.
+    /// The computed-but-not-yet-applied effect of a cascade push: the pushed
+    /// task's new dates plus every crew + dependency change. Rendering the
+    /// preview and committing the push both go through `planCascade`, so the
+    /// preview can never disagree with what actually lands.
+    struct CascadePlan {
+        let pushedNewStart: Date
+        let pushedNewEnd: Date
+        let cascade: SchedulingEngine.CascadeResult
+    }
+
+    /// Compute (without applying) the full cascade for a push: forward crew
+    /// consolidation across the company plus the project's dependency chain,
+    /// merged so a dependency only ever lands a task later than its crew slot.
+    /// Returns nil when the task has no start date.
     @MainActor
-    @discardableResult
-    func pushTaskWithCascade(
-        _ task: ProjectTask,
+    func planCascade(
+        for task: ProjectTask,
         byDays days: Int,
         preserveCalendarWeeks: Bool = false
-    ) async throws -> SchedulingEngine.CascadeResult {
+    ) -> CascadePlan? {
+        guard let originalStart = task.startDate else { return nil }
         let skip = getCurrentCompany()?.skipWeekendsInAutoSchedule ?? false
-
-        guard task.startDate != nil else {
-            throw SchedulingError.noStartDate
-        }
 
         // A week push preserves the weekday and skips weekend-normalization;
         // a day push honors the company skip-weekends setting.
@@ -4012,27 +4035,85 @@ class DataController: ObservableObject {
         let newStart = pushedDates.newStart
         let newEnd = pushedDates.newEnd
 
-        let projectTasks = getTasksForProject(task.projectId)
+        // Crew consolidation ripples the pushed task's crew across the whole
+        // company (their other jobs live on other projects). Forward pushes
+        // only — there is no pull-earlier cascade.
+        let companyTasks = getActiveTasksForCompany()
+        let crewChanges: [SchedulingEngine.CascadeResult.TaskDateChange] = days > 0
+            ? SchedulingEngine.calculateCrewConsolidation(
+                pushedTask: task,
+                pushedOriginalStart: originalStart,
+                pushedNewStart: newStart,
+                pushedNewEnd: newEnd,
+                allTasks: companyTasks,
+                skipWeekends: skip
+              )
+            : []
 
-        let cascade = SchedulingEngine.calculateCascade(
+        // Seed the dependency pass with the crew-shifted dates so a dependency
+        // can only push a task further out, never earlier than its crew slot.
+        // The dependency pass stays project-scoped: matching task types across
+        // unrelated projects would invent dependency links that don't exist.
+        let crewSeed = Dictionary(
+            crewChanges.map { ($0.id, (start: $0.newStartDate, end: $0.newEndDate)) },
+            uniquingKeysWith: { current, _ in current }
+        )
+        let dependency = SchedulingEngine.calculateCascade(
             pushedTaskId: task.id,
             newStartDate: newStart,
             newEndDate: newEnd,
-            allProjectTasks: projectTasks,
-            skipWeekends: skip
+            allProjectTasks: getTasksForProject(task.projectId),
+            skipWeekends: skip,
+            seededDates: crewSeed
+        )
+
+        // Merge crew + dependency changes. A task touched by both takes the
+        // dependency result, which only ever lands later than the crew slot.
+        var changesById: [String: SchedulingEngine.CascadeResult.TaskDateChange] = [:]
+        for change in crewChanges { changesById[change.id] = change }
+        for change in dependency.changes { changesById[change.id] = change }
+        let mergedChanges = changesById.values.sorted { $0.newStartDate < $1.newStartDate }
+
+        return CascadePlan(
+            pushedNewStart: newStart,
+            pushedNewEnd: newEnd,
+            cascade: SchedulingEngine.CascadeResult(changes: mergedChanges)
+        )
+    }
+
+    /// Push a task by N days and cascade to crew + dependent tasks.
+    /// Returns the cascade result so UI can show preview / enable undo.
+    @MainActor
+    @discardableResult
+    func pushTaskWithCascade(
+        _ task: ProjectTask,
+        byDays days: Int,
+        preserveCalendarWeeks: Bool = false
+    ) async throws -> SchedulingEngine.CascadeResult {
+        guard let plan = planCascade(for: task, byDays: days, preserveCalendarWeeks: preserveCalendarWeeks) else {
+            throw SchedulingError.noStartDate
+        }
+
+        // Resolve every task the plan may touch up front — company-wide and any
+        // status (matching undo), captured before the first await so a crew task
+        // that changes status mid-apply isn't silently skipped. Crew shifts can
+        // be cross-project, so a per-project lookup is not enough.
+        let applyLookup = Dictionary(
+            getCompanyTasks().map { ($0.id, $0) },
+            uniquingKeysWith: { current, _ in current }
         )
 
         // Apply the pushed task's new dates
-        try await updateTaskSchedule(task: task, startDate: newStart, endDate: newEnd)
+        try await updateTaskSchedule(task: task, startDate: plan.pushedNewStart, endDate: plan.pushedNewEnd)
 
-        // Apply cascade changes
-        for change in cascade.changes {
-            if let affectedTask = projectTasks.first(where: { $0.id == change.id }) {
+        // Apply every cascaded change (crew + dependency).
+        for change in plan.cascade.changes {
+            if let affectedTask = applyLookup[change.id] {
                 try await updateTaskSchedule(task: affectedTask, startDate: change.newStartDate, endDate: change.newEndDate, manualEdit: false)
             }
         }
 
-        return cascade
+        return plan.cascade
     }
 
     /// Undo a cascade by restoring previous dates.
@@ -4047,10 +4128,12 @@ class DataController: ObservableObject {
         // Restore original task
         try await updateTaskSchedule(task: originalTask, startDate: originalStart, endDate: originalEnd)
 
-        // Restore cascaded tasks
-        let projectTasks = getTasksForProject(originalTask.projectId)
+        // Restore cascaded tasks. Crew shifts can be cross-project, so restore
+        // from the company-wide set (any status — a task may have changed state
+        // since the push) rather than just the pushed task's project.
+        let restoreTasks = getCompanyTasks()
         for change in cascade.changes {
-            if let task = projectTasks.first(where: { $0.id == change.id }),
+            if let task = restoreTasks.first(where: { $0.id == change.id }),
                let oldStart = change.oldStartDate,
                let oldEnd = change.oldEndDate {
                 try await updateTaskSchedule(task: task, startDate: oldStart, endDate: oldEnd, manualEdit: false)

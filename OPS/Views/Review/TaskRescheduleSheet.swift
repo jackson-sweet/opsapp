@@ -483,10 +483,11 @@ struct TaskRescheduleSheet: View {
 
     private func handlePush(days: Int, preserveCalendarWeek: Bool = false) {
         // A week push preserves the weekday (exactly +7, no weekend-normalize);
-        // day nudges use the plain day engine.
+        // day nudges honor the company weekend-skip.
+        let skip = dataController.currentCompanySkipsWeekends
         let newDates = preserveCalendarWeek
             ? SchedulingEngine.pushByCalendarWeeks(task: task, weeks: days / 7)
-            : SchedulingEngine.pushByDays(task: task, days: days)
+            : SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: skip)
 
         // Get project tasks for cascade calculation
         let projectTasks = getProjectTasks()
@@ -495,7 +496,8 @@ struct TaskRescheduleSheet: View {
             pushedTaskId: task.id,
             newStartDate: newDates.newStart,
             newEndDate: newDates.newEnd,
-            allProjectTasks: projectTasks
+            allProjectTasks: projectTasks,
+            skipWeekends: skip
         )
 
         if !cascadeResult.changes.isEmpty && cascadePreviewEnabled {

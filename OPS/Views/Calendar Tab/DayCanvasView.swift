@@ -955,8 +955,7 @@ struct DayPageView: View {
         if preserveCalendarWeek {
             newStart = SchedulingEngine.pushByCalendarWeeks(task: task, weeks: days / 7).newStart
         } else {
-            let cal = Calendar.current
-            newStart = cal.date(byAdding: .day, value: days, to: task.startDate ?? Date()) ?? Date()
+            newStart = SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: dataController.currentCompanySkipsWeekends).newStart
         }
 
         Task {

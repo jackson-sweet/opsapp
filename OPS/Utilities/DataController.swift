@@ -3978,6 +3978,14 @@ class DataController: ObservableObject {
         return getAllTasks().filter { $0.companyId == companyId }
     }
 
+    /// Whether scheduling should skip weekends for the current company. Weekends
+    /// are skipped by default (most trades don't work them); only a company that
+    /// has turned on weekend work in settings lands tasks on Sat/Sun. Exposed so
+    /// every manual-push surface honors the same setting, not just auto-schedule.
+    var currentCompanySkipsWeekends: Bool {
+        getCurrentCompany()?.skipWeekendsInAutoSchedule ?? true
+    }
+
     /// Push a single task by N days (no cascade).
     ///
     /// `preserveCalendarWeeks` routes a week-sized push through the calendar-week
@@ -3998,7 +4006,7 @@ class DataController: ObservableObject {
             // derivation used on every other surface.
             result = SchedulingEngine.pushByCalendarWeeks(task: task, weeks: days / 7)
         } else {
-            let skip = skipWeekends ?? (getCurrentCompany()?.skipWeekendsInAutoSchedule ?? false)
+            let skip = skipWeekends ?? currentCompanySkipsWeekends
             result = SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: skip)
         }
         try await updateTaskSchedule(task: task, startDate: result.newStart, endDate: result.newEnd)
@@ -4025,7 +4033,7 @@ class DataController: ObservableObject {
         preserveCalendarWeeks: Bool = false
     ) -> CascadePlan? {
         guard let originalStart = task.startDate else { return nil }
-        let skip = getCurrentCompany()?.skipWeekendsInAutoSchedule ?? false
+        let skip = currentCompanySkipsWeekends
 
         // A week push preserves the weekday and skips weekend-normalization;
         // a day push honors the company skip-weekends setting.
@@ -4144,7 +4152,7 @@ class DataController: ObservableObject {
     /// Auto-schedule all unscheduled tasks in a project.
     @MainActor
     func autoScheduleProject(_ project: Project, anchorDate: Date) async throws -> SchedulingEngine.AutoScheduleResult {
-        let skip = getCurrentCompany()?.skipWeekendsInAutoSchedule ?? false
+        let skip = currentCompanySkipsWeekends
         let allTasks = getTasksForProject(project.id)
         let unscheduled = allTasks.filter { $0.startDate == nil || $0.endDate == nil }
 

@@ -829,7 +829,7 @@ struct CalendarSchedulerSheet: View {
         if preserveCalendarWeek {
             return SchedulingEngine.pushByCalendarWeeks(task: task, weeks: days / 7)
         }
-        return SchedulingEngine.pushByDays(task: task, days: days)
+        return SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: dataController.currentCompanySkipsWeekends)
     }
 
     private func handleQuickPush(days: Int, preserveCalendarWeek: Bool = false) {

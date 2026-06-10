@@ -368,7 +368,7 @@ final class GuidedCatalogSetupModel: ObservableObject {
     /// `pricingUnit(for:)` where an enum case exists (HR→hour, DAY→day,
     /// EA→each, FT→linearFoot, SQ FT→sqft); CU YD/TON carry their unit id +
     /// label on the product (pricing stays flat-rate — no volume/mass enum case).
-    static let defaultUnitPack: [(display: String, dimension: String, abbreviation: String)] = [
+    nonisolated static let defaultUnitPack: [(display: String, dimension: String, abbreviation: String)] = [
         ("HR",    "time",   "hr"),
         ("DAY",   "time",   "day"),
         ("EA",    "count",  "ea"),
@@ -379,8 +379,8 @@ final class GuidedCatalogSetupModel: ObservableObject {
     ]
 
     /// Pack entries missing for this company (case-insensitive on dimension +
-    /// display, so an existing "ft" is never duplicated by "FT").
-    static func missingDefaultUnits(existing: [CatalogUnit])
+    /// display, so an existing "ft" is never duplicated by "FT"). Pure — no actor state.
+    nonisolated static func missingDefaultUnits(existing: [CatalogUnit])
         -> [(display: String, dimension: String, abbreviation: String)] {
         let have = Set(existing.map { "\($0.dimension.lowercased())|\($0.display.lowercased())" })
         return defaultUnitPack.filter { !have.contains("\($0.dimension.lowercased())|\($0.display.lowercased())") }

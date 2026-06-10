@@ -76,6 +76,30 @@ final class GuidedCatalogSetupModel: ObservableObject {
 
     func skipModule() { advanceModule() }
 
+    /// Whether the flow-level BACK affordance applies. The survey owns its own
+    /// per-question back, so it's excluded here.
+    var canGoBack: Bool {
+        switch phase {
+        case .survey: return false
+        case .plan, .module, .done: return true
+        }
+    }
+
+    /// Step one phase backward: module → previous module → plan → survey, and
+    /// done → last module. No-op during the survey (handled in-view).
+    func goBack() {
+        switch phase {
+        case .survey:
+            break
+        case .plan:
+            phase = .survey(questionIndex: 0)
+        case .module(let i):
+            phase = i > 0 ? .module(index: i - 1) : .plan
+        case .done:
+            phase = modules.isEmpty ? .plan : .module(index: modules.count - 1)
+        }
+    }
+
     // MARK: - Summary
 
     /// "2 packages · 3 services · 1 good" — only non-zero parts, correct plural.
@@ -197,27 +221,35 @@ final class GuidedCatalogSetupModel: ObservableObject {
 
             var failures = 0
 
-            // 2. Materials → family + variant + product_materials recipe row.
+            // 2. Materials → product_materials recipe row. Existing variants are
+            //    referenced as-is (no duplicate stock); inline-created ones
+            //    scaffold a family + variant first (D3 reconciliation).
             for material in draft.materials {
-                let matName = material.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !matName.isEmpty else { continue }
                 do {
-                    let family = try await catalogRepo.createFamily(CreateCatalogItemDTO(
-                        companyId: companyId, categoryId: nil, name: matName, description: nil,
-                        defaultPrice: nil, defaultUnitCost: parseMoney(material.costText),
-                        defaultWarningThreshold: nil, defaultCriticalThreshold: nil,
-                        defaultUnitId: material.unitId))
-                    let variant = try await catalogRepo.createVariant(CreateCatalogVariantDTO(
-                        companyId: companyId, catalogItemId: family.id, sku: nil, quantity: 0,
-                        priceOverride: nil, unitCostOverride: nil,
-                        warningThreshold: nil, criticalThreshold: nil, unitId: material.unitId))
+                    let variantId: String
+                    if let existingVariantId = material.catalogVariantId {
+                        variantId = existingVariantId
+                    } else {
+                        let matName = material.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !matName.isEmpty else { continue }
+                        let family = try await catalogRepo.createFamily(CreateCatalogItemDTO(
+                            companyId: companyId, categoryId: nil, name: matName, description: nil,
+                            defaultPrice: nil, defaultUnitCost: parseMoney(material.costText),
+                            defaultWarningThreshold: nil, defaultCriticalThreshold: nil,
+                            defaultUnitId: material.unitId))
+                        let variant = try await catalogRepo.createVariant(CreateCatalogVariantDTO(
+                            companyId: companyId, catalogItemId: family.id, sku: nil, quantity: 0,
+                            priceOverride: nil, unitCostOverride: nil,
+                            warningThreshold: nil, criticalThreshold: nil, unitId: material.unitId))
+                        variantId = variant.id
+                    }
                     _ = try await richnessRepo.createMaterial(CreateProductMaterialDTO(
-                        productId: package.id, catalogVariantId: variant.id, catalogItemId: nil,
+                        productId: package.id, catalogVariantId: variantId, catalogItemId: nil,
                         variantSelector: nil, quantityPerUnit: parseMoney(material.qtyText) ?? 1,
                         scaledByOptionId: nil, unitId: material.unitId, notes: nil))
                 } catch {
                     failures += 1
-                    print("[GuidedCatalogSetupModel] material commit failed for \(matName): \(error)")
+                    print("[GuidedCatalogSetupModel] material commit failed for \(material.name): \(error)")
                 }
             }
 

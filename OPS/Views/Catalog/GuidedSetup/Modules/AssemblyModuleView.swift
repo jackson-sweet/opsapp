@@ -156,9 +156,22 @@ struct AssemblyModuleView: View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             CatalogSectionHeader("ALL-IN PRICE")
             CatalogFieldLabel("What the customer pays")
-            TextField("0", text: $draft.priceText)
-                .keyboardType(.decimalPad)
-                .textFieldStyle(CatalogTextFieldStyle())
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                Text("$")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                TextField("0", text: $draft.priceText)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .keyboardType(.decimalPad)
+            }
+            .padding(OPSStyle.Layout.spacing2)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)

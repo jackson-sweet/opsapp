@@ -149,6 +149,21 @@ struct GuidedCatalogSetupFlow: View {
             .frame(height: 3)
 
             HStack {
+                if model.canGoBack {
+                    Button { goBack() } label: {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                            Text("BACK")
+                                .font(OPSStyle.Typography.metadata)
+                        }
+                        .foregroundColor(model.isSaving ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.secondaryText)
+                        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(model.isSaving)
+                    .accessibilityLabel("Go back one step")
+                }
                 Spacer()
                 Button { exitFlow() } label: {
                     HStack(spacing: OPSStyle.Layout.spacing1) {
@@ -306,6 +321,11 @@ struct GuidedCatalogSetupFlow: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + (reducedMotion ? 0.05 : 0.25)) {
             NotificationCenter.default.post(name: Notification.Name("OpenGuidedStockSetup"), object: nil)
         }
+    }
+
+    private func goBack() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(flowAnimation) { model.goBack() }
     }
 
     private func exitFlow() {

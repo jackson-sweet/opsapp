@@ -17,11 +17,13 @@ struct AssemblyModuleView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Query private var allTaskTypes: [TaskType]
+    @Query private var allUnits: [CatalogUnit]
 
     @State private var draft = AssemblyDraft()
     @State private var showingMaterialSheet = false
     @State private var showingLaborSheet = false
     @State private var showingTaskTypePicker = false
+    @State private var showingUnitCreate = false
     @FocusState private var nameFocused: Bool
 
     private var companyTaskTypes: [TaskType] {
@@ -29,6 +31,16 @@ struct AssemblyModuleView: View {
             .filter { $0.companyId == model.companyId && $0.deletedAt == nil }
             .sorted { ($0.displayOrder, $0.display) < ($1.displayOrder, $1.display) }
     }
+
+    private var companyUnits: [CatalogUnit] {
+        allUnits
+            .filter { $0.companyId == model.companyId && $0.deletedAt == nil }
+            .sorted { ($0.sortOrder, $0.display) < ($1.sortOrder, $1.display) }
+    }
+
+    private var trackCost: Bool { model.profile?.trackCost ?? true }
+    /// Cost + margin are meaningful only when tracking cost AND the package has contents.
+    private var showMarginCard: Bool { trackCost && !isEmptyContents }
 
     private var selectedTaskType: TaskType? {
         guard let id = draft.taskTypeId else { return nil }
@@ -45,7 +57,7 @@ struct AssemblyModuleView: View {
     private var canSave: Bool {
         guard isOnline, !model.isSaving else { return false }
         guard !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        guard priceAmount != nil, !isEmptyContents else { return false }
+        guard priceAmount != nil else { return false }
         guard !model.isDuplicateAssemblyName(draft.name) else { return false }
         return true
     }
@@ -57,7 +69,6 @@ struct AssemblyModuleView: View {
         if draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || priceAmount == nil {
             return "// NAME AND PRICE REQUIRED"
         }
-        if isEmptyContents { return "// ADD WHAT'S IN IT" }
         return nil
     }
 
@@ -68,7 +79,7 @@ struct AssemblyModuleView: View {
                 identityCard
                 priceCard
                 contentsCard
-                marginCard
+                if showMarginCard { marginCard }
                 saveButton
                 reasonOrError
                 if !model.savedAssemblies.isEmpty { savedListCard }
@@ -79,13 +90,18 @@ struct AssemblyModuleView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .sheet(isPresented: $showingMaterialSheet) {
-            AddAssemblyMaterialSheet(companyId: model.companyId) { draft.materials.append($0) }
+            AddAssemblyMaterialSheet(companyId: model.companyId,
+                                     trackCost: trackCost) { draft.materials.append($0) }
         }
         .sheet(isPresented: $showingLaborSheet) {
-            AddAssemblyLaborSheet { draft.labor.append($0) }
+            AddAssemblyLaborSheet(companyId: model.companyId,
+                                  trackCost: trackCost) { draft.labor.append($0) }
         }
         .sheet(isPresented: $showingTaskTypePicker) {
             TaskTypePickerSheet(selectedTaskTypeId: draft.taskTypeId, onSelect: { draft.taskTypeId = $0.id })
+        }
+        .sheet(isPresented: $showingUnitCreate) {
+            InlineCreateUnitSheet(companyId: model.companyId) { draft.priceUnitId = $0 }
         }
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { nameFocused = true }
@@ -171,6 +187,15 @@ struct AssemblyModuleView: View {
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+
+            CatalogFieldLabel("Unit")
+            UnitPickerField(
+                selectedUnitId: $draft.priceUnitId,
+                companyUnits: companyUnits,
+                canCreateNew: true,
+                onCreateRequested: { showingUnitCreate = true },
+                allowFlatRate: true
             )
         }
         .padding(OPSStyle.Layout.spacing3)
@@ -372,7 +397,7 @@ struct AssemblyModuleView: View {
 
     @MainActor
     private func save() async {
-        await model.saveAssembly(draft, modelContext: modelContext)
+        await model.saveAssembly(draft, units: companyUnits, modelContext: modelContext)
         if model.errorMessage == nil {
             draft = AssemblyDraft()
             nameFocused = true

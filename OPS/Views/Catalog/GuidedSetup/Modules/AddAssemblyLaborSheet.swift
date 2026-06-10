@@ -2,25 +2,51 @@
 //  AddAssemblyLaborSheet.swift
 //  OPS
 //
-//  Add one labor line to an assembly: name, sell rate, your cost, hours.
-//  Returns a draft to the assembly builder; the labor service is created on commit.
+//  Add one labor line to an assembly: name, the unit it's priced in (per hour by
+//  default, or piecework per ft / sq ft / each), a sell rate, your cost, and the
+//  quantity per job. Returns a draft to the assembly builder; the labor service
+//  is created on commit. Cost + margin hide when the operator isn't tracking cost.
 //
 
 import SwiftUI
+import SwiftData
 
 struct AddAssemblyLaborSheet: View {
+    let companyId: String
+    let trackCost: Bool
     let onAdd: (AssemblyLaborDraft) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Query private var allUnits: [CatalogUnit]
 
     @State private var draft = AssemblyLaborDraft()
+    @State private var showingUnitCreate = false
     @FocusState private var nameFocused: Bool
+
+    private var companyUnits: [CatalogUnit] {
+        allUnits
+            .filter { $0.companyId == companyId && $0.deletedAt == nil }
+            .sorted { ($0.sortOrder, $0.display) < ($1.sortOrder, $1.display) }
+    }
+
+    private var selectedUnit: CatalogUnit? { companyUnits.first { $0.id == draft.unitId } }
+    /// "hr" / "ft" / "sq ft" — drives the rate-field labels. Defaults to "hr".
+    private var unitSuffix: String { selectedUnit?.display.lowercased() ?? "hr" }
+    /// "Hours per job" when hourly; "Qty per job (ft)" otherwise.
+    private var qtyLabel: String {
+        guard let u = selectedUnit, u.dimension != "time" else { return "Hours per job" }
+        return "Qty per job (\(u.display.lowercased()))"
+    }
 
     private func isNumber(_ raw: String) -> Bool {
         let cleaned = raw.replacingOccurrences(of: "$", with: "")
             .replacingOccurrences(of: ",", with: "")
             .trimmingCharacters(in: .whitespaces)
         return Double(cleaned) != nil
+    }
+
+    private func isBlank(_ raw: String) -> Bool {
+        raw.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     private var marginPercent: Double? {
@@ -31,8 +57,11 @@ struct AddAssemblyLaborSheet: View {
     }
 
     private var canAdd: Bool {
+        // Name + quantity required; sell + cost optional (cost hidden when not tracking).
         !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && isNumber(draft.costText) && isNumber(draft.hoursText)
+            && isNumber(draft.hoursText)
+            && (isBlank(draft.sellText) || isNumber(draft.sellText))
+            && (isBlank(draft.costText) || isNumber(draft.costText))
     }
 
     var body: some View {
@@ -56,22 +85,33 @@ struct AddAssemblyLaborSheet: View {
                             .textFieldStyle(CatalogTextFieldStyle())
                             .focused($nameFocused)
 
+                        CatalogFieldLabel("Unit")
+                        UnitPickerField(
+                            selectedUnitId: $draft.unitId,
+                            companyUnits: companyUnits,
+                            canCreateNew: true,
+                            onCreateRequested: { showingUnitCreate = true },
+                            allowFlatRate: false
+                        )
+
                         HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
                             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                                CatalogFieldLabel("Sell / hr")
+                                CatalogFieldLabel("Sell / \(unitSuffix)")
                                 TextField("0", text: $draft.sellText)
                                     .keyboardType(.decimalPad)
                                     .textFieldStyle(CatalogTextFieldStyle())
                             }
-                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                                CatalogFieldLabel("Your cost / hr")
-                                TextField("0", text: $draft.costText)
-                                    .keyboardType(.decimalPad)
-                                    .textFieldStyle(CatalogTextFieldStyle())
+                            if trackCost {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                                    CatalogFieldLabel("Your cost / \(unitSuffix)")
+                                    TextField("0", text: $draft.costText)
+                                        .keyboardType(.decimalPad)
+                                        .textFieldStyle(CatalogTextFieldStyle())
+                                }
                             }
                         }
 
-                        if let margin = marginPercent {
+                        if trackCost, let margin = marginPercent {
                             HStack(spacing: OPSStyle.Layout.spacing2) {
                                 Text("// MARGIN")
                                     .font(OPSStyle.Typography.metadata)
@@ -84,7 +124,7 @@ struct AddAssemblyLaborSheet: View {
                             }
                         }
 
-                        CatalogFieldLabel("Hours per job")
+                        CatalogFieldLabel(qtyLabel)
                         TextField("1", text: $draft.hoursText)
                             .keyboardType(.decimalPad)
                             .textFieldStyle(CatalogTextFieldStyle())
@@ -113,7 +153,14 @@ struct AddAssemblyLaborSheet: View {
                 }
             }
         }
+        .sheet(isPresented: $showingUnitCreate) {
+            InlineCreateUnitSheet(companyId: companyId) { draft.unitId = $0 }
+        }
         .onAppear {
+            if draft.unitId == nil {
+                draft.unitId = companyUnits.first { $0.dimension == "time" && $0.display.lowercased() == "hr" }?.id
+                    ?? companyUnits.first { $0.dimension == "time" }?.id
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { nameFocused = true }
         }
     }

@@ -188,7 +188,7 @@ final class GuidedCatalogSetupModel: ObservableObject {
         }
     }
 
-    func saveAssembly(_ draft: AssemblyDraft, modelContext: ModelContext) async {
+    func saveAssembly(_ draft: AssemblyDraft, units: [CatalogUnit], modelContext: ModelContext) async {
         guard !isSaving else { return }
         let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, let price = parseMoney(draft.priceText) else { return }
@@ -203,11 +203,12 @@ final class GuidedCatalogSetupModel: ObservableObject {
         let bundleRepo = ProductBundleItemRepository(companyId: companyId)
         let richnessRepo = ProductRichnessRepository(companyId: companyId)
 
-        // 1. The package product — one fixed all-in price.
+        // 1. The package product — one all-in price, flat or per-unit.
+        let priceUnit = units.first { $0.id == draft.priceUnitId }
         var packageDTO = CreateProductDTO(
             companyId: companyId, name: name, description: nil,
-            basePrice: price, unitCost: nil, unit: nil,
-            pricingUnit: ProductPricingUnit.flatRate.rawValue, unitId: nil,
+            basePrice: price, unitCost: nil, unit: priceUnit?.display,
+            pricingUnit: pricingUnit(for: priceUnit).rawValue, unitId: priceUnit?.id,
             category: nil, categoryId: nil, sku: nil, thumbnailUrl: nil,
             kind: ProductCategory.bundle.derivedKindRaw,
             type: ProductCategory.bundle.derivedType.rawValue,
@@ -257,11 +258,14 @@ final class GuidedCatalogSetupModel: ObservableObject {
             for (index, labor) in draft.labor.enumerated() {
                 let labName = labor.name.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !labName.isEmpty else { continue }
+                let laborUnit = units.first { $0.id == labor.unitId }
                 do {
                     let laborDTO = CreateProductDTO(
                         companyId: companyId, name: labName, description: nil,
                         basePrice: parseMoney(labor.sellText) ?? 0, unitCost: parseMoney(labor.costText),
-                        unit: nil, pricingUnit: ProductPricingUnit.hour.rawValue, unitId: nil,
+                        unit: laborUnit?.display,
+                        pricingUnit: laborUnit.map { pricingUnit(for: $0).rawValue } ?? ProductPricingUnit.hour.rawValue,
+                        unitId: laborUnit?.id,
                         category: nil, categoryId: nil, sku: nil, thumbnailUrl: nil,
                         kind: ProductCategory.service.derivedKindRaw,
                         type: ProductCategory.service.derivedType.rawValue,

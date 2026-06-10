@@ -28,20 +28,24 @@ struct AssemblyMaterialDraft: Codable, Equatable, Identifiable {
     var catalogVariantId: String?
 }
 
-/// One labor line behind an assembly — a service with a sell rate and a cost.
+/// One labor line behind an assembly — a service with a sell rate and a cost,
+/// priced per its chosen unit (per hour by default, or piecework per ft / sq ft).
 struct AssemblyLaborDraft: Codable, Equatable, Identifiable {
     var id: String = UUID().uuidString
     var name: String = ""
-    var sellText: String = ""   // labor sell rate (per hour)
-    var costText: String = ""   // your labor cost (per hour)
-    var hoursText: String = ""  // hours per assembly
+    var sellText: String = ""   // labor sell rate (per chosen unit)
+    var costText: String = ""   // your labor cost (per chosen unit)
+    var hoursText: String = ""  // quantity per assembly (hours, ft, sq ft…)
+    var unitId: String?         // nil = hour-style; resolved via pricingUnit(for:)
 }
 
-/// The whole in-progress assembly: a fixed all-in price plus what's in it.
+/// The whole in-progress assembly: a fixed all-in price plus what's in it. The
+/// price can be flat (whole job) or per-unit (per linear ft / sq ft / each).
 struct AssemblyDraft: Codable, Equatable {
     var name: String = ""
     var taskTypeId: String?
-    var priceText: String = ""              // fixed all-in sell price
+    var priceText: String = ""              // fixed all-in sell price (per unit when priceUnitId set)
+    var priceUnitId: String?                // nil = flat rate (whole job)
     var materials: [AssemblyMaterialDraft] = []
     var labor: [AssemblyLaborDraft] = []
 }

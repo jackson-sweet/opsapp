@@ -16,6 +16,7 @@ import SwiftData
 
 struct AddAssemblyMaterialSheet: View {
     let companyId: String
+    let trackCost: Bool
     let onAdd: (AssemblyMaterialDraft) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -94,8 +95,10 @@ struct AddAssemblyMaterialSheet: View {
     private var canAdd: Bool {
         switch mode {
         case .new:
+            // Cost is optional (and hidden when not tracking cost); qty is required.
+            let costOK = costText.trimmingCharacters(in: .whitespaces).isEmpty || isNumber(costText)
             return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                && isNumber(costText) && isNumber(qtyText)
+                && isNumber(qtyText) && costOK
         case .existing:
             return selectedVariantId != nil && isNumber(qtyText)
         }
@@ -275,8 +278,10 @@ struct AddAssemblyMaterialSheet: View {
             .textFieldStyle(CatalogTextFieldStyle())
             .focused($nameFocused)
 
-        CatalogFieldLabel("Your cost")
-        moneyField($costText, placeholder: "0")
+        if trackCost {
+            CatalogFieldLabel("Your cost (optional)")
+            moneyField($costText, placeholder: "0")
+        }
 
         CatalogFieldLabel("Unit")
         UnitPickerField(

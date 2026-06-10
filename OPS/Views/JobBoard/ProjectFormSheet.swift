@@ -792,8 +792,14 @@ struct ProjectFormSheet: View {
             }
         }
         .sheet(isPresented: $showingTaskForm) {
+            // Bug 0d14aab0 — open an existing row via `.editDraft` (not
+            // `.draft`) so TaskFormSheet's save preserves the task's
+            // customTitle and stable id through the round-trip. Under `.draft`
+            // the saved LocalTask was rebuilt with customTitle = nil, which
+            // made reconcileTasks push `custom_title = null` and erase the
+            // title locally and on Supabase. The add-new path keeps `.draft(nil)`.
             TaskFormSheet(draftMode: editingTaskIndex != nil ?
-                .draft(localTasks[editingTaskIndex!]) :
+                .editDraft(localTasks[editingTaskIndex!]) :
                 .draft(nil)
             ) { savedTask in
                 if let editIndex = editingTaskIndex {

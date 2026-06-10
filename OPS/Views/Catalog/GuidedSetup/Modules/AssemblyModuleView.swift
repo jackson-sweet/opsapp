@@ -124,7 +124,7 @@ struct AssemblyModuleView: View {
             } label: {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     if let hex = selectedTaskType?.color {
-                        Circle().fill(Color(hex: hex)).frame(width: 14, height: 14)
+                        Circle().fill(Color(hex: hex) ?? OPSStyle.Colors.primaryAccent).frame(width: 14, height: 14)
                     }
                     Text(selectedTaskType?.display ?? "Link a task type (optional)")
                         .font(OPSStyle.Typography.body)

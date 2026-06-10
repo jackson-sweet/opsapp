@@ -343,6 +343,10 @@ class ExpenseViewModel: ObservableObject {
         do {
             try await repo.softDelete(expenseId)
             expenses.removeAll { $0.id == expenseId }
+            // Broadcast so every visible expense list refreshes — notably the
+            // project expenses tab, which renders a separate cache and otherwise
+            // keeps showing the deleted line until reopened.
+            NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
         } catch {
             self.error = error.localizedDescription
         }

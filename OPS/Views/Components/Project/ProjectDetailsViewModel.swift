@@ -705,6 +705,15 @@ class ProjectDetailsViewModel: ObservableObject {
         dataController?.getUser(id: expense.submittedBy)?.fullName
     }
 
+    /// Delete rule: an expense may be deleted by its submitter, or by a company
+    /// admin / owner. Mirrors the server soft-delete authorization so we don't
+    /// surface a swipe-to-delete the server would reject.
+    func canDeleteExpense(_ expense: ExpenseDTO) -> Bool {
+        guard let user = dataController?.currentUser else { return false }
+        if expense.submittedBy == user.id { return true }
+        return user.role == .admin || user.role == .owner
+    }
+
     // MARK: - Task Team
 
     func loadTaskTeamMembers() {

@@ -23,6 +23,11 @@ struct ExpenseCard: View {
     /// teammate. Nil hides the attribution — used where the viewer is always the
     /// owner (My Expenses) or the name can't be resolved.
     var submittedByName: String?
+    /// Whether the current user may delete this line (submitter or admin).
+    /// Gates the swipe-to-delete affordance so we never reveal an action the
+    /// server would reject. Defaults true for surfaces that only list a user's
+    /// own expenses (e.g. My Expenses).
+    var canDelete: Bool = true
     let onTap: () -> Void
     let onSwipeLeft: () -> Void
 
@@ -34,6 +39,7 @@ struct ExpenseCard: View {
         categoryIcon: String?,
         batchStatus: ExpenseBatchStatus? = nil,
         submittedByName: String? = nil,
+        canDelete: Bool = true,
         onTap: @escaping () -> Void,
         onSwipeLeft: @escaping () -> Void
     ) {
@@ -42,6 +48,7 @@ struct ExpenseCard: View {
         self.categoryIcon = categoryIcon
         self.batchStatus = batchStatus
         self.submittedByName = submittedByName
+        self.canDelete = canDelete
         self.onTap = onTap
         self.onSwipeLeft = onSwipeLeft
     }
@@ -52,9 +59,10 @@ struct ExpenseCard: View {
         ExpenseStatus(rawValue: expense.status) ?? .draft
     }
 
-    /// Approved / reimbursed lines are locked — no delete.
+    /// Approved / reimbursed lines are locked — no delete. Also gated by the
+    /// caller's `canDelete` (submitter or admin).
     private var canSwipeLeft: Bool {
-        expenseStatus != .approved && expenseStatus != .reimbursed
+        canDelete && expenseStatus != .approved && expenseStatus != .reimbursed
     }
 
     private var formattedDate: String {
@@ -100,7 +108,8 @@ struct ExpenseCard: View {
                     DragGesture()
                         .onChanged { value in
                             // Delete-only — ignore right swipes (no submit gesture).
-                            dragOffset = min(0, value.translation.width)
+                            // No reveal at all when the user can't delete this line.
+                            dragOffset = canSwipeLeft ? min(0, value.translation.width) : 0
                         }
                         .onEnded { value in
                             if value.translation.width < -swipeThreshold && canSwipeLeft {

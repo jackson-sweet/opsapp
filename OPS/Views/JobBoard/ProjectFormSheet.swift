@@ -751,13 +751,10 @@ struct ProjectFormSheet: View {
                     tutorialHighlightPulse = true
                 }
             }
-            // Bug 2daf95f2 — preload full `User` records for the inline
-            // task-row team picker. The lightweight `[TeamMember]` `@Query`
-            // is fine for counts, but `TeamMemberPickerSheet` wants `[User]`
-            // so avatars resolve correctly.
-            if let companyId = dataController.currentUser?.companyId {
-                fetchedTeamUsers = dataController.getTeamMembers(companyId: companyId)
-            }
+            // Bug 685e1d0e — the inline task-row team picker now preloads its
+            // full `User` records from a single `.onAppear` on the shared
+            // `mainProjectContent`, so it populates in standard mode too. The
+            // fetch is no longer duplicated here.
         }
         .onChange(of: tutorialPhase) { _, newPhase in
             // Only auto-focus on phase change to project name (after client selection)
@@ -1069,6 +1066,17 @@ struct ProjectFormSheet: View {
                 },
                 onDismiss: nil
             )
+        }
+        // Bug 685e1d0e — preload full `User` records for the inline task-row
+        // team picker here, on the SHARED content, so the picker populates in
+        // BOTH standard and tutorial modes. Previously the only fetch lived on
+        // the tutorial-only `.onAppear`, leaving the standard-mode picker an
+        // empty list. mainProjectContent is embedded by both mode containers,
+        // so this single onAppear covers every path.
+        .onAppear {
+            if let companyId = dataController.currentUser?.companyId {
+                fetchedTeamUsers = dataController.getTeamMembers(companyId: companyId)
+            }
         }
     }
 

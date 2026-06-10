@@ -1932,19 +1932,44 @@ struct TeamMemberPickerSheet: View {
                 .fill(OPSStyle.Colors.line)
                 .frame(height: OPSStyle.Layout.Border.standard)
 
-            ScrollView {
-                VStack(spacing: OPSStyle.Layout.Border.standard) {
-                    ForEach(Array(allTeamMembers.enumerated()), id: \.element.id) { index, member in
-                        teamMemberRow(member: member, index: index)
+            if allTeamMembers.isEmpty {
+                // Bug 685e1d0e — never present a silent blank scroll. When a
+                // company has no active members synced (or pre-sync), show the
+                // OPS em-dash empty state instead of nothing.
+                emptyState
+            } else {
+                ScrollView {
+                    VStack(spacing: OPSStyle.Layout.Border.standard) {
+                        ForEach(Array(allTeamMembers.enumerated()), id: \.element.id) { index, member in
+                            teamMemberRow(member: member, index: index)
+                        }
                     }
+                    .padding(CGFloat(OPSStyle.Layout.spacing3))
                 }
-                .padding(CGFloat(OPSStyle.Layout.spacing3))
             }
         }
         .background(OPSStyle.Colors.background.ignoresSafeArea())
         .onAppear {
             selectionDraft = TeamMemberSelectionDraft(committedIds: selectedTeamMemberIds)
         }
+    }
+
+    /// Bug 685e1d0e — OPS em-dash empty state for a company with no active
+    /// team members. Follows the design-system empty-state pattern: a hero
+    /// em-dash glyph over a JetBrains-Mono `//`-prefixed label.
+    private var emptyState: some View {
+        VStack(spacing: CGFloat(OPSStyle.Layout.spacing2)) {
+            Spacer()
+            Text("—")
+                .font(OPSStyle.Typography.displayLarge)
+                .foregroundColor(OPSStyle.Colors.text3)
+            Text("// NO TEAM MEMBERS")
+                .font(OPSStyle.Typography.sectionLabel)
+                .foregroundColor(OPSStyle.Colors.textMute)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(CGFloat(OPSStyle.Layout.spacing3))
     }
 
     private func teamMemberRow(member: User, index: Int) -> some View {

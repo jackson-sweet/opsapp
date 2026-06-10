@@ -61,7 +61,7 @@ extension BusinessProfile {
     /// Pricing only gates assemblies; selling a thing always offers its module.
     var runServices: Bool { sells != .goods || pricing == .hourly }
     var runGoods: Bool { sells != .services }
-    var runAssemblies: Bool { pricing == .fixedJob || pricing == .mixed }
+    var runAssemblies: Bool { (pricing == .fixedJob || pricing == .mixed) && sells != .services }
     var runMaterials: Bool { materialUse != .none }
     var runStock: Bool { runMaterials && inventory == .tracked }
 

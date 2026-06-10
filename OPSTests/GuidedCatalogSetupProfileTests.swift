@@ -56,4 +56,29 @@ final class GuidedCatalogSetupProfileTests: XCTestCase {
                                 materialUse: .some, inventory: .tracked, trackCost: true)
         XCTAssertEqual(p.setupModules.count, Set(p.setupModules).count)
     }
+
+    // Auto Detailing: services-only, one all-in price, just set prices.
+    // Must NOT be routed into the assembly builder.
+    func test_servicesOnly_fixedJob_skipsAssembly() {
+        let p = BusinessProfile(sells: .services, pricing: .fixedJob,
+                                materialUse: .none, inventory: nil, trackCost: false)
+        XCTAssertFalse(p.runAssemblies)
+        XCTAssertEqual(p.setupModules, [.services])
+    }
+
+    // Services-only that "depends on the job" also skips assemblies.
+    func test_servicesOnly_mixed_skipsAssembly() {
+        let p = BusinessProfile(sells: .services, pricing: .mixed,
+                                materialUse: .none, inventory: nil, trackCost: true)
+        XCTAssertFalse(p.runAssemblies)
+        XCTAssertEqual(p.setupModules, [.services])
+    }
+
+    // Regression guard: a true fixed-job MIX shop still leads with assemblies.
+    func test_mixFixedJob_stillRunsAssembly() {
+        let p = BusinessProfile(sells: .mix, pricing: .fixedJob,
+                                materialUse: .heavy, inventory: .tracked, trackCost: true)
+        XCTAssertTrue(p.runAssemblies)
+        XCTAssertEqual(p.setupModules.first, .assembly)
+    }
 }

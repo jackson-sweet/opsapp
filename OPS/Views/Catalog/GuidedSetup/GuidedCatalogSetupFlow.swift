@@ -219,6 +219,23 @@ struct GuidedCatalogSetupFlow: View {
 
     // MARK: - Bottom bar
 
+    /// Whether the operator has committed anything in the current module — drives
+    /// the SKIP vs NEXT label so empty optional modules read as skippable.
+    private var currentModuleHasItems: Bool {
+        switch model.currentModule {
+        case .services: return model.savedLines.contains { $0.kind == .service }
+        case .goods:    return model.savedLines.contains { $0.kind == .good }
+        case .assembly: return !model.savedAssemblies.isEmpty
+        case .stock, .none: return false
+        }
+    }
+
+    /// FINISH on the last module; otherwise SKIP when nothing's been added, NEXT once it has.
+    private func advanceLabel(isLast: Bool) -> String {
+        if isLast { return "FINISH" }
+        return currentModuleHasItems ? "NEXT" : "SKIP"
+    }
+
     @ViewBuilder
     private var bottomBar: some View {
         switch model.phase {
@@ -231,12 +248,12 @@ struct GuidedCatalogSetupFlow: View {
                     .accessibilityLabel("Start setup")
             }
         case .module(let index):
+            let isLast = index >= model.modules.count - 1
             OPSFloatingButtonBar {
-                Button { advance() } label: {
-                    Text(index >= model.modules.count - 1 ? "FINISH" : "NEXT")
-                }
-                .opsPrimaryButtonStyle()
-                .accessibilityLabel(index >= model.modules.count - 1 ? "Finish setup" : "Next step")
+                Button { advance() } label: { Text(advanceLabel(isLast: isLast)) }
+                    .opsPrimaryButtonStyle()
+                    .accessibilityLabel(isLast ? "Finish setup"
+                                               : (currentModuleHasItems ? "Next step" : "Skip this step"))
             }
         case .done:
             OPSFloatingButtonBar {

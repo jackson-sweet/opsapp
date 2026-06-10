@@ -14,29 +14,50 @@ struct CategoryGroupSection: View {
     let parentRows: [EnrichedVariantRow]
     let children: [(category: CatalogCategory, rows: [EnrichedVariantRow])]
     let onTap: (EnrichedVariantRow) -> Void
+    let onOpenDetail: (EnrichedVariantRow) -> Void
 
     var body: some View {
         Section {
             // Variants directly under the parent category (or under "Uncategorized").
             ForEach(parentRows) { row in
-                Button { onTap(row) } label: {
-                    VariantCard(row: row, scale: 1.0)
-                }
-                .buttonStyle(.plain)
+                rowButton(row, nested: false)
             }
             // Child categories with their variants nested.
             ForEach(children, id: \.category.id) { entry in
                 childHeader(entry.category)
                 ForEach(entry.rows) { row in
-                    Button { onTap(row) } label: {
-                        VariantCard(row: row, scale: 1.0)
-                            .padding(.leading, OPSStyle.Layout.spacing3)
-                    }
-                    .buttonStyle(.plain)
+                    rowButton(row, nested: true)
                 }
             }
         } header: {
             parentHeader
+        }
+    }
+
+    @ViewBuilder
+    private func rowButton(_ row: EnrichedVariantRow, nested: Bool) -> some View {
+        Button { onTap(row) } label: {
+            if nested {
+                HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
+                    Rectangle()
+                        .fill(OPSStyle.Colors.separator)
+                        .frame(width: OPSStyle.Layout.Border.standard)
+                        .frame(maxHeight: .infinity)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
+                    VariantCard(row: row, scale: 1.0)
+                }
+                .frame(maxWidth: .infinity)
+            } else {
+                VariantCard(row: row, scale: 1.0)
+            }
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                onOpenDetail(row)
+            } label: {
+                Label("OPEN FULL DETAIL", systemImage: "arrow.up.right.square")
+            }
         }
     }
 

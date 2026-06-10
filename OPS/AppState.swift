@@ -78,6 +78,14 @@ class AppState: ObservableObject {
     /// it survives notification-rail dismissal.
     @Published var showProjectsNeedingTasksReview: Bool = false
 
+    // MARK: - Lead Notification Deep Link Baton
+    /// Opportunity id stashed by the `OpenLeadDetails` handler in MainTabView
+    /// before it switches to the LEADS tab. `LeadsTabView` reads and clears it
+    /// on appear / load so the matching `LeadDetailView` opens once the tab is
+    /// mounted and the pipeline data is in hand. Survives the LEADS tab not yet
+    /// being on-screen at tap time (push cold-launch, rail tap from any tab).
+    @Published var pendingLeadDeepLinkId: String? = nil
+
     /// Refresh unread notification count from Supabase
     func refreshUnreadCount() {
         guard let userId = UserDefaults.standard.string(forKey: "user_id"), !userId.isEmpty else { return }

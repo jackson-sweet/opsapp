@@ -43,6 +43,34 @@ class OpportunityRepository {
             .value
     }
 
+    /// Resolve an email-thread id to its linked opportunity id.
+    ///
+    /// Lead notifications whose `action_url` is `/inbox/<thread-uuid>` carry no
+    /// opportunity id in the payload — the id lives on `email_threads.opportunity_id`
+    /// (verified in prod: every `/inbox/<uuid>` lead notification joins to a
+    /// thread row whose `opportunity_id` is set). iOS does not model
+    /// `email_threads` in SwiftData, so this is a direct single-column Supabase
+    /// select — additive, with no schema or sync impact.
+    ///
+    /// Returns nil when the thread row is missing or not lead-linked, so the
+    /// caller can fall back to the Job Board instead of dropping the tap.
+    func opportunityId(forEmailThreadId threadId: String) async throws -> String? {
+        struct ThreadOpportunityRow: Decodable {
+            let opportunityId: String?
+            enum CodingKeys: String, CodingKey {
+                case opportunityId = "opportunity_id"
+            }
+        }
+        let rows: [ThreadOpportunityRow] = try await client
+            .from("email_threads")
+            .select("opportunity_id")
+            .eq("id", value: threadId)
+            .limit(1)
+            .execute()
+            .value
+        return rows.first?.opportunityId
+    }
+
     func fetchActivities(for opportunityId: String) async throws -> [ActivityDTO] {
         try await client
             .from("activities")

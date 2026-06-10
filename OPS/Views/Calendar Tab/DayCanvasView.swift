@@ -83,6 +83,11 @@ struct DayPageView: View {
     @EnvironmentObject var dataController: DataController
     let isActivePage: Bool
 
+    /// Only users with `calendar.edit` may push / extend / cascade / clear task
+    /// schedules from the calendar. Crew + Unassigned lack it (read-only on the
+    /// calendar). Mirrors CalendarEventCard's gate; enforced at every mutation.
+    private var canModify: Bool { PermissionStore.shared.can("calendar.edit") }
+
     /// Drives the recurring-event scope sheet. Identifiable so it can be
     /// fed straight into a `.sheet(item:)`.
     fileprivate struct UserEventScopePrompt: Identifiable {
@@ -477,7 +482,7 @@ struct DayPageView: View {
 
         if isOngoing {
             card
-        } else {
+        } else if canModify {
             card
                 .offset(x: swipeOffset[task.id] ?? 0)
                 .background(alignment: .leading) {
@@ -570,6 +575,19 @@ struct DayPageView: View {
                         }) {
                             Label("Select", systemImage: "checkmark.circle")
                         }
+                    }
+                }
+        } else {
+            // Read-only (Crew / Unassigned lack calendar.edit): no schedule-swipe
+            // gesture and no schedule-mutation context menu. Tap-to-open-details
+            // and bulk-select still work via the "Select" quick action.
+            card
+                .contextMenu {
+                    Button(action: {
+                        enterSelectMode()
+                        selectedTaskIds.insert(task.id)
+                    }) {
+                        Label("Select", systemImage: "checkmark.circle")
                     }
                 }
         }
@@ -773,61 +791,66 @@ struct DayPageView: View {
         if isSelectMode && !selectedTaskIds.isEmpty {
             OPSActionBar {
                 VStack(spacing: 8) {
-                    // Push section
-                    HStack(spacing: 4) {
-                        Text("PUSH")
-                            .font(OPSStyle.Typography.caption)
-                            .tracking(0.8)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .frame(width: 52)
+                    // Schedule-mutation rows (Push / Extend) are gated on
+                    // calendar.edit — Crew / Unassigned can still multi-select
+                    // (e.g. to read), but never see push/extend/schedule.
+                    if canModify {
+                        // Push section
+                        HStack(spacing: 4) {
+                            Text("PUSH")
+                                .font(OPSStyle.Typography.caption)
+                                .tracking(0.8)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .frame(width: 52)
 
-                        OPSActionBarButton(icon: "arrow.right", label: "+1D") {
-                            bulkPush(days: 1)
-                        }
-                        OPSActionBarButton(icon: "arrow.right", label: "+2D") {
-                            bulkPush(days: 2)
-                        }
-                        OPSActionBarButton(icon: "arrow.right", label: "+3D") {
-                            bulkPush(days: 3)
-                        }
-                        OPSActionBarButton(icon: "arrow.right.to.line", label: "+1W") {
-                            bulkPush(days: 7)
+                            OPSActionBarButton(icon: "arrow.right", label: "+1D") {
+                                bulkPush(days: 1)
+                            }
+                            OPSActionBarButton(icon: "arrow.right", label: "+2D") {
+                                bulkPush(days: 2)
+                            }
+                            OPSActionBarButton(icon: "arrow.right", label: "+3D") {
+                                bulkPush(days: 3)
+                            }
+                            OPSActionBarButton(icon: "arrow.right.to.line", label: "+1W") {
+                                bulkPush(days: 7)
+                            }
+
+                            Spacer()
                         }
 
-                        Spacer()
+                        Rectangle()
+                            .fill(OPSStyle.Colors.cardBorderSubtle)
+                            .frame(height: 1)
+
+                        // Extend section
+                        HStack(spacing: 4) {
+                            Text("EXTEND")
+                                .font(OPSStyle.Typography.caption)
+                                .tracking(0.8)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .frame(width: 52)
+
+                            OPSActionBarButton(icon: "arrow.right.and.line.vertical.and.arrow.left", label: "+1D") {
+                                bulkExtend(days: 1)
+                            }
+                            OPSActionBarButton(icon: "arrow.right.and.line.vertical.and.arrow.left", label: "+2D") {
+                                bulkExtend(days: 2)
+                            }
+                            OPSActionBarButton(icon: "arrow.right.and.line.vertical.and.arrow.left", label: "+3D") {
+                                bulkExtend(days: 3)
+                            }
+                            OPSActionBarButton(icon: "arrow.right.and.line.vertical.and.arrow.left", label: "+1W") {
+                                bulkExtend(days: 7)
+                            }
+
+                            Spacer()
+                        }
+
+                        Rectangle()
+                            .fill(OPSStyle.Colors.cardBorderSubtle)
+                            .frame(height: 1)
                     }
-
-                    Rectangle()
-                        .fill(OPSStyle.Colors.cardBorderSubtle)
-                        .frame(height: 1)
-
-                    // Extend section
-                    HStack(spacing: 4) {
-                        Text("EXTEND")
-                            .font(OPSStyle.Typography.caption)
-                            .tracking(0.8)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .frame(width: 52)
-
-                        OPSActionBarButton(icon: "arrow.right.and.line.vertical.and.arrow.left", label: "+1D") {
-                            bulkExtend(days: 1)
-                        }
-                        OPSActionBarButton(icon: "arrow.right.and.line.vertical.and.arrow.left", label: "+2D") {
-                            bulkExtend(days: 2)
-                        }
-                        OPSActionBarButton(icon: "arrow.right.and.line.vertical.and.arrow.left", label: "+3D") {
-                            bulkExtend(days: 3)
-                        }
-                        OPSActionBarButton(icon: "arrow.right.and.line.vertical.and.arrow.left", label: "+1W") {
-                            bulkExtend(days: 7)
-                        }
-
-                        Spacer()
-                    }
-
-                    Rectangle()
-                        .fill(OPSStyle.Colors.cardBorderSubtle)
-                        .frame(height: 1)
 
                     // Bottom row: count + schedule + done
                     HStack(spacing: 4) {
@@ -838,7 +861,7 @@ struct DayPageView: View {
 
                         Spacer()
 
-                        if selectedTaskIds.count == 1 {
+                        if canModify && selectedTaskIds.count == 1 {
                             OPSActionBarButton(
                                 icon: "calendar",
                                 label: "SCHEDULE"
@@ -888,6 +911,7 @@ struct DayPageView: View {
     }
 
     private func bulkPush(days: Int) {
+        guard canModify else { return }
         guard let ctx = dataController.modelContext else { return }
         let ids = selectedTaskIds
         Task {
@@ -907,6 +931,7 @@ struct DayPageView: View {
     }
 
     private func bulkExtend(days: Int) {
+        guard canModify else { return }
         guard let ctx = dataController.modelContext else { return }
         let ids = selectedTaskIds
         let cal = Calendar.current
@@ -932,6 +957,7 @@ struct DayPageView: View {
     // MARK: - Push / Cascade / Extend
 
     private func extendTask(_ task: ProjectTask, days: Int) {
+        guard canModify else { return }
         guard let start = task.startDate,
               let end = task.endDate,
               let newEnd = Calendar.current.date(byAdding: .day, value: days, to: end) else { return }
@@ -943,6 +969,7 @@ struct DayPageView: View {
     }
 
     private func pushTask(_ task: ProjectTask, days: Int) {
+        guard canModify else { return }
         // Compute new start before the async push mutates the task
         let cal = Calendar.current
         let newStart = cal.date(byAdding: .day, value: days, to: task.startDate ?? Date()) ?? Date()
@@ -970,6 +997,7 @@ struct DayPageView: View {
     }
 
     private func pushTaskWithCascade(_ task: ProjectTask, days: Int) {
+        guard canModify else { return }
         let allTasks = dataController.getTasksForProject(task.projectId)
         let newDates = SchedulingEngine.pushByDays(task: task, days: days)
         let cascade = SchedulingEngine.calculateCascade(
@@ -1039,6 +1067,7 @@ struct DayPageView: View {
     /// Clear scheduled dates on a task (used by the Reschedule sheet's
     /// Clear button). Mirrors the pattern in CalendarEventCard.clearTaskDates.
     private func clearTaskDates(task: ProjectTask) {
+        guard canModify else { return }
         task.startDate = nil
         task.endDate = nil
         task.duration = 0

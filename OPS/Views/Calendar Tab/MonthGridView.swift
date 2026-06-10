@@ -355,6 +355,9 @@ struct MonthGridView: View {
     /// and the single-source-of-truth update path on DataController. Triggers
     /// medium haptic on intent, success haptic when the update commits.
     private func pushTaskByDays(eventId: String, days: Int) {
+        // Schedule mutations are gated on calendar.edit. Crew / Unassigned
+        // (who lack it) get no push/pull surface — bail before any state change.
+        guard PermissionStore.shared.can("calendar.edit") else { return }
         guard let task = dataController.getTask(id: eventId) else { return }
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -1229,6 +1232,13 @@ struct EventBar: View {
     var onOpenReschedule: (() -> Void)? = nil
     var onOpenDayDetails: (() -> Void)? = nil
 
+    // Schedule mutations (push / pull / pick new date) are gated on
+    // calendar.edit. Crew / Unassigned lack it and get no reschedule surface.
+    // Singleton form — always available, no @EnvironmentObject injection risk.
+    private var canModify: Bool {
+        PermissionStore.shared.can("calendar.edit")
+    }
+
     private enum DisplayLevel {
         case level1  // < 120: compact dots
         case level2  // 120-180: short bars with title
@@ -1298,7 +1308,8 @@ struct EventBar: View {
         }
         .contextMenu {
             if onPushDays != nil || onOpenReschedule != nil || onOpenDayDetails != nil {
-                if let push = onPushDays {
+                // Push / pull are schedule mutations — only for calendar.edit holders.
+                if canModify, let push = onPushDays {
                     Button {
                         push(1)
                     } label: {
@@ -1321,7 +1332,8 @@ struct EventBar: View {
                     }
                     Divider()
                 }
-                if let openReschedule = onOpenReschedule {
+                // "Pick new date…" reschedules — gated on calendar.edit.
+                if canModify, let openReschedule = onOpenReschedule {
                     Button {
                         openReschedule()
                     } label: {
@@ -1658,6 +1670,13 @@ struct EventDetailCard: View {
     @State private var hasTriggeredHaptic = false
     @State private var isPressed = false
 
+    // Reschedule is a schedule mutation — gated on calendar.edit. Crew /
+    // Unassigned (who lack it) get no Reschedule action from the long-press
+    // dialog. Singleton form — no @EnvironmentObject injection risk.
+    private var canModify: Bool {
+        PermissionStore.shared.can("calendar.edit")
+    }
+
     private var eventColor: Color {
         Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent
     }
@@ -1750,8 +1769,10 @@ struct EventDetailCard: View {
             }
         }
         .confirmationDialog("Quick Actions", isPresented: $showingQuickActions, titleVisibility: .hidden) {
-            Button("Reschedule") {
-                showingReschedule = true
+            if canModify {
+                Button("Reschedule") {
+                    showingReschedule = true
+                }
             }
 
             Button("Cancel", role: .cancel) {}

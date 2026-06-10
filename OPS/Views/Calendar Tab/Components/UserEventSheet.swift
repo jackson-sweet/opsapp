@@ -124,6 +124,14 @@ struct UserEventSheet: View {
     /// helpers in DataController instead of creating new rows.
     private var isEditing: Bool { editingEvent != nil }
 
+    /// Gates every schedule mutation in this sheet (create-save, edit-save,
+    /// and the calendar date-cell tap). Held by Admin/Office/Operator/Owner;
+    /// Crew + Unassigned lack it, so the sheet renders read-only for them —
+    /// SAVE is disabled and the recurrence + time pickers are hidden.
+    /// Uses the singleton directly so there's no @EnvironmentObject injection
+    /// risk (mirrors CalendarEventCard's `canModify`).
+    private var canModify: Bool { PermissionStore.shared.can("calendar.edit") }
+
     // MARK: - Init
 
     /// Create-mode init — kept identical to the original signature so call
@@ -297,7 +305,9 @@ struct UserEventSheet: View {
             .standardSheetToolbar(
                 title: sheetTitle,
                 actionText: actionButtonText,
-                isActionEnabled: isFormValid && hasDateRange,
+                // `canModify` disables SAVE/SUBMIT for non-editors — the sheet
+                // stays viewable but read-only.
+                isActionEnabled: canModify && isFormValid && hasDateRange,
                 isSaving: isSaving,
                 onCancel: { isPresented = false },
                 onAction: { save() }
@@ -463,8 +473,10 @@ struct UserEventSheet: View {
                         .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
 
-                // Bug a5001a70 — start/end time pickers (only when not all-day)
-                if !allDay {
+                // Bug a5001a70 — start/end time pickers (only when not all-day).
+                // Hidden for non-editors — the sheet is read-only for them, so
+                // there's nothing to pick.
+                if !allDay && canModify {
                     timePickerRow(label: "STARTS", time: $startTime)
                     timePickerRow(label: "ENDS", time: $endTime)
                 }
@@ -721,7 +733,8 @@ struct UserEventSheet: View {
             // only). In edit mode we deliberately hide it: changing the
             // recurrence rule on an existing series is a structural change
             // that's better handled by deleting + recreating the series.
-            if mode == .personalEvent && !isEditing {
+            // Also hidden for non-editors — read-only sheet has nothing to set.
+            if mode == .personalEvent && !isEditing && canModify {
                 recurrenceRow
             }
 
@@ -871,6 +884,9 @@ struct UserEventSheet: View {
     // MARK: - Date Handling
 
     private func handleDateTap(_ date: Date) {
+        // Schedule-mutation gate — picking a date range is a date mutation.
+        // Non-editors get a read-only calendar (no haptic, no selection move).
+        guard canModify else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
         if selectionPhase == .selectingStart || selectedStartDate != selectedEndDate {
@@ -988,6 +1004,10 @@ struct UserEventSheet: View {
     // MARK: - Save
 
     private func save() {
+        // Schedule-mutation gate — non-editors (Crew/Unassigned) can view
+        // this sheet but cannot persist new events. SAVE is also disabled in
+        // the toolbar; this guard is the hard backstop.
+        guard canModify else { return }
         guard !isSaving else { return }
         guard let userId = dataController.currentUser?.id,
               let companyId = dataController.currentUser?.companyId else { return }
@@ -1162,6 +1182,13 @@ struct UserEventSheet: View {
     /// fire-and-forget inside the helper so the user doesn't wait on the
     /// network for the sheet to close.
     private func saveEdit(target: CalendarUserEvent) {
+        // Schedule-mutation gate — non-editors cannot persist edits to an
+        // existing event/series. `save()` also guards before routing here,
+        // but keep this independent so the helper is safe on its own.
+        guard canModify else {
+            isSaving = false
+            return
+        }
         let trimmedTitle = title.trimmingCharacters(in: .whitespaces)
         let resolvedTitle: String = trimmedTitle.isEmpty
             ? (mode == .timeOff ? "Time Off Request" : target.title)

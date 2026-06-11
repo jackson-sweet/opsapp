@@ -291,6 +291,10 @@ struct RescheduleDayDetailView: View {
 
     private var confirmFooter: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
+            // The move CTA is gated on calendar.edit, scope-aware: own-scope users
+            // see it only for their own tasks. For a task they can't reschedule the
+            // surface is read-only — only the BACK affordance remains.
+            if task.canEditSchedule {
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 onConfirm(destinationStart, destinationEnd)
@@ -317,6 +321,7 @@ struct RescheduleDayDetailView: View {
             }
             .buttonStyle(PlainButtonStyle())
             .accessibilityLabel("Move task to \(dayHeadlineLabel(for: day))")
+            }
 
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()

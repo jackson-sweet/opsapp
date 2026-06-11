@@ -174,6 +174,8 @@ struct ProjectDetailsView: View {
                                 currentEndDate: task.endDate,
                                 onScheduleUpdate: viewModel.handleTaskScheduleUpdate,
                                 onClearDates: {
+                                    // Gated on calendar.edit, scope-aware on the task.
+                                    guard task.canEditSchedule else { return }
                                     // Bug f3604d52 — allow clearing the task's
                                     // dates from the scheduler sheet toolbar.
                                     // Mirrors CalendarEventCard.clearTaskDates.
@@ -242,6 +244,7 @@ struct ProjectDetailsView: View {
                                 }
                             },
                             onReschedule: { t in
+                                guard t.canEditSchedule else { return }
                                 viewModel.selectedTask = t
                                 taskDetailTask = nil
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
@@ -253,6 +256,7 @@ struct ProjectDetailsView: View {
                                 viewModel.cancelSelectedTask()
                             },
                             onScheduleTap: { t in
+                                guard t.canEditSchedule else { return }
                                 viewModel.selectedTask = t
                                 taskDetailTask = nil
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
@@ -419,7 +423,10 @@ struct ProjectDetailsView: View {
                         },
                         onExpense: { openNewExpenseSheet() },
                         onComplete: { viewModel.toggleTaskStatus() },
-                        onReschedule: { viewModel.showingTaskScheduler = true },
+                        onReschedule: {
+                            guard viewModel.selectedTask?.canEditSchedule == true else { return }
+                            viewModel.showingTaskScheduler = true
+                        },
                         onContact: { viewModel.showingClientContact = true },
                         onAddTask: { viewModel.showingAddTaskSheet = true },
                         onDeckDesign: ProjectQuickActionPermissionGate.canShowDeckAction(

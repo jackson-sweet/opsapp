@@ -1250,6 +1250,21 @@ struct TaskFormSheet: View {
         }
     }
 
+    /// Whether the current user may set this task's schedule (the DATES field and
+    /// AUTO button). Gated on calendar.edit, scope-aware: an existing task uses its
+    /// own scope; a new / draft task uses the selected project's scope (or any
+    /// grant before a project is chosen). Crew / Unassigned (no grant) can fill the
+    /// rest of the form but never set a schedule.
+    private var canSchedule: Bool {
+        if let task = mode.task {
+            return task.canEditSchedule
+        }
+        if let project = selectedProject {
+            return project.canEditSchedule
+        }
+        return PermissionStore.shared.canEditAnySchedule
+    }
+
     private var datesField: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -1260,8 +1275,9 @@ struct TaskFormSheet: View {
 
                 Spacer()
 
-                // Auto-schedule button — only show when project and task type are selected
-                if !tutorialMode && selectedProjectId != nil && selectedTaskTypeId != nil {
+                // Auto-schedule button — only show when project and task type are
+                // selected AND the user may schedule (calendar.edit, scope-aware).
+                if !tutorialMode && selectedProjectId != nil && selectedTaskTypeId != nil && canSchedule {
                     Button(action: {
                         autoScheduleTask()
                     }) {
@@ -1276,6 +1292,9 @@ struct TaskFormSheet: View {
             }
 
             Button(action: {
+                    // Scheduling is gated on calendar.edit (scope-aware); no grant
+                    // means the DATES field is read-only.
+                    guard canSchedule else { return }
                     // Track if dates existed before opening scheduler
                     datesExistedBeforeScheduler = (startDate != nil && endDate != nil)
                     schedulerConfirmed = false  // Reset confirmation flag
@@ -1451,6 +1470,7 @@ struct TaskFormSheet: View {
     // MARK: - Auto Schedule
 
     private func autoScheduleTask() {
+        guard canSchedule else { return }
         guard let projectId = selectedProjectId,
               let taskTypeId = selectedTaskTypeId else { return }
 

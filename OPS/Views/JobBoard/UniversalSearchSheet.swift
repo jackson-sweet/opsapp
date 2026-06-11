@@ -392,6 +392,7 @@ struct UniversalSearchSheet: View {
                 currentStartDate: task.startDate,
                 currentEndDate: task.endDate,
                 onScheduleUpdate: { start, end in
+                    guard task.canEditSchedule else { return }
                     Task {
                         try? await dataController.updateTaskSchedule(
                             task: task,
@@ -708,7 +709,9 @@ struct UniversalSearchSheet: View {
                 completeTask(task)
             })
         }
-        if canEditTasks && !task.status.isTerminal {
+        // Reschedule is gated on calendar.edit (scope-aware on the task), not
+        // tasks.edit — scheduling authority is separate from task editing.
+        if task.canEditSchedule && !task.status.isTerminal {
             actions.append(QuickActionSpec(
                 id: "reschedule",
                 icon: OPSStyle.Icons.schedule,

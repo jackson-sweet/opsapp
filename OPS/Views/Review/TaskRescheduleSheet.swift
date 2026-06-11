@@ -54,6 +54,12 @@ struct TaskRescheduleSheet: View {
     /// movement to eliminate Taptic Engine spin-up latency.
     private let zoomHaptic = UIImpactFeedbackGenerator(style: .medium)
 
+    /// Whether the current user may reschedule this task — calendar.edit,
+    /// scope-aware (own-scope → only their own tasks). The sheet is normally only
+    /// reached for editable tasks; this guards the mutation paths as defense in
+    /// depth, and cascade application filters to tasks the user may move.
+    private var canModify: Bool { task.canEditSchedule }
+
     var body: some View {
         ZStack {
             // Base reschedule surface — quick-push chips + open-calendar.
@@ -519,6 +525,7 @@ struct TaskRescheduleSheet: View {
     // MARK: - Apply
 
     private func applyReschedule(newStart: Date, newEnd: Date) {
+        guard canModify else { return }
         // Canonical path — saves context, records SyncOperation, and sends
         // schedule-change notifications to assigned team members. Direct
         // mutation was losing every reschedule because neither the save nor
@@ -547,7 +554,9 @@ struct TaskRescheduleSheet: View {
         // avoid race conditions on the shared sync queue.
         Task {
             for change in cascadeResult.changes {
-                guard let affectedTask = projectTasks.first(where: { $0.id == change.id }) else { continue }
+                // Own-scope users only shift tasks they may move; "all" passes all.
+                guard let affectedTask = projectTasks.first(where: { $0.id == change.id }),
+                      affectedTask.canEditSchedule else { continue }
                 do {
                     try await dataController.updateTaskSchedule(
                         task: affectedTask,

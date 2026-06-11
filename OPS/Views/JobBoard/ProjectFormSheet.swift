@@ -530,7 +530,19 @@ struct ProjectFormSheet: View {
 
     /// Open the scheduler sheet for a specific row, mirroring its current
     /// dates into the local scheduler state.
+    /// Whether the current user may schedule this project's tasks. Gated on
+    /// calendar.edit, scope-aware: an existing project uses its own scope; a new
+    /// project (not yet created) uses any calendar.edit grant. Crew / Unassigned
+    /// (no grant) can build the project and its tasks but never set a schedule.
+    private var canSchedule: Bool {
+        if let project = mode.project {
+            return project.canEditSchedule
+        }
+        return PermissionStore.shared.canEditAnySchedule
+    }
+
     private func presentScheduler(forTaskId id: UUID) {
+        guard canSchedule else { return }
         guard let idx = localTasks.firstIndex(where: { $0.id == id }) else { return }
         rowEditingTaskId = id
         let existingStart = localTasks[idx].startDate

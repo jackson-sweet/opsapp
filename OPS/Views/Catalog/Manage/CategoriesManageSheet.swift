@@ -206,12 +206,6 @@ struct CategoryFormSheet: View {
                             .keyboardType(.decimalPad)
                             .textFieldStyle(CatalogTextFieldStyle())
 
-                        if let errorMessage = errorMessage {
-                            Text(errorMessage)
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.errorText)
-                        }
-
                         if isEditing {
                             Button(role: .destructive) {
                                 showDeleteConfirm = true
@@ -259,6 +253,7 @@ struct CategoryFormSheet: View {
                 Text("This category will be removed.")
             }
             .onAppear { loadInitial() }
+            .errorToast($errorMessage, label: Feedback.Err.operationFailed)
         }
     }
 
@@ -313,6 +308,7 @@ struct CategoryFormSheet: View {
                 let dto = try await repo.createCategory(create)
                 applyDTOToLocal(dto)
             }
+            ToastCenter.shared.present(Feedback.Catalog.categorySaved)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
@@ -331,6 +327,7 @@ struct CategoryFormSheet: View {
             try await repo.softDeleteCategory(category.id)
             category.deletedAt = Date()
             try? modelContext.save()
+            ToastCenter.shared.present(Feedback.Catalog.categoryRemoved)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

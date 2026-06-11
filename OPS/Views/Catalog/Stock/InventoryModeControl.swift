@@ -68,7 +68,7 @@ final class InventoryModeViewModel: ObservableObject {
         guard isInteractive else { return }
         if requestedOn {
             guard !isTracked else { return }
-            beginCommit(.tracked)
+            beginCommit(.tracked, toast: Feedback.Catalog.inventoryModeUpdated)
         } else {
             guard isTracked else { return }
             showingDisableConfirmation = true
@@ -78,16 +78,16 @@ final class InventoryModeViewModel: ObservableObject {
     /// User confirmed turning tracking off.
     func confirmDisable() {
         showingDisableConfirmation = false
-        beginCommit(.off)
+        beginCommit(.off, toast: Feedback.Catalog.inventoryTrackingOff)
     }
 
     /// Flips `isSaving` synchronously so the toggle shows progress immediately
     /// (and so callers can reliably observe the in-flight state) before the
     /// async write is scheduled.
-    private func beginCommit(_ target: InventoryMode) {
+    private func beginCommit(_ target: InventoryMode, toast: Toast) {
         isSaving = true
         actionError = nil
-        Task { await commit(target) }
+        Task { await commit(target, toast: toast) }
     }
 
     /// User backed out of turning tracking off — leave it on.
@@ -95,7 +95,12 @@ final class InventoryModeViewModel: ObservableObject {
         showingDisableConfirmation = false
     }
 
-    private func commit(_ target: InventoryMode) async {
+    /// Called by the `.errorToast` binding setter when the toast clears the error.
+    func clearActionError(_ newValue: String?) {
+        if newValue == nil { actionError = nil }
+    }
+
+    private func commit(_ target: InventoryMode, toast: Toast) async {
         guard let client else {
             isSaving = false
             return
@@ -104,6 +109,7 @@ final class InventoryModeViewModel: ObservableObject {
             let response = try await client.setInventoryMode(target)
             mode = response.mode
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            ToastCenter.shared.present(toast)
         } catch {
             actionError = error.localizedDescription
             // Re-read so the UI never drifts from server truth after a failure.
@@ -126,20 +132,23 @@ struct InventoryModeControl: View {
         _viewModel = StateObject(wrappedValue: InventoryModeViewModel(client: client))
     }
 
+    /// Binding bridge so `.errorToast` can read and clear `viewModel.actionError`.
+    private var actionErrorBinding: Binding<String?> {
+        Binding(
+            get: { viewModel.actionError },
+            set: { viewModel.clearActionError($0) }
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             header
             statusLine
-            if let actionError = viewModel.actionError {
-                Text("SYS :: \(actionError.uppercased())")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.errorStatus)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .opsCardStyle()
         .task { await viewModel.load() }
+        .errorToast(actionErrorBinding, label: Feedback.Err.operationFailed)
         .confirmationDialog(
             "Turn off inventory tracking",
             isPresented: $viewModel.showingDisableConfirmation,

@@ -188,12 +188,6 @@ struct UnitFormSheet: View {
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
 
-                        if let errorMessage = errorMessage {
-                            Text(errorMessage)
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.errorText)
-                        }
-
                         if isEditing {
                             Button(role: .destructive) {
                                 showDeleteConfirm = true
@@ -241,6 +235,7 @@ struct UnitFormSheet: View {
                 Text("This unit will be removed.")
             }
             .onAppear { loadInitial() }
+            .errorToast($errorMessage, label: Feedback.Err.operationFailed)
         }
     }
 
@@ -291,6 +286,7 @@ struct UnitFormSheet: View {
                 let dto = try await repo.createUnit(create)
                 applyDTOToLocal(dto)
             }
+            ToastCenter.shared.present(Feedback.Catalog.unitSaved)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
@@ -309,6 +305,7 @@ struct UnitFormSheet: View {
             try await repo.softDeleteUnit(unit.id)
             unit.deletedAt = Date()
             try? modelContext.save()
+            ToastCenter.shared.present(Feedback.Catalog.unitRemoved)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

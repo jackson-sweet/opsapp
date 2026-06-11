@@ -75,9 +75,6 @@ struct ProductOptionAuthoringSheet: View {
                         }
                         optionsSection
                         modifiersSection
-                        if let errorMessage {
-                            setupBanner(title: "SYS :: SAVE BLOCKED", message: errorMessage, isError: true)
-                        }
                     }
                     .padding(OPSStyle.Layout.spacing3)
                 }
@@ -95,6 +92,7 @@ struct ProductOptionAuthoringSheet: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .errorToast($errorMessage, label: Feedback.Err.operationFailed)
         .sheet(item: $optionEditorRequest) { request in
             ProductOptionEditorSheet(
                 product: product,
@@ -413,6 +411,7 @@ struct ProductOptionAuthoringSheet: View {
             }
             try? modelContext.save()
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            ToastCenter.shared.present(Feedback.Catalog.optionMoved)
         } catch {
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             errorMessage = error.localizedDescription
@@ -437,6 +436,7 @@ struct ProductOptionAuthoringSheet: View {
             try? modelContext.save()
             pendingOptionDelete = nil
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            ToastCenter.shared.present(Feedback.Catalog.optionRemoved)
         } catch {
             pendingOptionDelete = nil
             UINotificationFeedbackGenerator().notificationOccurred(.error)
@@ -462,6 +462,7 @@ struct ProductOptionAuthoringSheet: View {
             try? modelContext.save()
             pendingModifierDelete = nil
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            ToastCenter.shared.present(Feedback.Catalog.priceRuleRemoved)
         } catch {
             pendingModifierDelete = nil
             UINotificationFeedbackGenerator().notificationOccurred(.error)
@@ -659,9 +660,6 @@ private struct ProductOptionEditorSheet: View {
                         if kind == .select {
                             valuesSection
                         }
-                        if let errorMessage {
-                            setupBanner(title: "SYS :: SAVE BLOCKED", message: errorMessage, isError: true)
-                        }
                     }
                     .padding(OPSStyle.Layout.spacing3)
                 }
@@ -692,6 +690,7 @@ private struct ProductOptionEditorSheet: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .errorToast($errorMessage, label: Feedback.Err.operationFailed)
     }
 
     private var coreSection: some View {
@@ -935,6 +934,7 @@ private struct ProductOptionEditorSheet: View {
 
             try? modelContext.save()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            ToastCenter.shared.present(Feedback.Catalog.optionSaved)
             dismiss()
         } catch {
             UINotificationFeedbackGenerator().notificationOccurred(.error)
@@ -1116,9 +1116,6 @@ private struct ProductPricingModifierEditorSheet: View {
                         }
                         formSection
                         previewSection
-                        if let errorMessage {
-                            setupBanner(title: "SYS :: SAVE BLOCKED", message: errorMessage, isError: true)
-                        }
                     }
                     .padding(OPSStyle.Layout.spacing3)
                 }
@@ -1148,6 +1145,7 @@ private struct ProductPricingModifierEditorSheet: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .errorToast($errorMessage, label: Feedback.Err.operationFailed)
     }
 
     private var formSection: some View {
@@ -1318,6 +1316,7 @@ private struct ProductPricingModifierEditorSheet: View {
             ProductOptionLocalStore.upsertModifier(dto, in: modelContext)
             try? modelContext.save()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            ToastCenter.shared.present(Feedback.Catalog.priceRuleSaved)
             dismiss()
         } catch {
             UINotificationFeedbackGenerator().notificationOccurred(.error)

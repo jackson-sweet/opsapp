@@ -138,12 +138,6 @@ struct TagFormSheet: View {
                         TextField("", text: $name)
                             .textFieldStyle(CatalogTextFieldStyle())
 
-                        if let errorMessage = errorMessage {
-                            Text(errorMessage)
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.errorText)
-                        }
-
                         if isEditing {
                             Button(role: .destructive) {
                                 showDeleteConfirm = true
@@ -191,6 +185,7 @@ struct TagFormSheet: View {
                 Text("This tag will be removed.")
             }
             .onAppear { loadInitial() }
+            .errorToast($errorMessage, label: Feedback.Err.operationFailed)
         }
     }
 
@@ -222,6 +217,7 @@ struct TagFormSheet: View {
                 let dto = try await repo.createTag(create)
                 applyDTOToLocal(dto)
             }
+            ToastCenter.shared.present(Feedback.Catalog.tagSaved)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
@@ -240,6 +236,7 @@ struct TagFormSheet: View {
             try await repo.softDeleteTag(tag.id)
             tag.deletedAt = Date()
             try? modelContext.save()
+            ToastCenter.shared.present(Feedback.Catalog.tagRemoved)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

@@ -79,12 +79,6 @@ struct OrderDetailView: View {
                         detailsSection
                         itemsSection
                         actionButtons(order: order)
-                        if let err = errorMessage {
-                            Text(err)
-                                .font(OPSStyle.Typography.metadata)
-                                .foregroundColor(OPSStyle.Colors.errorText)
-                                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                        }
                     }
                     .padding(.vertical, OPSStyle.Layout.spacing3)
                 }
@@ -106,6 +100,7 @@ struct OrderDetailView: View {
         }
         .onAppear { hydrateFields(from: order) }
         .onChange(of: order?.id) { _, _ in hydrateFields(from: order) }
+        .errorToast($errorMessage, label: Feedback.Err.operationFailed)
         .alert("Delete draft order?", isPresented: $pendingDeleteConfirm) {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) { deleteDraft() }
@@ -574,6 +569,7 @@ struct OrderDetailView: View {
                     try? modelContext.save()
                     isSaving = false
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    ToastCenter.shared.present(Feedback.Catalog.orderUpdated)
                 }
             } catch {
                 await MainActor.run {
@@ -612,6 +608,7 @@ struct OrderDetailView: View {
                     try? modelContext.save()
                     editingItemId = nil
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    ToastCenter.shared.present(Feedback.Catalog.itemUpdated)
                 }
             } catch {
                 await MainActor.run {
@@ -631,6 +628,7 @@ struct OrderDetailView: View {
                     modelContext.delete(item)
                     try? modelContext.save()
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    ToastCenter.shared.present(Feedback.Catalog.itemRemoved)
                 }
             } catch {
                 await MainActor.run {
@@ -641,7 +639,7 @@ struct OrderDetailView: View {
         }
     }
 
-    private func transition(_ work: @escaping () async throws -> CatalogOrderDTO) {
+    private func transition(_ work: @escaping () async throws -> CatalogOrderDTO, toast: Toast = Feedback.Catalog.orderStatusChanged) {
         guard let order = order, !isCommittingTransition else { return }
         isCommittingTransition = true
         errorMessage = nil
@@ -658,6 +656,7 @@ struct OrderDetailView: View {
                     try? modelContext.save()
                     isCommittingTransition = false
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    ToastCenter.shared.present(toast)
                 }
             } catch {
                 await MainActor.run {
@@ -670,7 +669,7 @@ struct OrderDetailView: View {
     }
 
     private func cancelOrder() {
-        transition { try await orderRepo.markCancelled(self.order!.id) }
+        transition({ try await orderRepo.markCancelled(self.order!.id) }, toast: Feedback.Catalog.orderCancelled)
     }
 
     private func deleteDraft() {
@@ -683,6 +682,7 @@ struct OrderDetailView: View {
                     order.deletedAt = Date()
                     try? modelContext.save()
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    ToastCenter.shared.present(Feedback.Catalog.draftDeleted)
                     dismiss()
                 }
             } catch {

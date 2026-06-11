@@ -33,6 +33,32 @@ enum ProductLineKind: String, Codable, Equatable, CaseIterable, Identifiable {
     }
 }
 
+/// One priced tier inside a tiered product line, e.g. {label:"Sedan", priceText:"180"}.
+struct ProductTierRow: Codable, Equatable, Identifiable {
+    var id: String
+    var label: String
+    var priceText: String
+
+    init(id: String = UUID().uuidString, label: String = "", priceText: String = "") {
+        self.id = id
+        self.label = label
+        self.priceText = priceText
+    }
+}
+
+/// Option-priced tiers attached to one product line. nil on the draft => flat line
+/// (the fast path). When set, the single sell field is hidden and price comes from
+/// the tier rows; the commit writes a product option + values + add_flat modifiers.
+struct ProductLineTiers: Codable, Equatable {
+    var axisName: String
+    var rows: [ProductTierRow]
+
+    init(axisName: String = "", rows: [ProductTierRow] = [ProductTierRow(), ProductTierRow()]) {
+        self.axisName = axisName
+        self.rows = rows
+    }
+}
+
 /// One in-progress service/good line in the product-line module.
 struct ProductLineDraft: Codable, Equatable, Identifiable {
     var id: String
@@ -42,6 +68,7 @@ struct ProductLineDraft: Codable, Equatable, Identifiable {
     var costText: String
     var unitId: String?
     var categoryId: String?
+    var tiers: ProductLineTiers?
 
     init(id: String = UUID().uuidString,
          kind: ProductLineKind,
@@ -49,7 +76,8 @@ struct ProductLineDraft: Codable, Equatable, Identifiable {
          sellText: String = "",
          costText: String = "",
          unitId: String? = nil,
-         categoryId: String? = nil) {
+         categoryId: String? = nil,
+         tiers: ProductLineTiers? = nil) {
         self.id = id
         self.kind = kind
         self.name = name
@@ -57,6 +85,7 @@ struct ProductLineDraft: Codable, Equatable, Identifiable {
         self.costText = costText
         self.unitId = unitId
         self.categoryId = categoryId
+        self.tiers = tiers
     }
 }
 
@@ -67,6 +96,8 @@ struct SavedProductLine: Codable, Equatable, Identifiable {
     var name: String
     var kind: ProductLineKind
     var sell: Double
+    var tierCount: Int? = nil        // nil = flat line; N = number of priced tiers
+    var tierAxisLabel: String? = nil // e.g. "Size" (drives the "3 sizes" suffix)
 }
 
 /// An assembly (fixed-price package) committed this run.
@@ -87,7 +118,7 @@ enum GuidedCatalogPhase: Codable, Equatable {
 
 /// Persisted draft of an in-progress guided catalog setup.
 struct GuidedCatalogSetupDraftSnapshot: Codable, Equatable {
-    static let currentSchemaVersion = 3
+    static let currentSchemaVersion = 4
 
     var schemaVersion: Int
     var context: CatalogSetupDraftContext

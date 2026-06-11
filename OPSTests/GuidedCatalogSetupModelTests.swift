@@ -24,9 +24,20 @@ final class GuidedCatalogSetupModelTests: XCTestCase {
             phase: .module(index: 1),
             profile: BusinessProfile(sells: .mix, pricing: .fixedJob,
                                      materialUse: .some, inventory: .costOnly, trackCost: true),
-            productLines: [ProductLineDraft(id: "d1", kind: .service, name: "Install labor",
-                                            sellText: "120", costText: "60")],
-            savedLines: [SavedProductLine(id: "abc", name: "Install labor", kind: .service, sell: 120)]
+            productLines: [
+                ProductLineDraft(id: "d1", kind: .service, name: "Install labor",
+                                 sellText: "120", costText: "60"),
+                ProductLineDraft(id: "d2", kind: .service, name: "Full Detail",
+                                 tiers: ProductLineTiers(axisName: "Size", rows: [
+                                    ProductTierRow(id: "r1", label: "Sedan", priceText: "180"),
+                                    ProductTierRow(id: "r2", label: "SUV", priceText: "230"),
+                                 ]))
+            ],
+            savedLines: [
+                SavedProductLine(id: "abc", name: "Install labor", kind: .service, sell: 120),
+                SavedProductLine(id: "def", name: "Full Detail", kind: .service, sell: 180,
+                                 tierCount: 2, tierAxisLabel: "Size")
+            ]
         )
 
         try store.save(snapshot)

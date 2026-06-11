@@ -104,6 +104,7 @@ class InvoiceViewModel: ObservableObject {
         do {
             _ = try await repo.recordPayment(dto)
             await refreshInvoice(invoiceId)
+            ToastCenter.shared.present(Feedback.Invoice.paymentRecorded)
         } catch {
             self.error = error.localizedDescription
         }
@@ -116,6 +117,7 @@ class InvoiceViewModel: ObservableObject {
         do {
             try await repo.voidInvoice(invoice.id)
             await refreshInvoice(invoice.id)
+            ToastCenter.shared.present(Feedback.Invoice.voided)
         } catch {
             invoice.status = originalStatus
             self.error = error.localizedDescription
@@ -137,6 +139,11 @@ class InvoiceViewModel: ObservableObject {
         do {
             try await repo.updateStatus(invoice.id, status: status)
             await refreshInvoice(invoice.id)
+            switch status {
+            case .sent:       ToastCenter.shared.present(Feedback.Invoice.sent)
+            case .writtenOff: ToastCenter.shared.present(Feedback.Invoice.writtenOff)
+            default:          break
+            }
         } catch {
             invoice.status = originalStatus
             self.error = error.localizedDescription

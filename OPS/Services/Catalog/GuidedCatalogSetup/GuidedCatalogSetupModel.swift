@@ -147,7 +147,31 @@ final class GuidedCatalogSetupModel: ObservableObject {
                          modelContext: ModelContext) async {
         guard !isSaving else { return }
         let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty, let sell = parseMoney(draft.sellText) else { return }
+        guard !trimmedName.isEmpty else { return }
+
+        // Tiered branch (runs before the flat sell guard, since a tiered line has no
+        // single sellText): ≥2 valid tiers become a configurable product the estimate
+        // builder prices via ProductConfigurationResolver. A 0/1-tier line degrades to flat.
+        if let tiers = draft.tiers {
+            if let spec = TierSpec.derive(from: tiers, parseMoney: parseMoney) {
+                await saveTieredProductLine(draft, spec: spec, units: units,
+                                            categories: categories, modelContext: modelContext)
+                return
+            }
+            if let onlyPrice = tiers.rows.compactMap({ row -> String? in
+                let label = row.label.trimmingCharacters(in: .whitespacesAndNewlines)
+                return (!label.isEmpty && parseMoney(row.priceText) != nil) ? row.priceText : nil
+            }).first {
+                var flat = draft
+                flat.tiers = nil
+                flat.sellText = onlyPrice
+                await saveProductLine(flat, trackCost: trackCost, units: units,
+                                      categories: categories, modelContext: modelContext)
+                return
+            }
+            // tiers present but nothing valid → fall through; the flat guard rejects it.
+        }
+        guard let sell = parseMoney(draft.sellText) else { return }
 
         isSaving = true
         defer { isSaving = false }
@@ -184,6 +208,94 @@ final class GuidedCatalogSetupModel: ObservableObject {
             try? modelContext.save()
             savedLines.append(SavedProductLine(id: created.id, name: created.name,
                                                kind: draft.kind, sell: created.basePrice))
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            persist()
+        } catch {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Save a tiered (option-priced) product line
+
+    /// Commit a service/good whose price varies by an option (Sedan/SUV/Truck,
+    /// small/med/large). Writes one `select` product option, one value per tier, and
+    /// an `add_flat` modifier per non-default tier (delta from the lowest = base price).
+    /// The estimate builder consumes this verbatim through `ProductConfigurationResolver`
+    /// — no estimate-side change. Price-only (no per-tier cost) by design in v1.
+    private func saveTieredProductLine(_ draft: ProductLineDraft,
+                                       spec: TierSpec,
+                                       units: [CatalogUnit],
+                                       categories: [CatalogCategory],
+                                       modelContext: ModelContext) async {
+        guard !isSaving else { return }
+        let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+
+        isSaving = true
+        defer { isSaving = false }
+        errorMessage = nil
+
+        let category = draft.kind.productCategory
+        let unit = units.first { $0.id == draft.unitId }
+        let productRepo = ProductRepository(companyId: companyId)
+        let richnessRepo = ProductRichnessRepository(companyId: companyId)
+
+        let dto = CreateProductDTO(
+            companyId: companyId,
+            name: trimmedName,
+            description: nil,
+            basePrice: spec.basePrice,
+            unitCost: nil,
+            unit: unit?.display,
+            pricingUnit: pricingUnit(for: unit).rawValue,
+            unitId: unit?.id,
+            category: categories.first { $0.id == draft.categoryId }?.name,
+            categoryId: draft.categoryId,
+            sku: nil,
+            thumbnailUrl: nil,
+            kind: category.derivedKindRaw,
+            type: category.derivedType.rawValue,
+            isTaxable: category.defaultTaxable,
+            taskTypeId: nil,
+            taskTypeRef: nil,
+            linkedCatalogItemId: nil
+        )
+
+        do {
+            let created = try await productRepo.create(dto)
+            modelContext.insert(created.toModel())
+
+            // One select option; default = the lowest tier label so the estimate opens
+            // at the base price (no modifier fires) and the operator bumps up from there.
+            let option = try await richnessRepo.createOption(CreateProductOptionDTO(
+                productId: created.id, name: spec.axisName, kind: "select",
+                affectsPrice: true, affectsRecipe: false, required: true,
+                defaultValue: spec.defaultLabel, optionDefaultSource: nil, sortOrder: 0))
+            modelContext.insert(option.toModel())
+
+            var valueIdByLabel: [String: String] = [:]
+            for value in spec.values {
+                let createdValue = try await richnessRepo.createOptionValue(CreateProductOptionValueDTO(
+                    optionId: option.id, value: value.label, sortOrder: value.sortOrder))
+                modelContext.insert(createdValue.toModel())
+                valueIdByLabel[value.label] = createdValue.id
+            }
+
+            for modifier in spec.modifiers {
+                guard let valueId = valueIdByLabel[modifier.label] else { continue }
+                let createdModifier = try await richnessRepo.createPricingModifier(CreateProductPricingModifierDTO(
+                    productId: created.id, optionId: option.id, triggerValueId: valueId,
+                    triggerIntMin: nil, triggerIntMax: nil,
+                    modifierKind: "add_flat", amount: modifier.delta))
+                modelContext.insert(createdModifier.toModel())
+            }
+
+            try? modelContext.save()
+            savedLines.append(SavedProductLine(id: created.id, name: created.name,
+                                               kind: draft.kind, sell: created.basePrice,
+                                               tierCount: spec.values.count,
+                                               tierAxisLabel: spec.axisName))
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             persist()
         } catch {
@@ -241,6 +353,15 @@ final class GuidedCatalogSetupModel: ObservableObject {
             //    scaffold a family + variant first (D3 reconciliation).
             for material in draft.materials {
                 do {
+                    // Create-new with option axes → generate the full labeled variant
+                    // family + a recipe pinned to the first variant (see commitMaterialMatrix).
+                    if material.hasUsableAxes && material.catalogVariantId == nil {
+                        try await commitMaterialMatrix(material, package: package,
+                                                       catalogRepo: catalogRepo,
+                                                       richnessRepo: richnessRepo,
+                                                       modelContext: modelContext)
+                        continue
+                    }
                     let variantId: String
                     if let existingVariantId = material.catalogVariantId {
                         variantId = existingVariantId
@@ -252,10 +373,12 @@ final class GuidedCatalogSetupModel: ObservableObject {
                             defaultPrice: nil, defaultUnitCost: parseMoney(material.costText),
                             defaultWarningThreshold: nil, defaultCriticalThreshold: nil,
                             defaultUnitId: material.unitId))
+                        modelContext.insert(family.toModel())
                         let variant = try await catalogRepo.createVariant(CreateCatalogVariantDTO(
                             companyId: companyId, catalogItemId: family.id, sku: nil, quantity: 0,
                             priceOverride: nil, unitCostOverride: nil,
                             warningThreshold: nil, criticalThreshold: nil, unitId: material.unitId))
+                        modelContext.insert(variant.toModel())
                         variantId = variant.id
                     }
                     _ = try await richnessRepo.createMaterial(CreateProductMaterialDTO(
@@ -315,6 +438,81 @@ final class GuidedCatalogSetupModel: ObservableObject {
         }
     }
 
+    // MARK: - Material variant matrix (create-new material with option axes)
+
+    /// Generate a labeled variant family from a create-new material's option axes
+    /// (Color → black/white, optionally × Thickness): a `catalog_item` + one
+    /// `catalog_option` per axis + a `catalog_option_value` per value + one
+    /// `catalog_variant` per combo (cartesian) + the option-value links. The package
+    /// recipe is pinned to the FIRST generated variant — `RecipeResolver` consumes a
+    /// variant pin, and a nil-selector family pin would be silently dropped from the
+    /// cut list. The whole labeled family still lives in stock (counted + labeled) and
+    /// is pickable in future packages. Cost + unit are family-level in v1.
+    /// Throws bubble to saveAssembly's per-material `catch` (failures += 1), never
+    /// aborting the package. Parent-before-child insert order satisfies RLS.
+    private func commitMaterialMatrix(_ material: AssemblyMaterialDraft,
+                                      package: ProductDTO,
+                                      catalogRepo: CatalogRepository,
+                                      richnessRepo: ProductRichnessRepository,
+                                      modelContext: ModelContext) async throws {
+        let matName = material.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !matName.isEmpty else { return }
+        let axes = material.cleanAxes
+        guard !axes.isEmpty else { return }
+        let qty = parseMoney(material.qtyText) ?? 1
+        let cost = parseMoney(material.costText)
+
+        let family = try await catalogRepo.createFamily(CreateCatalogItemDTO(
+            companyId: companyId, categoryId: nil, name: matName, description: nil,
+            defaultPrice: nil, defaultUnitCost: cost,
+            defaultWarningThreshold: nil, defaultCriticalThreshold: nil,
+            defaultUnitId: material.unitId))
+        modelContext.insert(family.toModel())
+
+        // Options + values; keep the ordered value ids per axis for the cartesian walk.
+        var valueIdsPerAxis: [[String]] = []
+        for (axisIndex, axis) in axes.enumerated() {
+            let option = try await catalogRepo.createOption(CreateCatalogOptionDTO(
+                catalogItemId: family.id, name: axis.name, sortOrder: axisIndex))
+            modelContext.insert(option.toModel())
+            var valueIds: [String] = []
+            for (valueIndex, value) in axis.values.enumerated() {
+                let optionValue = try await catalogRepo.createOptionValue(CreateCatalogOptionValueDTO(
+                    optionId: option.id, value: value, sortOrder: valueIndex))
+                modelContext.insert(optionValue.toModel())
+                valueIds.append(optionValue.id)
+            }
+            valueIdsPerAxis.append(valueIds)
+        }
+
+        // Cartesian product of option-value ids (axis-1 outer): 12 × 2 → 24 variants.
+        let combos = valueIdsPerAxis.reduce([[]] as [[String]]) { acc, ids in
+            acc.flatMap { row in ids.map { row + [$0] } }
+        }
+
+        var firstVariantId: String?
+        for combo in combos {
+            let variant = try await catalogRepo.createVariant(CreateCatalogVariantDTO(
+                companyId: companyId, catalogItemId: family.id, sku: nil, quantity: 0,
+                priceOverride: nil, unitCostOverride: nil,
+                warningThreshold: nil, criticalThreshold: nil, unitId: material.unitId))
+            modelContext.insert(variant.toModel())
+            for optionValueId in combo {
+                try await catalogRepo.createVariantOptionValue(variantId: variant.id, optionValueId: optionValueId)
+                let link = CatalogVariantOptionValue(variantId: variant.id, optionValueId: optionValueId)
+                link.lastSyncedAt = Date()
+                modelContext.insert(link)
+            }
+            if firstVariantId == nil { firstVariantId = variant.id }
+        }
+        guard let recipeVariantId = firstVariantId else { return }
+
+        _ = try await richnessRepo.createMaterial(CreateProductMaterialDTO(
+            productId: package.id, catalogVariantId: recipeVariantId, catalogItemId: nil,
+            variantSelector: nil, quantityPerUnit: qty,
+            scaledByOptionId: nil, unitId: material.unitId, notes: nil))
+    }
+
     // MARK: - Money + margin helpers (mirror GuidedProductSetupFlow)
 
     func parseMoney(_ raw: String) -> Double? {
@@ -358,6 +556,43 @@ final class GuidedCatalogSetupModel: ObservableObject {
         formatter.numberStyle = .currency
         formatter.maximumFractionDigits = value.rounded() == value ? 0 : 2
         return formatter.string(from: NSNumber(value: value)) ?? "$0"
+    }
+
+    // MARK: - Tier derivation (option-priced lines; pure, testable)
+
+    /// The exact shape `saveTieredProductLine` writes: a base price, a default tier,
+    /// ordered option values, and one `add_flat` delta per non-default tier. Derived
+    /// purely from the draft so it is unit-testable without the network. Base is the
+    /// lowest tier so deltas are ≥ 0 and the picker headline reads as the floor price.
+    struct TierSpec: Equatable {
+        struct Value: Equatable { let label: String; let sortOrder: Int }
+        struct Modifier: Equatable { let label: String; let delta: Double }
+        let axisName: String
+        let basePrice: Double
+        let defaultLabel: String
+        let values: [Value]
+        let modifiers: [Modifier]
+
+        /// nil when fewer than 2 tiers parse to a price (caller degrades to a flat line).
+        static func derive(from tiers: ProductLineTiers,
+                           parseMoney: (String) -> Double?) -> TierSpec? {
+            let clean: [(label: String, price: Double)] = tiers.rows.compactMap { row in
+                let label = row.label.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !label.isEmpty, let price = parseMoney(row.priceText) else { return nil }
+                return (label, price)
+            }
+            guard clean.count >= 2 else { return nil }
+            let base = clean.map(\.price).min()!
+            let defaultLabel = clean.first { $0.price == base }!.label
+            let values = clean.enumerated().map { Value(label: $1.label, sortOrder: $0) }
+            let modifiers = clean
+                .filter { $0.label != defaultLabel && $0.price != base }
+                .map { Modifier(label: $0.label, delta: $0.price - base) }
+            let axis = tiers.axisName.trimmingCharacters(in: .whitespacesAndNewlines)
+            return TierSpec(axisName: axis.isEmpty ? "Option" : axis,
+                            basePrice: base, defaultLabel: defaultLabel,
+                            values: values, modifiers: modifiers)
+        }
     }
 
     // MARK: - Default unit seeding (cold-start companies have none)

@@ -21,7 +21,6 @@ struct TrashView: View {
 
     @State private var segment: TrashSegment = .projects
     @State private var errorMessage: String?
-    @State private var showError = false
     @State private var restoringId: String? = nil
 
     enum TrashSegment: String, CaseIterable, Hashable {
@@ -82,11 +81,7 @@ struct TrashView: View {
             }
         }
         .trackScreen("Settings.Trash")
-        .alert("Restore Failed", isPresented: $showError) {
-            Button("OK") { }
-        } message: {
-            Text(errorMessage ?? "Could not restore that item. Try again.")
-        }
+        .errorToast($errorMessage, label: Feedback.Err.restoreFailed)
     }
 
     // MARK: - Segmented Picker
@@ -314,7 +309,6 @@ struct TrashView: View {
         } catch {
             await MainActor.run {
                 errorMessage = "Could not restore project: \(error.localizedDescription)"
-                showError = true
             }
         }
     }
@@ -328,7 +322,6 @@ struct TrashView: View {
         } catch {
             await MainActor.run {
                 errorMessage = "Could not restore client: \(error.localizedDescription)"
-                showError = true
             }
         }
     }
@@ -342,7 +335,6 @@ struct TrashView: View {
         } catch {
             await MainActor.run {
                 errorMessage = "Could not restore task: \(error.localizedDescription)"
-                showError = true
             }
         }
     }

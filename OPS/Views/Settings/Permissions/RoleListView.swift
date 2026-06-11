@@ -372,6 +372,12 @@ struct RoleListView: View {
                     showingRoleForm = false
                     loadRoles()
 
+                    switch roleFormMode {
+                    case .create:
+                        ToastCenter.shared.present(Feedback.Settings.roleCreated)
+                    case .rename:
+                        ToastCenter.shared.present(Feedback.Settings.roleRenamed)
+                    }
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                 }
             } catch {
@@ -397,6 +403,7 @@ struct RoleListView: View {
 
                 await MainActor.run {
                     loadRoles()
+                    ToastCenter.shared.present(Feedback.Settings.roleDuplicated)
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
 
                     // Open the new role for editing
@@ -422,6 +429,7 @@ struct RoleListView: View {
                     isDeleting = false
                     roleToDelete = nil
                     loadRoles()
+                    ToastCenter.shared.present(Feedback.Settings.roleDeleted)
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                 }
             } catch {

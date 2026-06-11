@@ -18,8 +18,7 @@ struct WhatsNewView: View {
     // Vote state
     @State private var votingFeatures: Set<String> = []
     @State private var votedFeatures: Set<String> = []
-    @State private var showVoteError = false
-    @State private var voteErrorMessage = ""
+    @State private var voteError: String? = nil
 
     // Beta access state
     @State private var requestedItemIds: Set<String> = []
@@ -27,8 +26,7 @@ struct WhatsNewView: View {
     @State private var showCompanySheet = false
     @State private var pendingRequestItemId: String?
     @State private var showRequestConfirm = false
-    @State private var showRequestError = false
-    @State private var requestErrorMessage = ""
+    @State private var requestError: String? = nil
 
     private let repository = WhatsNewRepository()
 
@@ -156,11 +154,8 @@ struct WhatsNewView: View {
         }
         .navigationBarBackButtonHidden(true)
         .enableNativeSwipeBack()
-        .alert("Error", isPresented: $showVoteError) {
-            Button("OK") { }
-        } message: {
-            Text(voteErrorMessage)
-        }
+        .errorToast($voteError, label: Feedback.Err.voteFailed)
+        .errorToast($requestError, label: Feedback.Err.requestFailed)
         .alert("Request Beta Access", isPresented: $showRequestConfirm) {
             Button("Cancel", role: .cancel) { pendingRequestItemId = nil }
             Button("Request Access") {
@@ -175,11 +170,6 @@ struct WhatsNewView: View {
             } else {
                 Text("Request beta access to this feature?")
             }
-        }
-        .alert("Error", isPresented: $showRequestError) {
-            Button("OK") { }
-        } message: {
-            Text(requestErrorMessage)
         }
         .sheet(isPresented: $showCompanySheet) {
             if let company = dataController.getCurrentUserCompany() {
@@ -277,12 +267,12 @@ struct WhatsNewView: View {
                     votingFeatures.remove(item.title)
                     votedFeatures.insert(item.title)
                     UserDefaults.standard.set(Array(votedFeatures), forKey: "votedFeatures")
+                    ToastCenter.shared.present(Feedback.Settings.voteCounted)
                 }
             } catch {
                 await MainActor.run {
                     votingFeatures.remove(item.title)
-                    voteErrorMessage = "Failed to submit vote. Please try again."
-                    showVoteError = true
+                    voteError = "Failed to submit vote."
                 }
             }
         }
@@ -339,12 +329,12 @@ struct WhatsNewView: View {
                     UserDefaults.standard.set(Array(requestedItemIds), forKey: "betaRequestedItemIds")
                     requestingItemId = nil
                     pendingRequestItemId = nil
+                    ToastCenter.shared.present(Feedback.Settings.betaRequestSent)
                 }
             } catch {
                 await MainActor.run {
                     requestingItemId = nil
-                    requestErrorMessage = "Failed to submit request. Please try again."
-                    showRequestError = true
+                    requestError = "Failed to submit request."
                 }
             }
         }

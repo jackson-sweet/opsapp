@@ -144,6 +144,20 @@ enum Feedback {
         static let subUpdated    = Toast(label: "// SUB-TASK UPDATED", tone: .success)
         static let subDeleted    = Toast(label: "// SUB-TASK DELETED", tone: .success)
         static let productAttached = Toast(label: "// PRODUCT ATTACHED", tone: .success)
+
+        // Parameterized variants — preserve glanceable context in the review /
+        // calendar flows where the operator needs to see WHICH task / WHAT dates.
+        static func completedTask(_ name: String) -> Toast { Toast(label: "// COMPLETED — \(name.uppercased())", tone: .success) }
+        static func alreadyComplete(_ name: String) -> Toast { Toast(label: "// ALREADY COMPLETE — \(name.uppercased())", tone: .success) }
+        static func scheduledFor(start: Date, end: Date) -> Toast {
+            let f = DateFormatter()
+            f.dateFormat = "EEE MMM d"
+            let s = f.string(from: start).uppercased()
+            let range = Calendar.current.isDate(start, inSameDayAs: end)
+                ? "FOR \(s)"
+                : "FOR \(s) – \(f.string(from: end).uppercased())"
+            return Toast(label: "// SCHEDULED \(range)", tone: .success)
+        }
     }
 
     // MARK: - Catalog
@@ -234,7 +248,7 @@ enum Feedback {
 
     enum Contact {
         static let subSaved   = Toast(label: "// CONTACT SAVED", tone: .success)
-        static let subDeleted = Toast(label: "// CONTACT DELETED", tone: .warning)
+        static let subDeleted = Toast(label: "// CONTACT DELETED", tone: .success)
         static let fieldUpdated = Toast(label: "// UPDATED", tone: .success)
         static let roleUpdated  = Toast(label: "// ROLE UPDATED", tone: .success)
     }
@@ -279,7 +293,7 @@ enum Feedback {
         static let edgesMoved      = Toast(label: "// EDGES MOVED", tone: .success)
         static let levelCreatedSurfaces = Toast(label: "// LEVEL ADDED — SURFACES MOVED", tone: .success)
         static let levelCreatedEdges = Toast(label: "// LEVEL ADDED — EDGES MOVED", tone: .success)
-        static let arWalkSaved     = Toast(label: "// AR WALK SAVED", tone: .warning)
+        static let arWalkSaved     = Toast(label: "// AR WALK SAVED", tone: .success)
     }
 
     // MARK: - Measurement (LiDAR)
@@ -326,6 +340,8 @@ enum Feedback {
         JobBoard.noTasksToReschedule(createTask: {}),
         Task.created, Task.deleted, Task.completed, Task.cancelled, Task.rescheduled, Task.scheduled, Task.datesCleared,
         Task.statusUpdated, Task.teamUpdated, Task.subCreated, Task.subUpdated, Task.subDeleted, Task.productAttached,
+        Task.completedTask("x"), Task.alreadyComplete("x"),
+        Task.scheduledFor(start: Date(timeIntervalSince1970: 0), end: Date(timeIntervalSince1970: 0)),
         Catalog.optionMoved, Catalog.optionRemoved, Catalog.optionSaved, Catalog.priceRuleSaved, Catalog.priceRuleRemoved,
         Catalog.orderUpdated, Catalog.orderStatusChanged, Catalog.orderCancelled, Catalog.itemUpdated, Catalog.itemRemoved,
         Catalog.draftDeleted, Catalog.materialRemoved, Catalog.inventoryModeUpdated, Catalog.inventoryTrackingOff,

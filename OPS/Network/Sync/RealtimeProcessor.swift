@@ -908,10 +908,10 @@ final class RealtimeProcessor: ObservableObject {
 
         if let existing = try context.fetch(descriptor).first {
             if !pendingFields.contains("status")                { existing.status = model.status }
-            if !pendingFields.contains("taskNotes")             { existing.taskNotes = model.taskNotes }
-            if !pendingFields.contains("customTitle")           { existing.customTitle = model.customTitle }
-            if !pendingFields.contains("taskColor")             { existing.taskColor = model.taskColor }
-            if !pendingFields.contains("taskTypeId") {
+            if !pendingFields.contains("task_notes")             { existing.taskNotes = model.taskNotes }
+            if !pendingFields.contains("custom_title")           { existing.customTitle = model.customTitle }
+            if !pendingFields.contains("task_color")             { existing.taskColor = model.taskColor }
+            if !pendingFields.contains("task_type_id") {
                 existing.taskTypeId = model.taskTypeId
                 // Rewire TaskType `@Relationship` to match the new id so UI
                 // (badge color, display name) updates immediately. Realtime
@@ -928,11 +928,16 @@ final class RealtimeProcessor: ObservableObject {
                     existing.taskType = nil
                 }
             }
-            if !pendingFields.contains("startDate")             { existing.startDate = model.startDate }
-            if !pendingFields.contains("endDate")               { existing.endDate = model.endDate }
+            if !pendingFields.contains("start_date")             { existing.startDate = model.startDate }
+            if !pendingFields.contains("end_date")               { existing.endDate = model.endDate }
+            // Time-of-day gates were absent here, so a realtime echo could clobber
+            // a pending TimelineView drag-to-retime edit. The realtime model carries
+            // startTime/endTime from the DTO (toModel), so gate them on the wire names.
+            if !pendingFields.contains("start_time")             { existing.startTime = model.startTime }
+            if !pendingFields.contains("end_time")               { existing.endTime = model.endTime }
             if !pendingFields.contains("duration")              { existing.duration = model.duration }
-            if !pendingFields.contains("displayOrder")          { existing.displayOrder = model.displayOrder }
-            if !pendingFields.contains("teamMemberIdsString") {
+            if !pendingFields.contains("display_order")          { existing.displayOrder = model.displayOrder }
+            if !pendingFields.contains("team_member_ids") {
                 existing.teamMemberIdsString = model.teamMemberIdsString
                 // Rewire `teamMembers: [User]` to match the new id string. See
                 // equivalent block in DataActor.mergeTask for rationale — this
@@ -949,9 +954,9 @@ final class RealtimeProcessor: ObservableObject {
                     }
                 }
             }
-            if !pendingFields.contains("sourceLineItemId")      { existing.sourceLineItemId = model.sourceLineItemId }
-            if !pendingFields.contains("sourceEstimateId")      { existing.sourceEstimateId = model.sourceEstimateId }
-            if !pendingFields.contains("deletedAt")             { existing.deletedAt = model.deletedAt }
+            if !pendingFields.contains("source_line_item_id")      { existing.sourceLineItemId = model.sourceLineItemId }
+            if !pendingFields.contains("source_estimate_id")      { existing.sourceEstimateId = model.sourceEstimateId }
+            if !pendingFields.contains("deleted_at")             { existing.deletedAt = model.deletedAt }
             existing.lastSyncedAt = Date()
             let pendingFieldsForSync = pendingFieldsForEntity(entityType: .projectTask, entityId: existing.id, context: context)
             if pendingFieldsForSync.isEmpty {

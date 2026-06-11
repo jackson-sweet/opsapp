@@ -56,7 +56,7 @@ struct CategoryGroupSection: View {
             Button {
                 onOpenDetail(row)
             } label: {
-                Label("Open Full Detail", systemImage: "arrow.up.right.square")
+                Label("OPEN FULL DETAIL", systemImage: "arrow.up.right.square")
             }
         }
     }

@@ -53,7 +53,7 @@ struct LeadsTabView: View {
     @StateObject private var viewModel: PipelineViewModel
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
-    @Binding private var deepLinkedLeadId: String?
+    @EnvironmentObject private var appState: AppState
 
     @State private var selectedBucket: PipelineViewModel.TriageBucket?
     @State private var detailLead: Opportunity?
@@ -61,9 +61,12 @@ struct LeadsTabView: View {
     @State private var moreForLead: Opportunity?
     @State private var footerStage: PipelineStage?
 
-    init(viewModel: PipelineViewModel? = nil, deepLinkedLeadId: Binding<String?> = .constant(nil)) {
+    /// Guards the deep-link drain so a single tap resolves once even if both
+    /// the `.task` load and the `pendingLeadDeepLinkId` change fire.
+    @State private var isResolvingDeepLink = false
+
+    init(viewModel: PipelineViewModel? = nil) {
         _viewModel = StateObject(wrappedValue: viewModel ?? PipelineViewModel())
-        _deepLinkedLeadId = deepLinkedLeadId
     }
 
     private var buckets: PipelineViewModel.TriageBuckets { viewModel.triageBuckets }
@@ -199,11 +202,16 @@ struct LeadsTabView: View {
             if let companyId = dataController.currentUser?.companyId {
                 viewModel.setup(companyId: companyId, currentUserId: dataController.currentUser?.id)
                 await viewModel.loadData()
-                await openPendingDeepLinkedLeadIfNeeded()
             }
+            // Drain a pending lead deep link once the pipeline data is in hand.
+            await resolvePendingLeadDeepLinkIfNeeded()
         }
-        .onChange(of: deepLinkedLeadId) { _, _ in
-            Task { await openPendingDeepLinkedLeadIfNeeded() }
+        // A deep link can arrive AFTER the tab has already loaded (rail tap from
+        // another tab, second push while LEADS is foregrounded). Drain on change
+        // too so those land without requiring a reload.
+        .onChange(of: appState.pendingLeadDeepLinkId) { _, newValue in
+            guard newValue != nil else { return }
+            Task { await resolvePendingLeadDeepLinkIfNeeded() }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadCreatedSuccess"))) { _ in
             Task { await viewModel.loadData() }
@@ -232,45 +240,6 @@ struct LeadsTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadDeletedSuccess"))) { _ in
             Task { await viewModel.loadData() }
         }
-    }
-
-    @MainActor
-    private func openPendingDeepLinkedLeadIfNeeded() async {
-        guard let leadId = deepLinkedLeadId, !leadId.isEmpty else { return }
-        guard dataController.currentUser?.companyId != nil else { return }
-
-        var lead = viewModel.allOpportunities.first {
-            $0.id == leadId && !$0.isDeleted && !$0.isArchived
-        }
-        if lead == nil {
-            await viewModel.loadData()
-            lead = viewModel.allOpportunities.first {
-                $0.id == leadId && !$0.isDeleted && !$0.isArchived
-            }
-        }
-
-        guard let lead else {
-            deepLinkedLeadId = nil
-            DeepLinkCoordinator.shared.clear()
-            NotificationCenter.default.post(
-                name: Notification.Name("ShowAccessDenied"),
-                object: nil,
-                userInfo: ["message": "This lead is no longer available."]
-            )
-            return
-        }
-
-        detailLead = lead
-        deepLinkedLeadId = nil
-        DeepLinkCoordinator.shared.clear()
-        AnalyticsService.shared.track(
-            eventType: .action,
-            eventName: "deep_link_resolved",
-            properties: [
-                "entity": "leads",
-                "id": leadId
-            ]
-        )
     }
 
     // MARK: - Top rows
@@ -432,6 +401,70 @@ struct LeadsTabView: View {
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
+    }
+
+    // MARK: - Deep link
+
+    /// Resolve `appState.pendingLeadDeepLinkId` to an `Opportunity` and present
+    /// its `LeadDetailView`. Looks in the already-loaded pipeline first; if the
+    /// lead isn't present locally (sync lag, or a lead just outside the current
+    /// fetch window) it fetches the single row directly. The id is always
+    /// cleared so a stale baton can't re-fire. When the lead can't be resolved
+    /// (deleted, or not in this company) we surface the access-denied rail
+    /// rather than stranding the operator on a silent no-op.
+    @MainActor
+    private func resolvePendingLeadDeepLinkIfNeeded() async {
+        guard let leadId = appState.pendingLeadDeepLinkId, !leadId.isEmpty else { return }
+        guard !isResolvingDeepLink else { return }
+        isResolvingDeepLink = true
+        // Clear immediately so a re-entrant change or a later tab appear can't
+        // double-open the same lead.
+        appState.pendingLeadDeepLinkId = nil
+        defer { isResolvingDeepLink = false }
+
+        // Already in hand?
+        if let lead = viewModel.allOpportunities.first(where: { $0.id == leadId }) {
+            presentDeepLinkedLead(lead)
+            return
+        }
+
+        // Not loaded locally — fetch the single opportunity directly. Mirrors
+        // the project/task deep-link handlers in MainTabView that hydrate a
+        // single record on a cold tap rather than forcing a full reload.
+        guard let companyId = dataController.currentUser?.companyId else {
+            appState.presentAccessDenied(message: "This lead is no longer available.")
+            return
+        }
+        let repo = OpportunityRepository(companyId: companyId)
+        do {
+            let dto = try await repo.fetchOne(leadId)
+            let lead = dto.toModel()
+            // A soft-deleted lead is no longer actionable; treat as unavailable.
+            guard !lead.isDeleted else {
+                appState.presentAccessDenied(message: "This lead is no longer available.")
+                return
+            }
+            presentDeepLinkedLead(lead)
+        } catch {
+            print("[Pipeline] Deep-linked lead \(leadId) not resolvable: \(error)")
+            appState.presentAccessDenied(message: "This lead is no longer available.")
+        }
+    }
+
+    /// Present the resolved lead. Light impact mirrors the in-list row-tap
+    /// arrival; if a detail is already up for a different lead we swap after a
+    /// beat so the navigation push doesn't race the prior one.
+    @MainActor
+    private func presentDeepLinkedLead(_ lead: Opportunity) {
+        if let current = detailLead, current.id != lead.id {
+            detailLead = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                detailLead = lead
+            }
+        } else {
+            detailLead = lead
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     // MARK: - Helpers

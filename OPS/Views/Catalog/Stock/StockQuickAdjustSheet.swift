@@ -204,7 +204,7 @@ struct StockQuickAdjustSheet: View {
 
     private var exactQuantityControl: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-            CatalogFieldLabel("Set count")
+            CatalogFieldLabel("SET COUNT")
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 TextField(quantityText, text: $exactQuantityText)
                     .keyboardType(.decimalPad)
@@ -230,7 +230,7 @@ struct StockQuickAdjustSheet: View {
 
     private var customDeltaControl: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-            CatalogFieldLabel("Custom adjustment")
+            CatalogFieldLabel("CUSTOM")
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 TextField("37", text: $customDeltaText)
                     .keyboardType(.decimalPad)
@@ -353,4 +353,3 @@ struct StockQuickAdjustSheet: View {
         }
     }
 }
-

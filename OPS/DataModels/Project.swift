@@ -428,10 +428,19 @@ final class Project: Identifiable {
     }
     
     // MARK: - Task-Based Scheduling Support
-    
+
     /// Check if project has tasks
     var hasTasks: Bool {
         return !tasks.isEmpty
+    }
+
+    /// Tasks that must be completed before this project can be marked complete.
+    /// Excludes terminal (completed/cancelled) and soft-deleted tasks.
+    /// Single source of truth for the project completion gate — both
+    /// `AppState.requestProjectCompletion` and `TaskCompletionChecklistSheet`
+    /// read from this so the gate and the checklist never diverge.
+    var tasksBlockingCompletion: [ProjectTask] {
+        tasks.filter { !$0.status.isTerminal && $0.deletedAt == nil }
     }
     
     /// Get computed status based on task statuses

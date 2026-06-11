@@ -762,13 +762,10 @@ struct ProjectFormSheet: View {
                     tutorialHighlightPulse = true
                 }
             }
-            // Bug 2daf95f2 — preload full `User` records for the inline
-            // task-row team picker. The lightweight `[TeamMember]` `@Query`
-            // is fine for counts, but `TeamMemberPickerSheet` wants `[User]`
-            // so avatars resolve correctly.
-            if let companyId = dataController.currentUser?.companyId {
-                fetchedTeamUsers = dataController.getTeamMembers(companyId: companyId)
-            }
+            // Bug 685e1d0e — the inline task-row team picker now preloads its
+            // full `User` records from a single `.onAppear` on the shared
+            // `mainProjectContent`, so it populates in standard mode too. The
+            // fetch is no longer duplicated here.
         }
         .onChange(of: tutorialPhase) { _, newPhase in
             // Only auto-focus on phase change to project name (after client selection)
@@ -806,8 +803,14 @@ struct ProjectFormSheet: View {
             }
         }
         .sheet(isPresented: $showingTaskForm) {
+            // Bug 0d14aab0 — open an existing row via `.editDraft` (not
+            // `.draft`) so TaskFormSheet's save preserves the task's
+            // customTitle and stable id through the round-trip. Under `.draft`
+            // the saved LocalTask was rebuilt with customTitle = nil, which
+            // made reconcileTasks push `custom_title = null` and erase the
+            // title locally and on Supabase. The add-new path keeps `.draft(nil)`.
             TaskFormSheet(draftMode: editingTaskIndex != nil ?
-                .draft(localTasks[editingTaskIndex!]) :
+                .editDraft(localTasks[editingTaskIndex!]) :
                 .draft(nil)
             ) { savedTask in
                 if let editIndex = editingTaskIndex {
@@ -1076,6 +1079,17 @@ struct ProjectFormSheet: View {
                 },
                 onDismiss: nil
             )
+        }
+        // Bug 685e1d0e — preload full `User` records for the inline task-row
+        // team picker here, on the SHARED content, so the picker populates in
+        // BOTH standard and tutorial modes. Previously the only fetch lived on
+        // the tutorial-only `.onAppear`, leaving the standard-mode picker an
+        // empty list. mainProjectContent is embedded by both mode containers,
+        // so this single onAppear covers every path.
+        .onAppear {
+            if let companyId = dataController.currentUser?.companyId {
+                fetchedTeamUsers = dataController.getTeamMembers(companyId: companyId)
+            }
         }
     }
 
@@ -1771,15 +1785,34 @@ struct ProjectFormSheet: View {
     /// form. Tapping launches CreationPickerView; the resulting DeckDesign is
     /// stashed in capturedDeckDesign and re-parented to the real project id
     /// after save.
+    ///
+    /// Bug 26123ca0 — once a draft is attached the row's primary tap now
+    /// REOPENS the existing draft in the deck builder (state preserved via the
+    /// shared `showingDeckBuilderForCapture` cover) instead of always launching
+    /// the replace picker. The attached state exposes three actions: primary
+    /// tap = Edit, a dedicated Replace control, and the xmark = Remove. Edit is
+    /// gated on `deck_builder.edit` (assigned scope), mirroring DeckTabView; a
+    /// view-only operator's primary tap is a no-op while Replace/Remove remain.
     private var deckDesignField: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let canEditDeck = PermissionStore.shared.can("deck_builder.edit", requiredScope: "assigned")
+        return VStack(alignment: .leading, spacing: 12) {
             Text("DECK DESIGN")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             Button(action: {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                showingDeckCreationPicker = true
+                if let draft = capturedDeckDesign {
+                    // Attached: reopen the existing draft for editing (state
+                    // preserved). No-op when the operator lacks edit — Replace
+                    // remains available via its own control.
+                    guard canEditDeck else { return }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showingDeckBuilderForCapture = draft
+                } else {
+                    // Empty: record a new design from scratch.
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showingDeckCreationPicker = true
+                }
             }) {
                 HStack(spacing: 12) {
                     Image(systemName: capturedDeckDesign == nil ? "ruler" : "checkmark.circle.fill")
@@ -1790,9 +1823,7 @@ struct ProjectFormSheet: View {
                         Text(capturedDeckDesign == nil ? "Record Deck Design" : "Deck Design Attached")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                        Text(capturedDeckDesign == nil
-                             ? "Optional — capture now or add later"
-                             : "Tap to replace")
+                        Text(deckDesignFieldSubtext(canEditDeck: canEditDeck))
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -1800,16 +1831,33 @@ struct ProjectFormSheet: View {
                     Spacer()
 
                     if capturedDeckDesign != nil {
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            capturedDeckDesign = nil
-                        } label: {
-                            Image(systemName: OPSStyle.Icons.xmark)
-                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                .padding(8)
+                        HStack(spacing: 4) {
+                            // Replace — re-records a new design from scratch.
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                showingDeckCreationPicker = true
+                            } label: {
+                                Image(systemName: OPSStyle.Icons.sync)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .accessibilityLabel("Replace design")
+
+                            // Remove — clears the attachment.
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                capturedDeckDesign = nil
+                            } label: {
+                                Image(systemName: OPSStyle.Icons.xmark)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .accessibilityLabel("Remove design")
                         }
-                        .buttonStyle(PlainButtonStyle())
                     } else {
                         Image(systemName: "chevron.right")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
@@ -1828,6 +1876,16 @@ struct ProjectFormSheet: View {
             }
             .buttonStyle(PlainButtonStyle())
         }
+    }
+
+    /// Bug 26123ca0 — attached-state subtext. When edit is granted the primary
+    /// tap reopens the draft, so the row reads "Tap to edit"; a view-only
+    /// operator can only Replace, so it reads "Tap Replace to start over".
+    private func deckDesignFieldSubtext(canEditDeck: Bool) -> String {
+        if capturedDeckDesign == nil {
+            return "Optional — capture now or add later"
+        }
+        return canEditDeck ? "Tap to edit" : "Tap Replace to start over"
     }
 
     private var descriptionSection: some View {

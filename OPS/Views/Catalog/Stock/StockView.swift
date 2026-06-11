@@ -337,7 +337,11 @@ struct StockView: View {
                 row: row,
                 onOpenFullDetail: {
                     quickAdjustRow = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    // Let the quick-adjust sheet finish dismissing before the
+                    // full detail sheet presents. Page-transition duration from
+                    // the design system keeps the hand-off clean rather than
+                    // racing two sheet animations.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + OPSStyle.Animation.durationPage) {
                         detailRow = row
                     }
                 }

@@ -37,12 +37,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
             }
         }
 
-        // Shake is repurposed app-wide for bug reporting (see ShakeDetection.swift).
-        // Disable the system shake-to-undo so a shake while a text field is the
-        // first responder still propagates up to UIWindow.motionEnded instead of
-        // being intercepted by the undo/redo dialog.
-        application.applicationSupportsShakeToEdit = false
-
         // Configure Firebase (must be first)
         FirebaseApp.configure()
 
@@ -109,7 +103,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
 
         print("[ONESIGNAL] Type: \(notificationType ?? "unknown")")
         print("[ONESIGNAL] Project: \(projectId ?? "none"), Task: \(taskId ?? "none")")
-        print("[ONESIGNAL] Lead: \(leadId ?? "none")")
         print("[ONESIGNAL] Client: \(clientId ?? "none"), Invoice: \(invoiceId ?? "none"), Estimate: \(estimateId ?? "none")")
         print("[ONESIGNAL] Screen: \(screen ?? "none")")
 
@@ -169,6 +162,17 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 )
                 return
             }
+            // A lead/opportunity id short-circuits the screen/type routing —
+            // MainTabView's OpenLeadDetails handler enforces pipeline.view and
+            // the LEADS-tab swap.
+            if let leadId = leadId {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenLeadDetails"),
+                    object: nil,
+                    userInfo: ["leadId": leadId]
+                )
+                return
+            }
 
             if let screen = screen {
                 self.routeToScreen(screen, projectId: projectId, taskId: taskId, leadId: leadId)
@@ -176,8 +180,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 self.routeByType(type, projectId: projectId, taskId: taskId, leadId: leadId)
             } else if let projectId = projectId {
                 self.openProjectViaCoordinator(projectId)
-            } else if let leadId = leadId {
-                self.openLeadViaCoordinator(leadId)
             }
         }
     }
@@ -304,6 +306,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         switch entity {
         case "projects", "clients", "invoices", "estimates", "leads", "opportunities":
             // Hand to the coordinator — stash + post + analytics happen there.
+            // `leads`/`opportunities` both resolve to OpenLeadDetails (leadId).
             Task { @MainActor in
                 DeepLinkCoordinator.shared.receive(entity: entity, id: id, scheme: "ops")
             }
@@ -448,11 +451,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
             routeToScreen(screen, projectId: projectId, taskId: taskId, leadId: leadId)
         } else if let type = notificationType {
             routeByType(type, projectId: projectId, taskId: taskId, leadId: leadId)
+        } else if let leadId = leadId {
+            // A bare lead/opportunity id with no screen/type still routes.
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenLeadDetails"),
+                object: nil,
+                userInfo: ["leadId": leadId]
+            )
         } else if let projectId = projectId {
             // Default: open project details if projectId is provided
             openProjectViaCoordinator(projectId)
-        } else if let leadId = leadId {
-            openLeadViaCoordinator(leadId)
         }
     }
 
@@ -467,12 +475,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
     private func openProjectViaCoordinator(_ projectId: String) {
         Task { @MainActor in
             DeepLinkCoordinator.shared.receive(entity: "projects", id: projectId, scheme: "push")
-        }
-    }
-
-    private func openLeadViaCoordinator(_ leadId: String) {
-        Task { @MainActor in
-            DeepLinkCoordinator.shared.receive(entity: "leads", id: leadId, scheme: "push")
         }
     }
 
@@ -503,15 +505,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 object: nil,
                 userInfo: [:]
             )
-        case "lead", "leads", "opportunity", "opportunities", "pipeline":
-            if let leadId {
-                openLeadViaCoordinator(leadId)
-            }
         case "projectNotes":
             // Deep link to project details (notes tab) when a mention notification is tapped
             if let projectId = projectId {
                 openProjectViaCoordinator(projectId)
             }
+        case "pipeline", "leads", "leadDetails", "opportunity", "opportunities":
+            // With a lead id, open the matching detail; without one, just land
+            // the operator on the LEADS tab (OpenLeadDetails with no id is a
+            // no-op, so fall back to the Job Board for a non-dead tap).
+            routeToLeadOrJobBoard(leadId: leadId)
         case "subscription", "planSelection":
             NotificationCenter.default.post(
                 name: Notification.Name("OpenSubscription"),
@@ -523,9 +526,28 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         }
     }
 
+    /// Open a lead detail when an id is present, otherwise the Job Board — never
+    /// a dead tap. MainTabView's OpenLeadDetails handler enforces pipeline.view.
+    private func routeToLeadOrJobBoard(leadId: String?) {
+        if let leadId = leadId, !leadId.isEmpty {
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenLeadDetails"),
+                object: nil,
+                userInfo: ["leadId": leadId]
+            )
+        } else {
+            NotificationCenter.default.post(name: Notification.Name("OpenJobBoard"), object: nil)
+        }
+    }
+
     /// Route based on notification type
     private func routeByType(_ type: String, projectId: String?, taskId: String?, leadId: String?) {
         switch type {
+        case "leads_waiting", "pipeline_complete",
+             "lead", "leads", "opportunity", "opportunities",
+             "lead_created", "lead_updated", "lead_follow_up_due",
+             "opportunity_created", "opportunity_updated", "opportunity_follow_up_due":
+            routeToLeadOrJobBoard(leadId: leadId)
         case "assignment", "update", "completion", "projectCompletion", "taskCompletion":
             if let projectId = projectId {
                 openProjectViaCoordinator(projectId)
@@ -578,12 +600,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 name: Notification.Name("NavigateToMap"),
                 object: nil
             )
-        case "lead", "leads", "opportunity", "opportunities",
-             "lead_created", "lead_updated", "lead_follow_up_due",
-             "opportunity_created", "opportunity_updated", "opportunity_follow_up_due":
-            if let leadId {
-                openLeadViaCoordinator(leadId)
-            }
         case "role_assigned":
             NotificationCenter.default.post(
                 name: Notification.Name("OpenSettings"),

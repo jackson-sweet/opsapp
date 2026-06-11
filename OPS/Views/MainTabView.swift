@@ -37,7 +37,6 @@ struct MainTabView: View {
     /// fetched from the server (cold-cache case). Dismissed when resolution
     /// completes (success, denial, or offline bail).
     @State private var showDeepLinkLoading = false
-    @State private var pendingLeadDeepLinkId: String?
 
     /// In-flight project deep-link resolution Task. Cancelled when a newer
     /// link arrives so concurrent taps can't double-present.
@@ -104,6 +103,11 @@ struct MainTabView: View {
     private let openEstimateDetailsObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenEstimateDetails"))
 
+    // Lead/opportunity deep link (notification rail tap, OneSignal onClick,
+    // and the UNUserNotificationCenter push tap path all post this). Gated on
+    // the granular `pipeline.view` permission + `pipeline` feature via
+    // `hasLeadsAccess`; the handler switches to the LEADS tab and hands the
+    // opportunity id to LeadsTabView through the AppState baton.
     private let openLeadDetailsObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenLeadDetails"))
 
@@ -376,7 +380,7 @@ struct MainTabView: View {
         if selectedTab == 0 {
             HomeView()
         } else if selectedTab == leadsTabIndex {
-            LeadsTabView(deepLinkedLeadId: $pendingLeadDeepLinkId)
+            LeadsTabView()
         } else if selectedTab == booksTabIndex {
             if let destination = booksAutoSkipDestination {
                 destination
@@ -704,16 +708,30 @@ struct MainTabView: View {
             }
         }
 
-        // Handle opening lead details from notification rail / universal link / custom URL.
+        // Handle opening a lead/opportunity detail from a notification tap.
+        // Permission posture: the LEADS tab is gated on the granular
+        // `pipeline.view` permission + `pipeline` feature (`hasLeadsAccess`).
+        // A user without access gets the access-denied rail rather than a dead
+        // tap or a hidden tab. With access we switch to the LEADS tab and stash
+        // the opportunity id in `appState.pendingLeadDeepLinkId`; LeadsTabView
+        // drains it on appear/load and presents the matching LeadDetailView —
+        // which survives the tab not being mounted at tap time (push cold
+        // launch, rail tap from another tab).
         .onReceive(openLeadDetailsObserver) { notification in
-            guard let leadId = notification.userInfo?["leadId"] as? String else { return }
-            guard hasLeadsAccess, let idx = leadsTabIndex else {
-                appState.presentAccessDenied(message: "This lead is no longer available.")
+            guard let leadId = notification.userInfo?["leadId"] as? String, !leadId.isEmpty else { return }
+            // When this link came from the DeepLinkCoordinator (cold-launch /
+            // PIN-unlock drain) it carries a deepLinkId — clear the stash so it
+            // can't re-fire on a later drain, mirroring the project path.
+            if notification.userInfo?[DeepLinkCoordinator.deepLinkIdUserInfoKey] != nil {
                 DeepLinkCoordinator.shared.clear()
+            }
+            guard hasLeadsAccess, let idx = leadsTabIndex else {
+                print("[PUSH_NAVIGATION] Lead \(leadId) tapped without pipeline access — access denied")
+                appState.presentAccessDenied(message: "This lead is no longer available.")
                 return
             }
-
-            pendingLeadDeepLinkId = leadId
+            print("[PUSH_NAVIGATION] Opening lead details for: \(leadId)")
+            appState.pendingLeadDeepLinkId = leadId
             withAnimation(OPSStyle.Animation.fast) {
                 selectedTab = idx
             }

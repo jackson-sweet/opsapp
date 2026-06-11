@@ -86,42 +86,158 @@ struct CatalogSetupNotificationRoute: Equatable {
     }
 }
 
+// MARK: - Lead / opportunity notification routing
+
+/// Pure-string resolver for lead/opportunity notification deep links. Knows
+/// every routing signal the web notification builder stamps on a lead row and
+/// extracts the opportunity id (or a thread id that must be resolved to one)
+/// without touching the network. Centralised here so the in-app rail, the
+/// OneSignal `onClick` path (AppDelegate) and the UNUserNotificationCenter tap
+/// path (NotificationManager) all reason about lead routing identically.
+///
+/// Production reality (verified against prod `notifications`, 257 rows):
+///   • 138 rows  — `deep_link_type` NULL, `action_url` `/inbox/<thread-uuid>`,
+///                 `dedupe_key` `lead_lifecycle:operator_follow_up_miss:<opp-uuid>`.
+///                 The opportunity id lives in the dedupe key, NOT the url.
+///   • 135 rows  — `action_url` `/inbox/<thread-uuid>` (email_threads.id → its
+///                 `opportunity_id`); the url tail is never an opportunity id.
+///   •  12 rows  — `action_url` `/pipeline?opportunityId=<opp-uuid>`.
+///   • remainder — destructive-candidate / settings rows with no live lead;
+///                 these correctly resolve to nil and fall back to Job Board.
+///
+/// Resolution is therefore ordered: explicit opportunity id (url) → lead id in
+/// the dedupe key → thread id (caller resolves via OpportunityRepository) → nil.
+enum LeadNotificationRoute: Equatable {
+    /// An opportunity id was recovered directly from the payload.
+    case opportunity(String)
+    /// Only an email-thread id is present; caller must resolve it to an
+    /// opportunity id via `OpportunityRepository.opportunityId(forEmailThreadId:)`.
+    case emailThread(String)
+}
+
 enum LeadNotificationRouteParser {
-    static func leadId(from urlString: String?) -> String? {
-        guard let urlString,
-              let comps = URLComponents(string: urlString) else {
-            return nil
+    /// `type` / `deep_link_type` values that denote a lead-or-opportunity
+    /// notification. Lead rows ship with `deep_link_type = NULL`, so the
+    /// dominant signal is `type` (`leads_waiting`); the rest are defensive
+    /// coverage for the lifecycle types the web builder may stamp.
+    static let leadRoutingValues: Set<String> = [
+        "lead", "leads", "opportunity", "opportunities",
+        "leads_waiting", "pipeline_complete",
+        "lead_created", "lead_updated", "lead_follow_up_due",
+        "opportunity_created", "opportunity_updated", "opportunity_follow_up_due"
+    ]
+
+    /// True when EITHER the deep-link type OR the notification type marks this
+    /// as a lead/opportunity notification. `deep_link_type` is authoritative
+    /// when present; `type` is the fallback because lead rows carry a null
+    /// deep-link type.
+    static func isLeadNotification(type: String?, deepLinkType: String?) -> Bool {
+        let normalizedDeepLink = normalize(deepLinkType)
+        let normalizedType = normalize(type)
+        if let normalizedDeepLink, leadRoutingValues.contains(normalizedDeepLink) { return true }
+        if let normalizedType, leadRoutingValues.contains(normalizedType) { return true }
+        return false
+    }
+
+    /// Resolve the routing target from the two id-bearing payload fields.
+    /// Order: opportunity id in the action url → opportunity id in the dedupe
+    /// key → email-thread id in the action url. Returns nil when no id of any
+    /// kind is recoverable (caller falls back to Job Board).
+    static func route(actionUrl: String?, dedupeKey: String?) -> LeadNotificationRoute? {
+        if let id = opportunityId(fromActionUrl: actionUrl) {
+            return .opportunity(id)
         }
-
-        if let queryId = comps.queryItems?
-            .first(where: { item in
-                let name = item.name.lowercased()
-                return name == "leadid" || name == "opportunityid" || name == "id"
-            })?
-            .value?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !queryId.isEmpty {
-            return queryId
+        if let id = opportunityId(fromDedupeKey: dedupeKey) {
+            return .opportunity(id)
         }
-
-        let host = comps.host?.lowercased()
-        let pathSegments = comps.path
-            .split(separator: "/")
-            .map(String.init)
-            .filter { !$0.isEmpty }
-
-        if host == "leads" || host == "opportunities" {
-            return pathSegments.first
+        if let threadId = emailThreadId(fromActionUrl: actionUrl) {
+            return .emailThread(threadId)
         }
+        return nil
+    }
 
-        if pathSegments.count >= 2 {
-            let entity = pathSegments[0].lowercased()
-            if entity == "leads" || entity == "opportunities" {
-                return pathSegments[1]
+    /// Opportunity id from an action url. Handles the query forms
+    /// `?opportunityId=` / `?leadId=` / `?id=` (web `/pipeline?...` and any
+    /// `ops://...` deep link) and the path forms `leads/<id>` /
+    /// `opportunities/<id>` (e.g. `ops://leads/<id>`). Returns nil otherwise.
+    static func opportunityId(fromActionUrl actionUrl: String?) -> String? {
+        guard let raw = normalize(actionUrl) else { return nil }
+        guard let components = URLComponents(string: raw) else { return nil }
+
+        // Query parameters first — the explicit, unambiguous form.
+        if let items = components.queryItems {
+            for key in ["opportunityId", "leadId", "id"] {
+                if let value = items.first(where: { $0.name == key })?.value,
+                   let id = normalize(value) {
+                    return id
+                }
             }
         }
 
+        // Path segments: `.../leads/<id>` or `.../opportunities/<id>`. For an
+        // `ops://leads/<id>` link the host is the entity and the path is `/<id>`.
+        var segments: [String] = []
+        if let host = normalize(components.host) {
+            segments.append(host)
+        }
+        segments.append(contentsOf:
+            components.path
+                .split(separator: "/")
+                .map(String.init)
+        )
+        for (index, segment) in segments.enumerated() {
+            if (segment == "leads" || segment == "opportunities"),
+               index + 1 < segments.count,
+               let id = normalize(segments[index + 1]) {
+                return id
+            }
+        }
         return nil
+    }
+
+    /// Opportunity id embedded in a lead-lifecycle dedupe key. Keys look like
+    /// `lead_lifecycle:operator_follow_up_miss:<opp-uuid>` (id is the trailing
+    /// token) but also `lead_lifecycle:destructive_candidate:<opp-uuid>:<note>`
+    /// (id is interior). We therefore scan ALL colon-separated tokens and
+    /// return the first UUID-shaped one — only lead-lifecycle keys carry one.
+    static func opportunityId(fromDedupeKey dedupeKey: String?) -> String? {
+        guard let raw = normalize(dedupeKey), raw.hasPrefix("lead_lifecycle:") else { return nil }
+        for token in raw.split(separator: ":") {
+            let candidate = String(token)
+            if isUUID(candidate) { return candidate }
+        }
+        return nil
+    }
+
+    /// Email-thread id from `/inbox/<uuid>` or `/inbox?thread=<uuid>`. iOS has
+    /// no inbox surface; the caller resolves this to an opportunity id via
+    /// `email_threads.opportunity_id`.
+    static func emailThreadId(fromActionUrl actionUrl: String?) -> String? {
+        guard let raw = normalize(actionUrl),
+              let components = URLComponents(string: raw) else { return nil }
+
+        // `/inbox?thread=<uuid>`
+        if let thread = components.queryItems?.first(where: { $0.name == "thread" })?.value,
+           let id = normalize(thread), isUUID(id) {
+            return id
+        }
+
+        // `/inbox/<uuid>` — only when `inbox` is the leading path component so a
+        // stray uuid elsewhere never reads as a thread id.
+        let segments = components.path.split(separator: "/").map(String.init)
+        if segments.count >= 2, segments[0] == "inbox", isUUID(segments[1]) {
+            return segments[1]
+        }
+        return nil
+    }
+
+    private static func isUUID(_ value: String) -> Bool {
+        UUID(uuidString: value) != nil
+    }
+
+    private static func normalize(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 
@@ -719,8 +835,6 @@ struct NotificationListView: View {
                             case "billableThisWeek":               return notification.actionLabel ?? "OPEN HOME"
                             case "inbox", "email_sync_complete":   return "VIEW DETAILS"
                             case "cashflow":                       return notification.actionLabel ?? "REVIEW FORECAST"
-                            case "lead", "leads",
-                                 "opportunity", "opportunities":   return notification.actionLabel ?? "VIEW LEAD"
                             default:                               return notification.actionLabel ?? "OPEN"
                             }
                         }()
@@ -919,6 +1033,19 @@ struct NotificationListView: View {
             return
         }
 
+        // Lead/opportunity notifications route here BEFORE the deep-link switch
+        // because the dominant production lead row (`type=leads_waiting`) carries
+        // `deep_link_type = NULL` — switching on deepLink alone would dead-tap.
+        // We detect by EITHER deep-link type OR notification type, then resolve
+        // the opportunity id from action_url / dedupe_key / email thread.
+        if LeadNotificationRouteParser.isLeadNotification(
+            type: notification.type,
+            deepLinkType: notification.deepLinkType
+        ) {
+            routeToLead(notification)
+            return
+        }
+
         switch deepLink {
         case "subscription", "trial_expiry":
             dismiss()
@@ -1048,22 +1175,6 @@ struct NotificationListView: View {
                     NotificationCenter.default.post(name: Notification.Name("OpenCashflowForecast"), object: nil)
                 }
             }
-        case "lead", "leads", "opportunity", "opportunities":
-            guard let leadId = leadIdFromActionUrl(notification.actionUrl) else {
-                dismiss()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    NotificationCenter.default.post(name: Notification.Name("OpenJobBoard"), object: nil)
-                }
-                return
-            }
-            dismiss()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                NotificationCenter.default.post(
-                    name: Notification.Name("OpenLeadDetails"),
-                    object: nil,
-                    userInfo: ["leadId": leadId]
-                )
-            }
         default:
             // Bug bb63c37e — when deep_link_type is missing, fall back to the
             // notification's `type` so legacy rows still route correctly. Old
@@ -1127,6 +1238,70 @@ struct NotificationListView: View {
         }
     }
 
+    /// Resolve a lead/opportunity notification to an opportunity id and open it.
+    ///
+    /// Resolution order (see `LeadNotificationRouteParser`): opportunity id in
+    /// the action url → opportunity id in the dedupe key → email-thread id
+    /// (resolved to its `opportunity_id` via a single-column Supabase select).
+    /// On success the rail dismisses and posts `OpenLeadDetails`, which
+    /// MainTabView gates on `pipeline.view` + the `pipeline` feature before
+    /// switching to the LEADS tab. On a final nil we land the operator on the
+    /// Job Board rather than dropping the tap — mirroring the inbox/email
+    /// fallback above.
+    private func routeToLead(_ notification: NotificationDTO) {
+        switch LeadNotificationRouteParser.route(
+            actionUrl: notification.actionUrl,
+            dedupeKey: notification.dedupeKey
+        ) {
+        case .opportunity(let id):
+            openLead(opportunityId: id)
+        case .emailThread(let threadId):
+            // Thread id only — resolve to an opportunity off the main thread,
+            // then route on success or fall back to the Job Board.
+            let companyId = dataController.currentUser?.companyId
+            Task {
+                var resolvedId: String? = nil
+                if let companyId {
+                    let repo = OpportunityRepository(companyId: companyId)
+                    resolvedId = try? await repo.opportunityId(forEmailThreadId: threadId)
+                }
+                await MainActor.run {
+                    if let resolvedId, !resolvedId.isEmpty {
+                        openLead(opportunityId: resolvedId)
+                    } else {
+                        openJobBoardFallback()
+                    }
+                }
+            }
+        case .none:
+            openJobBoardFallback()
+        }
+    }
+
+    /// Dismiss the rail, then post `OpenLeadDetails` after the sheet is gone so
+    /// the LEADS-tab swap + detail push don't race the dismissing rail.
+    private func openLead(opportunityId: String) {
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenLeadDetails"),
+                object: nil,
+                userInfo: ["leadId": opportunityId]
+            )
+        }
+    }
+
+    /// Graceful fallback for a lead notification we can't resolve to a live
+    /// opportunity (e.g. an inbox thread with no linked lead, or an archived
+    /// destructive-candidate row). Lands on the Job Board — an actionable
+    /// surface — instead of a dead tap.
+    private func openJobBoardFallback() {
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            NotificationCenter.default.post(name: Notification.Name("OpenJobBoard"), object: nil)
+        }
+    }
+
     private func markAllAsRead() {
         guard let userId = UserDefaults.standard.string(forKey: "user_id"), !userId.isEmpty else { return }
 
@@ -1177,9 +1352,5 @@ struct NotificationListView: View {
         case "sent":      return "SENT"
         default:          return nil
         }
-    }
-
-    private func leadIdFromActionUrl(_ urlString: String?) -> String? {
-        LeadNotificationRouteParser.leadId(from: urlString)
     }
 }

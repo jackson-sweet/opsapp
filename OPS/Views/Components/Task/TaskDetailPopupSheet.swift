@@ -423,6 +423,7 @@ struct TaskDetailPopupSheet: View {
                 // the parent defers it off the dismiss critical path.
                 selectedTeamMemberIds = committed
                 onCommitTeam?(committed)
+                ToastCenter.shared.present(Feedback.Task.teamUpdated)
                 withAnimation(.easeInOut(duration: 0.2)) {
                     showTeamPicker = false
                 }

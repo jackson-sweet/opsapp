@@ -312,6 +312,7 @@ class ProjectNotesViewModel: ObservableObject {
                 try? context.save()
             }
             loadNotesFromLocal()
+            ToastCenter.shared.present(Feedback.Project.notePosted)
 
             // Send push notifications for mentions
             await sendMentionNotifications(mentionedIds: mentionedIds, noteText: noteContent, noteId: created.id, attachmentURLs: attachmentURLs)

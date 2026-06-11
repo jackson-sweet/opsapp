@@ -2610,7 +2610,7 @@ struct ProjectFormSheet: View {
         if let imageData = contact.imageData,
            let image = UIImage(data: imageData) {
             do {
-                profileImageURL = try await S3UploadService.shared.uploadClientProfileImage(
+                profileImageURL = try await PresignedURLUploadService.shared.uploadClientProfileImage(
                     image,
                     clientId: tempId,
                     companyId: companyId

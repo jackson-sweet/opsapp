@@ -1136,7 +1136,7 @@ struct ExpenseFormSheet: View {
                 if queueIndex < receiptQueue.count {
                     let image = receiptQueue[queueIndex]
                     do {
-                        let urls = try await S3UploadService.shared.uploadExpenseReceipt(
+                        let urls = try await PresignedURLUploadService.shared.uploadExpenseReceipt(
                             image, expenseId: exp.id, companyId: companyId
                         )
                         let imageFields = UpdateExpenseDTO(
@@ -1203,7 +1203,7 @@ struct ExpenseFormSheet: View {
                 if !receiptQueue.isEmpty, queueIndex < receiptQueue.count {
                     let image = receiptQueue[queueIndex]
                     do {
-                        let urls = try await S3UploadService.shared.uploadExpenseReceipt(
+                        let urls = try await PresignedURLUploadService.shared.uploadExpenseReceipt(
                             image, expenseId: created.id, companyId: companyId
                         )
                         let imageFields = UpdateExpenseDTO(

@@ -244,29 +244,16 @@ final class BugReportSubmissionService {
 
         DebugLogger.shared.log("Bug report created: \(reportId)", level: .info, category: "BugReport")
 
-        // 2. Upload screenshot to S3
+        // 2. Upload screenshot via ops-web. The server stores the object in S3
+        //    and writes the bug_reports.screenshot_url reference itself, so no
+        //    client AWS credentials are involved and no row update is needed here.
         if let screenshot = screenshot {
             do {
-                let screenshotUrl = try await S3UploadService.shared.uploadBugReportScreenshot(
+                try await PresignedURLUploadService.shared.uploadBugReportScreenshot(
                     screenshot,
                     reportId: reportId,
                     companyId: companyId
                 )
-
-                // 3. Update the row with screenshot URL
-                struct ScreenshotUpdate: Encodable {
-                    let screenshotUrl: String
-                    enum CodingKeys: String, CodingKey {
-                        case screenshotUrl = "screenshot_url"
-                    }
-                }
-
-                try await supabase
-                    .from("bug_reports")
-                    .update(ScreenshotUpdate(screenshotUrl: screenshotUrl))
-                    .eq("id", value: reportId)
-                    .execute()
-
                 DebugLogger.shared.log("Screenshot attached to report \(reportId)", level: .info, category: "BugReport")
             } catch {
                 // Report was created, screenshot failed — log but don't fail the whole submission

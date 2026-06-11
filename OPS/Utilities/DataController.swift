@@ -5300,11 +5300,7 @@ class DataController: ObservableObject {
         if let oldURL = user.profileImageURL, !oldURL.isEmpty {
             print("[PROFILE_IMAGE] Deleting old image from S3")
             do {
-                try await S3UploadService.shared.deleteImageFromS3(
-                    url: oldURL,
-                    companyId: companyId,
-                    projectId: user.id  // Using userId as the path segment
-                )
+                try await PresignedURLUploadService.shared.deleteImage(url: oldURL)
                 print("[PROFILE_IMAGE] ✅ Old image deleted from S3")
             } catch {
                 print("[PROFILE_IMAGE] ⚠️ Failed to delete old image: \(error)")
@@ -5314,7 +5310,7 @@ class DataController: ObservableObject {
 
         // 3. Upload new image to S3
         do {
-            let s3URL = try await S3UploadService.shared.uploadProfileImage(
+            let s3URL = try await PresignedURLUploadService.shared.uploadProfileImage(
                 image,
                 userId: user.id,
                 companyId: companyId
@@ -5389,11 +5385,7 @@ class DataController: ObservableObject {
         if let oldURL = company.logoURL, !oldURL.isEmpty {
             print("[COMPANY_LOGO] Deleting old logo from S3")
             do {
-                try await S3UploadService.shared.deleteImageFromS3(
-                    url: oldURL,
-                    companyId: company.id,
-                    projectId: company.id  // Not used for S3 URLs, but required for signature
-                )
+                try await PresignedURLUploadService.shared.deleteImage(url: oldURL)
                 print("[COMPANY_LOGO] ✅ Old logo deleted from S3")
             } catch {
                 print("[COMPANY_LOGO] ⚠️ Failed to delete old logo: \(error)")
@@ -5403,7 +5395,7 @@ class DataController: ObservableObject {
 
         // 3. Upload new logo to S3
         do {
-            let s3URL = try await S3UploadService.shared.uploadCompanyLogo(
+            let s3URL = try await PresignedURLUploadService.shared.uploadCompanyLogo(
                 image,
                 companyId: company.id
             )

@@ -700,7 +700,7 @@ struct ClientSheet: View {
         if let image = clientImage {
             do {
                 print("[CLIENT_CREATE] Uploading client profile image...")
-                profileImageURL = try await S3UploadService.shared.uploadClientProfileImage(image, clientId: tempId, companyId: companyId)
+                profileImageURL = try await PresignedURLUploadService.shared.uploadClientProfileImage(image, clientId: tempId, companyId: companyId)
                 print("[CLIENT_CREATE] ✅ Profile image uploaded: \(profileImageURL ?? "")")
             } catch {
                 print("[CLIENT_CREATE] ⚠️ Failed to upload profile image: \(error.localizedDescription)")
@@ -828,7 +828,7 @@ struct ClientSheet: View {
         if let image = clientImage, clientImageURL != client.profileImageURL {
             do {
                 print("[CLIENT_UPDATE] Uploading updated client profile image...")
-                let newImageURL = try await S3UploadService.shared.uploadClientProfileImage(image, clientId: client.id, companyId: companyId)
+                let newImageURL = try await PresignedURLUploadService.shared.uploadClientProfileImage(image, clientId: client.id, companyId: companyId)
                 print("[CLIENT_UPDATE] ✅ Profile image uploaded: \(newImageURL)")
 
                 await MainActor.run {

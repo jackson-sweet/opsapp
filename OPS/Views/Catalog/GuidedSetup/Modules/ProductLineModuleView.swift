@@ -24,6 +24,7 @@ struct ProductLineModuleView: View {
     @State private var showingUnitCreate = false
     @State private var showingCategoryCreate = false
     @FocusState private var nameFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(model: GuidedCatalogSetupModel, kind: ProductLineKind, isOnline: Bool) {
         self.model = model
@@ -64,11 +65,25 @@ struct ProductLineModuleView: View {
         return !trimmed.isEmpty && model.parseMoney(trimmed) == nil
     }
 
+    /// Every tier row has a non-blank, unique label and a positive price. A single
+    /// valid row is allowed — the commit degrades it to a flat line.
+    private var tiersValid: Bool {
+        guard let tiers = draft.tiers else { return true }
+        let labels = tiers.rows.map { $0.label.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard !tiers.rows.isEmpty, labels.allSatisfy({ !$0.isEmpty }) else { return false }
+        guard Set(labels.map { $0.lowercased() }).count == labels.count else { return false }
+        return tiers.rows.allSatisfy { (model.parseMoney($0.priceText) ?? 0) > 0 }
+    }
+
     private var canAdd: Bool {
         guard isOnline, !model.isSaving else { return false }
         guard !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        guard sellAmount != nil, !costInvalid else { return false }
         guard !model.isDuplicateName(draft.name) else { return false }
+        if draft.tiers == nil {
+            guard sellAmount != nil, !costInvalid else { return false }
+        } else {
+            guard tiersValid else { return false }
+        }
         return true
     }
 
@@ -76,7 +91,16 @@ struct ProductLineModuleView: View {
         if model.isSaving { return nil }
         if !isOnline { return "// OFFLINE — SAVES PAUSED" }
         if model.isDuplicateName(draft.name) { return "// NAME ALREADY USED" }
-        if draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sellAmount == nil {
+        let nameEmpty = draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if let tiers = draft.tiers {
+            if nameEmpty { return "// NAME REQUIRED" }
+            let labels = tiers.rows.map { $0.label.trimmingCharacters(in: .whitespacesAndNewlines) }
+            if labels.contains(where: { $0.isEmpty }) { return "// EACH OPTION NEEDS A NAME" }
+            if Set(labels.map { $0.lowercased() }).count != labels.count { return "// OPTION NAMES MUST BE UNIQUE" }
+            if tiers.rows.contains(where: { (model.parseMoney($0.priceText) ?? 0) <= 0 }) { return "// EACH OPTION NEEDS A PRICE" }
+            return nil
+        }
+        if nameEmpty || sellAmount == nil {
             return kind == .service ? "// NAME AND RATE REQUIRED" : "// NAME AND PRICE REQUIRED"
         }
         return nil
@@ -148,29 +172,34 @@ struct ProductLineModuleView: View {
                 .focused($nameFocused)
                 .submitLabel(.next)
 
-            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
-                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                    CatalogFieldLabel(kind == .service ? "Sell rate" : "Sell price")
-                    TextField("0", text: $draft.sellText)
-                        .keyboardType(.decimalPad)
-                        .textFieldStyle(CatalogTextFieldStyle())
-                    if sellInvalid { validationLine("// MUST BE A NUMBER") }
-                }
-
-                if trackCost {
+            // Flat pricing (hidden when this line is priced by option/tier).
+            if draft.tiers == nil {
+                HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                        CatalogFieldLabel("Your cost")
-                        TextField("Optional", text: $draft.costText)
+                        CatalogFieldLabel(kind == .service ? "Sell rate" : "Sell price")
+                        TextField("0", text: $draft.sellText)
                             .keyboardType(.decimalPad)
                             .textFieldStyle(CatalogTextFieldStyle())
-                        if costInvalid { validationLine("// MUST BE A NUMBER") }
+                        if sellInvalid { validationLine("// MUST BE A NUMBER") }
                     }
+
+                    if trackCost {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                            CatalogFieldLabel("Your cost")
+                            TextField("Optional", text: $draft.costText)
+                                .keyboardType(.decimalPad)
+                                .textFieldStyle(CatalogTextFieldStyle())
+                            if costInvalid { validationLine("// MUST BE A NUMBER") }
+                        }
+                    }
+                }
+
+                if trackCost, let margin = model.marginPercent(sellText: draft.sellText, costText: draft.costText) {
+                    marginReadout(margin)
                 }
             }
 
-            if trackCost, let margin = model.marginPercent(sellText: draft.sellText, costText: draft.costText) {
-                marginReadout(margin)
-            }
+            tierSection
 
             CatalogFieldLabel("Unit")
             UnitPickerField(
@@ -230,6 +259,13 @@ struct ProductLineModuleView: View {
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
+                    if let count = line.tierCount, count > 0 {
+                        Text("· \(count) \(tierSuffixWord(line))")
+                            .font(OPSStyle.Typography.metadata)
+                            .monospacedDigit()
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .lineLimit(1)
+                    }
                     Spacer()
                     Text(model.formatMoney(line.sell))
                         .font(OPSStyle.Typography.metadata)
@@ -266,6 +302,126 @@ struct ProductLineModuleView: View {
                 .font(OPSStyle.Typography.metadata)
                 .monospacedDigit()
                 .foregroundColor(margin >= 0 ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.errorText)
+        }
+    }
+
+    // MARK: - Tiers (price by option)
+
+    /// The axis name the operator typed, or a sensible fallback for labels/buttons.
+    private var axisSingular: String {
+        let axis = (draft.tiers?.axisName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return axis.isEmpty ? "Option" : axis
+    }
+
+    /// "3 sizes" / "1 size" — the saved-line tier suffix, pluralized off the axis.
+    private func tierSuffixWord(_ line: SavedProductLine) -> String {
+        let base = (line.tierAxisLabel ?? "option").lowercased()
+        return (line.tierCount ?? 0) == 1 ? base : base + "s"
+    }
+
+    /// Optional disclosure that turns one line into N priced tiers. Off => the flat
+    /// Sell/cost row above shows; on => it hides and price comes from the tier rows.
+    @ViewBuilder private var tierSection: some View {
+        Button {
+            withAnimation(reduceMotion ? nil : OPSStyle.Animation.page) {
+                draft.tiers = (draft.tiers == nil) ? ProductLineTiers() : nil
+            }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: draft.tiers == nil ? "plus.circle" : "minus.circle")
+                Text(draft.tiers == nil ? "// PRICE BY OPTION" : "// BACK TO ONE PRICE")
+                    .font(OPSStyle.Typography.metadata)
+                Spacer()
+            }
+            .foregroundColor(OPSStyle.Colors.tertiaryText)
+            .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(draft.tiers == nil ? "Price by option" : "Back to one price")
+
+        if draft.tiers != nil {
+            Text("Same item, different sizes or grades — a price for each.")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            tierEditor
+        }
+    }
+
+    @ViewBuilder private var tierEditor: some View {
+        CatalogFieldLabel("Option name")
+        TextField("Size", text: Binding(
+            get: { draft.tiers?.axisName ?? "" },
+            set: { draft.tiers?.axisName = $0 }))
+            .textFieldStyle(CatalogTextFieldStyle())
+
+        CatalogFieldLabel(axisSingular.uppercased())
+        ForEach(draft.tiers?.rows ?? []) { row in
+            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
+                TextField("e.g. Sedan", text: bindingTierLabel(row.id))
+                    .textFieldStyle(CatalogTextFieldStyle())
+                TextField("0", text: bindingTierPrice(row.id))
+                    .keyboardType(.decimalPad)
+                    .textFieldStyle(CatalogTextFieldStyle())
+                    .frame(width: 96)
+                    .monospacedDigit()
+                Button { removeTier(row.id) } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .frame(width: OPSStyle.Layout.touchTargetStandard,
+                               height: OPSStyle.Layout.touchTargetStandard)
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .disabled((draft.tiers?.rows.count ?? 0) <= 1)
+                .accessibilityLabel("Remove \(axisSingular.lowercased())")
+            }
+        }
+
+        Button { addTier() } label: {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: "plus.circle")
+                Text("ADD \(axisSingular.uppercased())")
+            }
+            .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(OPSStyle.Colors.secondaryText)
+    }
+
+    private func bindingTierLabel(_ id: String) -> Binding<String> {
+        Binding(
+            get: { draft.tiers?.rows.first { $0.id == id }?.label ?? "" },
+            set: { value in
+                if let index = draft.tiers?.rows.firstIndex(where: { $0.id == id }) {
+                    draft.tiers?.rows[index].label = value
+                }
+            })
+    }
+
+    private func bindingTierPrice(_ id: String) -> Binding<String> {
+        Binding(
+            get: { draft.tiers?.rows.first { $0.id == id }?.priceText ?? "" },
+            set: { value in
+                if let index = draft.tiers?.rows.firstIndex(where: { $0.id == id }) {
+                    draft.tiers?.rows[index].priceText = value
+                }
+            })
+    }
+
+    private func addTier() {
+        withAnimation(reduceMotion ? nil : OPSStyle.Animation.page) {
+            draft.tiers?.rows.append(ProductTierRow())
+        }
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    private func removeTier(_ id: String) {
+        guard (draft.tiers?.rows.count ?? 0) > 1 else { return }
+        withAnimation(reduceMotion ? nil : OPSStyle.Animation.page) {
+            draft.tiers?.rows.removeAll { $0.id == id }
         }
     }
 

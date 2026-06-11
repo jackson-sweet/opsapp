@@ -20,9 +20,13 @@ struct AddAssemblyMaterialSheet: View {
     let onAdd: (AssemblyMaterialDraft) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query private var allUnits: [CatalogUnit]
     @Query private var allFamilies: [CatalogItem]
     @Query private var allVariants: [CatalogVariant]
+    @Query private var allOptions: [CatalogOption]
+    @Query private var allOptionValues: [CatalogOptionValue]
+    @Query private var allVariantOptionValues: [CatalogVariantOptionValue]
 
     private enum Mode: String, CaseIterable, Identifiable {
         case existing, new
@@ -38,6 +42,10 @@ struct AddAssemblyMaterialSheet: View {
     @State private var unitId: String?
     @State private var showingUnitCreate = false
     @FocusState private var nameFocused: Bool
+
+    // Create-new variant axes (Color → black/white, ± Thickness → the matrix)
+    @State private var variantsExpanded = false
+    @State private var axes: [AssemblyMaterialAxis] = []
 
     // Pick-existing selection
     @State private var selectedFamilyId: String?
@@ -79,11 +87,18 @@ struct AddAssemblyMaterialSheet: View {
         return allVariants.first { $0.id == id }
     }
 
+    /// Labels existing variants by their option values ("Top rail · Black"), not
+    /// the raw SKU — the fix the cold-start audit asked for. Shared with stock + the
+    /// product recipe picker via CatalogVariantLabeler.
     private func variantLabel(_ variant: CatalogVariant) -> String {
-        let family = allFamilies.first { $0.id == variant.catalogItemId }?.name ?? "Item"
-        if let sku = variant.sku, !sku.isEmpty { return "\(family) · \(sku)" }
-        return family
+        CatalogVariantLabeler.label(for: variant, families: allFamilies,
+                                    options: allOptions, optionValues: allOptionValues,
+                                    variantOptionValues: allVariantOptionValues)
     }
+
+    // Local mirror of the draft's pure matrix helpers, over the in-progress `axes`.
+    private var cleanAxesLocal: [AssemblyMaterialAxis] { AssemblyMaterialDraft(axes: axes).cleanAxes }
+    private var localComboCount: Int { AssemblyMaterialDraft(axes: axes).variantComboCount }
 
     private func isNumber(_ raw: String) -> Bool {
         let cleaned = raw.replacingOccurrences(of: "$", with: "")
@@ -99,6 +114,7 @@ struct AddAssemblyMaterialSheet: View {
             let costOK = costText.trimmingCharacters(in: .whitespaces).isEmpty || isNumber(costText)
             return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && isNumber(qtyText) && costOK
+                && localComboCount <= AssemblyMaterialDraft.maxVariants
         case .existing:
             return selectedVariantId != nil && isNumber(qtyText)
         }
@@ -291,6 +307,168 @@ struct AddAssemblyMaterialSheet: View {
             onCreateRequested: { showingUnitCreate = true },
             allowFlatRate: true
         )
+
+        variantsDisclosure
+    }
+
+    // MARK: - Create-new variant matrix
+
+    @ViewBuilder
+    private var variantsDisclosure: some View {
+        DisclosureGroup(isExpanded: $variantsExpanded) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+                Text("Comes in colors or sizes? List them — you get a variant for each.")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                ForEach(axes) { axis in axisEditor(axisId: axis.id) }
+
+                if axes.count < 2 {
+                    Button {
+                        withAnimation(reduceMotion ? nil : OPSStyle.Animation.page) {
+                            axes.append(AssemblyMaterialAxis())
+                        }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            Image(systemName: "plus.circle")
+                            Text(axes.isEmpty ? "Add an option" : "Add a second option")
+                        }
+                        .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+
+                if !cleanAxesLocal.isEmpty { variantCountReadout }
+            }
+            .padding(.top, OPSStyle.Layout.spacing2)
+        } label: {
+            Text("// VARIANTS")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+        }
+        .tint(OPSStyle.Colors.secondaryText)
+    }
+
+    @ViewBuilder
+    private func axisEditor(axisId: String) -> some View {
+        if let axisIndex = axes.firstIndex(where: { $0.id == axisId }) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    TextField("e.g. Color", text: bindingAxisName(axisId))
+                        .textFieldStyle(CatalogTextFieldStyle())
+                    Button {
+                        withAnimation(reduceMotion ? nil : OPSStyle.Animation.page) {
+                            axes.removeAll { $0.id == axisId }
+                        }
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                            .frame(width: OPSStyle.Layout.touchTargetStandard,
+                                   height: OPSStyle.Layout.touchTargetStandard)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .accessibilityLabel("Remove option")
+                }
+
+                ForEach(axes[axisIndex].values.indices, id: \.self) { valueIndex in
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        TextField("e.g. Black", text: bindingAxisValue(axisId, valueIndex))
+                            .textFieldStyle(CatalogTextFieldStyle())
+                        Button {
+                            removeAxisValue(axisId, valueIndex)
+                        } label: {
+                            Image(systemName: "minus.circle")
+                                .frame(width: OPSStyle.Layout.touchTargetStandard,
+                                       height: OPSStyle.Layout.touchTargetStandard)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .disabled(axes[axisIndex].values.count <= 1)
+                        .accessibilityLabel("Remove value")
+                    }
+                }
+
+                Button {
+                    addAxisValue(axisId)
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Image(systemName: "plus.circle")
+                        Text("Add value")
+                    }
+                    .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+            .padding(OPSStyle.Layout.spacing3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+    }
+
+    private func bindingAxisName(_ axisId: String) -> Binding<String> {
+        Binding(
+            get: { axes.first { $0.id == axisId }?.name ?? "" },
+            set: { value in
+                if let index = axes.firstIndex(where: { $0.id == axisId }) { axes[index].name = value }
+            })
+    }
+
+    private func bindingAxisValue(_ axisId: String, _ valueIndex: Int) -> Binding<String> {
+        Binding(
+            get: {
+                guard let axis = axes.first(where: { $0.id == axisId }),
+                      valueIndex < axis.values.count else { return "" }
+                return axis.values[valueIndex]
+            },
+            set: { value in
+                if let index = axes.firstIndex(where: { $0.id == axisId }),
+                   valueIndex < axes[index].values.count {
+                    axes[index].values[valueIndex] = value
+                }
+            })
+    }
+
+    private func addAxisValue(_ axisId: String) {
+        if let index = axes.firstIndex(where: { $0.id == axisId }) { axes[index].values.append("") }
+    }
+
+    private func removeAxisValue(_ axisId: String, _ valueIndex: Int) {
+        guard let index = axes.firstIndex(where: { $0.id == axisId }),
+              axes[index].values.count > 1, valueIndex < axes[index].values.count else { return }
+        axes[index].values.remove(at: valueIndex)
+    }
+
+    @ViewBuilder
+    private var variantCountReadout: some View {
+        let counts = cleanAxesLocal.map { $0.values.count }
+        let product = counts.reduce(1, *)
+        let over = product > AssemblyMaterialDraft.maxVariants
+        let expr = counts.count > 1
+            ? "\(counts.map(String.init).joined(separator: " × ")) = \(product) variants"
+            : "\(product) variant\(product == 1 ? "" : "s")"
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            Text(expr)
+                .font(OPSStyle.Typography.bodyBold)
+                .monospacedDigit()
+                .foregroundColor(over ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryText)
+            if over {
+                Text("Too many. Keep it under \(AssemblyMaterialDraft.maxVariants) — trim a few values.")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.errorStatus)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     // MARK: - Build draft
@@ -299,7 +477,7 @@ struct AddAssemblyMaterialSheet: View {
         switch mode {
         case .new:
             return AssemblyMaterialDraft(name: name, costText: costText, qtyText: qtyText,
-                                         unitId: unitId, catalogVariantId: nil)
+                                         unitId: unitId, catalogVariantId: nil, axes: axes)
         case .existing:
             guard let variant = selectedVariant else { return nil }
             let cost = variant.unitCostOverride ?? selectedFamily?.defaultUnitCost

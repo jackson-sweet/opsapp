@@ -124,56 +124,6 @@ struct DeckBuilderView: View {
                             .transition(.scale.combined(with: .opacity))
                     }
 
-                    // Laser toasts
-                    VStack(spacing: 6) {
-                        Spacer()
-
-                        // Disconnect / reconnecting toast
-                        if viewModel.showDisconnectToast {
-                            laserToast(
-                                icon: "antenna.radiowaves.left.and.right.slash",
-                                text: viewModel.disconnectToastText,
-                                color: OPSStyle.Colors.errorStatus
-                            )
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
-
-                        // Measurement error toast
-                        if viewModel.showLaserErrorToast {
-                            laserToast(
-                                icon: "exclamationmark.triangle.fill",
-                                text: viewModel.laserErrorText,
-                                color: OPSStyle.Colors.errorStatus
-                            )
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
-
-                        // Buffered measurement toast
-                        if viewModel.showMeasurementToast {
-                            laserToast(
-                                icon: "antenna.radiowaves.left.and.right",
-                                text: viewModel.measurementToastText,
-                                color: OPSStyle.Colors.warningStatus
-                            )
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
-
-                        // Material assignment confirmation toast
-                        if viewModel.showAssignmentToast {
-                            laserToast(
-                                icon: "checkmark.circle.fill",
-                                text: viewModel.assignmentToastText,
-                                color: OPSStyle.Colors.primaryAccent
-                            )
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
-                    .animation(.easeInOut(duration: 0.25), value: viewModel.showMeasurementToast)
-                    .animation(.easeInOut(duration: 0.25), value: viewModel.showLaserErrorToast)
-                    .animation(.easeInOut(duration: 0.25), value: viewModel.showDisconnectToast)
-                    .animation(.easeInOut(duration: 0.25), value: viewModel.showAssignmentToast)
                     } // end canvas ZStack (bottomTrailing)
 
                     // Floating header — compact stack. The title bar and the
@@ -467,92 +417,22 @@ struct DeckBuilderView: View {
                 }
             }
         }
-        .alert("Missing Scale", isPresented: .init(
-            get: { viewModel.estimateValidationError != nil },
-            set: { if !$0 { viewModel.estimateValidationError = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(viewModel.estimateValidationError ?? "")
-        }
-        // Estimate created toast — tappable to navigate
-        .overlay(alignment: .bottom) {
-            if viewModel.estimateCreated, let number = viewModel.createdEstimateNumber {
-                Button {
+        .errorToast($viewModel.estimateValidationError, label: Feedback.Err.scaleRequired)
+        // Estimate created — navigate to detail on appearance
+        .onChange(of: viewModel.estimateCreated) { _, isCreated in
+            guard isCreated, let number = viewModel.createdEstimateNumber else { return }
+            estimateVM.setup(companyId: companyId, modelContext: env_modelContext)
+            ToastCenter.shared.present(Toast(
+                label: "// ESTIMATE CREATED — \(number)",
+                tone: .success,
+                autoDismissAfter: 8,
+                action: ToastAction(label: "VIEW") {
                     viewModel.estimateCreated = false
-                    estimateVM.setup(companyId: companyId, modelContext: env_modelContext)
                     showingEstimateDetail = true
-                } label: {
-                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
-                        Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                            .foregroundColor(OPSStyle.Colors.successStatus)
-
-                        Text("Estimate created \u{2014} \(number)")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-
-                        Image(systemName: OPSStyle.Icons.chevronRight)
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 14)
-                    .background(OPSStyle.Colors.cardBackground)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
                 }
-                .padding(.bottom, 80)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .animation(.easeInOut(duration: 0.3), value: viewModel.estimateCreated)
-            }
+            ))
+            viewModel.estimateCreated = false
         }
-        // Save error toast
-        .overlay(alignment: .top) {
-            if let error = viewModel.saveError {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(OPSStyle.Colors.warningStatus)
-                    Text(error)
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(OPSStyle.Colors.cardBackground)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
-                .padding(.top, 60)
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .onAppear {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-                        withAnimation { viewModel.saveError = nil }
-                    }
-                }
-            }
-        }
-        .animation(.easeInOut(duration: 0.3), value: viewModel.saveError)
-        // Undo-affects-all-levels toast
-        .overlay(alignment: .top) {
-            if viewModel.showUndoLevelToast {
-                Text("Undo affects all levels.")
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(OPSStyle.Colors.cardBackground)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
-                    .padding(.top, 100)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                            withAnimation { viewModel.showUndoLevelToast = false }
-                        }
-                    }
-            }
-        }
-        .animation(.easeInOut(duration: 0.3), value: viewModel.showUndoLevelToast)
         .alert("Clear this design?", isPresented: $viewModel.showingClearConfirm) {
             Button("Clear", role: .destructive) {
                 viewModel.clearDesign()
@@ -957,22 +837,4 @@ struct DeckBuilderView: View {
         }
     }
 
-    // MARK: - Laser Toast Helper
-
-    private func laserToast(icon: String, text: String, color: Color) -> some View {
-        HStack(spacing: OPSStyle.Layout.spacing2_5) {
-            Image(systemName: icon)
-                .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                .foregroundColor(color)
-
-            Text(text)
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-        }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, OPSStyle.Layout.spacing2_5)
-        .frame(maxWidth: .infinity)
-        .background(color.opacity(0.15))
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-    }
 }

@@ -1129,7 +1129,7 @@ struct ExpenseFormSheet: View {
                 paymentMethod: paymentMethod.rawValue,
                 status: nil
             )
-            await viewModel.updateExpense(exp.id, fields: fields)
+            await viewModel.updateExpense(exp.id, fields: fields, silent: true)
 
             // Upload receipt if new image captured (not already uploaded)
             if viewModel.error == nil, !receiptQueue.isEmpty, exp.receiptImageUrl == nil {
@@ -1143,7 +1143,7 @@ struct ExpenseFormSheet: View {
                             receiptImageUrl: urls.url,
                             receiptThumbnailUrl: urls.thumbnailUrl
                         )
-                        await viewModel.updateExpense(exp.id, fields: imageFields)
+                        await viewModel.updateExpense(exp.id, fields: imageFields, silent: true)
                     } catch {
                         print("[EXPENSE] Receipt upload failed: \(error.localizedDescription)")
                     }
@@ -1162,7 +1162,7 @@ struct ExpenseFormSheet: View {
                     )
                 }
                 if !allocs.isEmpty {
-                    await viewModel.setAllocations(exp.id, allocations: allocs)
+                    await viewModel.setAllocations(exp.id, allocations: allocs, silent: true)
                 }
             }
 
@@ -1210,7 +1210,7 @@ struct ExpenseFormSheet: View {
                             receiptImageUrl: urls.url,
                             receiptThumbnailUrl: urls.thumbnailUrl
                         )
-                        await viewModel.updateExpense(created.id, fields: imageFields)
+                        await viewModel.updateExpense(created.id, fields: imageFields, silent: true)
                     } catch {
                         print("[EXPENSE] Receipt upload failed: \(error.localizedDescription)")
                     }
@@ -1226,7 +1226,7 @@ struct ExpenseFormSheet: View {
                     )
                 }
                 if !allocs.isEmpty {
-                    await viewModel.setAllocations(created.id, allocations: allocs)
+                    await viewModel.setAllocations(created.id, allocations: allocs, silent: true)
                 }
 
                 if submit && viewModel.error == nil {

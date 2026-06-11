@@ -30,23 +30,6 @@ import SwiftUI
 import UIKit
 import PencilKit
 
-enum AnnotationFeedback: Equatable, Identifiable {
-    case noDepthAtPoint
-
-    var id: String {
-        switch self {
-        case .noDepthAtPoint: return "noDepthAtPoint"
-        }
-    }
-
-    var copy: String {
-        switch self {
-        case .noDepthAtPoint:
-            return "// ERROR — NO DEPTH AT POINT · TAP A SOLID SURFACE"
-        }
-    }
-}
-
 public struct DimensionedAnnotationView: View {
 
     // MARK: - Inputs
@@ -97,8 +80,6 @@ public struct DimensionedAnnotationView: View {
     @State private var showingCalibrateConfirmation = false
     @State private var showingExport = false
     @State private var sillUnavailableReason: SillUnavailableReason?
-    @State private var annotationFeedback: AnnotationFeedback?
-    @State private var annotationFeedbackDismissTask: Task<Void, Never>?
     @State private var saveState: DimensionedAnnotationSaveState = .idle
 
     @State private var pencilDrawing = PKDrawing()
@@ -175,29 +156,21 @@ public struct DimensionedAnnotationView: View {
                     .padding(.horizontal, 12)
                     Spacer()
                 }
-                .transition(feedbackTransition)
+                .transition(
+                    reduceMotion
+                        ? .opacity.animation(.linear(duration: 0.15))
+                        : .asymmetric(
+                            insertion: .opacity.combined(with: .move(edge: .top)).animation(.opsCurve200),
+                            removal: .opacity.animation(.opsCurve200)
+                          )
+                )
                 .zIndex(11)
             }
 
-            if let feedback = annotationFeedback {
-                VStack {
-                    AnnotationFeedbackToast(feedback: feedback) {
-                        dismissAnnotationFeedback()
-                    }
-                    .padding(.top, saveState.isVisible ? 108 : 56)
-                    .padding(.horizontal, 12)
-                    Spacer()
-                }
-                .transition(feedbackTransition)
-                .zIndex(10)
-            }
         }
         .preferredColorScheme(.dark)
         .task {
             await loadAssetsIfNeeded()
-        }
-        .onDisappear {
-            annotationFeedbackDismissTask?.cancel()
         }
         .sheet(isPresented: $showingCloseConfirmation) {
             CloseConfirmationSheet(
@@ -500,7 +473,7 @@ public struct DimensionedAnnotationView: View {
 
     private func showDepthMissFeedback() {
         UINotificationFeedbackGenerator().notificationOccurred(.error)
-        showAnnotationFeedback(.noDepthAtPoint)
+        ToastCenter.shared.present(Toast(label: Feedback.Err.noDepth, tone: .error))
     }
 
     // MARK: - Auto measure
@@ -685,6 +658,7 @@ public struct DimensionedAnnotationView: View {
             case .synced:
                 hasUnsavedChanges = false
                 saveState = .idle
+                ToastCenter.shared.present(Feedback.Measure.dimensionsSaved(view: { onDismiss() }))
             case .queuedForRetry:
                 let continuity = DimensionedAnnotationWorkflow.queuedSaveState()
                 hasUnsavedChanges = continuity.leavesAnnotationDirty
@@ -721,6 +695,7 @@ public struct DimensionedAnnotationView: View {
             if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                let root = scene.keyWindow?.rootViewController {
                 root.present(activity, animated: true)
+                ToastCenter.shared.present(Feedback.Measure.pdfReady)
             }
         }
     }
@@ -736,37 +711,6 @@ public struct DimensionedAnnotationView: View {
             showingCloseConfirmation = true
         case .dismiss:
             onDismiss()
-        }
-    }
-
-    // MARK: - Feedback
-
-    private var feedbackTransition: AnyTransition {
-        if reduceMotion {
-            return .opacity.animation(.linear(duration: 0.15))
-        }
-        return .asymmetric(
-            insertion: .opacity.combined(with: .move(edge: .top)).animation(.opsCurve200),
-            removal: .opacity.animation(.opsCurve200)
-        )
-    }
-
-    private func showAnnotationFeedback(_ feedback: AnnotationFeedback) {
-        annotationFeedbackDismissTask?.cancel()
-        withAnimation(reduceMotion ? .linear(duration: 0.15) : .opsCurve200) {
-            annotationFeedback = feedback
-        }
-        annotationFeedbackDismissTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 3_500_000_000)
-            guard annotationFeedback == feedback else { return }
-            dismissAnnotationFeedback()
-        }
-    }
-
-    private func dismissAnnotationFeedback() {
-        annotationFeedbackDismissTask?.cancel()
-        withAnimation(reduceMotion ? .linear(duration: 0.15) : .opsCurve200) {
-            annotationFeedback = nil
         }
     }
 
@@ -899,38 +843,6 @@ public struct DimensionedAnnotationView: View {
 
     private func loadDepthFromDisk() -> DepthMap? {
         DepthMapLoader.load(from: assets.depthURL)
-    }
-}
-
-// MARK: - Annotation feedback toast
-
-private struct AnnotationFeedbackToast: View {
-    let feedback: AnnotationFeedback
-    let onDismiss: () -> Void
-
-    var body: some View {
-        Button(action: onDismiss) {
-            Text(feedback.copy)
-                .font(.panelTitle)
-                .textCase(.uppercase)
-                .foregroundColor(OPSStyle.Colors.rose)
-                .lineLimit(2)
-                .minimumScaleFactor(0.85)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                        .fill(OPSStyle.Colors.glassDenseApprox)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                                .strokeBorder(OPSStyle.Colors.roseLine, lineWidth: 1)
-                        )
-                )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(feedback.copy)
     }
 }
 

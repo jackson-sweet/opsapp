@@ -4249,7 +4249,7 @@ class DataController: ObservableObject {
     /// Recalculate and update taskIndex for all tasks in a project
     /// Tasks are ordered by startDate (earliest = 0), with unscheduled tasks at the end
     @MainActor
-    func recalculateTaskIndices(for project: Project) async throws {
+    func recalculateTaskIndices(for project: Project, deferPush: Bool = false) async throws {
         print("[TASK_INDEX] 🔢 Recalculating task indices for project: \(project.title)")
 
         let allTasks = project.tasks
@@ -4310,7 +4310,8 @@ class DataController: ObservableObject {
                     entityType: .projectTask,
                     entityId: task.id,
                     operationType: "update",
-                    changedFields: ["display_order": index]
+                    changedFields: ["display_order": index],
+                    deferPush: deferPush
                 )
                 print("[TASK_INDEX]   ✅ Recorded displayOrder=\(index) for task '\(task.displayTitle)'")
             }
@@ -6666,6 +6667,127 @@ extension DataController {
             constraints: buildScheduleConstraints()
         )
         return AutoScheduleManager.schedule(request: request, provider: self)
+    }
+
+    /// Apply a batch of auto-schedule placements WITHOUT the per-task notification /
+    /// calendar / index / push storm that `updateTaskSchedule` runs for a single
+    /// manual edit. Built for the priority-queue "Schedule All / Next" run: one
+    /// save, one index recalc per affected project, one coalesced sync push, one
+    /// calendar refresh, and ONE summary notification per affected crew member
+    /// (not one per task). Returns the number of placements committed.
+    @MainActor
+    @discardableResult
+    func applySchedulePlan(_ plan: SchedulePlan) async -> Int {
+        guard let context = modelContext, !plan.placements.isEmpty else { return 0 }
+
+        let byId = Dictionary(getAllTasks().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+
+        var specs: [SyncEngine.BulkOperationSpec] = []
+        var affectedProjects: [String: Project] = [:]
+        var movedTaskIds: [String] = []
+        var memberMoveCounts: [String: Int] = [:]   // crew member id -> # of their tasks moved
+        var committed = 0
+
+        for placement in plan.placements {
+            guard let task = byId[placement.id] else { continue }
+            let prevStart = task.startDate
+            let prevEnd = task.endDate
+
+            task.startDate = placement.startDate
+            task.endDate = placement.endDate
+            let daysDiff = Calendar.current.dateComponents([.day], from: placement.startDate, to: placement.endDate).day ?? 0
+            task.duration = daysDiff + 1
+            // System-driven (auto-schedule) — do NOT lock the cascade, matching the
+            // manualEdit:false contract of updateTaskSchedule.
+            task.needsSync = true
+            committed += 1
+            if let project = task.project { affectedProjects[project.id] = project }
+
+            specs.append(.init(
+                entityType: .projectTask,
+                entityId: task.id,
+                operationType: "update",
+                changedFields: [
+                    "start_date": formatter.string(from: placement.startDate),
+                    "end_date": formatter.string(from: placement.endDate),
+                    "duration": task.duration
+                ]
+            ))
+
+            if prevStart != placement.startDate || prevEnd != placement.endDate {
+                movedTaskIds.append(task.id)
+                for memberId in task.getTeamMemberIds() {
+                    memberMoveCounts[memberId, default: 0] += 1
+                }
+            }
+        }
+
+        guard committed > 0 else { return 0 }
+
+        // ONE save for every task's new dates, then ONE batched enqueue (no per-op push).
+        try? context.save()
+        syncEngine.recordOperations(specs)
+
+        // ONE index recalc per affected project (was once PER TASK in the old loop);
+        // its index sync ops are deferred into the single push below.
+        for project in affectedProjects.values {
+            try? await recalculateTaskIndices(for: project, deferPush: true)
+        }
+
+        // ONE coalesced push for the whole batch.
+        await syncEngine.pushPending()
+
+        // ONE calendar-view refresh.
+        scheduledTasksDidChange.toggle()
+
+        // Mirror moved tasks to the iPhone Calendar off the hot path.
+        let idsToMirror = movedTaskIds
+        Task { @MainActor in
+            for id in idsToMirror {
+                await CalendarMirrorService.shared.mirrorEvent(opsId: id, source: .projectTask)
+            }
+        }
+
+        // ONE summary notification per affected crew member — replaces the old
+        // per-task push to every member (the N×members request storm).
+        await sendScheduleRunSummaries(memberMoveCounts: memberMoveCounts)
+
+        return committed
+    }
+
+    /// Send a single "your schedule changed" summary to each affected crew member
+    /// after a bulk auto-schedule run (excludes the operator who ran it).
+    @MainActor
+    private func sendScheduleRunSummaries(memberMoveCounts: [String: Int]) async {
+        guard let companyId = currentUser?.companyId else { return }
+        let currentId = UserDefaults.standard.string(forKey: "currentUserId")
+        let recipients = memberMoveCounts.filter { $0.key != currentId && $0.value > 0 }
+        guard !recipients.isEmpty else { return }
+
+        let notifRepo = NotificationRepository()
+        for (memberId, count) in recipients {
+            let body = count == 1
+                ? "1 of your tasks was rescheduled"
+                : "\(count) of your tasks were rescheduled"
+            let dto = NotificationRepository.CreateNotificationDTO(
+                userId: memberId,
+                companyId: companyId,
+                type: "schedule_change",
+                title: "Schedule updated",
+                body: body,
+                projectId: nil,
+                noteId: nil,
+                expenseId: nil,
+                batchId: nil,
+                deepLinkType: "jobBoard"
+            )
+            try? await notifRepo.createNotification(dto)
+        }
+
+        // One summary push per affected member (vs one push PER TASK before).
+        await OneSignalService.shared.notifyScheduleBatchUpdate(userMoveCounts: recipients)
     }
 }
 

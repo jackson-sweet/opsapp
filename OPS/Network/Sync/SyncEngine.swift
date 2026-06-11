@@ -283,7 +283,8 @@ final class SyncEngine {
         changedFields: [String: Any],
         previousValues: [String: Any]? = nil,
         priority: Int = 1,
-        dependsOnId: String? = nil
+        dependsOnId: String? = nil,
+        deferPush: Bool = false
     ) -> SyncOperation? {
         guard let modelContext else {
             print("[SYNC_ENGINE] Cannot record operation — modelContext not configured")
@@ -357,14 +358,70 @@ final class SyncEngine {
             print("[DUPE_TRACE] SYNCOP.record id=\(canonicalEntityId) op=\(operationType) status=pending createdAt=\(operation.createdAt) ctx=\(ObjectIdentifier(modelContext))")
         }
 
-        // Attempt immediate push if online
-        if connectivity?.shouldAttemptSync == true {
+        // Attempt immediate push if online. Bulk callers pass deferPush:true
+        // and call pushPending() once for the whole batch — otherwise N task
+        // writes each spawn a push, a request storm that drops the connection.
+        if !deferPush, connectivity?.shouldAttemptSync == true {
             Task {
                 await pushPending()
             }
         }
 
         return operation
+    }
+
+    /// One operation to enqueue via `recordOperations(_:)`.
+    struct BulkOperationSpec {
+        let entityType: SyncEntityType
+        let entityId: String
+        let operationType: String
+        let changedFields: [String: Any]
+    }
+
+    /// Enqueue many operations with a SINGLE context save and NO per-op push.
+    /// Built for bulk applies (priority-queue / auto-schedule run) so N task
+    /// writes don't trigger N saves + N pushes — the cause of the main-thread
+    /// hang and the `networkConnectionLost` request storm. The caller invokes
+    /// `pushPending()` once afterward.
+    @discardableResult
+    func recordOperations(_ specs: [BulkOperationSpec]) -> Int {
+        guard let modelContext else {
+            print("[SYNC_ENGINE] Cannot record operations — modelContext not configured")
+            return 0
+        }
+        guard !specs.isEmpty else { return 0 }
+        var recorded = 0
+        for spec in specs {
+            let payloadData: Data
+            do {
+                payloadData = try JSONSerialization.data(withJSONObject: spec.changedFields, options: [])
+            } catch {
+                print("[SYNC_ENGINE] Skipping bulk op for \(spec.entityId) — encode failed: \(error)")
+                continue
+            }
+            let operation = SyncOperation(
+                entityType: spec.entityType.rawValue,
+                entityId: spec.entityId.lowercased(),
+                operationType: spec.operationType,
+                payload: payloadData,
+                changedFields: Array(spec.changedFields.keys),
+                previousValues: nil,
+                priority: 1,
+                dependsOnId: nil
+            )
+            modelContext.insert(operation)
+            recorded += 1
+        }
+        guard recorded > 0 else { return 0 }
+        do {
+            try modelContext.save()   // ONE save for the whole batch
+        } catch {
+            print("[SYNC_ENGINE] Failed to save \(recorded) bulk operation(s): \(error)")
+            return 0
+        }
+        refreshPendingCount()
+        print("[SYNC_ENGINE] Recorded \(recorded) operation(s) in one batch (push deferred to caller)")
+        return recorded
     }
 
     // MARK: - Sync Triggers

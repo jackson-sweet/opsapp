@@ -359,7 +359,12 @@ struct MonthGridView: View {
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-        let result = SchedulingEngine.pushByDays(task: task, days: days)
+        // A week-sized push ("Push 1 week") is a calendar-week move: exactly +7
+        // on the same weekday, never weekend-normalized — identical to every
+        // other surface. Sub-week day nudges honor the company weekend-skip.
+        let result = (days != 0 && days % 7 == 0)
+            ? SchedulingEngine.pushByCalendarWeeks(task: task, weeks: days / 7)
+            : SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: dataController.currentCompanySkipsWeekends)
         Task { @MainActor in
             do {
                 try await dataController.updateTaskSchedule(

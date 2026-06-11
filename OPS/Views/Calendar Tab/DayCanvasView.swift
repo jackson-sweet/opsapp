@@ -228,7 +228,7 @@ struct DayPageView: View {
 
     // Push / cascade state
     @State private var showingCascadePreview = false
-    @State private var pendingCascade: SchedulingEngine.CascadeResult?
+    @State private var pendingPlan: DataController.CascadePlan?
     @State private var pendingTask: ProjectTask?
     @State private var pendingDays: Int = 0
     @State private var swipeOffset: [String: CGFloat] = [:]
@@ -427,13 +427,13 @@ struct DayPageView: View {
             .environmentObject(dataController)
         }
         .sheet(isPresented: $showingCascadePreview) {
-            if let cascade = pendingCascade, let task = pendingTask {
+            if let plan = pendingPlan, let task = pendingTask {
                 CascadePreviewSheet(
                     pushedTaskName: task.displayTitle,
                     pushedTaskOldStart: task.startDate,
-                    pushedTaskNewStart: SchedulingEngine.pushByDays(task: task, days: pendingDays).newStart,
-                    pushedTaskNewEnd: SchedulingEngine.pushByDays(task: task, days: pendingDays).newEnd,
-                    cascadeChanges: cascade.changes,
+                    pushedTaskNewStart: plan.pushedNewStart,
+                    pushedTaskNewEnd: plan.pushedNewEnd,
+                    cascadeChanges: plan.cascade.changes,
                     onConfirm: {
                         Task {
                             try? await dataController.pushTaskWithCascade(task, byDays: pendingDays)
@@ -546,10 +546,10 @@ struct DayPageView: View {
 
                     Section("Cascade") {
                         Button(action: { pushTaskWithCascade(task, days: 1) }) {
-                            Label("+1 Day (+ dependents)", systemImage: "arrow.triangle.branch")
+                            Label("+1 Day (+ crew)", systemImage: "arrow.triangle.branch")
                         }
                         Button(action: { pushTaskWithCascade(task, days: 2) }) {
-                            Label("+2 Days (+ dependents)", systemImage: "arrow.triangle.branch")
+                            Label("+2 Days (+ crew)", systemImage: "arrow.triangle.branch")
                         }
                     }
 
@@ -890,12 +890,15 @@ struct DayPageView: View {
     private func bulkPush(days: Int) {
         guard let ctx = dataController.modelContext else { return }
         let ids = selectedTaskIds
+        // A week-sized bulk push is a calendar-week move (exactly +7, weekday
+        // preserved, never weekend-normalized); day nudges stay on pushByDays.
+        let preserveCalendarWeek = days != 0 && days % 7 == 0
         Task {
             for taskId in ids {
                 let predicate = #Predicate<ProjectTask> { $0.id == taskId }
                 let descriptor = FetchDescriptor<ProjectTask>(predicate: predicate)
                 if let task = try? ctx.fetch(descriptor).first {
-                    try? await dataController.pushTask(task, byDays: days)
+                    try? await dataController.pushTask(task, byDays: days, preserveCalendarWeeks: preserveCalendarWeek)
                 }
             }
             await MainActor.run {
@@ -943,12 +946,20 @@ struct DayPageView: View {
     }
 
     private func pushTask(_ task: ProjectTask, days: Int) {
-        // Compute new start before the async push mutates the task
-        let cal = Calendar.current
-        let newStart = cal.date(byAdding: .day, value: days, to: task.startDate ?? Date()) ?? Date()
+        // A week-sized push preserves the weekday (exactly +7, never
+        // weekend-normalized); day nudges stay on the plain day engine.
+        // Compute the landing date the same way it commits so the banner
+        // reports where the task actually lands.
+        let preserveCalendarWeek = days != 0 && days % 7 == 0
+        let newStart: Date
+        if preserveCalendarWeek {
+            newStart = SchedulingEngine.pushByCalendarWeeks(task: task, weeks: days / 7).newStart
+        } else {
+            newStart = SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: dataController.currentCompanySkipsWeekends).newStart
+        }
 
         Task {
-            try? await dataController.pushTask(task, byDays: days)
+            try? await dataController.pushTask(task, byDays: days, preserveCalendarWeeks: preserveCalendarWeek)
         }
 
         postScheduleBanner(task: task, newDate: newStart, action: "pushed to")
@@ -970,17 +981,12 @@ struct DayPageView: View {
     }
 
     private func pushTaskWithCascade(_ task: ProjectTask, days: Int) {
-        let allTasks = dataController.getTasksForProject(task.projectId)
-        let newDates = SchedulingEngine.pushByDays(task: task, days: days)
-        let cascade = SchedulingEngine.calculateCascade(
-            pushedTaskId: task.id,
-            newStartDate: newDates.newStart,
-            newEndDate: newDates.newEnd,
-            allProjectTasks: allTasks
-        )
+        // Plan the full cascade (forward crew consolidation across the company
+        // plus the project's dependencies) so the preview matches the commit.
+        guard let plan = dataController.planCascade(for: task, byDays: days) else { return }
 
-        if showCascadePreviewPref && !cascade.changes.isEmpty {
-            pendingCascade = cascade
+        if showCascadePreviewPref && !plan.cascade.changes.isEmpty {
+            pendingPlan = plan
             pendingTask = task
             pendingDays = days
             showingCascadePreview = true

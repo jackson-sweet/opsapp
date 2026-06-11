@@ -766,24 +766,35 @@ struct FloatingActionMenu: View {
                 .environmentObject(appState)
                 .environmentObject(PermissionStore.shared)
         }
-        .alert("Locked", isPresented: $showLockedAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(lockedAlertMessage)
-        }
-        .alert("Payment Review", isPresented: $showPaymentReviewIntroFAB) {
-            Button("Got It") {
-                showPaymentReviewFromFAB = true
+        .onChange(of: showLockedAlert) { _, showing in
+            if showing {
+                ToastCenter.shared.present(
+                    Toast(label: lockedAlertMessage.isEmpty ? "// LOCKED" : "// \(lockedAlertMessage.uppercased())", tone: .warning)
+                )
+                showLockedAlert = false
             }
-        } message: {
-            Text("Completed projects with outstanding payments will show up here for review.")
         }
-        .alert("Task Review", isPresented: $showTaskReviewIntroFAB) {
-            Button("Got It") {
-                showTaskReviewFromFAB = true
-            }
-        } message: {
-            Text("Tasks with end dates in the past will show up here so you can complete, reschedule, or cancel them.")
+        .onChange(of: showPaymentReviewIntroFAB) { _, showing in
+            guard showing else { return }
+            ToastCenter.shared.present(
+                Toast(label: "// PAYMENT REVIEW READY", tone: .success, autoDismissAfter: 4,
+                      action: ToastAction(label: "OPEN") {
+                          showPaymentReviewIntroFAB = false
+                          showPaymentReviewFromFAB = true
+                      })
+            )
+            showPaymentReviewIntroFAB = false
+        }
+        .onChange(of: showTaskReviewIntroFAB) { _, showing in
+            guard showing else { return }
+            ToastCenter.shared.present(
+                Toast(label: "// TASK REVIEW READY", tone: .success, autoDismissAfter: 4,
+                      action: ToastAction(label: "OPEN") {
+                          showTaskReviewIntroFAB = false
+                          showTaskReviewFromFAB = true
+                      })
+            )
+            showTaskReviewIntroFAB = false
         }
         .sheet(isPresented: $showingPersonalEventSheet) {
             UserEventSheet(isPresented: $showingPersonalEventSheet, viewModel: calendarViewModel, mode: .personalEvent)

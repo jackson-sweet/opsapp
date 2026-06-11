@@ -73,7 +73,6 @@ struct ProjectDetailsView: View {
                 mainContent
                     .navigationBarHidden(true)
                     // MARK: - Sheets & Alerts
-                    .overlay(saveNotificationOverlay)
                     .fullScreenCover(isPresented: $viewModel.showingPhotoViewer) {
                         photoViewerContent
                             .onAppear {
@@ -274,11 +273,7 @@ struct ProjectDetailsView: View {
                     } message: {
                         Text("You have unsaved changes. Discard them?")
                     }
-                    .alert("Network Error", isPresented: $viewModel.showingNetworkError) {
-                        Button("OK", role: .cancel) { }
-                    } message: {
-                        Text(viewModel.networkErrorMessage)
-                    }
+                    .errorToast($viewModel.networkError, label: Feedback.Err.operationFailed)
                     .alert("Delete Project?", isPresented: $viewModel.showingDeleteAlert) {
                         Button("Delete", role: .destructive) {
                             viewModel.isDeleting = true
@@ -1034,39 +1029,6 @@ struct ProjectDetailsView: View {
                 )
             }
             .padding(.trailing, 16)
-        }
-    }
-
-    // MARK: - Save Notification Overlay
-
-    private var saveNotificationOverlay: some View {
-        Group {
-            if viewModel.showingSaveNotification {
-                VStack {
-                    Spacer()
-                    HStack {
-                        Image(systemName: OPSStyle.Icons.complete)
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                        Text("Saved")
-                            .font(OPSStyle.Typography.captionBold)
-                    }
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .fill(.ultraThinMaterial)
-                            .environment(\.colorScheme, .dark)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                    )
-                    .padding(.bottom, 32)
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .animation(OPSStyle.Animation.standard, value: viewModel.showingSaveNotification)
-            }
         }
     }
 

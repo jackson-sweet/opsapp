@@ -195,8 +195,6 @@ struct RoleDetailView: View {
     // Team members assigned to this role
     @State private var roleUsers: [User] = []
 
-    // Feature gate alert
-    @State private var showFeatureGateAlert = false
 
     // Pending changes
     @State private var pendingChanges: [String: PermissionChange] = [:]
@@ -431,11 +429,6 @@ struct RoleDetailView: View {
             // the user is still inside this fullScreenCover.
             NotificationCenter.default.post(name: Notification.Name("WizardRoleDetailViewed"), object: nil)
         }
-        .alert("In Testing", isPresented: $showFeatureGateAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text("This feature is currently in testing. Reach out if you'd like to be added to the testing group.")
-        }
     }
 
     // MARK: - Collapsible Category Card
@@ -608,7 +601,7 @@ struct RoleDetailView: View {
 
     private func gatedCategory(_ category: String) -> some View {
         Button(action: {
-            showFeatureGateAlert = true
+            ToastCenter.shared.present(Feedback.Settings.featureInTesting)
         }) {
             HStack(spacing: 6) {
                 Image(systemName: PermissionRegistry.iconForCategory(category))
@@ -851,6 +844,7 @@ struct RoleDetailView: View {
                     pendingChanges = [:]
                     isSaving = false
 
+                    ToastCenter.shared.present(Feedback.Settings.permissionsSaved)
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.success)
                 }

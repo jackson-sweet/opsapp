@@ -56,8 +56,9 @@ class ProjectDetailsViewModel: ObservableObject {
     @Published var showingNoteImagePicker = false
     @Published var showingNotePhotoViewer = false
     @Published var showingProjectNotes = false
-    @Published var showingNetworkError = false
+    @Published var showingNetworkError = false  // kept for legacy callers; prefer networkError
     @Published var networkErrorMessage = ""
+    @Published var networkError: String? = nil
 
     // MARK: - Editing State
 
@@ -87,11 +88,6 @@ class ProjectDetailsViewModel: ObservableObject {
 
     @Published var noteText: String
     @Published var originalNoteText: String
-
-    // MARK: - Save Notification
-
-    @Published var showingSaveNotification = false
-    private var notificationTimer: Timer?
 
     // MARK: - Expense State
 
@@ -284,6 +280,9 @@ class ProjectDetailsViewModel: ObservableObject {
         Task {
             do {
                 try await dataController?.updateTaskStatus(task: task, to: newStatus)
+                if newStatus == .completed {
+                    ToastCenter.shared.present(Feedback.Task.completed)
+                }
                 print("[TASK_TOGGLE] Task \(task.id) status toggled to \(newStatus.displayName)")
             } catch {
                 print("[TASK_TOGGLE] Failed to toggle task status: \(error)")
@@ -318,6 +317,7 @@ class ProjectDetailsViewModel: ObservableObject {
         Task {
             do {
                 try await dataController?.updateTaskStatus(task: task, to: .cancelled)
+                ToastCenter.shared.present(Feedback.Task.cancelled)
                 print("[TASK_CANCEL] Task \(task.id) cancelled")
             } catch {
                 print("[TASK_CANCEL] Failed to cancel task: \(error)")
@@ -352,6 +352,7 @@ class ProjectDetailsViewModel: ObservableObject {
                     project: project,
                     to: .completed
                 )
+                ToastCenter.shared.present(Feedback.JobBoard.projectCompleted)
                 print("[PROJECT_COMPLETE] ✅ Project marked complete: \(project.title)")
             } catch {
                 print("[PROJECT_COMPLETE] ❌ Failed to mark project complete: \(error)")
@@ -370,6 +371,7 @@ class ProjectDetailsViewModel: ObservableObject {
                     project: project,
                     to: .closed
                 )
+                ToastCenter.shared.present(Feedback.JobBoard.projectClosed)
                 print("[PROJECT_CLOSE] Project marked closed: \(project.title)")
             } catch {
                 print("[PROJECT_CLOSE] ❌ Failed to mark project closed: \(error)")
@@ -417,7 +419,8 @@ class ProjectDetailsViewModel: ObservableObject {
                 project.lastSyncedAt = Date()
                 try? dataController?.modelContext?.save()
                 isEditingTitle = false
-                showSaveNotification()
+                originalNoteText = noteText
+                ToastCenter.shared.present(Feedback.Project.titleSaved)
             } catch {
                 print("Failed to save title: \(error)")
             }
@@ -434,6 +437,7 @@ class ProjectDetailsViewModel: ObservableObject {
         Task {
             try? dataController?.modelContext?.save()
             project.needsSync = true
+            ToastCenter.shared.present(Feedback.Project.descriptionSaved)
         }
     }
 
@@ -469,13 +473,12 @@ class ProjectDetailsViewModel: ObservableObject {
                 try await dataController.updateProjectFields(projectId: project.id, fields: fields)
                 await MainActor.run {
                     isUpdatingVinylOrderMarker = false
-                    showSaveNotification()
+                    ToastCenter.shared.present(Feedback.saved("vinyl status"))
                 }
             } catch {
                 await MainActor.run {
                     isUpdatingVinylOrderMarker = false
-                    networkErrorMessage = "VINYL STATUS FAILED"
-                    showingNetworkError = true
+                    networkError = "VINYL STATUS FAILED"
                 }
                 print("[PROJECT_DETAILS] Failed to update vinyl marker: \(error)")
             }
@@ -513,7 +516,7 @@ class ProjectDetailsViewModel: ObservableObject {
                    let region = Self.safeMapRegion(center: coordinate, delta: 0.01) {
                     addressMapRegion = region
                 }
-                showSaveNotification()
+                ToastCenter.shared.present(Feedback.saved("address"))
             } catch {
                 // Never crash the save path — address text has already been
                 // persisted by updateProjectAddress before its throw point
@@ -651,8 +654,7 @@ class ProjectDetailsViewModel: ObservableObject {
                     processingImages = false
                 } else {
                     processingImages = false
-                    showingNetworkError = true
-                    networkErrorMessage = "Failed to upload images. Please check your network connection."
+                    networkError = "Failed to upload images. Please check your network connection."
                 }
             } else {
                 // Fallback: compress and save locally
@@ -762,19 +764,6 @@ class ProjectDetailsViewModel: ObservableObject {
 
     func checkForUnsavedChanges() -> Bool {
         return noteText != originalNoteText
-    }
-
-    // MARK: - Save Notification
-
-    func showSaveNotification() {
-        notificationTimer?.invalidate()
-        showingSaveNotification = true
-        notificationTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.showingSaveNotification = false
-            }
-        }
-        originalNoteText = noteText
     }
 
     // MARK: - Helpers

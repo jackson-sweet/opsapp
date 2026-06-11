@@ -33,7 +33,6 @@ struct LoginView: View {
     @State private var password = ""
     @State private var isLoggingIn = false
     @State private var errorMessage: String?
-    @State private var showError = false
     @State private var showForgotPassword = false
 
     var body: some View {
@@ -189,13 +188,7 @@ struct LoginView: View {
         .sheet(isPresented: $showForgotPassword) {
             ForgotPasswordView(prefilledEmail: username)
         }
-        .alert(isPresented: $showError, content: {
-            Alert(
-                title: Text("Sign In Failed"),
-                message: Text(errorMessage ?? "Please check your credentials and try again."),
-                dismissButton: .default(Text("OK"))
-            )
-        })
+        .errorToast($errorMessage, label: Feedback.Err.signInFailed)
     }
 
     // MARK: - Login
@@ -232,7 +225,6 @@ struct LoginView: View {
                 } else {
                     onLoginAbandoned?()
                     errorMessage = loginError ?? "Incorrect email or password. Please try again."
-                    showError = true
                 }
             }
         }
@@ -250,7 +242,6 @@ struct LoginView: View {
                 .flatMap({ $0.windows })
                 .first(where: { $0.isKeyWindow }) else {
                 errorMessage = "Cannot present Apple Sign-In"
-                showError = true
                 isLoggingIn = false
                 return
             }
@@ -273,7 +264,6 @@ struct LoginView: View {
                 } else {
                     onLoginAbandoned?()
                     errorMessage = "No account found. Please sign up with your company first."
-                    showError = true
                 }
             } catch {
                 isLoggingIn = false
@@ -282,7 +272,6 @@ struct LoginView: View {
                     // User canceled — ignore
                 } else {
                     errorMessage = "Apple Sign-In failed: \(error.localizedDescription)"
-                    showError = true
                 }
             }
         }
@@ -298,7 +287,6 @@ struct LoginView: View {
             guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                   let rootViewController = windowScene.windows.first?.rootViewController else {
                 errorMessage = "Cannot present Google Sign-In"
-                showError = true
                 isLoggingIn = false
                 return
             }
@@ -321,7 +309,6 @@ struct LoginView: View {
                 } else {
                     onLoginAbandoned?()
                     errorMessage = "No account found. Please sign up with your company first."
-                    showError = true
                 }
             } catch {
                 isLoggingIn = false
@@ -330,7 +317,6 @@ struct LoginView: View {
                     // User canceled — ignore
                 } else {
                     errorMessage = "Google Sign-In failed: \(error.localizedDescription)"
-                    showError = true
                 }
             }
         }

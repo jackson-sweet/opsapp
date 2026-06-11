@@ -381,6 +381,7 @@ struct PhotoCommentViewer: View {
             )
             imageRefreshToken += 1
 
+            ToastCenter.shared.present(Feedback.Photo.annotationSaved)
             withAnimation(OPSStyle.Animation.fast) {
                 isAnnotating = false
                 annotationDrawing = PKDrawing()
@@ -665,11 +666,17 @@ struct PhotoCommentViewer: View {
                     viewModel.handleMentionInput(newValue)
                 }
                 .onSubmit {
-                    Task { await viewModel.postComment() }
+                    Task {
+                        await viewModel.postComment()
+                        ToastCenter.shared.present(Feedback.Project.commentPosted)
+                    }
                 }
 
             Button(action: {
-                Task { await viewModel.postComment() }
+                Task {
+                    await viewModel.postComment()
+                    ToastCenter.shared.present(Feedback.Project.commentPosted)
+                }
             }) {
                 Image(systemName: OPSStyle.Icons.sendFill)
                     .font(OPSStyle.Typography.title)
@@ -803,6 +810,7 @@ struct PhotoCommentViewer: View {
         // Medium impact on commit — confirms the toggle landed without
         // being noisy in the field.
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        ToastCenter.shared.present(Feedback.Photo.visibilityUpdated)
 
         Task {
             do {

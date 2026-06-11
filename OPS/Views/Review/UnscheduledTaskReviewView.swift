@@ -42,34 +42,11 @@ struct UnscheduledTaskReviewView: View {
     /// Full User objects so the crew picker shows real profile photos.
     @State private var fetchedTeamMembers: [User] = []
 
-    // Transient confirmation banner so swipes have visible effect
-    // (previously auto-schedule and mark-complete fired silently).
-    @State private var toastMessage: String? = nil
-    @State private var toastKind: ToastKind = .success
-    @State private var toastDismissTask: Task<Void, Never>? = nil
-    /// Bug e90acdaf — when mark-complete or auto-schedule fails, the card
-    /// has already left the stack. Holding the failed task + action here
-    /// powers the RETRY button on the persistent error toast so the
-    /// operator has an in-flow recovery path instead of being told to
-    /// "try again" with no surface to do so.
-    @State private var retryContext: RetryContext? = nil
-    @State private var retryInFlight: Bool = false
-
-    private enum ToastKind {
-        case success
-        case error
-    }
-
     private enum RetryAction {
         case autoSchedule
         case assignCrew
         case manualSchedule
         case markComplete
-    }
-
-    private struct RetryContext {
-        let task: ProjectTask
-        let action: RetryAction
     }
 
     private var activeTeamMembers: [User] {
@@ -210,8 +187,6 @@ struct UnscheduledTaskReviewView: View {
                 }
             }
 
-            // Confirmation banner (success/error) sits above card stack
-            toastOverlay
         }
         .sheet(isPresented: $showBio) {
             if let task = selectedTask {
@@ -318,13 +293,6 @@ struct UnscheduledTaskReviewView: View {
                     .sorted { $0.fullName < $1.fullName }
             }
         }
-        .onDisappear {
-            // Tear down the in-flight toast-dismiss Task so it doesn't outlive
-            // the view and write to stale @State after the user has closed
-            // the review.
-            toastDismissTask?.cancel()
-            toastDismissTask = nil
-        }
     }
 
     // MARK: - Per-Task Config
@@ -412,167 +380,6 @@ struct UnscheduledTaskReviewView: View {
         }
         .padding(.horizontal, 16)
         .animation(.easeInOut(duration: 0.2), value: currentTopIndex)
-    }
-
-    // MARK: - Toast Overlay
-
-    @ViewBuilder
-    private var toastOverlay: some View {
-        VStack {
-            if let message = toastMessage {
-                HStack(spacing: 10) {
-                    Image(systemName: toastKind == .success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(toastKind == .success ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
-                    Text(message)
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-
-                    if retryContext != nil {
-                        Button(action: performRetry) {
-                            Text(toastActionLabel)
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .padding(.horizontal, 10)
-                                .frame(height: 28)
-                                .background(OPSStyle.Colors.errorStatus.opacity(0.18))
-                                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .strokeBorder(OPSStyle.Colors.errorStatus.opacity(0.45), lineWidth: 1)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(retryInFlight)
-                        .opacity(retryInFlight ? 0.5 : 1)
-                        .accessibilityLabel(toastActionAccessibilityLabel)
-
-                        Button(action: dismissToast) {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .frame(width: 28, height: 28)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Dismiss")
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(OPSStyle.Colors.cardBackground.opacity(0.96))
-                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-                .contentShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .strokeBorder((toastKind == .success ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus).opacity(0.35), lineWidth: 1)
-                )
-                .shadow(color: Color.black.opacity(0.35), radius: 10, y: 4)
-                .padding(.horizontal, 16)
-                .padding(.top, 68)
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-            Spacer()
-        }
-        // Hits pass through to the card stack unless the retry toast is up —
-        // we don't want a transient success toast eating swipe gestures. The
-        // pill's contentShape keeps hits inside the rounded rectangle even
-        // when retry buttons widen it.
-        .allowsHitTesting(retryContext != nil)
-        .animation(toastAnimation, value: toastMessage)
-    }
-
-    private var toastActionLabel: String {
-        guard let context = retryContext else { return "RETRY" }
-        switch context.action {
-        case .autoSchedule, .markComplete:
-            return "RETRY"
-        case .assignCrew:
-            return "ASSIGN CREW"
-        case .manualSchedule:
-            return "SCHEDULE"
-        }
-    }
-
-    private var toastActionAccessibilityLabel: String {
-        guard let context = retryContext else { return "Retry failed action" }
-        switch context.action {
-        case .autoSchedule, .markComplete:
-            return "Retry failed action"
-        case .assignCrew:
-            return "Assign crew"
-        case .manualSchedule:
-            return "Schedule manually"
-        }
-    }
-
-    private var toastAnimation: Animation {
-        reduceMotion
-            ? .easeInOut(duration: 0.2)
-            : .spring(response: 0.35, dampingFraction: 0.82)
-    }
-
-    private func showToast(_ message: String, kind: ToastKind, retry: RetryContext? = nil) {
-        toastDismissTask?.cancel()
-        toastMessage = message
-        toastKind = kind
-        retryContext = retry
-        retryInFlight = false
-
-        // Bug e90acdaf — error toasts that carry a RETRY action persist until
-        // the operator acts on them; the failed task may already be several
-        // cards behind the current top so we can't trust a 2.6s fuse. Plain
-        // errors still auto-dismiss, but on a longer fuse than successes so
-        // the operator has time to read the failure reason.
-        let lifetimeNanoseconds: UInt64? = {
-            if retry != nil { return nil }
-            if kind == .error { return 6_000_000_000 }
-            return 2_600_000_000
-        }()
-
-        guard let nanos = lifetimeNanoseconds else { return }
-        toastDismissTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: nanos)
-            guard !Task.isCancelled else { return }
-            toastMessage = nil
-            retryContext = nil
-        }
-    }
-
-    private func performRetry() {
-        guard let ctx = retryContext, !retryInFlight else { return }
-        retryInFlight = true
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-
-        // Clear the failed-action toast immediately. The retried action shows
-        // its own result toast; leaving the previous "TRY AGAIN" message up
-        // while the retry is in flight would conflict with whatever lands
-        // a moment later.
-        toastDismissTask?.cancel()
-        toastMessage = nil
-        let captured = ctx
-        retryContext = nil
-
-        switch captured.action {
-        case .autoSchedule: autoScheduleTask(captured.task)
-        case .assignCrew:
-            openCrewPicker(
-                for: captured.task,
-                selectedIds: Set(captured.task.getTeamMemberIds()),
-                countsAsReview: false
-            )
-        case .manualSchedule: manualScheduleTask = captured.task
-        case .markComplete: markTaskComplete(captured.task)
-        }
-        retryInFlight = false
-    }
-
-    private func dismissToast() {
-        toastDismissTask?.cancel()
-        toastMessage = nil
-        retryContext = nil
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     private func formatScheduledRange(start: Date, end: Date) -> String {
@@ -796,17 +603,30 @@ struct UnscheduledTaskReviewView: View {
             // Operator hit DONE with no selections — explicit no-op. Surface
             // a toast so the swipe has a visible effect instead of feeling
             // like the gesture was swallowed.
-            showToast(
-                "NO CREW SELECTED — TASK LEFT UNASSIGNED",
-                kind: .error,
-                retry: countsAsReview ? nil : RetryContext(task: task, action: .assignCrew)
+            let capturedTask = task
+            let capturedCounts = countsAsReview
+            ToastCenter.shared.present(
+                Toast(
+                    label: "// NO CREW SELECTED — TASK LEFT UNASSIGNED",
+                    tone: .warning,
+                    autoDismissAfter: capturedCounts ? 6 : 0,
+                    action: capturedCounts ? nil : ToastAction(label: "ASSIGN CREW") {
+                        openCrewPicker(for: capturedTask, selectedIds: Set(capturedTask.getTeamMemberIds()), countsAsReview: false)
+                    }
+                )
             )
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
         } else if !countsAsReview {
-            showToast(
-                "CREW MISSING — ASSIGN CREW",
-                kind: .error,
-                retry: RetryContext(task: task, action: .assignCrew)
+            let capturedTask = task
+            ToastCenter.shared.present(
+                Toast(
+                    label: "// CREW MISSING — ASSIGN CREW",
+                    tone: .error,
+                    autoDismissAfter: 0,
+                    action: ToastAction(label: "ASSIGN CREW") {
+                        openCrewPicker(for: capturedTask, selectedIds: Set(capturedTask.getTeamMemberIds()), countsAsReview: false)
+                    }
+                )
             )
         }
 
@@ -837,7 +657,7 @@ struct UnscheduledTaskReviewView: View {
         // actually happen on this device.
         if task.status == .completed {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            showToast("ALREADY COMPLETE — \(taskTitle.uppercased())", kind: .success)
+            ToastCenter.shared.present(Feedback.Task.alreadyComplete(taskTitle))
             return
         }
 
@@ -846,16 +666,22 @@ struct UnscheduledTaskReviewView: View {
                 try await dataController.updateTaskStatus(task: task, to: .completed)
                 await MainActor.run {
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    showToast("COMPLETED — \(taskTitle.uppercased())", kind: .success)
+                    ToastCenter.shared.present(Feedback.Task.completedTask(taskTitle))
                 }
             } catch {
                 print("[UNSCHEDULED_REVIEW] Failed to mark task complete: \(error)")
+                let capturedTask = task
                 await MainActor.run {
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
-                    showToast(
-                        "COULDN'T MARK COMPLETE — TRY AGAIN",
-                        kind: .error,
-                        retry: RetryContext(task: task, action: .markComplete)
+                    ToastCenter.shared.present(
+                        Toast(
+                            label: "// COULDN'T MARK COMPLETE — TRY AGAIN",
+                            tone: .error,
+                            autoDismissAfter: 0,
+                            action: ToastAction(label: "RETRY") {
+                                markTaskComplete(capturedTask)
+                            }
+                        )
                     )
                 }
             }
@@ -870,9 +696,11 @@ struct UnscheduledTaskReviewView: View {
         // a confirm of the already-applied schedule instead.
         if let existingStart = task.startDate, let existingEnd = task.endDate {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            showToast(
-                "ALREADY SCHEDULED \(formatScheduledRange(start: existingStart, end: existingEnd))",
-                kind: .success
+            ToastCenter.shared.present(
+                Toast(
+                    label: "// ALREADY SCHEDULED \(formatScheduledRange(start: existingStart, end: existingEnd))",
+                    tone: .success
+                )
             )
             return
         }
@@ -889,10 +717,25 @@ struct UnscheduledTaskReviewView: View {
             let recoveryAction = retryAction(
                 for: AutoScheduleFailureRecovery.recoveryAction(for: plan)
             )
-            showToast(
-                AutoScheduleFailureRecovery.message(for: plan),
-                kind: .error,
-                retry: RetryContext(task: task, action: recoveryAction)
+            let capturedTask = task
+            let failureMessage = AutoScheduleFailureRecovery.message(for: plan)
+            let capturedRecovery = recoveryAction
+            ToastCenter.shared.present(
+                Toast(
+                    label: failureMessage,
+                    tone: .error,
+                    autoDismissAfter: 0,
+                    action: ToastAction(label: capturedRecovery == .assignCrew ? "ASSIGN CREW" : "SCHEDULE") {
+                        switch capturedRecovery {
+                        case .assignCrew:
+                            openCrewPicker(for: capturedTask, selectedIds: Set(capturedTask.getTeamMemberIds()), countsAsReview: false)
+                        case .manualSchedule:
+                            manualScheduleTask = capturedTask
+                        default:
+                            autoScheduleTask(capturedTask)
+                        }
+                    }
+                )
             )
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             return
@@ -914,19 +757,22 @@ struct UnscheduledTaskReviewView: View {
                 )
                 await MainActor.run {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    showToast(
-                        "SCHEDULED \(formatScheduledRange(start: capturedStart, end: capturedEnd))",
-                        kind: .success
-                    )
+                    ToastCenter.shared.present(Feedback.Task.scheduledFor(start: capturedStart, end: capturedEnd))
                 }
             } catch {
                 print("[UNSCHEDULED_REVIEW] Failed to auto-schedule task: \(error)")
+                let capturedTask = task
                 await MainActor.run {
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
-                    showToast(
-                        "SCHEDULE FAILED — TRY AGAIN",
-                        kind: .error,
-                        retry: RetryContext(task: task, action: .autoSchedule)
+                    ToastCenter.shared.present(
+                        Toast(
+                            label: "// SCHEDULE FAILED — TRY AGAIN",
+                            tone: .error,
+                            autoDismissAfter: 0,
+                            action: ToastAction(label: "RETRY") {
+                                autoScheduleTask(capturedTask)
+                            }
+                        )
                     )
                 }
             }
@@ -943,19 +789,24 @@ struct UnscheduledTaskReviewView: View {
                 )
                 await MainActor.run {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    showToast(
-                        "SCHEDULED \(formatScheduledRange(start: startDate, end: endDate))",
-                        kind: .success
-                    )
+                    ToastCenter.shared.present(Feedback.Task.scheduledFor(start: startDate, end: endDate))
                 }
             } catch {
                 print("[UNSCHEDULED_REVIEW] Failed to manually schedule task: \(error)")
+                let capturedTask = task
+                let capturedStart = startDate
+                let capturedEnd = endDate
                 await MainActor.run {
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
-                    showToast(
-                        "SCHEDULE FAILED — TRY AGAIN",
-                        kind: .error,
-                        retry: RetryContext(task: task, action: .manualSchedule)
+                    ToastCenter.shared.present(
+                        Toast(
+                            label: "// SCHEDULE FAILED — TRY AGAIN",
+                            tone: .error,
+                            autoDismissAfter: 0,
+                            action: ToastAction(label: "RETRY") {
+                                manuallySchedule(capturedTask, startDate: capturedStart, endDate: capturedEnd)
+                            }
+                        )
                     )
                 }
             }

@@ -42,8 +42,7 @@ struct SubClientEditSheet: View {
     
     @StateObject private var viewModel = SubClientEditViewModel()
     @State private var isSaving: Bool = false
-    @State private var showError: Bool = false
-    @State private var errorMessage: String = ""
+    @State private var errorMessage: String? = nil
     @State private var showingContactPicker = false
     @State private var showingCompanyConfirmation = false
     @State private var pendingCompanyName: String = ""
@@ -206,11 +205,7 @@ struct SubClientEditSheet: View {
                 onAction: saveSubClient
             )
             .loadingOverlay(isPresented: $isSaving, message: "Saving...")
-            .alert("Error", isPresented: $showError) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(errorMessage)
-            }
+            .errorToast($errorMessage, label: Feedback.Err.operationFailed)
             .alert("Import Conflicts Found", isPresented: $showingImportConflictDialog) {
                 Button("Keep Current Data") {
                     // Do nothing
@@ -426,7 +421,6 @@ struct SubClientEditSheet: View {
         let trimmedName = viewModel.name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
             errorMessage = "Name is required"
-            showError = true
             return
         }
         
@@ -449,6 +443,7 @@ struct SubClientEditSheet: View {
                 let generator = UINotificationFeedbackGenerator()
                 generator.notificationOccurred(.success)
 
+                ToastCenter.shared.present(Feedback.Contact.subSaved)
                 isSaving = false
 
                 // Brief delay for graceful dismissal

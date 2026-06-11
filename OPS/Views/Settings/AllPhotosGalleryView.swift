@@ -77,7 +77,6 @@ struct AllPhotosGalleryView: View {
     @State private var isSelectMode = false
     @State private var selectedPhotos: Set<String> = []
     @State private var selectedPhotoContext: GalleryPhotoContext? = nil
-    @State private var showFirstVisitInfo = false
     @AppStorage("photosGalleryFirstVisitDone") private var firstVisitDone = false
 
     // Filter state
@@ -307,19 +306,16 @@ struct AllPhotosGalleryView: View {
                 expandedMonths.insert(first.id)
             }
 
-            // Show first-visit info popup explaining defaults
+            // On first visit, surface a brief info toast so the user knows
+            // photos are cached automatically and can be managed below.
             if !firstVisitDone {
                 firstVisitDone = true
-                // Slight delay so the view renders before showing the popup
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    showFirstVisitInfo = true
+                    ToastCenter.shared.present(
+                        Toast(label: "// PHOTOS CACHED — MANAGE BELOW", tone: .success)
+                    )
                 }
             }
-        }
-        .alert("Photo Storage Defaults", isPresented: $showFirstVisitInfo) {
-            Button("Got It") { }
-        } message: {
-            Text("Photos from your projects are stored in the cloud. By default, recent photos (last 3 months) are cached on your device for quick access.\n\nYou can pin specific photos to keep them downloaded, or enable \"Keep All Photos Downloaded\" to always have every photo available offline.\n\nManage storage anytime from the bottom of this screen.")
         }
         .sheet(isPresented: $showFilterSheet) {
             PhotoFilterSheet(
@@ -893,6 +889,7 @@ struct AllPhotosGalleryView: View {
                 UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
             }
         }
+        ToastCenter.shared.present(Feedback.Settings.photosSaved)
         // Exit select mode after save
         isSelectMode = false
         selectedPhotos.removeAll()
@@ -917,6 +914,7 @@ struct AllPhotosGalleryView: View {
         }
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        ToastCenter.shared.present(Feedback.Settings.photosPinned)
 
         // Exit select mode
         isSelectMode = false

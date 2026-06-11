@@ -138,33 +138,20 @@ class DeckBuilderViewModel: ObservableObject {
 
     // MARK: - Error State
 
-    @Published var saveError: String?
     @Published var isLocallySaved: Bool = true
     @Published var estimateValidationError: String?
-    @Published var showUndoLevelToast: Bool = false
     private var hasShownUndoLevelToast: Bool = false
 
     // MARK: - Assignment Wheel
 
     @Published var activeAssignment: AssignedItem?
-    @Published var showAssignmentToast: Bool = false
-    @Published var assignmentToastText: String = ""
-    private var assignmentToastTimer: Timer?
 
     // MARK: - Laser Meter
 
     @Published var isLaserConnected: Bool = false
     @Published var bufferedMeasurement: LaserMeasurement?
-    @Published var showMeasurementToast: Bool = false
-    @Published var measurementToastText: String = ""
-    @Published var showLaserErrorToast: Bool = false
-    @Published var laserErrorText: String = ""
-    @Published var showDisconnectToast: Bool = false
-    @Published var disconnectToastText: String = ""
     private var laserCancellables = Set<AnyCancellable>()
     private var bufferTimer: Timer?
-    private var errorTimer: Timer?
-    private var disconnectTimer: Timer?
 
     // MARK: - Multi-Level State
 
@@ -615,15 +602,10 @@ class DeckBuilderViewModel: ObservableObject {
     }
 
     deinit {
-        // Invalidate any in-flight toast / buffer timers so a deck builder
-        // dismissed mid-toast doesn't leave a Timer running for up to 10s
-        // against a deallocated owner. `[weak self]` in the closures already
-        // prevents leaks, but tidying up here keeps the runloop clean.
-        // Timer.invalidate() is safe to call from any actor context.
-        assignmentToastTimer?.invalidate()
+        // Invalidate the measurement buffer timer so a deck builder dismissed
+        // mid-measurement doesn't leave a Timer running against a deallocated
+        // owner. Timer.invalidate() is safe to call from any actor context.
         bufferTimer?.invalidate()
-        errorTimer?.invalidate()
-        disconnectTimer?.invalidate()
         autosaveTimer?.invalidate()
         // Set<AnyCancellable> auto-cancels its members on deinit.
     }
@@ -720,10 +702,10 @@ class DeckBuilderViewModel: ObservableObject {
     func undo() {
         guard let snapshot = undoStack.popLast() else { return }
 
-        // First undo in multi-level mode: show a one-time toast
+        // First undo in multi-level mode: show a one-time informational toast
         if isMultiLevel && !hasShownUndoLevelToast {
             hasShownUndoLevelToast = true
-            showUndoLevelToast = true
+            ToastCenter.shared.present(Toast(label: "// UNDO AFFECTS ALL LEVELS", tone: .warning))
         }
 
         redoStack.append(DrawingSnapshot(drawingData: drawingData, description: "redo"))
@@ -2140,6 +2122,7 @@ class DeckBuilderViewModel: ObservableObject {
             showAssignmentConfirmation("\(label) applied to \(ids.count) house edges")
         }
         save()
+        ToastCenter.shared.present(Feedback.Deck.houseEdgeMaterialSet)
     }
 
     func setRailing(_ edgeId: String, config: RailingConfig?) {
@@ -2162,6 +2145,7 @@ class DeckBuilderViewModel: ObservableObject {
             showAssignmentConfirmation("\(config.railingType.displayName) applied to \(ids.count) edges")
         }
         save()
+        ToastCenter.shared.present(Feedback.Deck.railingApplied)
     }
 
     func setRailingWallMaterial(_ edgeId: String, material: HouseEdgeMaterial) {
@@ -2188,6 +2172,7 @@ class DeckBuilderViewModel: ObservableObject {
             showAssignmentConfirmation("\(material.displayName) applied to \(ids.count) parapet edges")
         }
         save()
+        ToastCenter.shared.present(Feedback.Deck.wallMaterialSet)
     }
 
     func setStairs(_ edgeId: String, config: StairConfig?) {
@@ -2220,6 +2205,7 @@ class DeckBuilderViewModel: ObservableObject {
         edge.railingConfig = railing
         activeUpdateEdge(edge)
         save()
+        ToastCenter.shared.present(Feedback.Deck.railingUpdated)
     }
 
     /// Updates the catalog metadata vocabulary fields on a stair config.
@@ -2512,6 +2498,7 @@ class DeckBuilderViewModel: ObservableObject {
         fp.assignedItems.removeAll { $0.id == itemId }
         activeFootprint = fp
         save()
+        ToastCenter.shared.present(Feedback.Deck.itemRemoved)
     }
 
     /// Sets a label on every currently-selected surface. Pass `nil` or
@@ -2528,6 +2515,7 @@ class DeckBuilderViewModel: ObservableObject {
         }
         activePersistedSurfaces = surfaces
         save()
+        ToastCenter.shared.present(Feedback.Deck.surfacesLabeled)
     }
 
     /// Sets the legacy footprint label — used from the property sheet so the
@@ -2541,6 +2529,7 @@ class DeckBuilderViewModel: ObservableObject {
         fp.label = value
         activeFootprint = fp
         save()
+        ToastCenter.shared.present(Feedback.Deck.footprintLabeled)
     }
 
     /// Optional per-edge label. The model stores it on `DeckEdge.label`
@@ -2554,6 +2543,7 @@ class DeckBuilderViewModel: ObservableObject {
         edge.label = value
         activeUpdateEdge(edge)
         save()
+        ToastCenter.shared.present(Feedback.Deck.edgeLabeled)
     }
 
     /// Creates a fresh level (migrating from single-level if needed) and
@@ -2598,6 +2588,7 @@ class DeckBuilderViewModel: ObservableObject {
         selection.clear()
         hapticMedium()
         save()
+        ToastCenter.shared.present(Feedback.Deck.levelCreatedSurfaces)
     }
 
     /// Reassigns every currently-selected surface to a different level.
@@ -2629,6 +2620,7 @@ class DeckBuilderViewModel: ObservableObject {
         }
         hapticMedium()
         save()
+        ToastCenter.shared.present(Feedback.Deck.surfacesMoved)
     }
 
     /// Moves every selected edge (and its bounding vertices) to a different
@@ -2653,6 +2645,7 @@ class DeckBuilderViewModel: ObservableObject {
         selection.clear()
         hapticMedium()
         save()
+        ToastCenter.shared.present(Feedback.Deck.edgesMoved)
     }
 
     /// Combined add-level + move-edges-there. Same atomic pattern as
@@ -2682,6 +2675,7 @@ class DeckBuilderViewModel: ObservableObject {
         selection.clear()
         hapticMedium()
         save()
+        ToastCenter.shared.present(Feedback.Deck.levelCreatedEdges)
     }
 
     /// Worker for both edge-level migration entry points. Walks every level
@@ -2784,14 +2778,7 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Assignment Toast
 
     private func showAssignmentConfirmation(_ text: String) {
-        assignmentToastTimer?.invalidate()
-        assignmentToastText = text
-        showAssignmentToast = true
-        assignmentToastTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                self?.showAssignmentToast = false
-            }
-        }
+        ToastCenter.shared.present(Toast(label: "// \(text.uppercased())", tone: .success))
     }
 
     // MARK: - Auto-Fill Scale
@@ -2994,13 +2981,9 @@ class DeckBuilderViewModel: ObservableObject {
         do {
             try modelContext?.save()
             isLocallySaved = true
-            // Clear any previous failure now that we've succeeded — otherwise
-            // the toast keeps showing a stale error after the user has worked
-            // around whatever caused it.
-            saveError = nil
         } catch {
             print("[DeckBuilder] Save failed: \(error)")
-            saveError = "Save failed — check storage"
+            ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
         }
 
         // Bug ab554b5f — enqueue the change for the offline sync queue so
@@ -3110,6 +3093,7 @@ class DeckBuilderViewModel: ObservableObject {
         guard !trimmed.isEmpty else { return }
         deckDesign.title = trimmed
         save()
+        ToastCenter.shared.present(Feedback.Deck.designRenamed)
     }
 
     func clearDesign() {
@@ -3120,6 +3104,7 @@ class DeckBuilderViewModel: ObservableObject {
         editingVertexId = nil
         save()
         hapticMedium()
+        ToastCenter.shared.present(Feedback.Deck.designCleared)
     }
 
     // MARK: - Render + Save Thumbnail
@@ -3156,6 +3141,9 @@ class DeckBuilderViewModel: ObservableObject {
         // best-effort enhancement; thumbnail failure must not block the
         // primary save.
         save()
+        if hasGeometry {
+            ToastCenter.shared.present(Feedback.Deck.designSaved)
+        }
 
         // Bug 14555d2c — skip the thumbnail render + S3 upload when the
         // drawing has no geometry. The renderer returns a blank white PNG
@@ -3272,14 +3260,16 @@ class DeckBuilderViewModel: ObservableObject {
         // No edge selected — buffer the measurement for 5 seconds
         bufferedMeasurement = measurement
         let formatted = DimensionEngine.format(measurement.inches, system: drawingData.config.measurementSystem)
-        measurementToastText = "\(formatted) received — tap an edge to apply"
-        showMeasurementToast = true
+        ToastCenter.shared.present(Toast(
+            label: "// \(formatted.uppercased()) — TAP AN EDGE TO APPLY",
+            tone: .warning,
+            autoDismissAfter: 5
+        ))
 
         bufferTimer?.invalidate()
         bufferTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 self?.bufferedMeasurement = nil
-                self?.showMeasurementToast = false
             }
         }
     }
@@ -3288,60 +3278,31 @@ class DeckBuilderViewModel: ObservableObject {
         if let buffered = bufferedMeasurement {
             setEdgeDimension(edgeId, inches: buffered.inches, source: .laser)
             bufferedMeasurement = nil
-            showMeasurementToast = false
             bufferTimer?.invalidate()
             hapticLight()
         }
     }
 
     private func handleLaserError(_ error: String) {
-        laserErrorText = error
-        showLaserErrorToast = true
-
         // Clear the error on the service so it doesn't re-fire
         LaserMeterService.shared.measurementError = nil
-
-        errorTimer?.invalidate()
-        errorTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                self?.showLaserErrorToast = false
-            }
-        }
+        ToastCenter.shared.present(Toast(label: "// LASER ERROR — \(error.uppercased())", tone: .error))
     }
 
     private func handleConnectionStateChange(_ state: LaserConnectionState) {
         switch state {
         case .reconnecting:
-            disconnectToastText = "Laser disconnected — reconnecting..."
-            showDisconnectToast = true
-
-            // Auto-dismiss after 10 seconds if still reconnecting
-            disconnectTimer?.invalidate()
-            disconnectTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
-                Task { @MainActor in
-                    guard let self = self, self.showDisconnectToast else { return }
-                    self.disconnectToastText = "Reconnection failed"
-                    // Dismiss after 2 more seconds
-                    self.disconnectTimer?.invalidate()
-                    self.disconnectTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
-                        Task { @MainActor in
-                            self?.showDisconnectToast = false
-                        }
-                    }
-                }
-            }
+            ToastCenter.shared.present(Toast(
+                label: "// LASER DISCONNECTED — RECONNECTING",
+                tone: .error,
+                autoDismissAfter: 10
+            ))
 
         case .connected:
-            if showDisconnectToast {
-                // Connection restored — brief confirmation then dismiss
-                disconnectToastText = "Laser reconnected"
-                disconnectTimer?.invalidate()
-                disconnectTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
-                    Task { @MainActor in
-                        self?.showDisconnectToast = false
-                    }
-                }
-            }
+            ToastCenter.shared.present(Toast(
+                label: "// LASER RECONNECTED",
+                tone: .success
+            ))
 
         default:
             break

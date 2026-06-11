@@ -26,7 +26,7 @@ struct TaskSettingsView: View {
     /// delete is blocked in that case and the alert redirects to merge.
     @State private var blockedDeleteType: TaskType? = nil
     @State private var isDeleting: Bool = false
-    @State private var deleteErrorMessage: String? = nil
+    @State private var deleteError: String? = nil
     
     var body: some View {
         ZStack {
@@ -196,18 +196,7 @@ struct TaskSettingsView: View {
             let count = item.tasks.filter { $0.deletedAt == nil }.count
             Text("\(count) task\(count == 1 ? "" : "s") still use \(item.display). Merge it into another type to move the tasks before deleting.")
         }
-        .alert(
-            "Delete failed",
-            isPresented: Binding(
-                get: { deleteErrorMessage != nil },
-                set: { if !$0 { deleteErrorMessage = nil } }
-            ),
-            presenting: deleteErrorMessage
-        ) { _ in
-            Button("OK", role: .cancel) { deleteErrorMessage = nil }
-        } message: { message in
-            Text(message)
-        }
+        .errorToast($deleteError, label: Feedback.Err.deleteFailed)
         .loadingOverlay(isPresented: $isDeleting, message: "Deleting…")
     }
 
@@ -241,7 +230,7 @@ struct TaskSettingsView: View {
             }
         } catch {
             UINotificationFeedbackGenerator().notificationOccurred(.error)
-            deleteErrorMessage = error.localizedDescription
+            deleteError = error.localizedDescription
         }
     }
     
@@ -292,6 +281,7 @@ struct TaskSettingsView: View {
         do {
             try modelContext.save()
             fetchTaskTypes()
+            ToastCenter.shared.present(Feedback.Settings.defaultTypesCreated)
         } catch {
         }
     }

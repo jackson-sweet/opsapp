@@ -50,10 +50,12 @@ final class HelperTextOverlayTests: XCTestCase {
         XCTAssertFalse(S.capturedFlash.copy.contains("—"))
     }
 
-    func test_annotationDepthMissToast_copy_matches_spec() {
+    func test_annotationDepthMiss_uses_catalog_error_label() {
+        // The depth-miss feedback folded into the canonical Toast system during
+        // the feedback consolidation; its copy now lives in the Feedback catalog.
         XCTAssertEqual(
-            AnnotationFeedback.noDepthAtPoint.copy,
-            "// ERROR — NO DEPTH AT POINT · TAP A SOLID SURFACE"
+            Feedback.Err.noDepth,
+            "// NO DEPTH HERE — AIM AT A SOLID SURFACE"
         )
     }
 

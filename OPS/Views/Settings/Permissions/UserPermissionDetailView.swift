@@ -30,8 +30,6 @@ struct UserPermissionDetailView: View {
     @State private var isSavingOverride = false
     @State private var errorMessage: String?
 
-    // Feature gate alert
-    @State private var showFeatureGateAlert = false
 
     /// Whether this member is the company creator (account holder) — their role cannot be changed
     private var isCompanyCreator: Bool {
@@ -118,11 +116,6 @@ struct UserPermissionDetailView: View {
         .onAppear {
             loadData()
             NotificationCenter.default.post(name: Notification.Name("WizardMemberOverrideViewed"), object: nil)
-        }
-        .alert("In Testing", isPresented: $showFeatureGateAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text("This feature is currently in testing. Reach out if you'd like to be added to the testing group.")
         }
         .sheet(isPresented: $showRoleListSheet) {
             NavigationStack {
@@ -320,7 +313,7 @@ struct UserPermissionDetailView: View {
 
     private func gatedOverrideCategory(_ category: String) -> some View {
         Button(action: {
-            showFeatureGateAlert = true
+            ToastCenter.shared.present(Feedback.Settings.featureInTesting)
         }) {
             HStack(spacing: 6) {
                 Image(systemName: PermissionRegistry.iconForCategory(category))
@@ -517,6 +510,7 @@ struct UserPermissionDetailView: View {
                     try await PermissionAdminService.removeUserOverride(userId: member.id, permission: permissionId)
                     await MainActor.run {
                         userOverrides.removeValue(forKey: permissionId)
+                        ToastCenter.shared.present(Feedback.Settings.permissionUpdated)
                     }
                 } catch {
                     await MainActor.run { errorMessage = "Failed to remove override" }
@@ -535,6 +529,7 @@ struct UserPermissionDetailView: View {
                     )
                     await MainActor.run {
                         userOverrides[permissionId] = OverrideState(granted: false, scope: nil)
+                        ToastCenter.shared.present(Feedback.Settings.permissionUpdated)
                     }
                 } catch {
                     await MainActor.run { errorMessage = "Failed to save override" }
@@ -553,6 +548,7 @@ struct UserPermissionDetailView: View {
                     )
                     await MainActor.run {
                         userOverrides[permissionId] = OverrideState(granted: true, scope: level.rawValue)
+                        ToastCenter.shared.present(Feedback.Settings.permissionUpdated)
                     }
                 } catch {
                     await MainActor.run { errorMessage = "Failed to save override" }
@@ -588,6 +584,7 @@ struct UserPermissionDetailView: View {
                     // Reload role permissions since role changed
                     loadRolePermissions()
 
+                    ToastCenter.shared.present(Feedback.Settings.roleUpdated)
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.success)
                 }

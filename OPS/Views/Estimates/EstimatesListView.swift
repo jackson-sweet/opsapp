@@ -92,14 +92,7 @@ struct EstimatesListView: View {
         } message: {
             Text("This will create an invoice from this estimate. This action cannot be undone.")
         }
-        .alert("Error", isPresented: Binding(
-            get: { viewModel.error != nil },
-            set: { if !$0 { viewModel.error = nil } }
-        )) {
-            Button("OK") { viewModel.error = nil }
-        } message: {
-            Text(viewModel.error ?? "")
-        }
+        .errorToast($viewModel.error, label: Feedback.Err.operationFailed)
         .task {
             if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
                 viewModel.setup(companyId: companyId, modelContext: modelContext)

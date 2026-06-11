@@ -47,7 +47,6 @@ struct TaskTypeSheet: View {
     // Loading state
     @State private var isSaving = false
     @State private var errorMessage: String?
-    @State private var showingError = false
     @State private var existingTaskTypes: [TaskType] = []
 
     // Dependencies state
@@ -236,11 +235,7 @@ struct TaskTypeSheet: View {
             )
             .environmentObject(dataController)
         }
-        .alert("Error", isPresented: $showingError) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(errorMessage ?? "An error occurred")
-        }
+        .errorToast($errorMessage, label: Feedback.Err.saveFailed)
         .alert(
             "Delete this type?",
             isPresented: $showDeleteConfirmation,
@@ -266,18 +261,7 @@ struct TaskTypeSheet: View {
             let count = type.tasks.filter { $0.deletedAt == nil }.count
             Text("\(count) task\(count == 1 ? "" : "s") still use \(type.display). Merge it into another type to move the tasks before deleting.")
         }
-        .alert(
-            "Delete failed",
-            isPresented: Binding(
-                get: { deleteErrorMessage != nil },
-                set: { if !$0 { deleteErrorMessage = nil } }
-            ),
-            presenting: deleteErrorMessage
-        ) { _ in
-            Button("OK", role: .cancel) { deleteErrorMessage = nil }
-        } message: { message in
-            Text(message)
-        }
+        .errorToast($deleteErrorMessage, label: Feedback.Err.deleteFailed)
         .sheet(isPresented: $showMergeSheet) {
             if let source = editTaskType {
                 TaskTypeMergeSheet(
@@ -1692,7 +1676,6 @@ struct TaskTypeSheet: View {
         guard !isSaving else { return }
         guard let companyId = dataController.currentUser?.companyId else {
             errorMessage = "No company ID found"
-            showingError = true
             return
         }
 
@@ -1732,7 +1715,6 @@ struct TaskTypeSheet: View {
                 let generator = UINotificationFeedbackGenerator()
                 generator.notificationOccurred(.error)
                 errorMessage = "Failed to save task type locally: \(error.localizedDescription)"
-                showingError = true
                 isSaving = false
                 return
             }
@@ -1769,6 +1751,7 @@ struct TaskTypeSheet: View {
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
 
+            ToastCenter.shared.present(Feedback.JobBoard.taskTypeCreated)
             isSaving = false
             onSave(newTaskType)
             dismiss()
@@ -1798,7 +1781,6 @@ struct TaskTypeSheet: View {
                 let generator = UINotificationFeedbackGenerator()
                 generator.notificationOccurred(.error)
                 errorMessage = error.localizedDescription
-                showingError = true
                 isSaving = false
                 return
             }
@@ -1806,6 +1788,7 @@ struct TaskTypeSheet: View {
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
 
+            ToastCenter.shared.present(Feedback.JobBoard.taskTypeUpdated)
             isSaving = false
             onSave()
             dismiss()

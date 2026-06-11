@@ -60,8 +60,6 @@ struct ManageTeamView: View {
     @State private var searchText = ""
     @State private var errorMessage: String?
     @State private var showInviteSheet = false
-    @State private var showInviteSentMessage = false
-    @State private var inviteSentCount = 0
     @State private var memberToView: User? = nil
     @State private var showSeatManagement = false
     @State private var permissionsMember: User?
@@ -283,22 +281,9 @@ struct ManageTeamView: View {
                 Text("Revoke the invitation to \(invite.contactDisplay)?")
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TeamInvitesSent"))) { notification in
-            if let count = notification.userInfo?["count"] as? Int {
-                inviteSentCount = count
-                showInviteSentMessage = true
-                // Refresh pending invites
-                Task { await loadPendingInvitations() }
-            }
-        }
-        .overlay {
-            PushInMessage(
-                isPresented: $showInviteSentMessage,
-                title: "INVITATIONS SENT",
-                subtitle: "\(inviteSentCount) team member\(inviteSentCount == 1 ? "" : "s") invited",
-                type: .success,
-                autoDismissAfter: 3.0
-            )
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TeamInvitesSent"))) { _ in
+            ToastCenter.shared.present(Feedback.Settings.invitationsSent)
+            Task { await loadPendingInvitations() }
         }
     }
 
@@ -929,6 +914,7 @@ struct ManageTeamView: View {
                 member.role = newRole
                 try? dataController.modelContext?.save()
                 loadTeamMembers()
+                ToastCenter.shared.present(Feedback.Settings.roleAssigned)
                 NotificationCenter.default.post(name: Notification.Name("WizardTeamRoleAssigned"), object: nil)
             }
 
@@ -972,6 +958,7 @@ struct ManageTeamView: View {
             await MainActor.run {
                 teamMembers.removeAll { $0.id == member.id }
                 memberToRemove = nil
+                ToastCenter.shared.present(Feedback.Settings.memberRemoved)
             }
 
             print("[MANAGE_TEAM] Removed \(member.fullName)")
@@ -996,6 +983,7 @@ struct ManageTeamView: View {
             await MainActor.run {
                 pendingInvitations.removeAll { $0.id == invite.id }
                 invitationToRevoke = nil
+                ToastCenter.shared.present(Feedback.Settings.invitationRevoked)
             }
 
             print("[MANAGE_TEAM] Revoked invitation for \(invite.contactDisplay)")

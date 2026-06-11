@@ -24,7 +24,7 @@ struct TaskTypeMergeSheet: View {
 
     @State private var selectedTargetId: String? = nil
     @State private var isMerging: Bool = false
-    @State private var errorMessage: String? = nil
+    @State private var mergeError: String? = nil
     @State private var showingConfirmation: Bool = false
 
     private var sourceActiveTaskCount: Int {
@@ -97,14 +97,7 @@ struct TaskTypeMergeSheet: View {
             } message: {
                 Text("\(sourceActiveTaskCount) task\(sourceActiveTaskCount == 1 ? "" : "s") currently using \(source.display) will be reassigned to \(selectedTarget?.display ?? ""). \(source.display) will then be deleted. This cannot be undone.")
             }
-            .alert("Merge failed", isPresented: Binding(
-                get: { errorMessage != nil },
-                set: { if !$0 { errorMessage = nil } }
-            ), presenting: errorMessage) { _ in
-                Button("OK", role: .cancel) { errorMessage = nil }
-            } message: { message in
-                Text(message)
-            }
+            .errorToast($mergeError, label: Feedback.Err.mergeFailed)
             .loadingOverlay(isPresented: $isMerging, message: "Merging…")
         }
     }
@@ -351,7 +344,7 @@ struct TaskTypeMergeSheet: View {
             try modelContext.save()
         } catch {
             isMerging = false
-            errorMessage = error.localizedDescription
+            mergeError = error.localizedDescription
             return
         }
 
@@ -390,7 +383,7 @@ struct TaskTypeMergeSheet: View {
             try await dataController.deleteTaskType(taskTypeId: source.id)
         } catch {
             isMerging = false
-            errorMessage = error.localizedDescription
+            mergeError = error.localizedDescription
             return
         }
 
@@ -398,6 +391,7 @@ struct TaskTypeMergeSheet: View {
 
         isMerging = false
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+        ToastCenter.shared.present(Feedback.Settings.mergeComplete)
         onComplete()
         dismiss()
     }

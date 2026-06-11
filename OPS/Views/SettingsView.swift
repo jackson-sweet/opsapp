@@ -49,7 +49,6 @@ struct SettingsView: View {
     }
 
     @State private var activeDestination: SettingsDestination?
-    @State private var showFeatureGateAlert = false
 
     // Bug e33aa336 — when a search result targets a specific section inside
     // a sub-page, this value holds the section identifier until the sub-page
@@ -422,14 +421,10 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) { }
             Button("Log Out", role: .destructive) {
                 dataController.logout()
+                ToastCenter.shared.present(Feedback.Settings.loggedOut)
             }
         } message: {
             Text("Are you sure you want to log out of your account?")
-        }
-        .alert("In Testing", isPresented: $showFeatureGateAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text("This feature is currently in testing. Reach out if you'd like to be added to the testing group.")
         }
         // MARK: - Navigation Cover (consolidated enum-based)
         // Bug e33aa336 — when a search result targets a sub-section inside a
@@ -1004,7 +999,7 @@ struct SettingsView: View {
     // MARK: - Gated Row (feature-flagged)
 
     private func gatedSettingsRow(icon: String, title: String) -> some View {
-        Button(action: { showFeatureGateAlert = true }) {
+        Button(action: { ToastCenter.shared.present(Feedback.Settings.featureInTesting) }) {
             HStack(spacing: 14) {
                 Image(systemName: icon)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))

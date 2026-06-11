@@ -837,16 +837,18 @@ struct SubscriptionLockoutView: View {
                     isProcessingSeat = false
                     selectedEmployeeToRemove = nil
                     selectedEmployeeToAdd = nil
-                    
+
                     // Check if admin just seated themselves
                     if shouldAdd && employee.id == dataController.currentUser?.id {
                         hasJustSeatedSelf = true
                     }
-                    
+
+                    ToastCenter.shared.present(shouldAdd ? Feedback.Settings.seatGranted : Feedback.Settings.seatRevoked)
+
                     // Provide haptic feedback
                     let impactFeedback = UIImpactFeedbackGenerator(style: .light)
                     impactFeedback.impactOccurred()
-                    
+
                     // Don't auto-dismiss - let admin choose when to enter the app
                 }
             } catch {

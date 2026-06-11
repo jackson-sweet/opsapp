@@ -67,11 +67,6 @@ struct RecipeManageSheet: View {
                             recipeList
                         }
                         addButton
-                        if let errorMessage = errorMessage {
-                            Text(errorMessage)
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.errorText)
-                        }
                     }
                     .padding(OPSStyle.Layout.spacing3)
                 }
@@ -91,6 +86,7 @@ struct RecipeManageSheet: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .errorToast($errorMessage, label: Feedback.Err.operationFailed)
         .sheet(isPresented: $showingAddSheet) {
             AddProductMaterialSheet(
                 productId: product.id,
@@ -392,6 +388,7 @@ struct RecipeManageSheet: View {
             modelContext.delete(material)
             try? modelContext.save()
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            ToastCenter.shared.present(Feedback.Catalog.materialRemoved)
             pendingDelete = nil
         } catch {
             UINotificationFeedbackGenerator().notificationOccurred(.error)

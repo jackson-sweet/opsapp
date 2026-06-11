@@ -106,6 +106,7 @@ struct InventoryManageTagsSheet: View {
             Button("Rename") {
                 if let oldTag = renamingTag, !renameTagText.isEmpty {
                     onRenameTag(oldTag, renameTagText.trimmingCharacters(in: .whitespaces))
+                    ToastCenter.shared.present(Feedback.Inventory.tagRenamed)
                 }
                 renamingTag = nil
                 renameTagText = ""
@@ -125,6 +126,7 @@ struct InventoryManageTagsSheet: View {
             Button("Delete", role: .destructive) {
                 if let tag = showingDeleteConfirmation {
                     onDeleteTag(tag)
+                    ToastCenter.shared.present(Feedback.Inventory.tagDeleted)
                 }
                 showingDeleteConfirmation = nil
             }

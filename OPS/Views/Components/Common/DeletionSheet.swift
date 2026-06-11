@@ -111,8 +111,7 @@ struct DeletionSheet<Item, ChildItem, ReassignmentItem>: View {
     @State private var bulkSelectedItem: String?
     @State private var bulkDeleteAll = false
     @State private var isDeleting = false
-    @State private var showingError = false
-    @State private var errorMessage = ""
+    @State private var errorMessage: String? = nil
 
     // MARK: - Computed Properties
 
@@ -238,11 +237,7 @@ struct DeletionSheet<Item, ChildItem, ReassignmentItem>: View {
                 }
             }
         }
-        .alert("Error", isPresented: $showingError) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(errorMessage)
-        }
+        .errorToast($errorMessage, label: Feedback.Err.deleteFailed)
     }
 
     // MARK: - Bulk Reassignment View
@@ -352,7 +347,6 @@ struct DeletionSheet<Item, ChildItem, ReassignmentItem>: View {
                 await MainActor.run {
                     isDeleting = false
                     errorMessage = "Failed to delete \(itemType.lowercased()): \(error.localizedDescription)"
-                    showingError = true
                 }
             }
         }

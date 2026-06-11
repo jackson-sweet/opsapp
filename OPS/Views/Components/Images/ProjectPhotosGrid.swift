@@ -19,8 +19,7 @@ struct ProjectPhotosGrid: View {
     @State private var showingDeleteConfirmation = false
     @State private var photoDeleteTarget: ProjectPhotoDeleteTarget?
     @State private var longPressingPhotoIndex: Int? = nil
-    @State private var showingNetworkError = false
-    @State private var networkErrorMessage = ""
+    @State private var uploadError: String? = nil
     /// Phase F — set of photo URLs for this project that carry a dimensioned
     /// capture (non-null `dimensions` jsonb on the matching annotation row).
     @State private var dimensionedURLs: Set<String> = []
@@ -209,12 +208,7 @@ struct ProjectPhotosGrid: View {
                 }
             )
         }
-        // Network error alert
-        .alert("Network Error", isPresented: $showingNetworkError) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(networkErrorMessage)
-        }
+        .errorToast($uploadError, label: Feedback.Err.uploadFailed)
         // Delete confirmation alert
         .alert("Delete Photo?", isPresented: $showingDeleteConfirmation) {
             Button("Cancel", role: .cancel) {
@@ -1010,6 +1004,7 @@ extension ProjectPhotosGrid {
                             eventName: "photo_captured",
                             properties: ["count": 1, "context": "project"]
                         )
+                        ToastCenter.shared.present(Feedback.Photo.added)
                         // Clear selected image and hide loading
                         cameraImage = nil
                         processingImage = false
@@ -1017,8 +1012,7 @@ extension ProjectPhotosGrid {
                 } else {
                     await MainActor.run {
                         processingImage = false
-                        showingNetworkError = true
-                        networkErrorMessage = "Failed to upload image to the server. Please check your network connection and try again."
+                        uploadError = "upload failed"
                     }
                 }
             } else {

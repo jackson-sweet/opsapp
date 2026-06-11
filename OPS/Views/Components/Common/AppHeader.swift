@@ -579,10 +579,12 @@ struct AppHeader: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
-            .alert("Locked", isPresented: $showLockedAlert) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(showLockedMessage ?? "")
+            .onChange(of: showLockedAlert) { _, showing in
+                guard showing else { return }
+                let message = showLockedMessage ?? ""
+                let label = message.isEmpty ? "// LOCKED" : "// \(message.uppercased())"
+                ToastCenter.shared.present(Toast(label: label, tone: .warning))
+                showLockedAlert = false
             }
 
         }

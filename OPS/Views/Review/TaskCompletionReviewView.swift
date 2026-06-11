@@ -370,6 +370,9 @@ struct TaskCompletionReviewView: View {
             Task {
                 do {
                     try await dataController.updateTaskStatus(task: task, to: .completed)
+                    await MainActor.run {
+                        ToastCenter.shared.present(Feedback.Task.completed)
+                    }
                 } catch {
                     print("[TASK_REVIEW] Failed to complete task: \(error)")
                 }

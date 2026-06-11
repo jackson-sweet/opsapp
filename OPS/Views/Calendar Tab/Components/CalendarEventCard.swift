@@ -298,6 +298,9 @@ struct CalendarEventCard: View {
         Task {
             do {
                 try await dataController.updateTaskSchedule(task: task, startDate: startDate, endDate: endDate)
+                await MainActor.run {
+                    ToastCenter.shared.present(Feedback.Task.scheduled)
+                }
             } catch {
                 print("Error updating task schedule: \(error)")
             }
@@ -347,6 +350,10 @@ struct CalendarEventCard: View {
                             project: project, startDate: nil, endDate: nil
                         )
                     }
+                }
+
+                await MainActor.run {
+                    ToastCenter.shared.present(Feedback.Task.datesCleared)
                 }
             } catch {
                 print("Error clearing task dates: \(error)")

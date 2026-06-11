@@ -1,0 +1,735 @@
+//
+//  GuidedCatalogSetupModel.swift
+//  OPS
+//
+//  State machine for the Guided Catalog Setup flow: survey → plan → modules →
+//  done. Owns the BusinessProfile, the derived module list, the current
+//  module's working set of product-line drafts, the lines + assemblies
+//  committed this run, draft persistence/resume, and the create actions.
+//  Mirrors the GuidedStockSetupModel pattern. Not the overlay Wizard System.
+//
+
+import Foundation
+import SwiftData
+import UIKit
+
+@MainActor
+final class GuidedCatalogSetupModel: ObservableObject {
+
+    @Published var phase: GuidedCatalogPhase = .survey(questionIndex: 0)
+    @Published var profile: BusinessProfile?
+    @Published var productLines: [ProductLineDraft] = []   // current module's working set
+    @Published var savedLines: [SavedProductLine] = []     // service/good lines committed this run
+    @Published var savedAssemblies: [SavedAssembly] = []   // packages committed this run
+    @Published var isSaving = false
+    @Published var errorMessage: String?
+
+    // Survey progress lives here (not in the view's @State) so stepping BACK from
+    // the plan — which re-creates the survey view — keeps every answer intact,
+    // and a quit-and-resume restores the exact question.
+    @Published var surveyAnswers = SurveyAnswers()
+    @Published var surveyQuestion: SurveyQuestionID = SurveyFlow.firstQuestion
+    @Published var surveyHistory: [SurveyQuestionID] = []
+
+    /// Wipe survey progress (used by "Start over").
+    func resetSurvey() {
+        surveyAnswers = SurveyAnswers()
+        surveyQuestion = SurveyFlow.firstQuestion
+        surveyHistory = []
+    }
+
+    private var didPostCompletion = false
+
+    let companyId: String
+    let userId: String
+    private let draftStore: GuidedCatalogSetupDraftStore
+
+    init(companyId: String, userId: String,
+         draftStore: GuidedCatalogSetupDraftStore = .shared) {
+        self.companyId = companyId
+        self.userId = userId
+        self.draftStore = draftStore
+    }
+
+    // MARK: - Derived
+
+    var modules: [SetupModuleKind] { profile?.setupModules ?? [] }
+
+    var currentModule: SetupModuleKind? {
+        guard case .module(let i) = phase, modules.indices.contains(i) else { return nil }
+        return modules[i]
+    }
+
+    var savedServiceCount: Int { savedLines.filter { $0.kind == .service }.count }
+    var savedGoodCount: Int { savedLines.filter { $0.kind == .good }.count }
+    var savedAssemblyCount: Int { savedAssemblies.count }
+
+    // MARK: - Navigation
+
+    /// Survey complete → show the tailored plan.
+    func completeSurvey(with profile: BusinessProfile) {
+        self.profile = profile
+        phase = .plan
+        persist()
+    }
+
+    /// Plan confirmed → enter the first module (or finish if none).
+    func confirmPlan() {
+        phase = modules.isEmpty ? .done : .module(index: 0)
+        persist()
+    }
+
+    /// Advance to the next module, or to done after the last one.
+    func advanceModule() {
+        guard case .module(let i) = phase else { return }
+        let next = i + 1
+        phase = next < modules.count ? .module(index: next) : .done
+        productLines = []   // each module opens with a clean working set
+        persist()
+    }
+
+    func skipModule() { advanceModule() }
+
+    /// Whether the flow-level BACK affordance applies. The survey owns its own
+    /// per-question back, so it's excluded here.
+    var canGoBack: Bool {
+        switch phase {
+        case .survey: return false
+        case .plan, .module, .done: return true
+        }
+    }
+
+    /// Step one phase backward: module → previous module → plan → survey, and
+    /// done → last module. No-op during the survey (handled in-view).
+    func goBack() {
+        switch phase {
+        case .survey:
+            break
+        case .plan:
+            phase = .survey(questionIndex: 0)
+        case .module(let i):
+            phase = i > 0 ? .module(index: i - 1) : .plan
+        case .done:
+            phase = modules.isEmpty ? .plan : .module(index: modules.count - 1)
+        }
+    }
+
+    // MARK: - Summary
+
+    /// "2 packages · 3 services · 1 good" — only non-zero parts, correct plural.
+    nonisolated static func summaryLine(services: Int, goods: Int, assemblies: Int = 0) -> String {
+        func part(_ n: Int, _ singular: String, _ plural: String) -> String? {
+            n > 0 ? "\(n) \(n == 1 ? singular : plural)" : nil
+        }
+        let parts = [
+            part(assemblies, "package", "packages"),
+            part(services, "service", "services"),
+            part(goods, "good", "goods")
+        ].compactMap { $0 }
+        return parts.isEmpty ? "Nothing built" : parts.joined(separator: " · ")
+    }
+
+    // MARK: - Save a product line (service or good)
+
+    /// Has this name already been used by a line saved this run (case-insensitive)?
+    func isDuplicateName(_ raw: String) -> Bool {
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return false }
+        return savedLines.contains {
+            $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalized
+        }
+    }
+
+    func saveProductLine(_ draft: ProductLineDraft,
+                         trackCost: Bool,
+                         units: [CatalogUnit],
+                         categories: [CatalogCategory],
+                         modelContext: ModelContext) async {
+        guard !isSaving else { return }
+        let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+
+        // Tiered branch (runs before the flat sell guard, since a tiered line has no
+        // single sellText): ≥2 valid tiers become a configurable product the estimate
+        // builder prices via ProductConfigurationResolver. A 0/1-tier line degrades to flat.
+        if let tiers = draft.tiers {
+            if let spec = TierSpec.derive(from: tiers, parseMoney: parseMoney) {
+                await saveTieredProductLine(draft, spec: spec, units: units,
+                                            categories: categories, modelContext: modelContext)
+                return
+            }
+            if let onlyPrice = tiers.rows.compactMap({ row -> String? in
+                let label = row.label.trimmingCharacters(in: .whitespacesAndNewlines)
+                return (!label.isEmpty && parseMoney(row.priceText) != nil) ? row.priceText : nil
+            }).first {
+                var flat = draft
+                flat.tiers = nil
+                flat.sellText = onlyPrice
+                await saveProductLine(flat, trackCost: trackCost, units: units,
+                                      categories: categories, modelContext: modelContext)
+                return
+            }
+            // tiers present but nothing valid → fall through; the flat guard rejects it.
+        }
+        guard let sell = parseMoney(draft.sellText) else { return }
+
+        isSaving = true
+        defer { isSaving = false }
+        errorMessage = nil
+
+        let category = draft.kind.productCategory
+        let unit = units.first { $0.id == draft.unitId }
+        let cost = trackCost ? parseMoney(draft.costText) : nil
+
+        let dto = CreateProductDTO(
+            companyId: companyId,
+            name: trimmedName,
+            description: nil,
+            basePrice: sell,
+            unitCost: cost,
+            unit: unit?.display,
+            pricingUnit: pricingUnit(for: unit).rawValue,
+            unitId: unit?.id,
+            category: categories.first { $0.id == draft.categoryId }?.name,
+            categoryId: draft.categoryId,
+            sku: nil,
+            thumbnailUrl: nil,
+            kind: category.derivedKindRaw,
+            type: category.derivedType.rawValue,
+            isTaxable: category.defaultTaxable,
+            taskTypeId: nil,
+            taskTypeRef: nil,
+            linkedCatalogItemId: nil
+        )
+
+        do {
+            let created = try await ProductRepository(companyId: companyId).create(dto)
+            modelContext.insert(created.toModel())
+            try? modelContext.save()
+            savedLines.append(SavedProductLine(id: created.id, name: created.name,
+                                               kind: draft.kind, sell: created.basePrice))
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            persist()
+        } catch {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Save a tiered (option-priced) product line
+
+    /// Commit a service/good whose price varies by an option (Sedan/SUV/Truck,
+    /// small/med/large). Writes one `select` product option, one value per tier, and
+    /// an `add_flat` modifier per non-default tier (delta from the lowest = base price).
+    /// The estimate builder consumes this verbatim through `ProductConfigurationResolver`
+    /// — no estimate-side change. Price-only (no per-tier cost) by design in v1.
+    private func saveTieredProductLine(_ draft: ProductLineDraft,
+                                       spec: TierSpec,
+                                       units: [CatalogUnit],
+                                       categories: [CatalogCategory],
+                                       modelContext: ModelContext) async {
+        guard !isSaving else { return }
+        let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+
+        isSaving = true
+        defer { isSaving = false }
+        errorMessage = nil
+
+        let category = draft.kind.productCategory
+        let unit = units.first { $0.id == draft.unitId }
+        let productRepo = ProductRepository(companyId: companyId)
+        let richnessRepo = ProductRichnessRepository(companyId: companyId)
+
+        let dto = CreateProductDTO(
+            companyId: companyId,
+            name: trimmedName,
+            description: nil,
+            basePrice: spec.basePrice,
+            unitCost: nil,
+            unit: unit?.display,
+            pricingUnit: pricingUnit(for: unit).rawValue,
+            unitId: unit?.id,
+            category: categories.first { $0.id == draft.categoryId }?.name,
+            categoryId: draft.categoryId,
+            sku: nil,
+            thumbnailUrl: nil,
+            kind: category.derivedKindRaw,
+            type: category.derivedType.rawValue,
+            isTaxable: category.defaultTaxable,
+            taskTypeId: nil,
+            taskTypeRef: nil,
+            linkedCatalogItemId: nil
+        )
+
+        do {
+            let created = try await productRepo.create(dto)
+            modelContext.insert(created.toModel())
+
+            // One select option; default = the lowest tier label so the estimate opens
+            // at the base price (no modifier fires) and the operator bumps up from there.
+            let option = try await richnessRepo.createOption(CreateProductOptionDTO(
+                productId: created.id, name: spec.axisName, kind: "select",
+                affectsPrice: true, affectsRecipe: false, required: true,
+                defaultValue: spec.defaultLabel, optionDefaultSource: nil, sortOrder: 0))
+            modelContext.insert(option.toModel())
+
+            var valueIdByLabel: [String: String] = [:]
+            for value in spec.values {
+                let createdValue = try await richnessRepo.createOptionValue(CreateProductOptionValueDTO(
+                    optionId: option.id, value: value.label, sortOrder: value.sortOrder))
+                modelContext.insert(createdValue.toModel())
+                valueIdByLabel[value.label] = createdValue.id
+            }
+
+            for modifier in spec.modifiers {
+                guard let valueId = valueIdByLabel[modifier.label] else { continue }
+                let createdModifier = try await richnessRepo.createPricingModifier(CreateProductPricingModifierDTO(
+                    productId: created.id, optionId: option.id, triggerValueId: valueId,
+                    triggerIntMin: nil, triggerIntMax: nil,
+                    modifierKind: "add_flat", amount: modifier.delta))
+                modelContext.insert(createdModifier.toModel())
+            }
+
+            try? modelContext.save()
+            savedLines.append(SavedProductLine(id: created.id, name: created.name,
+                                               kind: draft.kind, sell: created.basePrice,
+                                               tierCount: spec.values.count,
+                                               tierAxisLabel: spec.axisName))
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            persist()
+        } catch {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Save an assembly (fixed-price package = materials + labor)
+
+    func isDuplicateAssemblyName(_ raw: String) -> Bool {
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return false }
+        return savedAssemblies.contains {
+            $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalized
+        }
+    }
+
+    func saveAssembly(_ draft: AssemblyDraft, units: [CatalogUnit], modelContext: ModelContext) async {
+        guard !isSaving else { return }
+        let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, let price = parseMoney(draft.priceText) else { return }
+        guard !isDuplicateAssemblyName(name) else { return }
+
+        isSaving = true
+        defer { isSaving = false }
+        errorMessage = nil
+
+        let productRepo = ProductRepository(companyId: companyId)
+        let catalogRepo = CatalogRepository(companyId: companyId)
+        let bundleRepo = ProductBundleItemRepository(companyId: companyId)
+        let richnessRepo = ProductRichnessRepository(companyId: companyId)
+
+        // 1. The package product — one all-in price, flat or per-unit.
+        let priceUnit = units.first { $0.id == draft.priceUnitId }
+        var packageDTO = CreateProductDTO(
+            companyId: companyId, name: name, description: nil,
+            basePrice: price, unitCost: nil, unit: priceUnit?.display,
+            pricingUnit: pricingUnit(for: priceUnit).rawValue, unitId: priceUnit?.id,
+            category: nil, categoryId: nil, sku: nil, thumbnailUrl: nil,
+            kind: ProductCategory.bundle.derivedKindRaw,
+            type: ProductCategory.bundle.derivedType.rawValue,
+            isTaxable: ProductCategory.bundle.defaultTaxable,
+            taskTypeId: draft.taskTypeId, taskTypeRef: draft.taskTypeId, linkedCatalogItemId: nil)
+        packageDTO.bundlePricingMode = BundlePricingMode.override.rawValue
+
+        do {
+            let package = try await productRepo.create(packageDTO)
+            modelContext.insert(package.toModel())
+
+            var failures = 0
+
+            // 2. Materials → product_materials recipe row. Existing variants are
+            //    referenced as-is (no duplicate stock); inline-created ones
+            //    scaffold a family + variant first (D3 reconciliation).
+            for material in draft.materials {
+                do {
+                    // Create-new with option axes → generate the full labeled variant
+                    // family + a recipe pinned to the first variant (see commitMaterialMatrix).
+                    if material.hasUsableAxes && material.catalogVariantId == nil {
+                        try await commitMaterialMatrix(material, package: package,
+                                                       catalogRepo: catalogRepo,
+                                                       richnessRepo: richnessRepo,
+                                                       modelContext: modelContext)
+                        continue
+                    }
+                    let variantId: String
+                    if let existingVariantId = material.catalogVariantId {
+                        variantId = existingVariantId
+                    } else {
+                        let matName = material.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !matName.isEmpty else { continue }
+                        let family = try await catalogRepo.createFamily(CreateCatalogItemDTO(
+                            companyId: companyId, categoryId: nil, name: matName, description: nil,
+                            defaultPrice: nil, defaultUnitCost: parseMoney(material.costText),
+                            defaultWarningThreshold: nil, defaultCriticalThreshold: nil,
+                            defaultUnitId: material.unitId))
+                        modelContext.insert(family.toModel())
+                        let variant = try await catalogRepo.createVariant(CreateCatalogVariantDTO(
+                            companyId: companyId, catalogItemId: family.id, sku: nil, quantity: 0,
+                            priceOverride: nil, unitCostOverride: nil,
+                            warningThreshold: nil, criticalThreshold: nil, unitId: material.unitId))
+                        modelContext.insert(variant.toModel())
+                        variantId = variant.id
+                    }
+                    _ = try await richnessRepo.createMaterial(CreateProductMaterialDTO(
+                        productId: package.id, catalogVariantId: variantId, catalogItemId: nil,
+                        variantSelector: nil, quantityPerUnit: parseMoney(material.qtyText) ?? 1,
+                        scaledByOptionId: nil, unitId: material.unitId, notes: nil))
+                } catch {
+                    failures += 1
+                    print("[GuidedCatalogSetupModel] material commit failed for \(material.name): \(error)")
+                }
+            }
+
+            // 3. Labor → service product + bundle item (quantity = hours).
+            for (index, labor) in draft.labor.enumerated() {
+                let labName = labor.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !labName.isEmpty else { continue }
+                let laborUnit = units.first { $0.id == labor.unitId }
+                do {
+                    let laborDTO = CreateProductDTO(
+                        companyId: companyId, name: labName, description: nil,
+                        basePrice: parseMoney(labor.sellText) ?? 0, unitCost: parseMoney(labor.costText),
+                        unit: laborUnit?.display,
+                        pricingUnit: laborUnit.map { pricingUnit(for: $0).rawValue } ?? ProductPricingUnit.hour.rawValue,
+                        unitId: laborUnit?.id,
+                        category: nil, categoryId: nil, sku: nil, thumbnailUrl: nil,
+                        kind: ProductCategory.service.derivedKindRaw,
+                        type: ProductCategory.service.derivedType.rawValue,
+                        isTaxable: ProductCategory.service.defaultTaxable,
+                        taskTypeId: nil, taskTypeRef: nil, linkedCatalogItemId: nil)
+                    let laborProduct = try await productRepo.create(laborDTO)
+                    modelContext.insert(laborProduct.toModel())
+                    _ = try await bundleRepo.create(CreateProductBundleItemDTO(
+                        id: UUID().uuidString, companyId: companyId,
+                        bundleProductId: package.id, childProductId: laborProduct.id,
+                        quantity: parseMoney(labor.hoursText) ?? 1, displayOrder: index))
+                } catch {
+                    failures += 1
+                    print("[GuidedCatalogSetupModel] labor commit failed for \(labName): \(error)")
+                }
+            }
+
+            try? modelContext.save()
+            let margin = assemblyMarginPercent(priceText: draft.priceText,
+                                               materials: draft.materials, labor: draft.labor)
+            savedAssemblies.append(SavedAssembly(id: package.id, name: package.name,
+                                                 sell: package.basePrice, marginPercent: margin))
+            if failures > 0 {
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                errorMessage = "// PACKAGE SAVED — \(failures) ITEM\(failures == 1 ? "" : "S") FAILED, ADD THEM IN THE CATALOG"
+            } else {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+            persist()
+        } catch {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Material variant matrix (create-new material with option axes)
+
+    /// Generate a labeled variant family from a create-new material's option axes
+    /// (Color → black/white, optionally × Thickness): a `catalog_item` + one
+    /// `catalog_option` per axis + a `catalog_option_value` per value + one
+    /// `catalog_variant` per combo (cartesian) + the option-value links. The package
+    /// recipe is pinned to the FIRST generated variant — `RecipeResolver` consumes a
+    /// variant pin, and a nil-selector family pin would be silently dropped from the
+    /// cut list. The whole labeled family still lives in stock (counted + labeled) and
+    /// is pickable in future packages. Cost + unit are family-level in v1.
+    /// Throws bubble to saveAssembly's per-material `catch` (failures += 1), never
+    /// aborting the package. Parent-before-child insert order satisfies RLS.
+    private func commitMaterialMatrix(_ material: AssemblyMaterialDraft,
+                                      package: ProductDTO,
+                                      catalogRepo: CatalogRepository,
+                                      richnessRepo: ProductRichnessRepository,
+                                      modelContext: ModelContext) async throws {
+        let matName = material.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !matName.isEmpty else { return }
+        let axes = material.cleanAxes
+        guard !axes.isEmpty else { return }
+        let qty = parseMoney(material.qtyText) ?? 1
+        let cost = parseMoney(material.costText)
+
+        let family = try await catalogRepo.createFamily(CreateCatalogItemDTO(
+            companyId: companyId, categoryId: nil, name: matName, description: nil,
+            defaultPrice: nil, defaultUnitCost: cost,
+            defaultWarningThreshold: nil, defaultCriticalThreshold: nil,
+            defaultUnitId: material.unitId))
+        modelContext.insert(family.toModel())
+
+        // Options + values; keep the ordered value ids per axis for the cartesian walk.
+        var valueIdsPerAxis: [[String]] = []
+        for (axisIndex, axis) in axes.enumerated() {
+            let option = try await catalogRepo.createOption(CreateCatalogOptionDTO(
+                catalogItemId: family.id, name: axis.name, sortOrder: axisIndex))
+            modelContext.insert(option.toModel())
+            var valueIds: [String] = []
+            for (valueIndex, value) in axis.values.enumerated() {
+                let optionValue = try await catalogRepo.createOptionValue(CreateCatalogOptionValueDTO(
+                    optionId: option.id, value: value, sortOrder: valueIndex))
+                modelContext.insert(optionValue.toModel())
+                valueIds.append(optionValue.id)
+            }
+            valueIdsPerAxis.append(valueIds)
+        }
+
+        // Cartesian product of option-value ids (axis-1 outer): 12 × 2 → 24 variants.
+        let combos = valueIdsPerAxis.reduce([[]] as [[String]]) { acc, ids in
+            acc.flatMap { row in ids.map { row + [$0] } }
+        }
+
+        var firstVariantId: String?
+        for combo in combos {
+            let variant = try await catalogRepo.createVariant(CreateCatalogVariantDTO(
+                companyId: companyId, catalogItemId: family.id, sku: nil, quantity: 0,
+                priceOverride: nil, unitCostOverride: nil,
+                warningThreshold: nil, criticalThreshold: nil, unitId: material.unitId))
+            modelContext.insert(variant.toModel())
+            for optionValueId in combo {
+                try await catalogRepo.createVariantOptionValue(variantId: variant.id, optionValueId: optionValueId)
+                let link = CatalogVariantOptionValue(variantId: variant.id, optionValueId: optionValueId)
+                link.lastSyncedAt = Date()
+                modelContext.insert(link)
+            }
+            if firstVariantId == nil { firstVariantId = variant.id }
+        }
+        guard let recipeVariantId = firstVariantId else { return }
+
+        _ = try await richnessRepo.createMaterial(CreateProductMaterialDTO(
+            productId: package.id, catalogVariantId: recipeVariantId, catalogItemId: nil,
+            variantSelector: nil, quantityPerUnit: qty,
+            scaledByOptionId: nil, unitId: material.unitId, notes: nil))
+    }
+
+    // MARK: - Money + margin helpers (mirror GuidedProductSetupFlow)
+
+    func parseMoney(_ raw: String) -> Double? {
+        let cleaned = raw
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: ",", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return nil }
+        return Double(cleaned)
+    }
+
+    /// Live margin percent for a sell/cost pair, or nil if not computable.
+    func marginPercent(sellText: String, costText: String) -> Double? {
+        guard let sell = parseMoney(sellText), sell > 0, let cost = parseMoney(costText) else { return nil }
+        return ((sell - cost) / sell) * 100
+    }
+
+    /// Total cost of an assembly's materials + labor.
+    func assemblyCost(materials: [AssemblyMaterialDraft], labor: [AssemblyLaborDraft]) -> Double {
+        let materialCost = materials.reduce(0.0) {
+            $0 + (parseMoney($1.costText) ?? 0) * (parseMoney($1.qtyText) ?? 0)
+        }
+        let laborCost = labor.reduce(0.0) {
+            $0 + (parseMoney($1.costText) ?? 0) * (parseMoney($1.hoursText) ?? 0)
+        }
+        return materialCost + laborCost
+    }
+
+    /// Live margin percent for an assembly: (price − total cost) / price.
+    func assemblyMarginPercent(priceText: String,
+                               materials: [AssemblyMaterialDraft],
+                               labor: [AssemblyLaborDraft]) -> Double? {
+        guard let price = parseMoney(priceText), price > 0 else { return nil }
+        let cost = assemblyCost(materials: materials, labor: labor)
+        return ((price - cost) / price) * 100
+    }
+
+    /// Currency string for display (whole dollars when even, else 2 decimals).
+    nonisolated func formatMoney(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.maximumFractionDigits = value.rounded() == value ? 0 : 2
+        return formatter.string(from: NSNumber(value: value)) ?? "$0"
+    }
+
+    // MARK: - Tier derivation (option-priced lines; pure, testable)
+
+    /// The exact shape `saveTieredProductLine` writes: a base price, a default tier,
+    /// ordered option values, and one `add_flat` delta per non-default tier. Derived
+    /// purely from the draft so it is unit-testable without the network. Base is the
+    /// lowest tier so deltas are ≥ 0 and the picker headline reads as the floor price.
+    struct TierSpec: Equatable {
+        struct Value: Equatable { let label: String; let sortOrder: Int }
+        struct Modifier: Equatable { let label: String; let delta: Double }
+        let axisName: String
+        let basePrice: Double
+        let defaultLabel: String
+        let values: [Value]
+        let modifiers: [Modifier]
+
+        /// nil when fewer than 2 tiers parse to a price (caller degrades to a flat line).
+        static func derive(from tiers: ProductLineTiers,
+                           parseMoney: (String) -> Double?) -> TierSpec? {
+            let clean: [(label: String, price: Double)] = tiers.rows.compactMap { row in
+                let label = row.label.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !label.isEmpty, let price = parseMoney(row.priceText) else { return nil }
+                return (label, price)
+            }
+            guard clean.count >= 2 else { return nil }
+            let base = clean.map(\.price).min()!
+            let defaultLabel = clean.first { $0.price == base }!.label
+            let values = clean.enumerated().map { Value(label: $1.label, sortOrder: $0) }
+            let modifiers = clean
+                .filter { $0.label != defaultLabel && $0.price != base }
+                .map { Modifier(label: $0.label, delta: $0.price - base) }
+            let axis = tiers.axisName.trimmingCharacters(in: .whitespacesAndNewlines)
+            return TierSpec(axisName: axis.isEmpty ? "Option" : axis,
+                            basePrice: base, defaultLabel: defaultLabel,
+                            values: values, modifiers: modifiers)
+        }
+    }
+
+    // MARK: - Default unit seeding (cold-start companies have none)
+
+    /// The starter unit pack: (display, dimension, abbreviation). Cold-start
+    /// companies have zero `catalog_units` (no signup seeder), which strands
+    /// operators inventing hour/each/foot one detour at a time. Mapped through
+    /// `pricingUnit(for:)` where an enum case exists (HR→hour, DAY→day,
+    /// EA→each, FT→linearFoot, SQ FT→sqft); CU YD/TON carry their unit id +
+    /// label on the product (pricing stays flat-rate — no volume/mass enum case).
+    nonisolated static let defaultUnitPack: [(display: String, dimension: String, abbreviation: String)] = [
+        ("HR",    "time",   "hr"),
+        ("DAY",   "time",   "day"),
+        ("EA",    "count",  "ea"),
+        ("FT",    "length", "ft"),
+        ("SQ FT", "area",   "sq ft"),
+        ("CU YD", "volume", "cu yd"),
+        ("TON",   "mass",   "ton")
+    ]
+
+    /// Pack entries missing for this company (case-insensitive on dimension +
+    /// display, so an existing "ft" is never duplicated by "FT"). Pure — no actor state.
+    nonisolated static func missingDefaultUnits(existing: [CatalogUnit])
+        -> [(display: String, dimension: String, abbreviation: String)] {
+        let have = Set(existing.map { "\($0.dimension.lowercased())|\($0.display.lowercased())" })
+        return defaultUnitPack.filter { !have.contains("\($0.dimension.lowercased())|\($0.display.lowercased())") }
+    }
+
+    private var didSeedUnits = false
+
+    /// Idempotent, online-only. Creates any missing starter units remotely and
+    /// inserts them locally so the modules' @Query pickers refresh immediately.
+    func seedDefaultUnitsIfNeeded(existing: [CatalogUnit], modelContext: ModelContext) {
+        guard !didSeedUnits, !companyId.isEmpty else { return }
+        let missing = Self.missingDefaultUnits(existing: existing)
+        guard !missing.isEmpty else { didSeedUnits = true; return }
+        didSeedUnits = true
+        let companyId = self.companyId
+        let baseSort = (existing.map(\.sortOrder).max() ?? 0)
+        let repo = CatalogRepository(companyId: companyId)
+        Task {
+            for (offset, spec) in missing.enumerated() {
+                do {
+                    let dto = CreateCatalogUnitDTO(
+                        companyId: companyId, display: spec.display,
+                        abbreviation: spec.abbreviation, dimension: spec.dimension,
+                        isDefault: false, sortOrder: baseSort + offset + 1)
+                    let created = try await repo.createUnit(dto)
+                    let model = created.toModel()
+                    model.lastSyncedAt = Date()
+                    model.needsSync = false
+                    modelContext.insert(model)
+                } catch {
+                    print("[GuidedCatalogSetupModel] unit seed failed for \(spec.display): \(error)")
+                }
+            }
+            try? modelContext.save()
+        }
+    }
+
+    // MARK: - Draft persistence (mirror GuidedStockSetupModel)
+
+    private var draftContext: CatalogSetupDraftContext? {
+        guard let base = CatalogSetupDraftContext.make(companyId: companyId, userId: userId) else { return nil }
+        return CatalogSetupDraftContext(companyId: base.companyId, userId: base.userId, scope: "catalog-guided")
+    }
+
+    func persist() {
+        guard let context = draftContext else { return }
+        let snapshot = GuidedCatalogSetupDraftSnapshot(
+            context: context,
+            phase: phase,
+            profile: profile,
+            productLines: productLines,
+            savedLines: savedLines,
+            savedAssemblies: savedAssemblies,
+            surveyAnswers: surveyAnswers,
+            surveyQuestion: surveyQuestion,
+            surveyHistory: surveyHistory
+        )
+        do { try draftStore.save(snapshot) }
+        catch { print("[GuidedCatalogSetupModel] draft persist failed: \(error)") }
+    }
+
+    @discardableResult
+    func restoreIfAvailable() -> Bool {
+        guard let context = draftContext else { return false }
+        do {
+            guard let snapshot = try draftStore.load(context: context) else { return false }
+            phase = snapshot.phase
+            profile = snapshot.profile
+            productLines = snapshot.productLines
+            savedLines = snapshot.savedLines
+            savedAssemblies = snapshot.savedAssemblies
+            surveyAnswers = snapshot.surveyAnswers
+            surveyQuestion = snapshot.surveyQuestion
+            surveyHistory = snapshot.surveyHistory
+            return true
+        } catch {
+            print("[GuidedCatalogSetupModel] draft restore failed: \(error)")
+            return false
+        }
+    }
+
+    func clearDraft() {
+        guard let context = draftContext else { return }
+        try? draftStore.clear(context: context)
+    }
+
+    var hasDraftToResume: Bool {
+        guard let context = draftContext else { return false }
+        return (try? draftStore.load(context: context)) != nil
+    }
+
+    // MARK: - §14 completion notification
+
+    /// Fires once, only when something was actually created this run.
+    func postCompletionNotification() {
+        guard !didPostCompletion, !(savedLines.isEmpty && savedAssemblies.isEmpty) else { return }
+        guard !userId.isEmpty, !companyId.isEmpty else { return }
+        didPostCompletion = true
+        let body = "\(GuidedCatalogSetupModel.summaryLine(services: savedServiceCount, goods: savedGoodCount, assemblies: savedAssemblyCount)) saved for estimating."
+        let userId = self.userId
+        let companyId = self.companyId
+        Task {
+            try? await NotificationRepository.shared.createNotification(.init(
+                userId: userId,
+                companyId: companyId,
+                type: "standard",
+                title: "CATALOG SETUP COMPLETE",
+                body: body,
+                deepLinkType: "catalog_products",
+                persistent: false,
+                actionUrl: "/catalog?segment=products",
+                actionLabel: "VIEW PRODUCTS"
+            ))
+            NotificationCenter.default.post(name: .notificationReceived, object: nil)
+        }
+    }
+}

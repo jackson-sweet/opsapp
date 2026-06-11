@@ -145,7 +145,7 @@ struct TaskTypePickerSheet: View {
                 Image(systemName: "plus.circle.fill")
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                Text("// + NEW TASK TYPE")
+                Text("NEW TASK TYPE")
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 Spacer()

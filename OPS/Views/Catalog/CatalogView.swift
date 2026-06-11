@@ -51,6 +51,7 @@ struct CatalogView: View {
     @State private var setupMissingMappingKey: String?
     @State private var showGuidedSetup: Bool = false
     @State private var showGuidedProductSetup: Bool = false
+    @State private var showGuidedCatalogSetup: Bool = false
     @State private var showImport: Bool = false
     @State private var showAddVariant: Bool = false
     @State private var showAddFamily: Bool = false
@@ -155,6 +156,13 @@ struct CatalogView: View {
             GuidedProductSetupFlow()
                 .environmentObject(dataController)
                 .environmentObject(permissionStore)
+        }
+        .fullScreenCover(isPresented: $showGuidedCatalogSetup) {
+            GuidedCatalogSetupFlow(
+                companyId: dataController.currentUser?.companyId ?? "",
+                userId: dataController.currentUser?.id ?? ""
+            )
+            .environmentObject(dataController)
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenCatalogOrders"))) { notif in
             let raw = notif.userInfo?["subSegment"] as? String
@@ -262,6 +270,9 @@ struct CatalogView: View {
                 }
                 if showProductsSection {
                     Section("PRODUCTS") {
+                        Button { showGuidedCatalogSetup = true } label: {
+                            Label("Set up your catalog", systemImage: "checklist")
+                        }
                         Button { showGuidedProductSetup = true } label: {
                             Label("Guided Setup", systemImage: "wand.and.stars")
                         }

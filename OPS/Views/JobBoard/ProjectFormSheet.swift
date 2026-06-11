@@ -234,7 +234,6 @@ struct ProjectFormSheet: View {
     @State private var showingDuplicateNameAlert = false
     @State private var suggestedAlternativeName: String = ""
     @State private var errorMessage: String?
-    @State private var showingError = false
     @State private var isStatusMenuFocused = false
 
     // Focus states for input fields
@@ -817,11 +816,7 @@ struct ProjectFormSheet: View {
                 localTasks.append(task)
             }
         }
-        .alert("Error", isPresented: $showingError) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(errorMessage ?? "An unknown error occurred")
-        }
+        .errorToast($errorMessage, label: Feedback.Err.saveFailed)
         // Bug 3cc5aefa — collision alert when the entered title matches an
         // existing project in the same company. Three actions: edit the
         // name (cancel), accept the suffixed alternative, or save anyway.
@@ -2583,14 +2578,12 @@ struct ProjectFormSheet: View {
         guard !isImportingContact else { return }
         guard let companyId = dataController.currentUser?.companyId else {
             errorMessage = "Cannot import contact — no company configured for the current user."
-            showingError = true
             return
         }
 
         let name = composeContactName(from: contact)
         guard !name.isEmpty else {
             errorMessage = "Contact has no name. Edit the contact in iOS Contacts and try again."
-            showingError = true
             return
         }
 
@@ -2639,7 +2632,6 @@ struct ProjectFormSheet: View {
             _ = try await dataController.createClient(dto: dto)
             guard let savedClient = dataController.getAllClients(for: companyId).first(where: { $0.id == tempId }) else {
                 errorMessage = "Imported the contact, but couldn't load the new client. Try refreshing."
-                showingError = true
                 return
             }
 
@@ -2674,7 +2666,6 @@ struct ProjectFormSheet: View {
             )
         } catch {
             errorMessage = "Failed to import contact: \(error.localizedDescription)"
-            showingError = true
             #if !targetEnvironment(simulator)
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             #endif
@@ -2915,7 +2906,6 @@ struct ProjectFormSheet: View {
                     #endif
 
                     errorMessage = error.localizedDescription
-                    showingError = true
                     isSaving = false
                 }
             }
@@ -3180,7 +3170,6 @@ struct ProjectFormSheet: View {
             print("[PROJECT_CREATE] ❌ Unexpected error during project creation: \(error)")
             await MainActor.run {
                 errorMessage = "Failed to create project: \(error.localizedDescription)"
-                showingError = true
                 isSaving = false
             }
             return project
@@ -3194,7 +3183,6 @@ struct ProjectFormSheet: View {
                 #endif
 
                 errorMessage = "Saved locally. Will sync when connection improves."
-                showingError = true
                 isSaving = false
             } else {
                 isSaving = false

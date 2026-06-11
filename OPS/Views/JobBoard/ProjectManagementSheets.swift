@@ -148,6 +148,8 @@ struct ProjectStatusChangeSheet: View {
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.success)
 
+                    ToastCenter.shared.present(Feedback.JobBoard.statusChanged)
+
                     // Brief delay for graceful dismissal
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         dismiss()
@@ -219,8 +221,7 @@ struct SchedulingModeConversionSheet: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var dataController: DataController
     @State private var isConverting = false
-    @State private var showingError = false
-    @State private var errorMessage = ""
+    @State private var errorMessage: String? = nil
 
     // Note: This feature is disabled in task-only scheduling migration
     // Kept for potential future re-enablement
@@ -316,11 +317,7 @@ struct SchedulingModeConversionSheet: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .loadingOverlay(isPresented: $isConverting, message: "Converting...")
-        .alert("Error", isPresented: $showingError) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(errorMessage)
-        }
+        .errorToast($errorMessage, label: Feedback.Err.conversionFailed)
     }
 
     private func performConversion() {
@@ -335,7 +332,6 @@ struct SchedulingModeConversionSheet: View {
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription
-                    showingError = true
                     isConverting = false
                 }
             }
@@ -755,6 +751,8 @@ struct ProjectTeamChangeView: View {
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.success)
 
+                    ToastCenter.shared.present(Feedback.JobBoard.teamUpdated)
+
                     // Brief delay for graceful dismissal
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         dismiss()
@@ -1044,6 +1042,8 @@ struct TaskTeamChangeView: View {
                                 // Success haptic feedback
                                 let generator = UINotificationFeedbackGenerator()
                                 generator.notificationOccurred(.success)
+
+                                ToastCenter.shared.present(Feedback.JobBoard.teamUpdated)
 
                                 // Brief delay for graceful dismissal
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {

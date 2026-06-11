@@ -197,7 +197,6 @@ struct TaskFormSheet: View {
 
     @State private var isSaving = false
     @State private var errorMessage: String?
-    @State private var showingError = false
     @FocusState private var focusedField: TaskFormField?
     @State private var tempNotes: String = ""
 
@@ -516,13 +515,7 @@ struct TaskFormSheet: View {
             }
             .environmentObject(dataController)
         }
-        .alert("Error", isPresented: $showingError) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            if let errorMessage = errorMessage {
-                Text(errorMessage)
-            }
-        }
+        .errorToast($errorMessage, label: Feedback.Err.saveFailed)
         .onAppear {
             // Track screen view for analytics
             AnalyticsManager.shared.trackScreenView(screenName: .taskForm, screenClass: "TaskFormSheet")
@@ -1544,7 +1537,6 @@ struct TaskFormSheet: View {
                           let taskTypeId = snapshotTaskTypeId else {
                         isSaving = false
                         errorMessage = "Missing project or task type."
-                        showingError = true
                         return
                     }
                     let taskColor = snapshotTaskType?.color ?? "#59779F"
@@ -1622,7 +1614,6 @@ struct TaskFormSheet: View {
             } catch {
                 isSaving = false
                 errorMessage = "Failed to save task locally: \(error.localizedDescription)"
-                showingError = true
                 return
             }
 
@@ -1700,7 +1691,6 @@ struct TaskFormSheet: View {
                 // The local task is already saved, so this is a soft failure.
                 // Surface the message but do not roll back the task insert.
                 errorMessage = "Task saved. Some related updates will retry: \(error.localizedDescription)"
-                showingError = true
                 // Fall through to dismiss path so the user isn't stuck.
             }
 
@@ -1725,6 +1715,7 @@ struct TaskFormSheet: View {
             onSave?(task)
 
             if case .create = mode {
+                ToastCenter.shared.present(Feedback.Task.created)
                 let hasSchedule = snapshotStart != nil || snapshotEnd != nil
                 AnalyticsManager.shared.trackTaskCreated(
                     taskType: snapshotTaskType?.display,

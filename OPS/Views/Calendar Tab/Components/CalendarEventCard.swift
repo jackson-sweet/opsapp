@@ -299,7 +299,7 @@ struct CalendarEventCard: View {
             do {
                 try await dataController.updateTaskSchedule(task: task, startDate: startDate, endDate: endDate)
                 await MainActor.run {
-                    ToastCenter.shared.present(Feedback.Task.scheduled)
+                    ToastCenter.shared.present(Feedback.Task.scheduledFor(start: startDate, end: endDate))
                 }
             } catch {
                 print("Error updating task schedule: \(error)")

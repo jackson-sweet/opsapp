@@ -657,7 +657,7 @@ struct UnscheduledTaskReviewView: View {
         // actually happen on this device.
         if task.status == .completed {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            ToastCenter.shared.present(Feedback.Task.completed)
+            ToastCenter.shared.present(Feedback.Task.alreadyComplete(taskTitle))
             return
         }
 
@@ -666,7 +666,7 @@ struct UnscheduledTaskReviewView: View {
                 try await dataController.updateTaskStatus(task: task, to: .completed)
                 await MainActor.run {
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    ToastCenter.shared.present(Feedback.Task.completed)
+                    ToastCenter.shared.present(Feedback.Task.completedTask(taskTitle))
                 }
             } catch {
                 print("[UNSCHEDULED_REVIEW] Failed to mark task complete: \(error)")
@@ -757,7 +757,7 @@ struct UnscheduledTaskReviewView: View {
                 )
                 await MainActor.run {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    ToastCenter.shared.present(Feedback.Task.scheduled)
+                    ToastCenter.shared.present(Feedback.Task.scheduledFor(start: capturedStart, end: capturedEnd))
                 }
             } catch {
                 print("[UNSCHEDULED_REVIEW] Failed to auto-schedule task: \(error)")
@@ -789,7 +789,7 @@ struct UnscheduledTaskReviewView: View {
                 )
                 await MainActor.run {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    ToastCenter.shared.present(Feedback.Task.scheduled)
+                    ToastCenter.shared.present(Feedback.Task.scheduledFor(start: startDate, end: endDate))
                 }
             } catch {
                 print("[UNSCHEDULED_REVIEW] Failed to manually schedule task: \(error)")

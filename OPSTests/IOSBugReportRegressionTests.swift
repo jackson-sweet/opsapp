@@ -68,26 +68,25 @@ final class IOSBugReportRegressionTests: XCTestCase {
         XCTAssertEqual(calendar.component(.weekday, from: result.newStart), calendar.component(.weekday, from: saturday))
     }
 
-    @MainActor
-    func testLeadDeepLinkEntityMapsToLeadNotification() {
-        let route = DeepLinkRouteRegistry.notificationMapping(for: "leads")
-
-        XCTAssertEqual(route?.name, Notification.Name("OpenLeadDetails"))
-        XCTAssertEqual(route?.entityIdKey, "leadId")
-        XCTAssertTrue(DeepLinkRouteRegistry.isKnownEntity("opportunities"))
+    func testLeadNotificationTypeIsRecognized() {
+        // Lead rows carry a null deep_link_type, so `type` is the dominant signal.
+        XCTAssertTrue(LeadNotificationRouteParser.isLeadNotification(type: "leads_waiting", deepLinkType: nil))
+        XCTAssertTrue(LeadNotificationRouteParser.isLeadNotification(type: nil, deepLinkType: "opportunity"))
+        XCTAssertTrue(LeadNotificationRouteParser.leadRoutingValues.contains("opportunities"))
+        XCTAssertFalse(LeadNotificationRouteParser.isLeadNotification(type: "expense_approved", deepLinkType: nil))
     }
 
     func testLeadNotificationActionUrlParserAcceptsPathAndQueryForms() {
         XCTAssertEqual(
-            LeadNotificationRouteParser.leadId(from: "ops://leads/lead-path"),
+            LeadNotificationRouteParser.opportunityId(fromActionUrl: "ops://leads/lead-path"),
             "lead-path"
         )
         XCTAssertEqual(
-            LeadNotificationRouteParser.leadId(from: "/opportunities/opportunity-path"),
+            LeadNotificationRouteParser.opportunityId(fromActionUrl: "/opportunities/opportunity-path"),
             "opportunity-path"
         )
         XCTAssertEqual(
-            LeadNotificationRouteParser.leadId(from: "ops://pipeline?opportunityId=opportunity-query"),
+            LeadNotificationRouteParser.opportunityId(fromActionUrl: "ops://pipeline?opportunityId=opportunity-query"),
             "opportunity-query"
         )
     }

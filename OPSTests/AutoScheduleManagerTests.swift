@@ -78,13 +78,33 @@ final class AutoScheduleManagerTests: XCTestCase {
         calendar.date(from: DateComponents(year: year, month: month, day: day))!
     }
 
+    /// Start-of-day for the next Monday on or after today.
+    ///
+    /// `AutoScheduleManager.schedule` clamps any anchor earlier than today up to
+    /// today (`max(startOfDay(anchorDate), startOfDay(Date()))`), so a hardcoded
+    /// past anchor makes placement assertions drift with the calendar. Anchoring
+    /// to a real, present-or-future Monday keeps the anchor un-clamped on every
+    /// run AND keeps weekend-skip math (Friday → next Monday) identical on any
+    /// calendar day the suite executes.
+    private var anchorMonday: Date {
+        let today = calendar.startOfDay(for: Date())
+        let weekday = calendar.component(.weekday, from: today) // 1 = Sun … 7 = Sat
+        let daysUntilMonday = (9 - weekday) % 7                 // 0 when today is Monday
+        return calendar.date(byAdding: .day, value: daysUntilMonday, to: today)!
+    }
+
+    /// `offset` calendar days after `base`, preserving time-of-day.
+    private func plusDays(_ offset: Int, _ base: Date) -> Date {
+        calendar.date(byAdding: .day, value: offset, to: base)!
+    }
+
     // MARK: - A: Team Availability
 
     func testA1_SkipsBookedDays() {
         // Jake booked Mon-Wed on another task
-        let monday = date(2026, 4, 6) // Monday
-        let wednesday = date(2026, 4, 8)
-        let thursday = date(2026, 4, 9)
+        let monday = anchorMonday
+        let wednesday = plusDays(2, monday)
+        let thursday = plusDays(3, monday)
 
         let existingTask = MockTask(
             id: "existing-1", taskTypeId: "type-a",
@@ -123,9 +143,9 @@ final class AutoScheduleManagerTests: XCTestCase {
 
     func testA2_BothMembersMustBeFree() {
         // Jake free Mon-Fri, Maria booked Mon-Tue
-        let monday = date(2026, 4, 6)
-        let tuesday = date(2026, 4, 7)
-        let wednesday = date(2026, 4, 8)
+        let monday = anchorMonday
+        let tuesday = plusDays(1, monday)
+        let wednesday = plusDays(2, monday)
 
         let mariaTask = MockTask(
             id: "existing-1", taskTypeId: "type-a",
@@ -164,10 +184,10 @@ final class AutoScheduleManagerTests: XCTestCase {
 
     func testA3_ContiguousBlock() {
         // 3-day task, Jake free Mon, booked Tue, free Wed-Fri
-        let monday = date(2026, 4, 6)
-        let tuesday = date(2026, 4, 7)
-        let wednesday = date(2026, 4, 8)
-        let friday = date(2026, 4, 10)
+        let monday = anchorMonday
+        let tuesday = plusDays(1, monday)
+        let wednesday = plusDays(2, monday)
+        let friday = plusDays(4, monday)
 
         let jakeTask = MockTask(
             id: "existing-1", taskTypeId: "type-a",
@@ -208,7 +228,7 @@ final class AutoScheduleManagerTests: XCTestCase {
     }
 
     func testA6_NoCrewAssigned_WarnsInMetadata() {
-        let monday = date(2026, 4, 6)
+        let monday = anchorMonday
 
         let newTask = MockTask(
             id: "new-1", taskTypeId: "type-b", duration: 1,
@@ -246,9 +266,9 @@ final class AutoScheduleManagerTests: XCTestCase {
 
     func testB1_DependencyRespected() {
         // Task B depends on Task A (0% overlap). A ends Friday.
-        let monday = date(2026, 4, 6)
-        let friday = date(2026, 4, 10)
-        let nextMonday = date(2026, 4, 13)
+        let monday = anchorMonday
+        let friday = plusDays(4, monday)
+        let nextMonday = plusDays(7, monday)
 
         let taskA = MockTask(
             id: "task-a", taskTypeId: "type-a",

@@ -108,6 +108,7 @@ struct UserPermissionDetailView: View {
                             }
                         }
                         .padding(.vertical, 16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .tabBarPadding()
                     }
                 }
@@ -141,13 +142,18 @@ struct UserPermissionDetailView: View {
                 Text(member.fullName)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
 
                 if let email = member.email {
                     Text(email)
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Spacer()
         }
@@ -266,7 +272,9 @@ struct UserPermissionDetailView: View {
                     Text(description)
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Spacer()
             }
@@ -321,6 +329,8 @@ struct UserPermissionDetailView: View {
                 Text(category.uppercased())
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
 
                 Spacer()
 
@@ -363,6 +373,8 @@ struct UserPermissionDetailView: View {
                     Text(category.uppercased())
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
                     Spacer()
 
@@ -413,15 +425,21 @@ struct UserPermissionDetailView: View {
                 Text(perm.label)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(level != .off ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 if hasOverride {
                     Text("OVERRIDE")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.warningStatus)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 } else {
                     Text("FROM ROLE")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.successStatus)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
             }
 

@@ -120,6 +120,7 @@ struct RoleListView: View {
                             .padding(.horizontal, 20)
                         }
                         .padding(.vertical, 16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .tabBarPadding()
                         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
                             if let stepId = notification.userInfo?["stepId"] as? String {

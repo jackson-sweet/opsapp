@@ -63,6 +63,31 @@ import Foundation
 import SwiftUI
 import UIKit
 
+enum DeepLinkRouteRegistry {
+    static func notificationMapping(for entity: String) -> (name: Notification.Name, entityIdKey: String)? {
+        switch entity {
+        case "projects":
+            return (Notification.Name("OpenProjectDetails"), "projectId")
+        case "clients":
+            return (Notification.Name("OpenClientDetails"), "clientId")
+        case "invoices":
+            return (Notification.Name("OpenInvoiceDetails"), "invoiceId")
+        case "estimates":
+            return (Notification.Name("OpenEstimateDetails"), "estimateId")
+        case "tasks":
+            return (Notification.Name("OpenTaskDetails"), "taskId")
+        case "leads", "opportunities":
+            return (Notification.Name("OpenLeadDetails"), "leadId")
+        default:
+            return nil
+        }
+    }
+
+    static func isKnownEntity(_ entity: String) -> Bool {
+        notificationMapping(for: entity) != nil
+    }
+}
+
 @MainActor
 final class DeepLinkCoordinator: ObservableObject {
 
@@ -75,7 +100,7 @@ final class DeepLinkCoordinator: ObservableObject {
     // MARK: - Model
 
     struct PendingLink: Equatable {
-        /// Entity namespace — "projects", "clients", "tasks", "invoices", "estimates".
+        /// Entity namespace — "projects", "clients", "tasks", "invoices", "estimates", "leads".
         let entity: String
 
         /// Entity-specific ID (Bubble unique identifier).
@@ -224,42 +249,21 @@ final class DeepLinkCoordinator: ObservableObject {
     /// correlation UUID is always included in userInfo so downstream
     /// handlers can attach it to their resolved/denied events.
     private func postNotification(for link: PendingLink) {
-        let (name, entityIdKey) = notificationMapping(for: link.entity)
-        guard let name = name, let entityIdKey = entityIdKey else {
+        guard let route = DeepLinkRouteRegistry.notificationMapping(for: link.entity) else {
             // Should be unreachable — validated in receive().
             return
         }
         NotificationCenter.default.post(
-            name: name,
+            name: route.name,
             object: nil,
             userInfo: [
-                entityIdKey: link.id,
+                route.entityIdKey: link.id,
                 Self.deepLinkIdUserInfoKey: link.deepLinkId.uuidString
             ]
         )
     }
 
-    /// Mapping from entity name to the notification name and the key under
-    /// which the entity ID appears in userInfo. Must stay in sync with the
-    /// observer declarations in `MainTabView.swift:59-80`.
-    private func notificationMapping(for entity: String) -> (Notification.Name?, String?) {
-        switch entity {
-        case "projects":
-            return (Notification.Name("OpenProjectDetails"), "projectId")
-        case "clients":
-            return (Notification.Name("OpenClientDetails"), "clientId")
-        case "invoices":
-            return (Notification.Name("OpenInvoiceDetails"), "invoiceId")
-        case "estimates":
-            return (Notification.Name("OpenEstimateDetails"), "estimateId")
-        case "tasks":
-            return (Notification.Name("OpenTaskDetails"), "taskId")
-        default:
-            return (nil, nil)
-        }
-    }
-
     private func isKnownEntity(_ entity: String) -> Bool {
-        notificationMapping(for: entity).0 != nil
+        DeepLinkRouteRegistry.isKnownEntity(entity)
     }
 }

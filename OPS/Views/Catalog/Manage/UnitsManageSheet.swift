@@ -55,8 +55,7 @@ struct UnitsManageSheet: View {
                     }
                 }
             }
-            .navigationTitle("UNITS")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle("UNITS")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Close") { dismiss() }
@@ -216,8 +215,7 @@ struct UnitFormSheet: View {
                     .padding(OPSStyle.Layout.spacing3)
                 }
             }
-            .navigationTitle(isEditing ? "EDIT UNIT" : "NEW UNIT")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle(isEditing ? "EDIT UNIT" : "NEW UNIT")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }

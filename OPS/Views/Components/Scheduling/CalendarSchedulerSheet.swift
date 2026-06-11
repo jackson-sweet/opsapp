@@ -47,6 +47,7 @@ struct CalendarSchedulerSheet: View {
     @State private var cascadeResult: SchedulingEngine.CascadeResult?
     @State private var showingCascadePreview: Bool = false
     @State private var pendingPushDays: Int = 0
+    @State private var pendingPushPreservesCalendarWeek: Bool = false
     @AppStorage("showCascadePreview") private var showCascadePreviewPref: Bool = true
 
     // Grid configuration
@@ -166,15 +167,24 @@ struct CalendarSchedulerSheet: View {
         }
         .sheet(isPresented: $showingCascadePreview) {
             if let cascade = cascadeResult, case .task(let task) = itemType {
+                let pushedDates = quickPushDates(
+                    for: task,
+                    days: pendingPushDays,
+                    preserveCalendarWeek: pendingPushPreservesCalendarWeek
+                )
                 CascadePreviewSheet(
                     pushedTaskName: task.displayTitle,
                     pushedTaskOldStart: task.startDate,
-                    pushedTaskNewStart: SchedulingEngine.pushByDays(task: task, days: pendingPushDays).newStart,
-                    pushedTaskNewEnd: SchedulingEngine.pushByDays(task: task, days: pendingPushDays).newEnd,
+                    pushedTaskNewStart: pushedDates.newStart,
+                    pushedTaskNewEnd: pushedDates.newEnd,
                     cascadeChanges: cascade.changes,
                     onConfirm: {
                         Task {
-                            try? await dataController.pushTaskWithCascade(task, byDays: pendingPushDays)
+                            try? await dataController.pushTaskWithCascade(
+                                task,
+                                byDays: pendingPushDays,
+                                preserveCalendarWeeks: pendingPushPreservesCalendarWeek
+                            )
                         }
                         isPresented = false
                     },
@@ -765,7 +775,7 @@ struct CalendarSchedulerSheet: View {
                 ForEach([1, 2, 3], id: \.self) { days in
                     quickPushButton(label: "+\(days)", days: days)
                 }
-                quickPushButton(label: "+1W", days: 7)
+                quickPushButton(label: "+1W", days: 7, preserveCalendarWeek: true)
             }
 
             // Cascade toggle (only for tasks with dependents)
@@ -795,9 +805,13 @@ struct CalendarSchedulerSheet: View {
         .padding(.horizontal, 20)
     }
 
-    private func quickPushButton(label: String, days: Int) -> some View {
+    private func quickPushButton(
+        label: String,
+        days: Int,
+        preserveCalendarWeek: Bool = false
+    ) -> some View {
         Button(action: {
-            handleQuickPush(days: days)
+            handleQuickPush(days: days, preserveCalendarWeek: preserveCalendarWeek)
         }) {
             Text(label)
                 .font(OPSStyle.Typography.button)
@@ -809,10 +823,21 @@ struct CalendarSchedulerSheet: View {
         }
     }
 
-    private func handleQuickPush(days: Int) {
+    private func quickPushDates(
+        for task: ProjectTask,
+        days: Int,
+        preserveCalendarWeek: Bool
+    ) -> (newStart: Date, newEnd: Date) {
+        if preserveCalendarWeek {
+            return SchedulingEngine.pushByCalendarWeeks(task: task, weeks: max(days / 7, 1))
+        }
+        return SchedulingEngine.pushByDays(task: task, days: days)
+    }
+
+    private func handleQuickPush(days: Int, preserveCalendarWeek: Bool = false) {
         guard case .task(let task) = itemType else { return }
 
-        let result = SchedulingEngine.pushByDays(task: task, days: days)
+        let result = quickPushDates(for: task, days: days, preserveCalendarWeek: preserveCalendarWeek)
 
         if cascadeEnabled {
             let allTasks = dataController.getTasksForProject(task.projectId)
@@ -826,11 +851,16 @@ struct CalendarSchedulerSheet: View {
             if showCascadePreviewPref && !cascade.changes.isEmpty {
                 cascadeResult = cascade
                 pendingPushDays = days
+                pendingPushPreservesCalendarWeek = preserveCalendarWeek
                 showingCascadePreview = true
             } else {
                 onScheduleUpdate(result.newStart, result.newEnd)
                 Task {
-                    try? await dataController.pushTaskWithCascade(task, byDays: days)
+                    try? await dataController.pushTaskWithCascade(
+                        task,
+                        byDays: days,
+                        preserveCalendarWeeks: preserveCalendarWeek
+                    )
                 }
                 isPresented = false
             }

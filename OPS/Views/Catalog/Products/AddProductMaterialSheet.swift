@@ -205,8 +205,7 @@ struct AddProductMaterialSheet: View {
                 }
                 .dismissKeyboardOnTap()
             }
-            .navigationTitle(navTitle)
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle(navTitle)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }

@@ -275,6 +275,8 @@ struct RoleDetailView: View {
                                 Text(PermissionRegistry.displayName(for: role.name).uppercased())
                                     .font(OPSStyle.Typography.bodyBold)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
                             }
                             .padding(.horizontal, 20)
 
@@ -304,38 +306,41 @@ struct RoleDetailView: View {
                                     }
                                     .padding(.horizontal, 20)
 
-                                    ScrollView(.horizontal, showsIndicators: false) {
-                                        HStack(spacing: 12) {
-                                            ForEach(roleUsers) { user in
-                                                VStack(spacing: 6) {
-                                                    if let imageData = user.profileImageData,
-                                                       let uiImage = UIImage(data: imageData) {
-                                                        Image(uiImage: uiImage)
-                                                            .resizable()
-                                                            .scaledToFill()
-                                                            .frame(width: 44, height: 44)
-                                                            .clipShape(Circle())
-                                                    } else {
-                                                        Circle()
-                                                            .fill(user.userColor.flatMap { Color(hex: $0) } ?? OPSStyle.Colors.primaryAccent)
-                                                            .frame(width: 44, height: 44)
-                                                            .overlay(
-                                                                Text(user.firstName.prefix(1).uppercased())
-                                                                    .font(OPSStyle.Typography.bodyBold)
-                                                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                                            )
-                                                    }
-
-                                                    Text(user.firstName)
-                                                        .font(OPSStyle.Typography.smallCaption)
-                                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                                        .lineLimit(1)
+                                    LazyVGrid(
+                                        columns: [GridItem(.adaptive(minimum: 56, maximum: 72), spacing: 12)],
+                                        alignment: .leading,
+                                        spacing: 12
+                                    ) {
+                                        ForEach(roleUsers) { user in
+                                            VStack(spacing: 6) {
+                                                if let imageData = user.profileImageData,
+                                                   let uiImage = UIImage(data: imageData) {
+                                                    Image(uiImage: uiImage)
+                                                        .resizable()
+                                                        .scaledToFill()
+                                                        .frame(width: 44, height: 44)
+                                                        .clipShape(Circle())
+                                                } else {
+                                                    Circle()
+                                                        .fill(user.userColor.flatMap { Color(hex: $0) } ?? OPSStyle.Colors.primaryAccent)
+                                                        .frame(width: 44, height: 44)
+                                                        .overlay(
+                                                            Text(user.firstName.prefix(1).uppercased())
+                                                                .font(OPSStyle.Typography.bodyBold)
+                                                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                                        )
                                                 }
-                                                .frame(width: 56)
+
+                                                Text(user.firstName)
+                                                    .font(OPSStyle.Typography.smallCaption)
+                                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                                    .lineLimit(1)
+                                                    .truncationMode(.tail)
                                             }
+                                            .frame(width: 56)
                                         }
-                                        .padding(.horizontal, 20)
                                     }
+                                    .padding(.horizontal, 20)
                                 }
                             }
 
@@ -463,6 +468,7 @@ struct RoleDetailView: View {
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
+                        .truncationMode(.tail)
 
                     Spacer(minLength: 0)
 
@@ -647,6 +653,8 @@ struct RoleDetailView: View {
             Text(perm.label)
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(level != .off ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
 
             permissionScopePicker(
                 selection: level,
@@ -684,6 +692,8 @@ struct RoleDetailView: View {
                     Text(level.displayName)
                         .font(OPSStyle.Typography.smallCaption)
                         .tracking(0.3)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                         .foregroundColor(
                             !isMixed && selection == level
                                 ? OPSStyle.Colors.primaryText

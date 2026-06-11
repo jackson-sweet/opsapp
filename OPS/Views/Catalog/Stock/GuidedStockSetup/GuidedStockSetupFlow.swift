@@ -143,6 +143,22 @@ struct GuidedStockSetupFlow: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .monospacedDigit()
                 Spacer()
+                Button {
+                    exitFlow()
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                        Text("EXIT")
+                            .font(OPSStyle.Typography.metadata)
+                    }
+                    .foregroundColor(isBuildRunning ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.secondaryText)
+                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                }
+                .buttonStyle(.plain)
+                .disabled(isBuildRunning)
+                .accessibilityLabel("Exit guided setup")
+                .accessibilityHint("Closes guided setup and keeps the current draft.")
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
@@ -243,74 +259,67 @@ struct GuidedStockSetupFlow: View {
 
     @ViewBuilder
     private var blueprintBottomBar: some View {
-        VStack(spacing: OPSStyle.Layout.spacing2) {
-            // Partial error line
-            if case .partial(let failedIds) = model.commitProgress {
-                Text("// ERROR — COULDN'T BUILD \(failedIds.count) \(failedIds.count == 1 ? "FAMILY" : "FAMILIES")")
-                    .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(OPSStyle.Colors.errorText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-            } else if let reasonText = blueprintDisabledReason {
-                Text(reasonText)
-                    .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-            }
-
-            HStack(spacing: OPSStyle.Layout.spacing3) {
-                // BACK button — hidden while building
-                if !isBuildRunning {
-                    Button {
-                        withFlowAnimation { model.back() }
-                    } label: {
-                        Text("BACK")
-                            .font(OPSStyle.Typography.buttonLabel)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .frame(minWidth: 72, minHeight: OPSStyle.Layout.touchTargetMin)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Go back to previous step")
+        OPSFloatingButtonBar {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
+                // Partial error line
+                if case .partial(let failedIds) = model.commitProgress {
+                    Text("// ERROR - COULDN'T BUILD \(failedIds.count) \(failedIds.count == 1 ? "FAMILY" : "FAMILIES")")
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.errorText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else if let reasonText = blueprintDisabledReason {
+                    Text(reasonText)
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                // Primary CTA — adapts to commit state
-                if case .partial = model.commitProgress {
-                    // RETRY button (rose/error tint)
-                    Button {
-                        runBuild()
-                    } label: {
-                        Text("RETRY")
-                    }
-                    .buttonStyle(GuidedFlowCTAButtonStyle(isEnabled: true, tint: OPSStyle.Colors.rose))
-                    .accessibilityLabel("Retry failed families")
-                } else {
-                    Button {
-                        if !isBuildRunning {
-                            runBuild()
+                HStack(spacing: OPSStyle.Layout.spacing3) {
+                    // BACK button — hidden while building
+                    if !isBuildRunning {
+                        Button {
+                            withFlowAnimation { model.back() }
+                        } label: {
+                            Text("BACK")
                         }
-                    } label: {
-                        HStack(spacing: OPSStyle.Layout.spacing2) {
-                            if isBuildRunning, case .running(let done, let total) = model.commitProgress {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.tertiaryText))
-                                    .scaleEffect(0.75)
-                                Text("BUILDING… \(done) OF \(total)")
-                            } else {
-                                Text("BUILD IT →")
+                        .opsSecondaryButtonStyle()
+                        .accessibilityLabel("Go back to previous step")
+                    }
+
+                    // Primary CTA — adapts to commit state
+                    if case .partial = model.commitProgress {
+                        Button {
+                            runBuild()
+                        } label: {
+                            Text("RETRY")
+                        }
+                        .opsDestructiveButtonStyle()
+                        .accessibilityLabel("Retry failed families")
+                    } else {
+                        Button {
+                            if !isBuildRunning {
+                                runBuild()
+                            }
+                        } label: {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
+                                if isBuildRunning, case .running(let done, let total) = model.commitProgress {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.tertiaryText))
+                                        .scaleEffect(0.75)
+                                    Text("BUILDING \(done) OF \(total)")
+                                } else {
+                                    Text("BUILD IT")
+                                }
                             }
                         }
+                        .opsPrimaryButtonStyle(isDisabled: !buildCTAEnabled)
+                        .disabled(!buildCTAEnabled)
+                        .accessibilityLabel(isBuildRunning ? "Building" : "Build it")
+                        .accessibilityValue(buildCTAEnabled ? "Ready" : "Locked")
                     }
-                    .buttonStyle(GuidedFlowCTAButtonStyle(isEnabled: buildCTAEnabled))
-                    .disabled(!buildCTAEnabled)
-                    .accessibilityLabel(isBuildRunning ? "Building" : "Build it")
-                    .accessibilityValue(buildCTAEnabled ? "Ready" : "Locked")
                 }
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
-        .padding(.vertical, OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.backgroundGradient.ignoresSafeArea())
     }
 
     private var isBuildRunning: Bool {
@@ -337,41 +346,36 @@ struct GuidedStockSetupFlow: View {
     // MARK: Standard bottom bar (capture stage)
 
     private var standardBottomBar: some View {
-        VStack(spacing: OPSStyle.Layout.spacing2) {
-            if let reasonText = ctaDisabledReason {
-                Text(reasonText)
-                    .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-            }
-
-            HStack(spacing: OPSStyle.Layout.spacing3) {
-                Button {
-                    withFlowAnimation { model.back() }
-                } label: {
-                    Text("BACK")
-                        .font(OPSStyle.Typography.buttonLabel)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .frame(minWidth: 72, minHeight: OPSStyle.Layout.touchTargetMin)
+        OPSFloatingButtonBar {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
+                if let reasonText = ctaDisabledReason {
+                    Text(reasonText)
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Go back to previous step")
 
-                Button {
-                    ctaAction()
-                } label: {
-                    Text(ctaLabel)
+                HStack(spacing: OPSStyle.Layout.spacing3) {
+                    Button {
+                        withFlowAnimation { model.back() }
+                    } label: {
+                        Text("BACK")
+                    }
+                    .opsSecondaryButtonStyle()
+                    .accessibilityLabel("Go back to previous step")
+
+                    Button {
+                        ctaAction()
+                    } label: {
+                        Text(ctaLabel)
+                    }
+                    .opsPrimaryButtonStyle(isDisabled: !ctaEnabled)
+                    .disabled(!ctaEnabled)
+                    .accessibilityLabel(ctaLabel)
+                    .accessibilityValue(ctaEnabled ? "Ready" : "Locked")
                 }
-                .buttonStyle(GuidedFlowCTAButtonStyle(isEnabled: ctaEnabled))
-                .disabled(!ctaEnabled)
-                .accessibilityLabel(ctaLabel)
-                .accessibilityValue(ctaEnabled ? "Ready" : "Locked")
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
-        .padding(.vertical, OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.backgroundGradient.ignoresSafeArea())
     }
 
     // MARK: - CTA configuration (non-blueprint stages)
@@ -480,6 +484,12 @@ struct GuidedStockSetupFlow: View {
         withAnimation(flowAnimation) {
             body()
         }
+    }
+
+    private func exitFlow() {
+        model.persist()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        dismiss()
     }
 }
 

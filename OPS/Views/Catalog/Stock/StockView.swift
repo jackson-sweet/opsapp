@@ -169,7 +169,8 @@ struct StockView: View {
     @State private var selectedTagId: String? = nil
     @State private var thresholdFilter: ThresholdFilter = .all
     @State private var selectedOptionValueKeys: [String: String] = [:]
-    @State private var selectedRow: EnrichedVariantRow? = nil
+    @State private var quickAdjustRow: EnrichedVariantRow? = nil
+    @State private var detailRow: EnrichedVariantRow? = nil
 
     @Query private var allVariants: [CatalogVariant]
     @Query private var allFamilies: [CatalogItem]
@@ -331,7 +332,19 @@ struct StockView: View {
 
             content
         }
-        .sheet(item: $selectedRow) { row in
+        .sheet(item: $quickAdjustRow) { row in
+            StockQuickAdjustSheet(
+                row: row,
+                onOpenFullDetail: {
+                    quickAdjustRow = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        detailRow = row
+                    }
+                }
+            )
+            .environmentObject(dataController)
+        }
+        .sheet(item: $detailRow) { row in
             VariantDetailView(row: row)
                 .environmentObject(dataController)
         }
@@ -445,11 +458,12 @@ struct StockView: View {
                 StockListView(
                     rows: rows,
                     categories: companyCategories,
-                    onTap: { selectedRow = $0 }
+                    onTap: { quickAdjustRow = $0 },
+                    onOpenDetail: { detailRow = $0 }
                 )
                     .trackScreen("Catalog.Stock.List")
             case .grid:
-                StockGridView(rows: rows, onTap: { selectedRow = $0 })
+                StockGridView(rows: rows, onTap: { quickAdjustRow = $0 })
                     .trackScreen("Catalog.Stock.Grid")
             case .table:
                 StockTableView(
@@ -458,7 +472,7 @@ struct StockView: View {
                     allOptions: allOptions,
                     allOptionValues: allOptionValues,
                     allVariantOptionValues: allVariantOptionValues,
-                    onTap: { selectedRow = $0 }
+                    onTap: { quickAdjustRow = $0 }
                 )
                 .trackScreen("Catalog.Stock.Table")
             }

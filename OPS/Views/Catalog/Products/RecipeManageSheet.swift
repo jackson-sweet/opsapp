@@ -77,8 +77,7 @@ struct RecipeManageSheet: View {
                 }
                 .dismissKeyboardOnTap()
             }
-            .navigationTitle("RECIPE")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle("RECIPE")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }

@@ -114,11 +114,19 @@ struct VariantFormSheet: View {
                     .padding(OPSStyle.Layout.spacing3)
                 }
             }
-            .navigationTitle(isEditing ? "EDIT VARIANT" : "NEW VARIANT")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
+                    Button { dismiss() } label: {
+                        Text("CANCEL")
+                            .font(OPSStyle.Typography.buttonLabel)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+                }
+                ToolbarItem(placement: .principal) {
+                    Text(isEditing ? "EDIT VARIANT" : "NEW VARIANT")
+                        .font(OPSStyle.Typography.panelTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
                 ToolbarItem(placement: .topBarTrailing) {

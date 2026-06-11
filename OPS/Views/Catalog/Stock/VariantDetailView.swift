@@ -139,11 +139,19 @@ struct VariantDetailView: View {
                     .padding(OPSStyle.Layout.spacing3)
                 }
             }
-            .navigationTitle("VARIANT")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Close") { dismiss() }
+                    Button { dismiss() } label: {
+                        Text("CLOSE")
+                            .font(OPSStyle.Typography.buttonLabel)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+                }
+                ToolbarItem(placement: .principal) {
+                    Text("VARIANT")
+                        .font(OPSStyle.Typography.panelTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
                 if isDirty && canManage {

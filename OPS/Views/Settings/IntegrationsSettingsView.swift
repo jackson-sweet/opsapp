@@ -35,7 +35,7 @@ struct IntegrationsSettingsView: View {
                         // iPhone Calendar mirror
                         integrationCard(
                             name: "iPhone Calendar",
-                            description: "Sync OPS events to your iPhone Calendar — time off, personal events, and your assigned work.",
+                            description: "Mirror OPS work and personal events into the Apple, Google, or Outlook calendar account set as default on this iPhone.",
                             iconName: "calendar",
                             isConnected: mirrorService.isEnabled && mirrorService.authorizationStatus == .fullAccess,
                             onConnect: { handleMirrorToggle() }

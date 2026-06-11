@@ -92,8 +92,7 @@ struct OrderDetailView: View {
                 missingState
             }
         }
-        .navigationTitle("ORDER")
-        .navigationBarTitleDisplayMode(.inline)
+        .catalogNavigationTitle("ORDER")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if canEdit && hasUnsavedChanges {

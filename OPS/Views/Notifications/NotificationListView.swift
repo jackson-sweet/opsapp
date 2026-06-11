@@ -86,6 +86,45 @@ struct CatalogSetupNotificationRoute: Equatable {
     }
 }
 
+enum LeadNotificationRouteParser {
+    static func leadId(from urlString: String?) -> String? {
+        guard let urlString,
+              let comps = URLComponents(string: urlString) else {
+            return nil
+        }
+
+        if let queryId = comps.queryItems?
+            .first(where: { item in
+                let name = item.name.lowercased()
+                return name == "leadid" || name == "opportunityid" || name == "id"
+            })?
+            .value?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !queryId.isEmpty {
+            return queryId
+        }
+
+        let host = comps.host?.lowercased()
+        let pathSegments = comps.path
+            .split(separator: "/")
+            .map(String.init)
+            .filter { !$0.isEmpty }
+
+        if host == "leads" || host == "opportunities" {
+            return pathSegments.first
+        }
+
+        if pathSegments.count >= 2 {
+            let entity = pathSegments[0].lowercased()
+            if entity == "leads" || entity == "opportunities" {
+                return pathSegments[1]
+            }
+        }
+
+        return nil
+    }
+}
+
 struct NotificationListView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
@@ -680,6 +719,8 @@ struct NotificationListView: View {
                             case "billableThisWeek":               return notification.actionLabel ?? "OPEN HOME"
                             case "inbox", "email_sync_complete":   return "VIEW DETAILS"
                             case "cashflow":                       return notification.actionLabel ?? "REVIEW FORECAST"
+                            case "lead", "leads",
+                                 "opportunity", "opportunities":   return notification.actionLabel ?? "VIEW LEAD"
                             default:                               return notification.actionLabel ?? "OPEN"
                             }
                         }()
@@ -1007,6 +1048,22 @@ struct NotificationListView: View {
                     NotificationCenter.default.post(name: Notification.Name("OpenCashflowForecast"), object: nil)
                 }
             }
+        case "lead", "leads", "opportunity", "opportunities":
+            guard let leadId = leadIdFromActionUrl(notification.actionUrl) else {
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    NotificationCenter.default.post(name: Notification.Name("OpenJobBoard"), object: nil)
+                }
+                return
+            }
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenLeadDetails"),
+                    object: nil,
+                    userInfo: ["leadId": leadId]
+                )
+            }
         default:
             // Bug bb63c37e — when deep_link_type is missing, fall back to the
             // notification's `type` so legacy rows still route correctly. Old
@@ -1120,5 +1177,9 @@ struct NotificationListView: View {
         case "sent":      return "SENT"
         default:          return nil
         }
+    }
+
+    private func leadIdFromActionUrl(_ urlString: String?) -> String? {
+        LeadNotificationRouteParser.leadId(from: urlString)
     }
 }

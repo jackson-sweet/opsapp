@@ -67,12 +67,20 @@ struct TaskTypePickerSheet: View {
                     }
                 }
             }
-            .navigationTitle("PICK TASK TYPE")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Cancel") { dismiss() }
+                ToolbarItem(placement: .principal) {
+                    Text("PICK TASK TYPE")
+                        .font(OPSStyle.Typography.panelTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { dismiss() } label: {
+                        Text("CANCEL")
+                            .font(OPSStyle.Typography.buttonLabel)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
                 }
             }
         }

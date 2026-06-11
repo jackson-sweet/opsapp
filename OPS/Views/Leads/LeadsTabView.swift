@@ -53,6 +53,7 @@ struct LeadsTabView: View {
     @StateObject private var viewModel: PipelineViewModel
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
+    @Binding private var deepLinkedLeadId: String?
 
     @State private var selectedBucket: PipelineViewModel.TriageBucket?
     @State private var detailLead: Opportunity?
@@ -60,8 +61,9 @@ struct LeadsTabView: View {
     @State private var moreForLead: Opportunity?
     @State private var footerStage: PipelineStage?
 
-    init(viewModel: PipelineViewModel? = nil) {
+    init(viewModel: PipelineViewModel? = nil, deepLinkedLeadId: Binding<String?> = .constant(nil)) {
         _viewModel = StateObject(wrappedValue: viewModel ?? PipelineViewModel())
+        _deepLinkedLeadId = deepLinkedLeadId
     }
 
     private var buckets: PipelineViewModel.TriageBuckets { viewModel.triageBuckets }
@@ -192,7 +194,11 @@ struct LeadsTabView: View {
             if let companyId = dataController.currentUser?.companyId {
                 viewModel.setup(companyId: companyId, currentUserId: dataController.currentUser?.id)
                 await viewModel.loadData()
+                await openPendingDeepLinkedLeadIfNeeded()
             }
+        }
+        .onChange(of: deepLinkedLeadId) { _, _ in
+            Task { await openPendingDeepLinkedLeadIfNeeded() }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadCreatedSuccess"))) { _ in
             Task { await viewModel.loadData() }
@@ -221,6 +227,45 @@ struct LeadsTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadDeletedSuccess"))) { _ in
             Task { await viewModel.loadData() }
         }
+    }
+
+    @MainActor
+    private func openPendingDeepLinkedLeadIfNeeded() async {
+        guard let leadId = deepLinkedLeadId, !leadId.isEmpty else { return }
+        guard dataController.currentUser?.companyId != nil else { return }
+
+        var lead = viewModel.allOpportunities.first {
+            $0.id == leadId && !$0.isDeleted && !$0.isArchived
+        }
+        if lead == nil {
+            await viewModel.loadData()
+            lead = viewModel.allOpportunities.first {
+                $0.id == leadId && !$0.isDeleted && !$0.isArchived
+            }
+        }
+
+        guard let lead else {
+            deepLinkedLeadId = nil
+            DeepLinkCoordinator.shared.clear()
+            NotificationCenter.default.post(
+                name: Notification.Name("ShowAccessDenied"),
+                object: nil,
+                userInfo: ["message": "This lead is no longer available."]
+            )
+            return
+        }
+
+        detailLead = lead
+        deepLinkedLeadId = nil
+        DeepLinkCoordinator.shared.clear()
+        AnalyticsService.shared.track(
+            eventType: .action,
+            eventName: "deep_link_resolved",
+            properties: [
+                "entity": "leads",
+                "id": leadId
+            ]
+        )
     }
 
     // MARK: - Top rows

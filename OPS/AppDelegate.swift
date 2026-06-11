@@ -37,6 +37,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
             }
         }
 
+        // Shake is repurposed app-wide for bug reporting (see ShakeDetection.swift).
+        // Disable the system shake-to-undo so a shake while a text field is the
+        // first responder still propagates up to UIWindow.motionEnded instead of
+        // being intercepted by the undo/redo dialog.
+        application.applicationSupportsShakeToEdit = false
+
         // Configure Firebase (must be first)
         FirebaseApp.configure()
 
@@ -98,10 +104,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         let clientId = additionalData?["clientId"] as? String
         let invoiceId = additionalData?["invoiceId"] as? String
         let estimateId = additionalData?["estimateId"] as? String
+        let leadId = (additionalData?["leadId"] as? String) ?? (additionalData?["opportunityId"] as? String)
         let screen = additionalData?["screen"] as? String
 
         print("[ONESIGNAL] Type: \(notificationType ?? "unknown")")
         print("[ONESIGNAL] Project: \(projectId ?? "none"), Task: \(taskId ?? "none")")
+        print("[ONESIGNAL] Lead: \(leadId ?? "none")")
         print("[ONESIGNAL] Client: \(clientId ?? "none"), Invoice: \(invoiceId ?? "none"), Estimate: \(estimateId ?? "none")")
         print("[ONESIGNAL] Screen: \(screen ?? "none")")
 
@@ -163,11 +171,13 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
             }
 
             if let screen = screen {
-                self.routeToScreen(screen, projectId: projectId, taskId: taskId)
+                self.routeToScreen(screen, projectId: projectId, taskId: taskId, leadId: leadId)
             } else if let type = notificationType {
-                self.routeByType(type, projectId: projectId, taskId: taskId)
+                self.routeByType(type, projectId: projectId, taskId: taskId, leadId: leadId)
             } else if let projectId = projectId {
                 self.openProjectViaCoordinator(projectId)
+            } else if let leadId = leadId {
+                self.openLeadViaCoordinator(leadId)
             }
         }
     }
@@ -292,7 +302,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         print("[DEEP_LINK] Routing \(entity)/\(id)")
 
         switch entity {
-        case "projects", "clients", "invoices", "estimates":
+        case "projects", "clients", "invoices", "estimates", "leads", "opportunities":
             // Hand to the coordinator — stash + post + analytics happen there.
             Task { @MainActor in
                 DeepLinkCoordinator.shared.receive(entity: entity, id: id, scheme: "ops")
@@ -424,21 +434,25 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         let notificationType = userInfo["type"] as? String
         let projectId = userInfo["projectId"] as? String
         let taskId = userInfo["taskId"] as? String
+        let leadId = (userInfo["leadId"] as? String) ?? (userInfo["opportunityId"] as? String)
         let screen = userInfo["screen"] as? String
 
         print("[PUSH] Type: \(notificationType ?? "unknown")")
         print("[PUSH] Title: \(title ?? "none"), Body: \(body ?? "none")")
         print("[PUSH] Project: \(projectId ?? "none"), Task: \(taskId ?? "none")")
+        print("[PUSH] Lead: \(leadId ?? "none")")
         print("[PUSH] Screen: \(screen ?? "none")")
 
         // Route based on screen or type
         if let screen = screen {
-            routeToScreen(screen, projectId: projectId, taskId: taskId)
+            routeToScreen(screen, projectId: projectId, taskId: taskId, leadId: leadId)
         } else if let type = notificationType {
-            routeByType(type, projectId: projectId, taskId: taskId)
+            routeByType(type, projectId: projectId, taskId: taskId, leadId: leadId)
         } else if let projectId = projectId {
             // Default: open project details if projectId is provided
             openProjectViaCoordinator(projectId)
+        } else if let leadId = leadId {
+            openLeadViaCoordinator(leadId)
         }
     }
 
@@ -456,8 +470,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         }
     }
 
+    private func openLeadViaCoordinator(_ leadId: String) {
+        Task { @MainActor in
+            DeepLinkCoordinator.shared.receive(entity: "leads", id: leadId, scheme: "push")
+        }
+    }
+
     /// Route to specific screen based on payload
-    private func routeToScreen(_ screen: String, projectId: String?, taskId: String?) {
+    private func routeToScreen(_ screen: String, projectId: String?, taskId: String?, leadId: String?) {
         switch screen {
         case "projectDetails":
             if let projectId = projectId {
@@ -483,6 +503,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 object: nil,
                 userInfo: [:]
             )
+        case "lead", "leads", "opportunity", "opportunities", "pipeline":
+            if let leadId {
+                openLeadViaCoordinator(leadId)
+            }
         case "projectNotes":
             // Deep link to project details (notes tab) when a mention notification is tapped
             if let projectId = projectId {
@@ -500,7 +524,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
     }
 
     /// Route based on notification type
-    private func routeByType(_ type: String, projectId: String?, taskId: String?) {
+    private func routeByType(_ type: String, projectId: String?, taskId: String?, leadId: String?) {
         switch type {
         case "assignment", "update", "completion", "projectCompletion", "taskCompletion":
             if let projectId = projectId {
@@ -554,6 +578,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 name: Notification.Name("NavigateToMap"),
                 object: nil
             )
+        case "lead", "leads", "opportunity", "opportunities",
+             "lead_created", "lead_updated", "lead_follow_up_due",
+             "opportunity_created", "opportunity_updated", "opportunity_follow_up_due":
+            if let leadId {
+                openLeadViaCoordinator(leadId)
+            }
         case "role_assigned":
             NotificationCenter.default.post(
                 name: Notification.Name("OpenSettings"),

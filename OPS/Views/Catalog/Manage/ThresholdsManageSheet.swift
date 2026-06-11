@@ -46,8 +46,7 @@ struct ThresholdsManageSheet: View {
                     }
                 }
             }
-            .navigationTitle("THRESHOLDS")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle("THRESHOLDS")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Close") { dismiss() }
@@ -176,8 +175,7 @@ struct ThresholdFormSheet: View {
                     .padding(OPSStyle.Layout.spacing3)
                 }
             }
-            .navigationTitle("EDIT THRESHOLDS")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle("EDIT THRESHOLDS")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }

@@ -394,7 +394,7 @@ struct OPSApp: App {
         }
 
         switch entity {
-        case "projects", "clients", "invoices", "estimates", "tasks":
+        case "projects", "clients", "invoices", "estimates", "tasks", "leads", "opportunities":
             print("[DEEP_LINK] Routing to \(entity): \(id)")
             DeepLinkCoordinator.shared.receive(entity: entity, id: id, scheme: url.scheme ?? "")
         default:

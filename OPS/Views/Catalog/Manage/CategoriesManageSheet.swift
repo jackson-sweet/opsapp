@@ -57,8 +57,7 @@ struct CategoriesManageSheet: View {
                     }
                 }
             }
-            .navigationTitle("CATEGORIES")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle("CATEGORIES")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Close") { dismiss() }
@@ -234,8 +233,7 @@ struct CategoryFormSheet: View {
                     .padding(OPSStyle.Layout.spacing3)
                 }
             }
-            .navigationTitle(isEditing ? "EDIT CATEGORY" : "NEW CATEGORY")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle(isEditing ? "EDIT CATEGORY" : "NEW CATEGORY")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
@@ -356,4 +354,3 @@ struct CategoryFormSheet: View {
         try? modelContext.save()
     }
 }
-

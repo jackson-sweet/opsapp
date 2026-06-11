@@ -3975,17 +3975,22 @@ class DataController: ObservableObject {
     /// Returns the cascade result so UI can show preview / enable undo.
     @MainActor
     @discardableResult
-    func pushTaskWithCascade(_ task: ProjectTask, byDays days: Int) async throws -> SchedulingEngine.CascadeResult {
+    func pushTaskWithCascade(
+        _ task: ProjectTask,
+        byDays days: Int,
+        preserveCalendarWeeks: Bool = false
+    ) async throws -> SchedulingEngine.CascadeResult {
         let skip = getCurrentCompany()?.skipWeekendsInAutoSchedule ?? false
-        let calendar = Calendar.current
 
-        guard let start = task.startDate else {
+        guard task.startDate != nil else {
             throw SchedulingError.noStartDate
         }
 
-        var newStart = calendar.date(byAdding: .day, value: days, to: start)!
-        if skip { newStart = SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: true).newStart }
-        let newEnd = calendar.date(byAdding: .day, value: max(task.duration - 1, 0), to: newStart)!
+        let pushedDates = preserveCalendarWeeks
+            ? SchedulingEngine.pushByCalendarWeeks(task: task, weeks: max(days / 7, 1))
+            : SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: skip)
+        let newStart = pushedDates.newStart
+        let newEnd = pushedDates.newEnd
 
         let projectTasks = getTasksForProject(task.projectId)
 
@@ -6606,4 +6611,3 @@ extension DataController {
         }
     }
 }
-

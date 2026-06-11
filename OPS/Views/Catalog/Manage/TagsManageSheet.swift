@@ -46,8 +46,7 @@ struct TagsManageSheet: View {
                     }
                 }
             }
-            .navigationTitle("TAGS")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle("TAGS")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Close") { dismiss() }
@@ -166,8 +165,7 @@ struct TagFormSheet: View {
                     .padding(OPSStyle.Layout.spacing3)
                 }
             }
-            .navigationTitle(isEditing ? "EDIT TAG" : "NEW TAG")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle(isEditing ? "EDIT TAG" : "NEW TAG")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }

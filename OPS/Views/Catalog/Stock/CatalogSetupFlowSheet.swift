@@ -356,8 +356,7 @@ struct CatalogSetupFlowSheet: View {
     private var setupNavigationContent: AnyView {
         let base = AnyView(
             setupScrollContent
-                .navigationTitle(isEditMode ? "EDIT STOCK SETUP" : "STOCK SETUP")
-                .navigationBarTitleDisplayMode(.inline)
+                .catalogNavigationTitle(isEditMode ? "EDIT STOCK SETUP" : "STOCK SETUP")
                 .onAppear(perform: loadPersistedDraftOrFixtureIfNeeded)
                 .toolbar {
                     setupToolbar

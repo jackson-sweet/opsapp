@@ -93,6 +93,24 @@ struct SchedulingEngine {
         return (newStart, newEnd)
     }
 
+    /// Push a task by whole calendar weeks. This preserves the original
+    /// weekday even when the company auto-scheduler skips weekends; the +1W
+    /// quick action is a calendar-week move, not "seven days then normalize".
+    static func pushByCalendarWeeks(
+        task: any SchedulableTask,
+        weeks: Int
+    ) -> (newStart: Date, newEnd: Date) {
+        let calendar = Calendar.current
+        guard let start = task.startDate else {
+            let now = Date()
+            return (now, calendar.date(byAdding: .day, value: max(task.duration - 1, 0), to: now) ?? now)
+        }
+
+        let newStart = calendar.date(byAdding: .weekOfYear, value: weeks, to: start) ?? start
+        let newEnd = calendar.date(byAdding: .day, value: max(task.duration - 1, 0), to: newStart) ?? newStart
+        return (newStart, newEnd)
+    }
+
     // MARK: - Cascade
 
     /// Calculate cascade effects when a task is pushed.

@@ -83,8 +83,7 @@ struct ProductOptionAuthoringSheet: View {
                 }
                 .dismissKeyboardOnTap()
             }
-            .navigationTitle("OPTIONS")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle("OPTIONS")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Done") { dismiss() }
@@ -667,8 +666,7 @@ private struct ProductOptionEditorSheet: View {
                 }
                 .dismissKeyboardOnTap()
             }
-            .navigationTitle(editingOption == nil ? "NEW OPTION" : "EDIT OPTION")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle(editingOption == nil ? "NEW OPTION" : "EDIT OPTION")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
@@ -1124,8 +1122,7 @@ private struct ProductPricingModifierEditorSheet: View {
                 }
                 .dismissKeyboardOnTap()
             }
-            .navigationTitle(editingModifier == nil ? "NEW RULE" : "EDIT RULE")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle(editingModifier == nil ? "NEW RULE" : "EDIT RULE")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }

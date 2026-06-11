@@ -104,8 +104,7 @@ struct InlineCreateCategorySheet: View {
                     .padding(OPSStyle.Layout.spacing3)
                 }
             }
-            .navigationTitle("NEW CATEGORY")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle("NEW CATEGORY")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
@@ -251,8 +250,7 @@ struct InlineCreateUnitSheet: View {
                     .padding(OPSStyle.Layout.spacing3)
                 }
             }
-            .navigationTitle("NEW UNIT")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle("NEW UNIT")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }

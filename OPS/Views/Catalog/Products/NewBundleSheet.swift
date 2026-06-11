@@ -54,11 +54,13 @@ struct NewBundleSheet: View {
 
     @Query private var allProducts: [Product]
     @Query private var allCategories: [CatalogCategory]
+    @Query private var allTaskTypes: [TaskType]
 
     // Required core
     @State private var name: String = ""
     @State private var productDescription: String = ""
     @State private var selectedCategoryId: String? = nil
+    @State private var selectedTaskTypeId: String? = nil
 
     // Pricing
     @State private var pricingMode: BundlePricingMode = .auto
@@ -85,6 +87,7 @@ struct NewBundleSheet: View {
     @State private var unflushedChildren: [BundleChildDraft] = []
 
     @State private var showingNewCategorySheet: Bool = false
+    @State private var showingTaskTypePicker: Bool = false
 
     private var canManageProducts: Bool { permissionStore.can("catalog.products.manage") }
 
@@ -98,6 +101,17 @@ struct NewBundleSheet: View {
         allCategories
             .filter { $0.companyId == companyId && $0.deletedAt == nil }
             .sorted { ($0.sortOrder, $0.name) < ($1.sortOrder, $1.name) }
+    }
+
+    private var companyTaskTypes: [TaskType] {
+        allTaskTypes
+            .filter { $0.companyId == companyId && $0.deletedAt == nil }
+            .sorted { ($0.displayOrder, $0.display) < ($1.displayOrder, $1.display) }
+    }
+
+    private var selectedTaskType: TaskType? {
+        guard let selectedTaskTypeId else { return nil }
+        return companyTaskTypes.first(where: { $0.id == selectedTaskTypeId })
     }
 
     /// Active company products that can be children of a bundle.
@@ -168,31 +182,36 @@ struct NewBundleSheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
+            ZStack(alignment: .bottom) {
                 OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
-                VStack(spacing: 0) {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-                            coreFields
-                            childrenSection
-                            pricingSection
-                            if canManageProducts {
-                                thumbnailField
-                            }
-                            taxableToggle
-                            errorRow
-                        }
-                        .padding(OPSStyle.Layout.spacing3)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+                        sheetHeader
+                        identitySection
+                        taskTypeSection
+                        compositionSection
+                        pricingCard
+                        detailSection
+                        Color.clear.frame(height: 132)
                     }
-                    .dismissKeyboardOnTap()
-                    saveBar
+                    .padding(OPSStyle.Layout.spacing3)
                 }
+                .dismissKeyboardOnTap()
+                saveBar
             }
-            .navigationTitle("NEW BUNDLE")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
+                    Button { dismiss() } label: {
+                        Text("CANCEL")
+                            .font(OPSStyle.Typography.buttonLabel)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+                }
+                ToolbarItem(placement: .principal) {
+                    Text("NEW BUNDLE")
+                        .font(OPSStyle.Typography.panelTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
             }
@@ -210,24 +229,42 @@ struct NewBundleSheet: View {
             }
             .environmentObject(dataController)
         }
+        .sheet(isPresented: $showingTaskTypePicker) {
+            TaskTypePickerSheet(
+                selectedTaskTypeId: selectedTaskTypeId,
+                onSelect: { picked in
+                    selectedTaskTypeId = picked.id
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+            )
+            .environmentObject(dataController)
+        }
     }
 
-    // MARK: - Core fields
+    // MARK: - Form sections
+
+    private var sheetHeader: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            Text("PACKAGE PRODUCTS")
+                .font(OPSStyle.Typography.pageTitle)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Build one sellable line from the parts, labor, and goods underneath it.")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
 
     @ViewBuilder
-    private var coreFields: some View {
+    private var identitySection: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            CatalogSectionHeader("BUNDLE")
+            CatalogSectionHeader("IDENTITY")
             CatalogFieldLabel("Name")
-            TextField("e.g. Standard deck package", text: $name)
+            TextField("Standard deck package", text: $name)
                 .textFieldStyle(CatalogTextFieldStyle())
                 .focused($nameFieldFocused)
                 .submitLabel(.next)
-
-            CatalogFieldLabel("Description (optional)")
-            TextField("Optional", text: $productDescription, axis: .vertical)
-                .lineLimit(2...4)
-                .textFieldStyle(CatalogTextFieldStyle())
 
             CatalogFieldLabel("Category")
             CategoryPickerField(
@@ -236,7 +273,128 @@ struct NewBundleSheet: View {
                 canCreateNew: canManageProducts,
                 onCreateRequested: { showingNewCategorySheet = true }
             )
+
+            CatalogFieldLabel("Description")
+            TextField("What this bundle includes", text: $productDescription, axis: .vertical)
+                .lineLimit(2...4)
+                .textFieldStyle(CatalogTextFieldStyle())
         }
+        .padding(OPSStyle.Layout.spacing3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
+    private var taskTypeSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                CatalogSectionHeader("TASK LINK")
+                Text("· OPTIONAL")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Spacer()
+            }
+
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showingTaskTypePicker = true
+            } label: {
+                taskTypePickerLabel
+            }
+            .buttonStyle(.plain)
+
+            Text("Set a task type when this bundle should create or group field work on the schedule.")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
+    private var taskTypePickerLabel: some View {
+        let swatch: Color? = {
+            guard let hex = selectedTaskType?.color else { return nil }
+            return Color(hex: hex)
+        }()
+        return HStack(spacing: OPSStyle.Layout.spacing2) {
+            if let swatch {
+                Circle()
+                    .fill(swatch)
+                    .frame(width: 14, height: 14)
+                    .overlay(Circle().stroke(swatch.opacity(0.6), lineWidth: 1))
+            }
+            Text(selectedTaskType?.display ?? "Pick task type")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(selectedTaskTypeId == nil ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
+                .lineLimit(1)
+            Spacer()
+            Image(systemName: "chevron.down")
+                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
+        .padding(OPSStyle.Layout.spacing2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
+    private var compositionSection: some View {
+        childrenSection
+            .padding(OPSStyle.Layout.spacing3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+    }
+
+    private var pricingCard: some View {
+        pricingSection
+            .padding(OPSStyle.Layout.spacing3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+    }
+
+    @ViewBuilder
+    private var detailSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            CatalogSectionHeader("DETAIL")
+            taxableToggle
+            if canManageProducts {
+                thumbnailField
+            }
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
 
     // MARK: - Children section
@@ -245,7 +403,7 @@ struct NewBundleSheet: View {
     private var childrenSection: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Text("// CHILDREN · \(children.count)")
+                Text("// COMPOSITION · \(children.count)")
                     .font(OPSStyle.Typography.panelTitle)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Spacer()
@@ -680,36 +838,27 @@ struct NewBundleSheet: View {
     // MARK: - Save bar
 
     private var saveBar: some View {
-        VStack(spacing: 0) {
-            Divider().background(OPSStyle.Colors.separator)
-            Button {
-                Task { await save() }
-            } label: {
-                HStack {
-                    Spacer()
+        OPSFloatingButtonBar {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                errorRow
+                Button {
+                    Task { await save() }
+                } label: {
                     if isSaving {
-                        ProgressView().tint(OPSStyle.Colors.buttonText)
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.tertiaryText))
+                                .scaleEffect(0.75)
+                            Text("SAVING")
+                        }
                     } else {
                         Text("SAVE BUNDLE")
-                            .font(OPSStyle.Typography.buttonLabel)
-                            .foregroundColor(canSave ? OPSStyle.Colors.buttonText : OPSStyle.Colors.tertiaryText)
                     }
-                    Spacer()
                 }
-                .frame(height: OPSStyle.Layout.touchTargetStandard)
-                .background(canSave ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.buttonRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                        .stroke(canSave ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
-                                lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .opsPrimaryButtonStyle(isDisabled: !canSave)
+                .disabled(!canSave)
             }
-            .disabled(!canSave)
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing3)
         }
-        .background(OPSStyle.Colors.background)
     }
 
     private func formattedPrice(_ value: Double) -> String {
@@ -790,8 +939,8 @@ struct NewBundleSheet: View {
             kind: "package",
             type: LineItemType.other.rawValue,
             isTaxable: taxable,
-            taskTypeId: nil,
-            taskTypeRef: nil,
+            taskTypeId: selectedTaskTypeId,
+            taskTypeRef: selectedTaskTypeId,
             linkedCatalogItemId: nil
         )
         dto.bundlePricingMode = pricingMode.rawValue

@@ -152,8 +152,7 @@ struct OrdersSheet: View {
                     .animation(.easeInOut(duration: 0.18), value: subSegment)
                 }
             }
-            .navigationTitle("ORDERS")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle("ORDERS")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Close") { dismiss() }

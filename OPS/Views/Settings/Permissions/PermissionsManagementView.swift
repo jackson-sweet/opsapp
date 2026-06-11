@@ -55,6 +55,8 @@ struct PermissionsManagementView: View {
                         .environmentObject(dataController)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
         }
         .trackScreen("Settings.Permissions")
         .navigationBarBackButtonHidden(true)

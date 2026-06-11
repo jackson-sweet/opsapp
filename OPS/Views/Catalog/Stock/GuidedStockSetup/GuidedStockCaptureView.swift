@@ -47,12 +47,12 @@ struct GuidedStockCaptureView: View {
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text("WHAT DO YOU STOCK OR SELL?")
+            Text("LIST PARTS + WORK")
                 .font(OPSStyle.Typography.pageTitle)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("Add each thing. We'll organize it next.")
+            Text("One row per physical part, material, service, or bundle component. Write top rail, post, bracket, screws, gate kit, install labor - not just rail system.")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -182,7 +182,7 @@ private struct CaptureItemRow: View {
     var body: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
             // Name field
-            TextField("", text: $item.name, prompt: Text("Name it — vinyl, screws, install labor…")
+            TextField("", text: $item.name, prompt: Text("Top rail, post, bracket, install labor")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             )

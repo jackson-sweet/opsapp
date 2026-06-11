@@ -8,6 +8,16 @@
 
 import SwiftUI
 
+enum ProjectQuickActionPermissionGate {
+    static func canShowDeckAction(
+        featureEnabled: Bool,
+        canCreate: Bool,
+        canEdit: Bool
+    ) -> Bool {
+        featureEnabled && (canCreate || canEdit)
+    }
+}
+
 struct ProjectQuickActionsBar: View {
     let selectedTask: ProjectTask?
     let hasClientContact: Bool

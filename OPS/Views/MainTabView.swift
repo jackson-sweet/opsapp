@@ -37,6 +37,7 @@ struct MainTabView: View {
     /// fetched from the server (cold-cache case). Dismissed when resolution
     /// completes (success, denial, or offline bail).
     @State private var showDeepLinkLoading = false
+    @State private var pendingLeadDeepLinkId: String?
 
     /// In-flight project deep-link resolution Task. Cancelled when a newer
     /// link arrives so concurrent taps can't double-present.
@@ -102,6 +103,9 @@ struct MainTabView: View {
 
     private let openEstimateDetailsObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenEstimateDetails"))
+
+    private let openLeadDetailsObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenLeadDetails"))
 
     private let showAccessDeniedObserver = NotificationCenter.default
         .publisher(for: Notification.Name("ShowAccessDenied"))
@@ -372,7 +376,7 @@ struct MainTabView: View {
         if selectedTab == 0 {
             HomeView()
         } else if selectedTab == leadsTabIndex {
-            LeadsTabView()
+            LeadsTabView(deepLinkedLeadId: $pendingLeadDeepLinkId)
         } else if selectedTab == booksTabIndex {
             if let destination = booksAutoSkipDestination {
                 destination
@@ -697,6 +701,21 @@ struct MainTabView: View {
             if let estimateId = notification.userInfo?["estimateId"] as? String {
                 print("[PUSH_NAVIGATION] Opening estimate details for: \(estimateId)")
                 openEstimateWithSync(estimateId: estimateId)
+            }
+        }
+
+        // Handle opening lead details from notification rail / universal link / custom URL.
+        .onReceive(openLeadDetailsObserver) { notification in
+            guard let leadId = notification.userInfo?["leadId"] as? String else { return }
+            guard hasLeadsAccess, let idx = leadsTabIndex else {
+                appState.presentAccessDenied(message: "This lead is no longer available.")
+                DeepLinkCoordinator.shared.clear()
+                return
+            }
+
+            pendingLeadDeepLinkId = leadId
+            withAnimation(OPSStyle.Animation.fast) {
+                selectedTab = idx
             }
         }
 

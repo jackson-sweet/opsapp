@@ -260,6 +260,18 @@ struct DayPageView: View {
         viewModel.userEvents(for: date)
     }
 
+    /// Pull-to-refresh action for the day list. `viewModel.refreshProjects()`
+    /// drives a full SyncEngine pass via DataController.refreshProjectsFromBackend,
+    /// so the user gets fresh tasks, projects, and user events (time-off,
+    /// personal events) in one gesture. Light haptic on commit — a meaningful
+    /// interaction per the OPS haptic principles. Wired on both populated and
+    /// empty days (bug 6e7c63a9): an empty or stale day is exactly when the
+    /// operator reaches for pull-to-refresh.
+    private func refreshDay() async {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        await viewModel.refreshProjects()
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Day header (pinned above scroll)
@@ -270,7 +282,21 @@ struct DayPageView: View {
 
             // Scrollable task list
             if tasksForDate.isEmpty && userEventsForDate.isEmpty {
-                emptyState
+                // Empty days are pull-to-refreshable too. The centered empty
+                // state has nothing to scroll, so wrap it in a ScrollView sized
+                // to fill the viewport — that exposes the refresh gesture while
+                // keeping the message vertically centered.
+                GeometryReader { geo in
+                    ScrollView {
+                        emptyState
+                            .frame(minHeight: geo.size.height)
+                            .frame(maxWidth: .infinity)
+                    }
+                    // Force vertical bounce so the pull gesture is reachable
+                    // even though the empty content exactly fills the viewport.
+                    .scrollBounceBehavior(.always, axes: .vertical)
+                    .refreshable { await refreshDay() }
+                }
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -313,17 +339,8 @@ struct DayPageView: View {
                             }
                         )
                     }
-                    // Bug 6e7c63a9: pull-to-refresh on the day's task list.
-                    // viewModel.refreshProjects() drives a full SyncEngine
-                    // pass via DataController.refreshProjectsFromBackend, so
-                    // the user gets fresh tasks, projects, and user events
-                    // (time-off, personal events) in one gesture. Light
-                    // haptic on commit — meaningful interaction per the
-                    // OPS haptic principles.
-                    .refreshable {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        await viewModel.refreshProjects()
-                    }
+                    // Pull-to-refresh on the day's task list (see refreshDay()).
+                    .refreshable { await refreshDay() }
                     .coordinateSpace(name: "dayScroll")
                     // Active page: convert pixel offset to slot ID, push to viewModel
                     .onPreferenceChange(DayScrollOffsetKey.self) { offset in

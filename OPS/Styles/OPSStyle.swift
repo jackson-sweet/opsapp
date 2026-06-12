@@ -653,6 +653,7 @@ enum OPSStyle {
         static let close = "xmark"                          // THE icon for Close/Dismiss
         static let back = "chevron.left"                    // THE icon for Back navigation
         static let forward = "chevron.right"                // THE icon for Forward navigation
+        static let arrowRight = "arrow.right"               // THE icon for a directional right arrow (list-row affordance)
 
         // MARK: - Legacy SF Symbols (Currently in Use)
         // These are used in existing code - during Track F migration, replace with semantic icons above

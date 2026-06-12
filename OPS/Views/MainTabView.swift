@@ -27,12 +27,6 @@ struct MainTabView: View {
     @State private var keyboardIsShowing = false
     @State private var sheetIsPresented = false
 
-    // Bug 706a4d32 — shared namespace for persistent header buttons. The
-    // outgoing and incoming tab views both render an AppHeader; matching by
-    // stable button IDs in this namespace lets SwiftUI keep those elements
-    // visually still while the rest of the tab content slides.
-    @Namespace private var persistentHeaderNamespace
-
     /// Transient loading banner shown while a deep-linked project is being
     /// fetched from the server (cold-cache case). Dismissed when resolution
     /// completes (success, denial, or offline bail).
@@ -283,44 +277,6 @@ struct MainTabView: View {
         return false
     }
 
-    /// Bug 706a4d32 — single search button rendered outside the sliding tab
-    /// content so it stays visually stationary during tab swaps. Behavior
-    /// branches on the current tab so Settings still gets its expand-in-place
-    /// input while every other tab opens the universal search sheet.
-    @ViewBuilder
-    private var persistentSearchButton: some View {
-        Button {
-            let onSettings = isSettingsTab
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            if onSettings {
-                withAnimation(OPSStyle.Animation.spring) {
-                    appState.isSettingsSearchActive = true
-                }
-            } else {
-                appState.showingUniversalSearch = true
-            }
-        } label: {
-            Image(systemName: "magnifyingglass")
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .frame(
-                    width: OPSStyle.Layout.touchTargetMin,
-                    height: OPSStyle.Layout.touchTargetMin
-                )
-                .background(OPSStyle.Colors.cardBackground)
-                .clipShape(Circle())
-        }
-        .buttonStyle(PlainButtonStyle())
-        .accessibilityLabel("Search")
-    }
-
-    /// Catalog owns the top-trailing menu lane, so Search shifts left by one
-    /// minimum target plus spacing to keep hit and accessibility frames separate.
-    private var persistentSearchTrailingInset: CGFloat {
-        guard let catalogTabIndex = catalogTabIndex, selectedTab == catalogTabIndex else { return 0 }
-        return OPSStyle.Layout.touchTargetMin + OPSStyle.Layout.spacing2
-    }
-
     private var slideTransition: AnyTransition {
         if selectedTab > previousTab {
             return .asymmetric(
@@ -418,41 +374,14 @@ struct MainTabView: View {
             .id(selectedTab)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea(.all, edges: .bottom)
-            // Bug 706a4d32 — inject the shared header namespace so each tab's
-            // AppHeader can match-geometry its tab-specific persistent buttons
-            // (filter, scope, month, review). The universal search button is
-            // hosted by the overlay below instead — matchedGeometryEffect with
-            // two simultaneous isSource=true views during a tab swap doesn't
-            // reliably keep the element stationary, so we lift the only truly
-            // cross-tab element out of the sliding container entirely. Tab
-            // content reserves layout space so the other right-aligned buttons
-            // keep their horizontal position.
-            .environment(\.persistentHeaderNamespace, persistentHeaderNamespace)
-            .environment(\.hostsPersistentSearchButton, selectedTab != 0)
+            // Each tab's AppHeader (search + tab-specific action buttons) lives
+            // inside this sliding container, so the whole header slides as one
+            // unit with the body on a tab switch and every right-side button
+            // stays mutually aligned. No separate persistent overlay.
             // Pushed detail screens read this to fade the tab bar while on screen.
             .environment(\.tabBarVisibility, tabBarVisibility)
             .transition(slideTransition)
             .animation(.spring(response: 0.3, dampingFraction: 0.85), value: selectedTab)
-
-            // Persistent search button overlay — rendered OUTSIDE the sliding
-            // .transition above so it stays visually still while tab content
-            // slides. Position matches AppHeader's right-aligned button slot
-            // (20pt horizontal padding, 12pt vertical padding). Hidden on
-            // the home tab where AppHeader doesn't show a search button.
-            VStack(spacing: 0) {
-                HStack {
-                    Spacer()
-                    if selectedTab != 0 {
-                        persistentSearchButton
-                            .padding(.trailing, persistentSearchTrailingInset)
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-                Spacer()
-            }
-            .allowsHitTesting(selectedTab != 0)
-            .zIndex(3)
 
             // Image sync progress bar and sync status at top
             VStack(spacing: 8) {

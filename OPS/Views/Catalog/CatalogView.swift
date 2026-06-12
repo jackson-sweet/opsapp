@@ -183,11 +183,23 @@ struct CatalogView: View {
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             Text("CATALOG")
                 .font(OPSStyle.Typography.pageTitle)
                 .foregroundColor(OPSStyle.Colors.primaryText)
             Spacer()
+            // Universal search — Catalog uses a bespoke header, so this matches
+            // the kebab's bare-icon styling rather than AppHeader's circle.
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                appState.showingUniversalSearch = true
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.title3)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            }
+            .accessibilityLabel("Search")
             kebabButton
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)

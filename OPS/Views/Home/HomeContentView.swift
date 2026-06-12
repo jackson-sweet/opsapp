@@ -568,9 +568,15 @@ private struct HomeBillableThisWeekCard: View {
     let rollup: HomeBillableThisWeekRollup
     let onSelect: (HomeBillableProjectCandidate) -> Void
 
-    // Persisted so the operator's collapse choice survives across launches.
-    // Defaults expanded — no rollup detail is hidden until they choose to tuck it.
-    @AppStorage("homeBillableThisWeekExpanded") private var isExpanded = true
+    // Collapsed by default — the header (total + job count) carries the
+    // at-a-glance value; the detail is opt-in. The choice persists per operator.
+    //
+    // NOTE: @AppStorage mutations do NOT participate in `withAnimation`
+    // transactions, so animating `isExpanded` directly off AppStorage makes the
+    // collapse snap with no motion. We drive the animation off a plain @State
+    // and mirror it into AppStorage on every toggle (and read it back on appear).
+    @AppStorage("homeBillableThisWeekExpanded") private var persistedExpanded = false
+    @State private var isExpanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -591,6 +597,9 @@ private struct HomeBillableThisWeekCard: View {
             }
         }
         .opsCardStyle(padding: OPSStyle.Layout.spacing3)
+        // Restore the persisted state without animation so the card simply
+        // appears in its last state rather than animating open on every launch.
+        .onAppear { isExpanded = persistedExpanded }
     }
 
     // MARK: - Header (tap anywhere to collapse / expand)
@@ -636,10 +645,12 @@ private struct HomeBillableThisWeekCard: View {
 
     private func toggle() {
         // Single easing curve, no spring. Reduced motion falls back to a
-        // 150ms opacity-only change per the OPS motion identity.
+        // 150ms opacity-only change per the OPS motion identity. Animate the
+        // @State (which participates in the transaction); persist alongside.
         withAnimation(reduceMotion ? .easeInOut(duration: 0.15) : OPSStyle.Animation.standard) {
             isExpanded.toggle()
         }
+        persistedExpanded = isExpanded
         // Light impact — one earned tick on a deliberate user toggle.
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }

@@ -583,22 +583,31 @@ class CalendarViewModel: ObservableObject {
         userEventsForCurrentPeriod.filter { $0.overlaps(date: date) }
     }
 
-    // Refresh projects from the data source
+    /// Full calendar refresh, driven by pull-to-refresh on the day list. Runs a
+    /// comprehensive backend sync — projects, tasks, and calendar user events
+    /// all come down via SyncEngine.fullSync — then reloads BOTH layers of the
+    /// day view from the freshly-synced local store:
+    ///   • loadProjectsForDate rebuilds the week task cache, so newly-assigned
+    ///     and rescheduled tasks surface on the day.
+    ///   • loadUserEvents refreshes the published user-event array, so new or
+    ///     rescheduled time-off / personal events surface too.
+    /// Reloading only projects (the old behavior) left synced user events stale
+    /// until another trigger fired.
     @MainActor
-    func refreshProjects() async {
+    func refreshCalendar() async {
         guard let dataController = dataController else {
             return
         }
-        
-        
-        // Clear the cache to force fresh data
+
+        // Clear the count cache so freshly-synced data isn't masked.
         projectCountCache.removeAll()
-        
-        // Sync with backend to get latest project data
+
+        // Pull the latest of everything from the backend (full sync).
         await dataController.refreshProjectsFromBackend()
-        
-        // Reload projects for the current selected date with fresh data
+
+        // Reload both the task layer and the user-event layer for the day.
         loadProjectsForDate(selectedDate)
+        loadUserEvents()
     }
     
     private func getWeekDays() -> [Date] {

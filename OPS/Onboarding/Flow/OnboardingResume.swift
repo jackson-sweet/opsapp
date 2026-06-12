@@ -26,8 +26,6 @@ struct OnboardingServerState: Equatable {
 
 /// Derives the step the onboarding flow resumes at from server state.
 enum OnboardingResume {
-    private static let ownerRole = "owner"
-
     /// Rules in strict priority order (§5.3):
     /// 1. No company → role pick. Role is uncommitted regardless of stored
     ///    `userType`/`role`.
@@ -44,7 +42,8 @@ enum OnboardingResume {
         if state.webComplete {
             return .completionGate
         }
-        if state.role == ownerRole {
+        // Case-insensitive: legacy rows may carry title-case values e.g. "Owner".
+        if state.role?.lowercased() == "owner" {
             return .crewCode
         }
         if !state.profileComplete {

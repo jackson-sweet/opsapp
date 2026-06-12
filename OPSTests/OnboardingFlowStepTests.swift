@@ -239,6 +239,29 @@ final class OnboardingFlowStepTests: XCTestCase {
         XCTAssertEqual(codeSource?["provenance"] as? String, "fromPicker")
     }
 
+    // MARK: - StepIdentifier completeness tripwire
+    //
+    // If a new case is added to StepIdentifier without a corresponding pinned
+    // fixture, this test fails — ensuring the wire-format contract stays complete.
+
+    func testPinnedFixturesCoverAllStepIdentifiers() throws {
+        // Collect the set of "step" discriminator strings present in pinnedFixtures.
+        let coveredSteps: Set<String> = try Set(
+            Self.pinnedFixtures.compactMap { (json, _) -> String? in
+                guard let obj = try JSONSerialization.jsonObject(
+                    with: Data(json.utf8)
+                ) as? [String: Any] else { return nil }
+                return obj["step"] as? String
+            }
+        )
+        let allIdentifiers = Set(OnboardingFlowStep.StepIdentifier.allCases.map(\.rawValue))
+        XCTAssertEqual(
+            coveredSteps,
+            allIdentifiers,
+            "pinnedFixtures is missing coverage for: \(allIdentifiers.subtracting(coveredSteps))"
+        )
+    }
+
     // MARK: - Codable: corrupt/unknown payloads must throw, never misdecode
 
     func testDecodeFailsOnUnknownStepIdentifier() {
@@ -329,6 +352,12 @@ final class OnboardingFlowStepTests: XCTestCase {
 
     func testResumeOwnerWithCompanyDerivesCrewCode() {
         let state = serverState(hasCompany: true, role: "owner", userType: "company")
+        XCTAssertEqual(OnboardingResume.derive(state), .crewCode)
+    }
+
+    func testResumeTitleCaseOwnerDerivesCrewCode() {
+        // Legacy rows in users.role may carry title-case "Owner" — must resolve identically.
+        let state = serverState(hasCompany: true, role: "Owner", webComplete: false)
         XCTAssertEqual(OnboardingResume.derive(state), .crewCode)
     }
 

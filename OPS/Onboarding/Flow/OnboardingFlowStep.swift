@@ -60,6 +60,7 @@ enum ConfirmSource: Codable, Equatable {
 }
 
 /// Every screen position in the rebuilt onboarding flow.
+/// Persisted via Codable with pinned string identifiers — see `StepIdentifier`; never rename or reorder identifiers.
 enum OnboardingFlowStep: Codable, Equatable {
     case welcome
     case login
@@ -147,7 +148,7 @@ enum OnboardingFlowStep: Codable, Equatable {
     }
 
     /// Stable persisted identifiers — never rename or reuse a value.
-    private enum StepIdentifier: String, Codable {
+    internal enum StepIdentifier: String, Codable, CaseIterable {
         case welcome = "welcome"
         case login = "login"
         case rolePick = "rolePick"

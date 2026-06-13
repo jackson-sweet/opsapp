@@ -148,6 +148,9 @@ final class ToastCenter: ObservableObject {
     /// immediately; otherwise it queues behind the current toast. Pass a toast
     /// with `autoDismissAfter: 0` for manual-only dismiss (errors with an action).
     func present(_ toast: Toast) {
+        // Ensure the dedicated toast window exists before we show anything — this
+        // is what lets a toast fired from inside a sheet appear ABOVE the sheet.
+        ToastWindowController.shared.install()
         if current?.label == toast.label { return }
         if queue.last?.label == toast.label { return }
         guard current != nil else { show(toast); return }
@@ -376,10 +379,13 @@ private struct ToastBanner: View {
 // MARK: - View extension — `.toastHost()`
 
 extension View {
-    /// Mounts the toast layer above this view. Apply once at a root container
-    /// (MainTabView) so toasts persist across tab swaps.
+    /// Installs the toast layer in a dedicated window above everything (see
+    /// `ToastWindowController`). Apply once at a root container (MainTabView).
+    /// A plain `.overlay` can't clear a presented `.sheet` — UIKit presents the
+    /// sheet above the whole root — so toasts fired from inside a form sheet
+    /// rendered behind it. The window sits at `.alert` level and fixes that.
     func toastHost() -> some View {
-        overlay(ToastHostView())
+        onAppear { ToastWindowController.shared.install() }
     }
 }
 

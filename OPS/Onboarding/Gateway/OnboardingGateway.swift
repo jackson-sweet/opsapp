@@ -12,11 +12,13 @@
 //  AND ContentView routes to it. The default-false flag keeps the legacy flow
 //  shipping until cutover.
 //
-//  SCOPE (P2): every per-step screen below is a PLACEHOLDER stub
-//  (`OnboardingPlaceholderStep`) — labeled, walkable scaffolding so a debug
-//  build can drive the flow end-to-end. The real, design-system-final screens
-//  replace these in P3–P5; the §12 design gate applies to THOSE, not to this
-//  scaffolding. Do not treat the stub styling as canonical.
+//  SCOPE: as of P3, `.welcome` (S1) and `.rolePick` (S2) render their real,
+//  design-system-final screens (`WelcomeStepView` / `RolePickStepView`); every
+//  OTHER step still renders the `OnboardingPlaceholderStep` stub — labeled,
+//  walkable scaffolding so a debug build can drive the flow end-to-end. The
+//  remaining real screens replace those stubs in P3–P5; the §12 design gate
+//  applies to the real screens, not to the scaffolding. Do not treat the stub
+//  styling as canonical.
 //
 
 import SwiftUI
@@ -59,18 +61,53 @@ struct OnboardingGateway: View {
     @StateObject private var holder: DataControllerHolder
 
     var body: some View {
-        OnboardingPlaceholderStep(
-            step: coordinator.currentStep,
-            canGoBack: coordinator.canGoBack,
-            onContinue: { handleContinue() },
-            onBack: { coordinator.goBack() },
-            onSignOut: { handleSignOut() }
-        )
-        .onAppear {
-            // Wire the live controller into the coordinator's closures BEFORE
-            // resolving the entry point, then start (idempotent).
-            holder.controller = dataController
-            coordinator.start()
+        currentStepView
+            .onAppear {
+                // Wire the live controller into the coordinator's closures BEFORE
+                // resolving the entry point, then start (idempotent).
+                holder.controller = dataController
+                coordinator.start()
+            }
+    }
+
+    /// Renders the real screen for the current step. P3 lights up the first two
+    /// screens — `.welcome` (S1) and `.rolePick` (S2) — with their design-system
+    /// -final views; every other step still renders the `OnboardingPlaceholderStep`
+    /// scaffolding until its real screen lands in P3–P5. The flag-gated seam and
+    /// the placeholder's CONTINUE/BACK/SIGN OUT contract are untouched for those
+    /// steps.
+    @ViewBuilder
+    private var currentStepView: some View {
+        switch coordinator.currentStep {
+        case .welcome:
+            WelcomeStepView(
+                onGetStarted: { coordinator.advance(to: .rolePick) },
+                onSignIn: { coordinator.advance(to: .login) }
+            )
+
+        case .rolePick:
+            RolePickStepView(
+                onSelectOwner: {
+                    coordinator.update { $0.selectedRole = .owner }
+                    coordinator.advance(to: .createAccount)
+                },
+                onSelectCrew: {
+                    coordinator.update { $0.selectedRole = .crew }
+                    coordinator.advance(to: .createAccount)
+                },
+                canGoBack: coordinator.canGoBack,
+                onBack: { coordinator.goBack() },
+                onSignOut: { handleSignOut() }
+            )
+
+        default:
+            OnboardingPlaceholderStep(
+                step: coordinator.currentStep,
+                canGoBack: coordinator.canGoBack,
+                onContinue: { handleContinue() },
+                onBack: { coordinator.goBack() },
+                onSignOut: { handleSignOut() }
+            )
         }
     }
 

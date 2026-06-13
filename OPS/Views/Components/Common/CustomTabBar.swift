@@ -28,7 +28,9 @@ struct CustomTabBar: View {
         tutorialMode && tutorialPhase == .dragToAccepted
     }
 
-    /// Indicator color — switches to wizard accent when the selected tab's wizard step is active
+    /// Indicator color — monochrome `--text-2` per design system (§9 nav, §14:
+    /// no accent on nav active state). Switches to wizard accent only while a
+    /// tutorial step is highlighting the selected tab.
     private var indicatorColor: Color {
         guard let manager = wizardStateManager,
               manager.isActive,
@@ -36,7 +38,7 @@ struct CustomTabBar: View {
               selectedTab < tabs.count,
               let stepId = tabs[selectedTab].wizardStepId,
               currentStep.id == stepId else {
-            return OPSStyle.Colors.primaryAccent
+            return OPSStyle.Colors.secondaryText
         }
         return OPSStyle.Colors.wizardAccent
     }
@@ -57,7 +59,7 @@ struct CustomTabBar: View {
                 HStack {
                     Rectangle()
                         .fill(indicatorColor)
-                        .frame(width: iconWidth, height: 3)
+                        .frame(width: iconWidth, height: 2)
                         .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                         .offset(x: selectedIndicatorOffset)
                         .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: selectedIndicatorOffset)
@@ -175,14 +177,18 @@ struct TabBarItem: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 4) {
-                Image(systemName: tab.iconName)
-                    .font(.system(size: OPSStyle.Layout.tabBarIconSize, weight: .medium))
-                    .foregroundColor(isWizardHighlighted ? OPSStyle.Colors.wizardAccent : (isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText))
+                Image(tab.iconName)
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: OPSStyle.Layout.tabBarIconSize, height: OPSStyle.Layout.tabBarIconSize)
+                    .foregroundColor(isWizardHighlighted ? OPSStyle.Colors.wizardAccent : (isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText))
+                    .accessibilityLabel(Text(tab.accessibilityLabel ?? ""))
 
                 if let title = tab.title {
                     Text(title)
                         .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                        .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
                         .opacity(isSelected ? 1.0 : 0.8)
                 }
             }
@@ -196,11 +202,15 @@ struct TabItem: Identifiable {
     let id = UUID()
     let iconName: String
     let title: String?
+    /// VoiceOver label — required because Carbon glyphs ship as image assets
+    /// (no auto-label like SF Symbols). Never icon-only without this.
+    let accessibilityLabel: String?
     let wizardStepId: String?
 
-    init(iconName: String, title: String? = nil, wizardStepId: String? = nil) {
+    init(iconName: String, title: String? = nil, accessibilityLabel: String? = nil, wizardStepId: String? = nil) {
         self.iconName = iconName
         self.title = title
+        self.accessibilityLabel = accessibilityLabel
         self.wizardStepId = wizardStepId
     }
 }
@@ -218,9 +228,9 @@ struct CustomTabBar_Previews: PreviewProvider {
                 CustomTabBar(
                     selectedTab: .constant(0),
                     tabs: [
-                        TabItem(iconName: "house.fill", title: "Home"),
-                        TabItem(iconName: "calendar", title: "Schedule"),
-                        TabItem(iconName: "gearshape.fill", title: "Settings")
+                        TabItem(iconName: "nav-home", title: "Home"),
+                        TabItem(iconName: "nav-calendar", title: "Schedule"),
+                        TabItem(iconName: "nav-settings", title: "Settings")
                     ]
                 )
             }

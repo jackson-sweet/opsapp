@@ -218,34 +218,35 @@ struct MainTabView: View {
     // Dynamic tabs based on user role
     private var tabs: [TabItem] {
         var baseTabs: [TabItem] = [
-            TabItem(iconName: "house.fill", wizardStepId: "welcome_home")
+            TabItem(iconName: "nav-home", accessibilityLabel: "Home", wizardStepId: "welcome_home")
         ]
 
         // Add LEADS tab for users with pipeline.view + pipeline feature flag
         if hasLeadsAccess {
             baseTabs.append(TabItem(
-                iconName: "point.3.connected.trianglepath.dotted",
+                iconName: "nav-pipeline",
+                accessibilityLabel: "Leads",
                 wizardStepId: "welcome_leads"
             ))
         }
 
         // Add BOOKS tab for users with any of the three financial-area perms
         if hasBooksAccess {
-            baseTabs.append(TabItem(iconName: "chart.line.uptrend.xyaxis", wizardStepId: "welcome_books"))
+            baseTabs.append(TabItem(iconName: "nav-finance", accessibilityLabel: "Books", wizardStepId: "welcome_books"))
         }
 
         // Add Job Board tab for all users (admin, office crew, and field crew)
-        baseTabs.append(TabItem(iconName: "briefcase.fill", wizardStepId: "welcome_job_board"))
+        baseTabs.append(TabItem(iconName: "nav-jobs", accessibilityLabel: "Job board", wizardStepId: "welcome_job_board"))
 
         // Add Catalog tab if user has catalog access
         if hasCatalogAccess {
-            baseTabs.append(TabItem(iconName: "square.stack.3d.up.fill", wizardStepId: "welcome_catalog"))
+            baseTabs.append(TabItem(iconName: "nav-catalog", accessibilityLabel: "Catalog", wizardStepId: "welcome_catalog"))
         }
 
         // Add Schedule and Settings for all users
         baseTabs.append(contentsOf: [
-            TabItem(iconName: "calendar", wizardStepId: "welcome_schedule"),
-            TabItem(iconName: "gearshape.fill", wizardStepId: "welcome_settings")
+            TabItem(iconName: "nav-calendar", accessibilityLabel: "Schedule", wizardStepId: "welcome_schedule"),
+            TabItem(iconName: "nav-settings", accessibilityLabel: "Settings", wizardStepId: "welcome_settings")
         ])
 
         return baseTabs

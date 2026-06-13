@@ -60,12 +60,24 @@ struct OnboardingGateway: View {
     /// coordinator captured at init. Set once in `.onAppear`, before `start()`.
     @StateObject private var holder: DataControllerHolder
 
+    /// The hardened `OnboardingManager` — the live auth/data boundary the
+    /// rebuilt screens drive (createAccount, handleSocialAuth, joinCompany,
+    /// createCompanyViaRPC). Constructed lazily on first appear from the
+    /// environment-injected `dataController` (not available at `init`), and held
+    /// for the gateway's lifetime so flow state (selected flow, collected names)
+    /// survives across step renders. S3 talks to it ONLY through the
+    /// `CreateAccountLiveBoundary` adapter, keeping the screen testable.
+    @State private var onboardingManager: OnboardingManager?
+
     var body: some View {
         currentStepView
             .onAppear {
                 // Wire the live controller into the coordinator's closures BEFORE
                 // resolving the entry point, then start (idempotent).
                 holder.controller = dataController
+                if onboardingManager == nil {
+                    onboardingManager = OnboardingManager(dataController: dataController)
+                }
                 coordinator.start()
             }
     }
@@ -100,6 +112,9 @@ struct OnboardingGateway: View {
                 onSignOut: { handleSignOut() }
             )
 
+        case .createAccount:
+            createAccountView
+
         default:
             OnboardingPlaceholderStep(
                 step: coordinator.currentStep,
@@ -109,6 +124,63 @@ struct OnboardingGateway: View {
                 onSignOut: { handleSignOut() }
             )
         }
+    }
+
+    // MARK: - S3 (Create account)
+
+    /// The real S3 screen, wired to the live signup boundary. The manager is
+    /// constructed on first appear; until it exists (a transient first-frame
+    /// race that the `.onAppear` resolves immediately) the placeholder renders so
+    /// the view is never empty.
+    @ViewBuilder
+    private var createAccountView: some View {
+        if let manager = onboardingManager {
+            CreateAccountStepView(
+                selectedRole: coordinator.formData.selectedRole,
+                boundary: CreateAccountLiveBoundary(
+                    manager: manager,
+                    dataController: dataController,
+                    selectedRole: coordinator.formData.selectedRole,
+                    resumeStepForCurrentUser: {
+                        guard let user = dataController.currentUser else { return nil }
+                        return OnboardingResume.derive(Self.serverState(for: user))
+                    }
+                ),
+                onUpdateFormData: { mutate in coordinator.update(mutate) },
+                onCreated: {
+                    // New account — advance to the role-appropriate next step.
+                    coordinator.advance(to: Self.createAccountNextStep(role: coordinator.formData.selectedRole))
+                },
+                onExistingComplete: {
+                    // Existing + complete account → admit to the app.
+                    handleComplete()
+                },
+                onExistingIncomplete: { resumeStep in
+                    // Existing + incomplete → resume at the derived step.
+                    coordinator.advance(to: resumeStep)
+                },
+                onSignIn: {
+                    // Email already registered → Login (email already persisted
+                    // into formData by the screen for prefill).
+                    coordinator.advance(to: .login)
+                },
+                onBack: { coordinator.goBack() }
+            )
+        } else {
+            OnboardingPlaceholderStep(
+                step: .createAccount,
+                canGoBack: coordinator.canGoBack,
+                onContinue: {},
+                onBack: { coordinator.goBack() },
+                onSignOut: { handleSignOut() }
+            )
+        }
+    }
+
+    /// The step a NEW account advances to off S3 (spec §4.2 S3):
+    ///   owner → companyName, crew (and unknown) → inviteCheck.
+    static func createAccountNextStep(role: OnboardingFlowRole?) -> OnboardingFlowStep {
+        role == .owner ? .companyName : .inviteCheck
     }
 
     // MARK: - Host-level side effects

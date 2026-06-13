@@ -544,6 +544,7 @@ class OnboardingViewModel: ObservableObject {
                 emergencyContactName: nil,
                 emergencyContactPhone: nil,
                 emergencyContactRelationship: nil,
+                firebaseUid: nil,
                 deletedAt: nil
             )
             try? await userRepo.upsert(userDTO)

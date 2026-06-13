@@ -156,8 +156,19 @@ class AuthManager {
 
     // MARK: - Firebase UID Backfill
 
-    /// Updates the user's `firebase_uid` and `auth_id` in the Supabase users table.
-    /// Called after every successful login to ensure the mapping exists.
+    /// Updates the user's `firebase_uid` and `auth_id` in the Supabase users table
+    /// and verifies the write landed.
+    ///
+    /// This is the legacy-row repair path: server-side `/api/auth/sync-user` now
+    /// stamps `firebase_uid` for new accounts, so this exists to fix older rows that
+    /// predate that. The two RPCs (`create_company_for_owner`, `join_user_to_company`)
+    /// resolve identity off `firebase_uid` = JWT `sub`, so a missing mapping breaks
+    /// owner/employee onboarding for legacy accounts — hence the write is now
+    /// verified (read back) with a small bounded retry instead of fire-and-forget.
+    ///
+    /// Best-effort by contract: it is awaited internally (the retry loop is awaited),
+    /// but callers dispatch it off the login path so it never blocks user-visible
+    /// auth. After `maxAttempts` it gives up silently — it must never raise.
     ///
     /// IMPORTANT: `usersTableId` must be the actual `users.id`, not the Firebase UID.
     /// Only call this after loadUserFromSupabase has resolved the correct users-table ID.
@@ -170,19 +181,50 @@ class AuthManager {
             return
         }
 
-        do {
-            try await SupabaseService.shared.client
-                .from("users")
-                .update([
-                    "firebase_uid": firebaseUID,
-                    "auth_id": firebaseUID
-                ])
-                .eq("id", value: usersTableId)
-                .execute()
-            print("[AUTH] Firebase UID backfilled for user: \(usersTableId)")
-        } catch {
-            // Non-fatal — backfill is best-effort
-            print("[AUTH] Firebase UID backfill failed: \(error.localizedDescription)")
+        // Decodes only the column we care about so verification doesn't depend on
+        // the full user row shape.
+        struct FirebaseUIDRow: Decodable { let firebase_uid: String? }
+
+        let maxAttempts = 3
+        for attempt in 1...maxAttempts {
+            do {
+                try await SupabaseService.shared.client
+                    .from("users")
+                    .update([
+                        "firebase_uid": firebaseUID,
+                        "auth_id": firebaseUID
+                    ])
+                    .eq("id", value: usersTableId)
+                    .execute()
+
+                // Verify the value actually landed. An update that matches zero rows
+                // (e.g. wrong id, RLS) succeeds without error but writes nothing, so
+                // a read-back is the only way to know the mapping now exists.
+                let rows: [FirebaseUIDRow] = try await SupabaseService.shared.client
+                    .from("users")
+                    .select("firebase_uid")
+                    .eq("id", value: usersTableId)
+                    .limit(1)
+                    .execute()
+                    .value
+
+                if rows.first?.firebase_uid == firebaseUID {
+                    print("[AUTH] Firebase UID backfill verified for user: \(usersTableId) (attempt \(attempt))")
+                    return
+                }
+
+                print("[AUTH] Firebase UID backfill not yet verified for \(usersTableId) (attempt \(attempt)/\(maxAttempts))")
+            } catch {
+                // Non-fatal — backfill is best-effort
+                print("[AUTH] Firebase UID backfill attempt \(attempt)/\(maxAttempts) failed: \(error.localizedDescription)")
+            }
+
+            // Brief bounded backoff between attempts; never an unbounded wait.
+            if attempt < maxAttempts {
+                try? await Task.sleep(for: .milliseconds(300 * attempt))
+            }
         }
+
+        print("[AUTH] Firebase UID backfill gave up for user: \(usersTableId) after \(maxAttempts) attempts")
     }
 }

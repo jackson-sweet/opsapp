@@ -97,6 +97,7 @@ struct SupabaseUserDTO: Codable, Identifiable {
     let emergencyContactName: String?
     let emergencyContactPhone: String?
     let emergencyContactRelationship: String?
+    let firebaseUid: String?
     let deletedAt: String?
 
     enum CodingKeys: String, CodingKey {
@@ -119,6 +120,7 @@ struct SupabaseUserDTO: Codable, Identifiable {
         case emergencyContactName         = "emergency_contact_name"
         case emergencyContactPhone        = "emergency_contact_phone"
         case emergencyContactRelationship = "emergency_contact_relationship"
+        case firebaseUid           = "firebase_uid"
         case deletedAt             = "deleted_at"
     }
 }

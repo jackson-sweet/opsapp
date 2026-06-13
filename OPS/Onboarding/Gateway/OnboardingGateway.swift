@@ -84,6 +84,15 @@ struct OnboardingGateway: View {
     /// `CreateAccountLiveBoundary` adapter, keeping the screen testable.
     @State private var onboardingManager: OnboardingManager?
 
+    /// The pending invitations S4c fetched, handed to the invite picker WITHOUT a
+    /// re-fetch (the picker advance happens within this gateway's lifetime). Held in
+    /// gateway state — NOT persisted into the form-data blob (the full DTOs are too
+    /// large; the picked invite's compact company fields are what gets persisted on
+    /// selection). A same-session resume directly onto `.invitePicker` (rare) finds
+    /// this empty and the picker shows its empty state, harmlessly; the normal flow
+    /// always arrives via S4c which fills it.
+    @State private var fetchedInvites: [PendingInviteDTO] = []
+
     var body: some View {
         currentStepView
             .onAppear {
@@ -138,6 +147,15 @@ struct OnboardingGateway: View {
 
         case .crewCode:
             crewCodeView
+
+        case .inviteCheck:
+            inviteCheckView
+
+        case .invitePicker:
+            invitePickerView
+
+        case .codeEntry(let provenance):
+            codeEntryView(provenance: provenance)
 
         case .completionGate:
             completionGateView
@@ -306,6 +324,93 @@ struct OnboardingGateway: View {
             companyName: coordinator.formData.companyName ?? "",
             onEnter: { coordinator.advance(to: .completionGate) }
         )
+    }
+
+    // MARK: - S4c (Invite check — the crew-path auto transition)
+
+    /// The real S4c screen, wired to the live invite-check boundary built from the
+    /// gateway's email (form data, falling back to the live user). The screen
+    /// auto-runs the check on appear and routes: 1+ invites → invite picker (holding
+    /// the fetched invites in gateway state so the picker doesn't re-fetch), 0 →
+    /// code entry (`provenance: .zeroInvites`), failure → the visible retry state.
+    ///
+    /// No manager dependency (the boundary calls the repository directly), so unlike
+    /// the boundary-over-manager screens there is no first-frame placeholder race.
+    private var inviteCheckView: some View {
+        InviteCheckStepView(
+            boundary: InviteCheckLiveBoundary(
+                email: coordinator.formData.email ?? dataController.currentUser?.email
+            ),
+            onInvitesFetched: { invites in
+                fetchedInvites = invites
+            },
+            onHasInvites: { coordinator.advance(to: .invitePicker) },
+            onNoInvites: { coordinator.advance(to: .codeEntry(provenance: .zeroInvites)) },
+            onEnterCodeInstead: { coordinator.advance(to: .codeEntry(provenance: .zeroInvites)) },
+            onSignOut: { handleSignOut() }
+        )
+    }
+
+    // MARK: - Invite picker (crew-path — pick your crew from pending invites)
+
+    /// The real invite-picker screen. Reads the invites S4c fetched into gateway
+    /// state. Selecting a card persists the chosen invite's company (id / name /
+    /// code / logo) + the invitation id into form data and advances to
+    /// `.confirmCompany(source: .picker)`. "Enter a different code" advances to
+    /// `.codeEntry(provenance: .fromPicker)`. Back → role pick.
+    private var invitePickerView: some View {
+        InvitePickerStepView(
+            invites: fetchedInvites,
+            onSelectInvite: { invite in
+                coordinator.update {
+                    $0.joinCompanyId = invite.companyId
+                    $0.joinCompanyName = invite.companyName
+                    $0.joinCompanyCode = invite.companyCode
+                    $0.joinCompanyLogoUrl = invite.companyLogoUrl
+                    $0.joinInvitationId = invite.invitationId
+                }
+                coordinator.advance(to: .confirmCompany(source: .picker))
+            },
+            onEnterDifferentCode: { coordinator.advance(to: .codeEntry(provenance: .fromPicker)) },
+            onBack: { coordinator.goBack() }
+        )
+    }
+
+    // MARK: - S4c-code (Crew code entry)
+
+    /// The real S4c-code screen, wired to the live code-entry boundary over the
+    /// `OnboardingManager`. The provenance the screen was entered with is carried
+    /// into the confirm advance so the confirm-company back-edge returns to the
+    /// right origin. On `.found` the screen persists the company into form data and
+    /// advances to `.confirmCompany(source: .codeEntry(provenance))`. Like the other
+    /// boundary-over-manager screens the manager is constructed on first appear;
+    /// until it exists (a transient first-frame race the `.onAppear` resolves) the
+    /// placeholder renders so the view is never empty.
+    @ViewBuilder
+    private func codeEntryView(provenance: CodeEntryProvenance) -> some View {
+        if let manager = onboardingManager {
+            CodeEntryStepView(
+                provenance: provenance,
+                boundary: CodeEntryLiveBoundary(manager: manager),
+                onUpdateFormData: { mutate in coordinator.update(mutate) },
+                onFound: { _ in
+                    // The screen already persisted the resolved company into form
+                    // data; advance to confirm, carrying the provenance so the
+                    // confirm back-edge returns to the right origin.
+                    coordinator.advance(to: .confirmCompany(source: .codeEntry(provenance)))
+                },
+                onBack: { coordinator.goBack() },
+                onSignOut: { handleSignOut() }
+            )
+        } else {
+            OnboardingPlaceholderStep(
+                step: .codeEntry(provenance: provenance),
+                canGoBack: coordinator.canGoBack,
+                onContinue: {},
+                onBack: { coordinator.goBack() },
+                onSignOut: { handleSignOut() }
+            )
+        }
     }
 
     // MARK: - Completion gate (the terminal screen — both paths end here)

@@ -45,4 +45,11 @@ enum OnboardingHaptics {
         notification.notificationOccurred(.success)
         notification.prepare()
     }
+
+    /// Error notification — a lookup / check failed (no company found, fetch
+    /// failed). Reserved for genuine failures the user must act on, never spammed.
+    static func error() {
+        notification.notificationOccurred(.error)
+        notification.prepare()
+    }
 }

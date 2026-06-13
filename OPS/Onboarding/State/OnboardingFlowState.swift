@@ -49,6 +49,17 @@ struct OnboardingFormData: Codable, Equatable {
     var enteredCrewCode: String?
     /// Owner path — the code returned by the create-company RPC.
     var generatedCrewCode: String?
+    /// Crew path — the company the user resolved to join (from a picked invite or a
+    /// looked-up code). Persisted so the confirm-company screen renders it WITHOUT a
+    /// re-fetch and a kill mid-flow resumes with it. All optional / additive.
+    var joinCompanyId: String?
+    var joinCompanyName: String?
+    var joinCompanyCode: String?
+    var joinCompanyLogoUrl: String?
+    /// Crew path — the invitation id, when the company was resolved from a picked
+    /// pending invite (vs a manually entered code). Drives the invite-acceptance
+    /// write on join. Nil for the code-entry path.
+    var joinInvitationId: String?
     var phone: String?
     var emergencyContactName: String?
     var emergencyContactPhone: String?
@@ -68,6 +79,11 @@ struct OnboardingFormData: Codable, Equatable {
         case industries
         case enteredCrewCode
         case generatedCrewCode
+        case joinCompanyId
+        case joinCompanyName
+        case joinCompanyCode
+        case joinCompanyLogoUrl
+        case joinInvitationId
         case phone
         case emergencyContactName
         case emergencyContactPhone
@@ -84,6 +100,11 @@ struct OnboardingFormData: Codable, Equatable {
         industries: [String]? = nil,
         enteredCrewCode: String? = nil,
         generatedCrewCode: String? = nil,
+        joinCompanyId: String? = nil,
+        joinCompanyName: String? = nil,
+        joinCompanyCode: String? = nil,
+        joinCompanyLogoUrl: String? = nil,
+        joinInvitationId: String? = nil,
         phone: String? = nil,
         emergencyContactName: String? = nil,
         emergencyContactPhone: String? = nil,
@@ -98,6 +119,11 @@ struct OnboardingFormData: Codable, Equatable {
         self.industries = industries
         self.enteredCrewCode = enteredCrewCode
         self.generatedCrewCode = generatedCrewCode
+        self.joinCompanyId = joinCompanyId
+        self.joinCompanyName = joinCompanyName
+        self.joinCompanyCode = joinCompanyCode
+        self.joinCompanyLogoUrl = joinCompanyLogoUrl
+        self.joinInvitationId = joinInvitationId
         self.phone = phone
         self.emergencyContactName = emergencyContactName
         self.emergencyContactPhone = emergencyContactPhone

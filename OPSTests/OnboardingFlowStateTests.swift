@@ -91,6 +91,9 @@ final class OnboardingFlowStateTests: XCTestCase {
         let state = OnboardingFlowState(step: nil, data: crewFormData())
         store.save(state)
         XCTAssertEqual(store.load(), state)
+        // crewFormData uses lastName: "" to exercise the empty-string round-trip
+        // (a decoder that silently collapses ""→nil would fail this).
+        XCTAssertEqual(store.load()?.data.lastName, "", "empty-string lastName must survive the encode/decode cycle unchanged")
     }
 
     func testRoundTripStateWithEmptyData() throws {
@@ -156,12 +159,27 @@ final class OnboardingFlowStateTests: XCTestCase {
 
     func testLoadValidJSONWithUnknownStepPayloadReturnsNil() {
         // A v4 blob whose `step` carries an unknown identifier must be treated
-        // as no-saved-state (the step machine throws), not crash.
+        // as no-saved-state (the step machine throws on StepIdentifier init),
+        // not a crash. Wire shape: outer {"v":1,"step":{...},"data":{}};
+        // inner step object {"step":"<identifier>"} — "teleport" is not a
+        // StepIdentifier case, so the decode throws and the corrupt path fires.
         let json = #"{"v":1,"step":{"step":"teleport"},"data":{}}"#
         defaults.set(Data(json.utf8), forKey: v4Key)
         let store = OnboardingFlowStateStore(defaults: defaults)
         XCTAssertNil(store.load())
         XCTAssertNil(defaults.data(forKey: v4Key))
+    }
+
+    func testLoadFutureVersionReturnsNilAndClearsKey() {
+        // A blob whose version tag exceeds currentVersion was written by a
+        // newer build — this binary cannot safely interpret it. It must be
+        // discarded (key cleared) exactly like a corrupt blob.
+        let futureVersion = OnboardingFlowState.currentVersion + 998 // well above any real version
+        let json = "{\"v\":\(futureVersion),\"step\":{\"step\":\"profile\"},\"data\":{\"firstName\":\"Future\"}}"
+        defaults.set(Data(json.utf8), forKey: v4Key)
+        let store = OnboardingFlowStateStore(defaults: defaults)
+        XCTAssertNil(store.load(), "future-version blob must not be returned")
+        XCTAssertNil(defaults.data(forKey: v4Key), "future-version blob must be cleared from defaults")
     }
 
     // MARK: - clear()

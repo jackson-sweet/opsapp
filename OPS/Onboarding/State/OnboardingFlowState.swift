@@ -122,7 +122,9 @@ struct OnboardingFlowState: Codable, Equatable {
     /// re-entry.
     var data: OnboardingFormData
 
-    private let version: Int
+    /// Decoded schema version — used by the store to reject future-version blobs.
+    /// Internal (not public) so the store can read it without it leaking wider.
+    let version: Int
 
     init(step: OnboardingFlowStep?, data: OnboardingFormData) {
         self.step = step
@@ -150,7 +152,11 @@ struct OnboardingFlowState: Codable, Equatable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(version, forKey: .version)
+        // Always stamp the CURRENT binary's schema version, not the version the
+        // blob was originally decoded with. This ensures a save cycle never
+        // silently downgrade-stamps a blob that was decoded from a newer-version
+        // binary and is now being re-persisted by an older one.
+        try container.encode(Self.currentVersion, forKey: .version)
         try container.encodeIfPresent(step, forKey: .step)
         try container.encode(data, forKey: .data)
     }
@@ -185,10 +191,19 @@ struct OnboardingFlowStateStore {
 
     /// Returns the persisted v4 state, or `nil` if absent or undecodable.
     /// A corrupt blob is discarded (key cleared) so it can never wedge resume.
+    /// A future-version blob (version > currentVersion) is treated identically
+    /// to a corrupt blob — this build cannot safely interpret it, so it is
+    /// discarded rather than partially applied.
     func load() -> OnboardingFlowState? {
         guard let data = defaults.data(forKey: Self.v4Key) else { return nil }
         do {
-            return try JSONDecoder().decode(OnboardingFlowState.self, from: data)
+            let state = try JSONDecoder().decode(OnboardingFlowState.self, from: data)
+            guard state.version <= OnboardingFlowState.currentVersion else {
+                print("[ONBOARDING_FLOW_STATE] v4 blob version \(state.version) exceeds current \(OnboardingFlowState.currentVersion), discarding")
+                defaults.removeObject(forKey: Self.v4Key)
+                return nil
+            }
+            return state
         } catch {
             print("[ONBOARDING_FLOW_STATE] v4 blob unreadable, discarding: \(error)")
             defaults.removeObject(forKey: Self.v4Key)
@@ -223,6 +238,14 @@ struct OnboardingFlowStateStore {
     ///    keys afterward (cleanup), regardless of what was found.
     /// 4. A corrupt/undecodable v3 blob is discarded cleanly — no v4 created,
     ///    no crash.
+    ///
+    /// - Important: Call exactly once at app launch, on the main actor, BEFORE
+    ///   any onboarding coordinator is instantiated. The legacy `OnboardingState`
+    ///   writes `UserDefaults.standard` directly; calling this method after a
+    ///   legacy write has occurred could clear a freshly written v3 key and
+    ///   discard user data. The method is deliberately not `@MainActor`-annotated
+    ///   (UserDefaults is thread-safe), but the launch-ordering constraint is
+    ///   essential — enforce it at the call site, not here.
     func migrateV3IfNeeded() {
         defer { removeLegacyKeys() }
 

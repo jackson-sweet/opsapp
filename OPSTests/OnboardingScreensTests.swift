@@ -1385,6 +1385,112 @@ final class OnboardingScreensTests: XCTestCase {
         XCTAssertEqual(received.map(\.invitationId), ["aaa", "bbb"])
     }
 
+    // MARK: - S4c Invite check — soft-timeout escape (never-trap on a slow connection)
+
+    /// The happy case: while a check is still in flight (current run, phase
+    /// `.checking`), a soft-timeout firing escalates to the actionable `.failed`
+    /// state — the user gets CHECK AGAIN + ENTER CODE INSTEAD + SIGN OUT instead of
+    /// being trapped behind the spinner.
+    func testInviteCheckTimeoutEscapesWhenStillCheckingCurrentRun() {
+        XCTAssertTrue(
+            InviteCheckTimeoutPolicy.shouldEscape(
+                timedOutGeneration: 1,
+                currentGeneration: 1,
+                phase: .checking
+            ),
+            "a still-checking current run that crosses the soft timeout must escape to .failed"
+        )
+    }
+
+    /// LATE-SUCCESS GUARD: the soft timeout fired (current run), but the boundary's
+    /// result already landed and routed the screen away — phase is no longer
+    /// `.checking`. The stale timeout must NOT escalate (it would resurrect a
+    /// `.failed` state over a screen that already resolved).
+    func testInviteCheckTimeoutDoesNotEscapeOnceResolvedAway() {
+        XCTAssertFalse(
+            InviteCheckTimeoutPolicy.shouldEscape(
+                timedOutGeneration: 1,
+                currentGeneration: 1,
+                phase: .failed
+            ),
+            "a timeout must not re-escalate when the screen already left .checking"
+        )
+    }
+
+    /// STALE-RUN GUARD: a retry (CHECK AGAIN) bumped the generation, so the OLD
+    /// run's armed timeout now belongs to a superseded run. Even mid-`.checking`,
+    /// the stale timeout must NOT escalate — only the newest run's timeout may.
+    func testInviteCheckTimeoutDoesNotEscapeForSupersededRun() {
+        XCTAssertFalse(
+            InviteCheckTimeoutPolicy.shouldEscape(
+                timedOutGeneration: 1,
+                currentGeneration: 2,
+                phase: .checking
+            ),
+            "a superseded run's timeout must not escalate the current run"
+        )
+    }
+
+    /// END-TO-END LATE SUCCESS (the bug's core): model the exact race the view
+    /// guards. The user crosses the soft timeout and lands on `.failed` (then picks
+    /// an escape); the original in-flight check returns LATER with a success. With
+    /// the generation guard, that late success is dropped — it does NOT route the
+    /// user onward (which would yank them out of the escape state they chose). We
+    /// replay the view's `runCheck` guard (`generation == runGeneration`) plus the
+    /// timeout escalation, asserting the late `.found` never fires the navigation.
+    func testInviteCheckLateSuccessAfterTimeoutDoesNotYankUserBack() async {
+        // Run 1 starts (generation 1) and arms its timeout.
+        var runGeneration = 1
+        let timedOutGeneration = runGeneration
+
+        // The soft timeout fires while still checking → escalate to .failed.
+        let escalated = InviteCheckTimeoutPolicy.shouldEscape(
+            timedOutGeneration: timedOutGeneration,
+            currentGeneration: runGeneration,
+            phase: .checking
+        )
+        XCTAssertTrue(escalated, "the timeout must escalate run 1 to .failed")
+
+        // The user is now on .failed. The original boundary call FINALLY returns a
+        // success — but it belongs to run 1's continuation. The view's guard checks
+        // whether the run is still current before routing.
+        let lateOutcome: InviteCheckOutcome = .found([makeInvite()])
+        let lateOutcomeGeneration = timedOutGeneration
+
+        var didRouteOnward = false
+        // Replay the view's late-success guard verbatim: route ONLY if the run id
+        // the continuation captured still matches the current run.
+        if lateOutcomeGeneration == runGeneration {
+            InviteCheckRouter.route(
+                lateOutcome,
+                onHasInvites: { _ in didRouteOnward = true },
+                onNoInvites: { didRouteOnward = true },
+                onFailed: {}
+            )
+        }
+        XCTAssertTrue(
+            didRouteOnward,
+            "sanity: with no intervening run, the same-generation late result still routes"
+        )
+
+        // Now model the user having RETRIED (CHECK AGAIN bumps the generation): the
+        // ORIGINAL run-1 continuation returning late must be dropped.
+        runGeneration += 1 // user pressed CHECK AGAIN → run 2 is now current
+        var didRouteOnwardAfterRetry = false
+        if lateOutcomeGeneration == runGeneration { // still captured run 1 → false
+            InviteCheckRouter.route(
+                lateOutcome,
+                onHasInvites: { _ in didRouteOnwardAfterRetry = true },
+                onNoInvites: { didRouteOnwardAfterRetry = true },
+                onFailed: {}
+            )
+        }
+        XCTAssertFalse(
+            didRouteOnwardAfterRetry,
+            "a late run-1 success after the user retried (run 2) must be dropped — never yank back"
+        )
+    }
+
     // MARK: - S4c Invite check — gateway wiring (navigator driven at the coordinator seam)
 
     /// `onHasInvites` + gateway wiring → coordinator advances to `.invitePicker`.

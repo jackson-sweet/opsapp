@@ -28,16 +28,16 @@ enum FeatureFlags {
 
     /// Routes onboarding through the rebuilt flow (OnboardingFlowCoordinator +
     /// OnboardingGateway) instead of the legacy A/B-test coordinator. Rollout
-    /// gate for the onboarding rebuild — DEFAULT FALSE so the legacy flow ships
-    /// until cutover. Controlled via UserDefaults key
-    /// "feature.useRebuiltOnboarding".
+    /// gate for the onboarding rebuild — **DEFAULT TRUE (cutover 2026-06-13)**:
+    /// the rebuilt flow is now the shipping default. The legacy A/B coordinator
+    /// and its screens remain in the codebase (dead while this is true) until the
+    /// legacy-deletion pass; flip this back to false to instantly revert to the
+    /// legacy router (still byte-identical when off). Controlled via UserDefaults
+    /// key "feature.useRebuiltOnboarding".
     ///
-    /// While false, ContentView's routing is byte-identical to the legacy
-    /// router and none of the rebuilt onboarding code can affect the live app.
-    ///
-    /// Enable: `UserDefaults.standard.set(true, forKey: "feature.useRebuiltOnboarding")`
+    /// Disable (revert to legacy): `UserDefaults.standard.set(false, forKey: "feature.useRebuiltOnboarding")`
     /// then force-quit + relaunch.
     static var useRebuiltOnboarding: Bool {
-        UserDefaults.standard.object(forKey: "feature.useRebuiltOnboarding") as? Bool ?? false
+        UserDefaults.standard.object(forKey: "feature.useRebuiltOnboarding") as? Bool ?? true
     }
 }

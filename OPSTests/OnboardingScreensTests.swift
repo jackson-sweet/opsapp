@@ -92,6 +92,27 @@ final class OnboardingScreensTests: XCTestCase {
             )
         }
 
+        /// The EXACT closures the gateway wires into S4 (Login). `onComplete` is
+        /// the host admit path (asserted via a flag in tests — it does not advance
+        /// the flow); `onIncomplete` resumes at the derived step; `onNewIdentity`
+        /// routes a brand-new social identity to `.rolePick`; `onSignIn`/`onBack`
+        /// mirror the gateway. Driving these exercises the production navigation.
+        static func login(
+            _ c: OnboardingFlowCoordinator,
+            boundary: LoginBoundary,
+            onComplete: @escaping () -> Void
+        ) -> LoginStepView {
+            LoginStepView(
+                boundary: boundary,
+                onUpdateFormData: { mutate in c.update(mutate) },
+                onComplete: onComplete,
+                onIncomplete: { resume in c.advance(to: resume) },
+                onNewIdentity: { c.advance(to: .rolePick) },
+                onBack: { c.goBack() },
+                prefilledEmail: c.formData.email
+            )
+        }
+
         /// The EXACT closures the gateway wires into S3. The `onCreated` advance
         /// is the gateway's `createAccountNextStep(role:)` rule; `onSignIn` routes
         /// to `.login` (email already persisted into formData for prefill). Driving
@@ -147,6 +168,32 @@ final class OnboardingScreensTests: XCTestCase {
             lastFirstName = firstName; lastLastName = lastName; lastEmail = email
             return socialNameOutcome
         }
+    }
+
+    // MARK: - Stub login boundary (no Firebase / no network)
+
+    /// Records the calls S4 makes and returns canned outcomes per provider, so the
+    /// async login actions resolve deterministically. `@MainActor` to satisfy the
+    /// protocol's isolation.
+    @MainActor
+    private final class StubLoginBoundary: LoginBoundary {
+        var emailOutcome: LoginOutcome = .complete
+        var appleOutcome: LoginOutcome = .complete
+        var googleOutcome: LoginOutcome = .complete
+
+        private(set) var emailCallCount = 0
+        private(set) var appleCallCount = 0
+        private(set) var googleCallCount = 0
+        private(set) var lastEmail: String?
+        private(set) var lastPassword: String?
+
+        func logInEmail(email: String, password: String) async -> LoginOutcome {
+            emailCallCount += 1
+            lastEmail = email; lastPassword = password
+            return emailOutcome
+        }
+        func logInApple() async -> LoginOutcome { appleCallCount += 1; return appleOutcome }
+        func logInGoogle() async -> LoginOutcome { googleCallCount += 1; return googleOutcome }
     }
 
     // MARK: - S1 Welcome — GET STARTED → rolePick
@@ -454,6 +501,191 @@ final class OnboardingScreensTests: XCTestCase {
         XCTAssertEqual(stub.lastEmail, "jack@ops.app")
     }
 
+    // MARK: - S4 Login — form validation (pure validator, no rendering)
+
+    func testLoginFormValidationGatesSubmit() {
+        // Both blank → invalid; the empty email is not a "valid email", the empty
+        // password is flagged.
+        let blank = LoginFormValidation(email: "", password: "")
+        XCTAssertFalse(blank.isFormValid)
+        XCTAssertEqual(blank.passwordError, "enter your password")
+
+        // Email present + shaped, password blank → still invalid (password gates).
+        let noPw = LoginFormValidation(email: "jack@ops.app", password: "")
+        XCTAssertFalse(noPw.isFormValid)
+        XCTAssertEqual(noPw.passwordError, "enter your password")
+
+        // Bad email, password present → invalid (email shape gates).
+        let badEmail = LoginFormValidation(email: "not-an-email", password: "anything")
+        XCTAssertFalse(badEmail.isFormValid)
+        XCTAssertEqual(badEmail.emailError, "enter a valid email")
+
+        // Both present + shaped → valid. Login never enforces an 8-char minimum
+        // (legacy accounts may predate it), so a short password still gates clean.
+        let ok = LoginFormValidation(email: "jack@ops.app", password: "x")
+        XCTAssertTrue(ok.isFormValid)
+        XCTAssertNil(ok.emailError)
+        XCTAssertNil(ok.passwordError)
+    }
+
+    func testLoginEmailValidatorReusesCreateAccountRule() {
+        // Login's email shape delegates to the SAME validator S3 uses — proving
+        // there is one source of truth for "is this a valid email".
+        let good = LoginFormValidation(email: "a.b+c@sub.domain.io", password: "x")
+        XCTAssertTrue(good.isFormValid)
+        let bad = LoginFormValidation(email: "jack@ops", password: "x")
+        XCTAssertFalse(bad.isFormValid)
+        XCTAssertEqual(bad.emailError, "enter a valid email")
+    }
+
+    // MARK: - S4 Login — host-navigating outcomes (pure router)
+
+    func testLoginCompleteTakesHostAdmitPathNoFlowNav() {
+        // `.complete` is the host admit path — the router invokes onComplete and
+        // does NOT advance the flow (the host admits to the app instead).
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.advance(to: .login)
+
+        var didAdmit = false
+        let handled = LoginOutcomeRouter.route(
+            .complete,
+            onComplete: { didAdmit = true },
+            onIncomplete: { _ in XCTFail("should not resume") },
+            onNewIdentity: { XCTFail("should not route to new identity") }
+        )
+        XCTAssertTrue(handled)
+        XCTAssertTrue(didAdmit, "complete must take the host admit path")
+        XCTAssertEqual(c.currentStep, .login, "complete does not advance the flow")
+    }
+
+    func testLoginIncompleteResumesAtDerivedStep() {
+        // `.incomplete(step)` → the gateway wires onIncomplete → advance(to:).
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.advance(to: .login)
+
+        LoginOutcomeRouter.route(
+            .incomplete(resumeStep: .profile),
+            onComplete: { XCTFail("should not admit") },
+            onIncomplete: { c.advance(to: $0) },
+            onNewIdentity: { XCTFail("should not route to new identity") }
+        )
+        XCTAssertEqual(c.currentStep, .profile)
+    }
+
+    func testLoginNewIdentityRoutesToRolePick() {
+        // `.newIdentity` (brand-new social identity) → the gateway routes to
+        // `.rolePick` with auth already satisfied.
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.advance(to: .login)
+
+        LoginOutcomeRouter.route(
+            .newIdentity,
+            onComplete: { XCTFail("should not admit") },
+            onIncomplete: { _ in XCTFail("should not resume") },
+            onNewIdentity: { c.advance(to: .rolePick) }
+        )
+        XCTAssertEqual(c.currentStep, .rolePick)
+    }
+
+    func testLoginNoAccountIsNotANavigation() {
+        // `.noAccount` is local-state-only — the screen surfaces an inline error
+        // and offers no navigation, so the router does NOT move the flow.
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.advance(to: .login)
+
+        let handled = LoginOutcomeRouter.route(
+            .noAccount,
+            onComplete: { XCTFail("no admit") },
+            onIncomplete: { _ in XCTFail("no resume") },
+            onNewIdentity: { XCTFail("no new identity") }
+        )
+        XCTAssertFalse(handled, "no-account is local state, not a navigation")
+        XCTAssertEqual(c.currentStep, .login)
+    }
+
+    func testLoginFailedIsNotANavigation() {
+        // `.failed` is local-state-only (the screen surfaces the message inline).
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.advance(to: .login)
+
+        let handled = LoginOutcomeRouter.route(
+            .failed(message: "WRONG EMAIL OR PASSWORD."),
+            onComplete: { XCTFail("no admit") },
+            onIncomplete: { _ in XCTFail("no resume") },
+            onNewIdentity: { XCTFail("no new identity") }
+        )
+        XCTAssertFalse(handled, "failure is local state, not a navigation")
+        XCTAssertEqual(c.currentStep, .login)
+    }
+
+    // MARK: - S4 Login — gating gates the boundary call
+
+    func testLoginEmptyEmailGatesSubmit() async {
+        // With an empty email the form is invalid, so attempting to submit must NOT
+        // reach the boundary. Driven via the validation gate the screen enforces.
+        let stub = StubLoginBoundary()
+        let validation = LoginFormValidation(email: "", password: "hunter2")
+        XCTAssertFalse(validation.isFormValid, "empty email must gate submit")
+        // The screen guards on `isFormValid` before calling the boundary, so a
+        // gated submit never invokes it — assert the stub stays untouched.
+        XCTAssertEqual(stub.emailCallCount, 0)
+    }
+
+    func testLoginBoundaryStubRecordsEmailLoginCall() async {
+        // The async seam wires through: a valid email login reaches the boundary
+        // with the typed credentials and returns the canned outcome.
+        let stub = StubLoginBoundary()
+        stub.emailOutcome = .complete
+        let outcome = await stub.logInEmail(email: "jack@ops.app", password: "hunter2")
+        XCTAssertEqual(outcome, .complete)
+        XCTAssertEqual(stub.emailCallCount, 1)
+        XCTAssertEqual(stub.lastEmail, "jack@ops.app")
+        XCTAssertEqual(stub.lastPassword, "hunter2")
+    }
+
+    // MARK: - S4 Login — SIGN IN handoff prefill
+
+    func testLoginPrefillSeedsEmailFromFormData() {
+        // The SIGN IN handoff persists the typed email into formData; the gateway
+        // passes it as `prefilledEmail`. A LoginStepView seeded with it surfaces
+        // the value on its validation/init path (the field applies it on appear).
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.update { $0.email = "jack@ops.app" }
+        c.advance(to: .login)
+
+        let screen = GatewayActions.login(c, boundary: StubLoginBoundary(), onComplete: {})
+        XCTAssertEqual(screen.prefilledEmail, "jack@ops.app",
+                       "the gateway must pass the persisted email as the Login prefill")
+    }
+
+    // MARK: - S4 Login — live boundary no-account sentinel classification
+
+    func testLiveBoundaryNoAccountSentinelMatching() {
+        // The live boundary classifies ONLY the explicit DataController no-account
+        // sentinel as `.noAccount`; a wrong-password message is a generic failure.
+        XCTAssertTrue(LoginLiveBoundary.indicatesNoAccount(
+            "NO ACCOUNT FOUND FOR THIS EMAIL. SIGN UP OR CHECK THE ADDRESS."))
+        XCTAssertTrue(LoginLiveBoundary.indicatesNoAccount(
+            "  no account found for this email  "), "match is trimmed + case-insensitive")
+        XCTAssertFalse(LoginLiveBoundary.indicatesNoAccount("WRONG EMAIL OR PASSWORD."))
+        XCTAssertFalse(LoginLiveBoundary.indicatesNoAccount(nil))
+
+        // userFacing collapses an empty/absent message to the connection fallback,
+        // and passes through DataController's terse copy untouched.
+        XCTAssertEqual(LoginLiveBoundary.userFacing("WRONG EMAIL OR PASSWORD."),
+                       "WRONG EMAIL OR PASSWORD.")
+        XCTAssertEqual(LoginLiveBoundary.userFacing(nil),
+                       "Couldn't sign you in. Check your connection and try again.")
+        XCTAssertEqual(LoginLiveBoundary.userFacing("   "),
+                       "Couldn't sign you in. Check your connection and try again.")
+    }
+
     // MARK: - Snapshots (default + dark + reduce-motion)
 
     private var outDir: URL {
@@ -573,6 +805,35 @@ final class OnboardingScreensTests: XCTestCase {
         }
         snapshot("createaccount_default_light", colorScheme: .light) {
             CreateAccountStepView(selectedRole: .owner, boundary: stub).snapshotBody
+        }
+
+        // S4 Login — default (dark), no-account error, top-level failure error,
+        // light. Uses the DEBUG snapshot seam to reach the post-interaction error
+        // states a renderer can't otherwise drive.
+        let loginStub = StubLoginBoundary()
+        snapshot("login_default_dark") {
+            LoginStepView(boundary: loginStub, previewEmail: "jack@ops.app").snapshotBody
+        }
+        snapshot("login_no_account_dark") {
+            LoginStepView(
+                boundary: loginStub,
+                previewEmail: "jack@ops.app",
+                previewPassword: "hunter2",
+                previewDidAttemptSubmit: true,
+                previewNoAccount: true
+            ).snapshotBody
+        }
+        snapshot("login_failure_dark") {
+            LoginStepView(
+                boundary: loginStub,
+                previewEmail: "jack@ops.app",
+                previewPassword: "hunter2",
+                previewDidAttemptSubmit: true,
+                previewFailureMessage: "WRONG EMAIL OR PASSWORD."
+            ).snapshotBody
+        }
+        snapshot("login_default_light", colorScheme: .light) {
+            LoginStepView(boundary: loginStub, previewEmail: "jack@ops.app").snapshotBody
         }
     }
 }

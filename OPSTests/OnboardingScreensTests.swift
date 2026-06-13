@@ -274,6 +274,64 @@ final class OnboardingScreensTests: XCTestCase {
         }
     }
 
+    // MARK: - Stub invite-check boundary (no network / no RPC)
+
+    /// Records the invite-check call S4c makes and returns a canned outcome, so the
+    /// async check resolves deterministically. `@MainActor` for protocol isolation.
+    @MainActor
+    private final class StubInviteCheckBoundary: InviteCheckBoundary {
+        var outcome: InviteCheckOutcome = .found([])
+        private(set) var callCount = 0
+
+        func checkInvites() async -> InviteCheckOutcome {
+            callCount += 1
+            return outcome
+        }
+    }
+
+    // MARK: - Stub code-entry boundary (no network / no RPC)
+
+    /// Records the lookup call S4c-code makes and returns a canned outcome, so the
+    /// async lookup resolves deterministically. `@MainActor` for protocol isolation.
+    @MainActor
+    private final class StubCodeEntryBoundary: CodeEntryBoundary {
+        var outcome: CodeEntryOutcome = .found(
+            FoundCompany(companyId: "c1", companyName: "Sweet Deck & Rail", companyCode: "BR8K90ZT", companyLogoUrl: nil)
+        )
+        private(set) var callCount = 0
+        private(set) var lastCode: String?
+
+        func lookUpCompany(code: String) async -> CodeEntryOutcome {
+            callCount += 1
+            lastCode = code
+            return outcome
+        }
+    }
+
+    // MARK: - Invite fixtures (no network)
+
+    /// A pending-invite fixture for the picker / invite-check tests.
+    private func makeInvite(
+        invitationId: String = UUID().uuidString,
+        companyId: String = UUID().uuidString,
+        companyName: String = "Sweet Deck & Rail",
+        companyCode: String? = "BR8K90ZT"
+    ) -> PendingInviteDTO {
+        PendingInviteDTO(
+            invitationId: invitationId,
+            companyId: companyId,
+            companyName: companyName,
+            companyCode: companyCode,
+            companyLogoUrl: nil,
+            industries: ["Carpentry"],
+            roleName: "Crew",
+            invitedByName: "Jack Sweet",
+            teamMembers: [TeamMemberDTO(firstName: "Jack", lastName: "Sweet", profileImageUrl: nil)],
+            teamSize: 4,
+            expiresAt: "2026-12-31T00:00:00Z"
+        )
+    }
+
     // MARK: - S1 Welcome — GET STARTED → rolePick
 
     func testWelcomeGetStartedAdvancesToRolePick() {

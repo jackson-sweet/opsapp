@@ -25,4 +25,19 @@ enum FeatureFlags {
     static var useDataActor: Bool {
         UserDefaults.standard.object(forKey: "feature.useDataActor") as? Bool ?? true
     }
+
+    /// Routes onboarding through the rebuilt flow (OnboardingFlowCoordinator +
+    /// OnboardingGateway) instead of the legacy A/B-test coordinator. Rollout
+    /// gate for the onboarding rebuild — DEFAULT FALSE so the legacy flow ships
+    /// until cutover. Controlled via UserDefaults key
+    /// "feature.useRebuiltOnboarding".
+    ///
+    /// While false, ContentView's routing is byte-identical to the legacy
+    /// router and none of the rebuilt onboarding code can affect the live app.
+    ///
+    /// Enable: `UserDefaults.standard.set(true, forKey: "feature.useRebuiltOnboarding")`
+    /// then force-quit + relaunch.
+    static var useRebuiltOnboarding: Bool {
+        UserDefaults.standard.object(forKey: "feature.useRebuiltOnboarding") as? Bool ?? false
+    }
 }

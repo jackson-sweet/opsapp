@@ -308,6 +308,65 @@ final class OnboardingScreensTests: XCTestCase {
         }
     }
 
+    // MARK: - Stub confirm-company boundary (no network / no RPC)
+
+    /// Records the team-preview fetch + the live JOIN S5c makes and returns canned
+    /// outcomes, so both async ops resolve deterministically with no network.
+    /// `@MainActor` for protocol isolation.
+    @MainActor
+    private final class StubConfirmCompanyBoundary: ConfirmCompanyBoundary {
+        /// The team-preview enrichment to return; `nil` = no team data (sparse path).
+        var details: CompanyJoinDetailsDTO?
+        /// The JOIN outcome to return.
+        var outcome: ConfirmCompanyJoinOutcome = .joined
+
+        private(set) var fetchCallCount = 0
+        private(set) var joinCallCount = 0
+
+        func fetchTeamPreview() async -> CompanyJoinDetailsDTO? {
+            fetchCallCount += 1
+            return details
+        }
+        func join() async -> ConfirmCompanyJoinOutcome {
+            joinCallCount += 1
+            return outcome
+        }
+    }
+
+    // MARK: - Confirm-company fixtures (no network)
+
+    /// A rich preview fixture (team data present → rich layout).
+    private func makeRichPreview(
+        companyName: String = "Sweet Deck & Rail"
+    ) -> ConfirmCompanyPreview {
+        ConfirmCompanyPreview(
+            companyId: "co-1",
+            companyName: companyName,
+            companyCode: "BR8K90ZT",
+            companyLogoUrl: nil,
+            industries: ["Carpentry", "Roofing"],
+            teamMembers: [
+                TeamMemberDTO(firstName: "Jack", lastName: "Sweet", profileImageUrl: nil),
+                TeamMemberDTO(firstName: "Mara", lastName: "Lopez", profileImageUrl: nil)
+            ],
+            teamSize: 6,
+            roleName: "Crew",
+            invitedByName: "Jack Sweet"
+        )
+    }
+
+    /// A sparse preview fixture (no team data → sparse layout).
+    private func makeSparsePreview(
+        companyName: String = "North Ridge HVAC"
+    ) -> ConfirmCompanyPreview {
+        ConfirmCompanyPreview(
+            companyId: "co-2",
+            companyName: companyName,
+            companyCode: "NR4G99AB",
+            companyLogoUrl: nil
+        )
+    }
+
     // MARK: - Invite fixtures (no network)
 
     /// A pending-invite fixture for the picker / invite-check tests.
@@ -1628,6 +1687,245 @@ final class OnboardingScreensTests: XCTestCase {
         XCTAssertEqual(stub.callCount, 1)
     }
 
+    // MARK: - S5c Confirm company — ConfirmCompanyOutcomeRouter (join routing)
+
+    /// `.joined` → `onJoined` invoked AND returns true (the only host-navigating
+    /// outcome). The screen fires the success haptic + onJoined; the gateway advances
+    /// to `.profile`.
+    func testConfirmCompanyRouterJoinedCallsOnJoinedAndReturnsTrue() {
+        var didJoin = false
+        let handled = ConfirmCompanyOutcomeRouter.route(
+            .joined,
+            onJoined: { didJoin = true }
+        )
+        XCTAssertTrue(handled, ".joined must return true (it is the host-navigation outcome)")
+        XCTAssertTrue(didJoin, "onJoined must be invoked for .joined")
+    }
+
+    /// `.failed` → `onJoined` NOT called, returns false (inline retry error, no nav).
+    func testConfirmCompanyRouterFailedReturnsFalseAndDoesNotCallOnJoined() {
+        let handled = ConfirmCompanyOutcomeRouter.route(
+            .failed(message: "couldn't join — try again"),
+            onJoined: { XCTFail("onJoined must not be called for .failed") }
+        )
+        XCTAssertFalse(handled, ".failed is a local-state error — returns false")
+    }
+
+    // MARK: - S5c Confirm company — JOIN success advances to .profile
+
+    /// JOIN success, via the gateway's exact onJoined wiring, advances the flow to
+    /// `.profile`. This is the crew-path commit point's forward edge.
+    func testConfirmCompanyJoinSuccessAdvancesToProfile() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.update { $0.selectedRole = .crew }
+        c.advance(to: .confirmCompany(source: .picker))
+
+        // Mirror the gateway's exact onJoined closure.
+        let onJoined: () -> Void = { c.advance(to: .profile) }
+
+        let handled = ConfirmCompanyOutcomeRouter.route(.joined, onJoined: onJoined)
+
+        XCTAssertTrue(handled)
+        XCTAssertEqual(c.currentStep, .profile,
+                       "a committed crew join must advance to .profile")
+    }
+
+    // MARK: - S5c Confirm company — JOIN failure is inline, no nav
+
+    /// JOIN failure does NOT navigate — the router returns false and the flow stays on
+    /// confirmCompany (the screen surfaces the message inline).
+    func testConfirmCompanyJoinFailureIsNotANavigation() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.update { $0.selectedRole = .crew }
+        c.advance(to: .confirmCompany(source: .codeEntry(.zeroInvites)))
+
+        let handled = ConfirmCompanyOutcomeRouter.route(
+            .failed(message: "couldn't join — try again"),
+            onJoined: { XCTFail("a failed join must not advance the flow") }
+        )
+
+        XCTAssertFalse(handled, "failure is local state, not a navigation")
+        XCTAssertEqual(c.currentStep, .confirmCompany(source: .codeEntry(.zeroInvites)),
+                       "a failed join must NOT navigate — the user retries in place")
+    }
+
+    // MARK: - S5c Confirm company — rich vs sparse layout decision (pure)
+
+    /// Team data present (members OR a positive member count) → RICH layout.
+    func testConfirmCompanyLayoutRichWhenTeamDataPresent() {
+        // Both members and a count → rich.
+        XCTAssertEqual(ConfirmCompanyLayout.decide(makeRichPreview()), .rich)
+
+        // A member count alone (no member DTOs) is still rich — the "N members" row
+        // and overflow badge render off the count.
+        let countOnly = ConfirmCompanyPreview(
+            companyId: "c", companyName: "Co", companyCode: nil, companyLogoUrl: nil,
+            teamMembers: [], teamSize: 3
+        )
+        XCTAssertEqual(ConfirmCompanyLayout.decide(countOnly), .rich,
+                       "a positive member count alone justifies the rich layout")
+    }
+
+    /// No team data → SPARSE layout (the deliberate reduced fallback).
+    func testConfirmCompanyLayoutSparseWhenNoTeamData() {
+        // Name + logo only → sparse.
+        XCTAssertEqual(ConfirmCompanyLayout.decide(makeSparsePreview()), .sparse)
+
+        // Industries / role / invited-by WITHOUT any crew is still sparse — a card
+        // with trades but no team reads as sparse to the worker (no crew to confirm).
+        let metaOnly = ConfirmCompanyPreview(
+            companyId: "c", companyName: "Co", companyCode: nil, companyLogoUrl: nil,
+            industries: ["Carpentry"], teamMembers: [], teamSize: 0,
+            roleName: "Crew", invitedByName: "Jack"
+        )
+        XCTAssertEqual(ConfirmCompanyLayout.decide(metaOnly), .sparse,
+                       "industries/role without crew do not justify the rich layout")
+    }
+
+    // MARK: - S5c Confirm company — back-edge resolves to the source
+
+    /// `.picker` source → Back returns to invitePicker.
+    func testConfirmCompanyBackEdgePickerSourceIsInvitePicker() {
+        XCTAssertEqual(
+            OnboardingFlowStep.confirmCompany(source: .picker).backEdge(context: .preAuth),
+            .invitePicker
+        )
+        // And post-auth (the join is not yet committed at confirm — Back is available).
+        XCTAssertEqual(
+            OnboardingFlowStep.confirmCompany(source: .picker).backEdge(context: .postAuth),
+            .invitePicker
+        )
+    }
+
+    /// `.codeEntry(.zeroInvites)` source → Back returns to codeEntry(.zeroInvites),
+    /// preserving the code-entry provenance.
+    func testConfirmCompanyBackEdgeCodeEntryZeroInvitesPreservesProvenance() {
+        XCTAssertEqual(
+            OnboardingFlowStep.confirmCompany(source: .codeEntry(.zeroInvites)).backEdge(context: .preAuth),
+            .codeEntry(provenance: .zeroInvites)
+        )
+    }
+
+    /// `.codeEntry(.fromPicker)` source → Back returns to codeEntry(.fromPicker).
+    func testConfirmCompanyBackEdgeCodeEntryFromPickerPreservesProvenance() {
+        XCTAssertEqual(
+            OnboardingFlowStep.confirmCompany(source: .codeEntry(.fromPicker)).backEdge(context: .preAuth),
+            .codeEntry(provenance: .fromPicker)
+        )
+    }
+
+    /// The gateway resolves the Back LABEL from the source (the screen stays
+    /// source-ignorant): picker → "Invites", codeEntry → "Code".
+    func testConfirmCompanyBackLabelResolvesFromSource() {
+        XCTAssertEqual(OnboardingGateway.confirmCompanyBackLabel(source: .picker), "Invites")
+        XCTAssertEqual(OnboardingGateway.confirmCompanyBackLabel(source: .codeEntry(.zeroInvites)), "Code")
+        XCTAssertEqual(OnboardingGateway.confirmCompanyBackLabel(source: .codeEntry(.fromPicker)), "Code")
+    }
+
+    /// Back from confirmCompany (driven through the coordinator) returns to the source
+    /// — the full goBack path, not just the static back-edge.
+    func testConfirmCompanyGoBackPickerReturnsToInvitePicker() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.advance(to: .confirmCompany(source: .picker))
+        XCTAssertTrue(c.canGoBack)
+
+        c.goBack()
+
+        XCTAssertEqual(c.currentStep, .invitePicker,
+                       "confirmCompany(.picker) Back must return to invitePicker")
+    }
+
+    func testConfirmCompanyGoBackCodeEntryReturnsToCodeEntryWithProvenance() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.advance(to: .confirmCompany(source: .codeEntry(.fromPicker)))
+        XCTAssertTrue(c.canGoBack)
+
+        c.goBack()
+
+        XCTAssertEqual(c.currentStep, .codeEntry(provenance: .fromPicker),
+                       "confirmCompany(.codeEntry(.fromPicker)) Back must return to codeEntry(.fromPicker)")
+    }
+
+    // MARK: - S5c Confirm company — stub boundary sanity (async seams wire through)
+
+    func testStubConfirmCompanyBoundaryRecordsJoinAndReturnsOutcome() async {
+        let stub = StubConfirmCompanyBoundary()
+        stub.outcome = .joined
+
+        let outcome = await stub.join()
+
+        XCTAssertEqual(outcome, .joined)
+        XCTAssertEqual(stub.joinCallCount, 1)
+    }
+
+    func testStubConfirmCompanyBoundaryReturnsFailedOutcome() async {
+        let stub = StubConfirmCompanyBoundary()
+        stub.outcome = .failed(message: "this company's team is full. contact your boss")
+
+        let outcome = await stub.join()
+
+        XCTAssertEqual(outcome, .failed(message: "this company's team is full. contact your boss"))
+        XCTAssertEqual(stub.joinCallCount, 1)
+    }
+
+    /// The team-preview fetch wires through: a non-nil enrichment is forwarded; the
+    /// sparse path (nil) is preserved distinctly from a present-but-empty fetch.
+    func testStubConfirmCompanyBoundaryTeamPreviewSeam() async {
+        let withTeam = StubConfirmCompanyBoundary()
+        withTeam.details = CompanyJoinDetailsDTO(
+            companyId: "co-1", companyName: "Sweet Deck & Rail",
+            companyCode: "BR8K90ZT", companyLogoUrl: nil,
+            industries: ["Carpentry"],
+            teamMembers: [TeamMemberDTO(firstName: "Jack", lastName: "Sweet", profileImageUrl: nil)],
+            teamSize: 4
+        )
+        let details = await withTeam.fetchTeamPreview()
+        XCTAssertEqual(details?.teamSize, 4)
+        XCTAssertEqual(withTeam.fetchCallCount, 1)
+
+        let noTeam = StubConfirmCompanyBoundary()
+        noTeam.details = nil
+        let none = await noTeam.fetchTeamPreview()
+        XCTAssertNil(none, "a nil team preview drives the sparse layout")
+        XCTAssertEqual(noTeam.fetchCallCount, 1)
+    }
+
+    // MARK: - S5c Confirm company — live boundary error message mapping
+
+    /// A typed `.serverError` carries server-authored copy (e.g. "team is full") and is
+    /// passed through verbatim; every other typed/untyped error collapses to the terse
+    /// retry-able phrase.
+    func testConfirmCompanyLiveBoundaryMapsErrorMessages() {
+        // serverError passes through its server-authored detail verbatim.
+        XCTAssertEqual(
+            ConfirmCompanyLiveBoundary.message(for: .serverError("This company's team is full. Contact your boss to add more seats.")),
+            "This company's team is full. Contact your boss to add more seats."
+        )
+        // A blank serverError detail collapses to the generic phrase.
+        XCTAssertEqual(
+            ConfirmCompanyLiveBoundary.message(for: .serverError("   ")),
+            ConfirmCompanyLiveBoundary.genericMessage
+        )
+        // Other typed errors → the generic retry-able phrase.
+        XCTAssertEqual(
+            ConfirmCompanyLiveBoundary.message(for: .invalidCompanyCode),
+            ConfirmCompanyLiveBoundary.genericMessage
+        )
+        XCTAssertEqual(
+            ConfirmCompanyLiveBoundary.message(for: .noUserId),
+            ConfirmCompanyLiveBoundary.genericMessage
+        )
+        XCTAssertEqual(
+            ConfirmCompanyLiveBoundary.message(for: .networkError),
+            ConfirmCompanyLiveBoundary.genericMessage
+        )
+        XCTAssertEqual(ConfirmCompanyLiveBoundary.genericMessage, "couldn't join — try again")
+    }
+
     // MARK: - Snapshots (default + dark + reduce-motion)
 
     private var outDir: URL {
@@ -1915,6 +2213,49 @@ final class OnboardingScreensTests: XCTestCase {
         }
         snapshot("completiongate_syncing_light", colorScheme: .light) {
             CompletionGateView(boundary: ackBoundary, previewPhase: .syncing).snapshotBody
+        }
+
+        // S5c Confirm company — rich (full team preview), sparse (name + logo only,
+        // the deliberate reduced fallback), error (inline retry-able join failure),
+        // light. The previewState seam seeds the resolved preview + the previewInert
+        // seam suppresses the team-preview fetch so each frame is stable.
+        let confirmBoundary = StubConfirmCompanyBoundary()
+        snapshot("confirmcompany_rich_dark") {
+            ConfirmCompanyStepView(
+                boundary: confirmBoundary,
+                companyName: "Sweet Deck & Rail",
+                previewState: makeRichPreview()
+            ).snapshotBody
+        }
+        snapshot("confirmcompany_sparse_dark") {
+            ConfirmCompanyStepView(
+                boundary: confirmBoundary,
+                companyName: "North Ridge HVAC",
+                previewState: makeSparsePreview()
+            ).snapshotBody
+        }
+        snapshot("confirmcompany_error_dark") {
+            ConfirmCompanyStepView(
+                boundary: confirmBoundary,
+                companyName: "Sweet Deck & Rail",
+                previewState: makeRichPreview(),
+                previewError: "couldn't join — try again"
+            ).snapshotBody
+        }
+        snapshot("confirmcompany_loading_dark") {
+            ConfirmCompanyStepView(
+                boundary: confirmBoundary,
+                companyName: "Sweet Deck & Rail",
+                previewState: makeRichPreview(),
+                previewIsJoining: true
+            ).snapshotBody
+        }
+        snapshot("confirmcompany_rich_light", colorScheme: .light) {
+            ConfirmCompanyStepView(
+                boundary: confirmBoundary,
+                companyName: "Sweet Deck & Rail",
+                previewState: makeRichPreview()
+            ).snapshotBody
         }
     }
 }

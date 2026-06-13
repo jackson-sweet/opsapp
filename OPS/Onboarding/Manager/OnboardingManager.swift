@@ -39,6 +39,21 @@ class OnboardingManager: ObservableObject {
     private let dataController: DataController
     private let onboardingService: OnboardingServiceProtocol
 
+    /// Narrow injectable seam for the `create_company_for_owner` RPC boundary.
+    /// Defaults to the live Supabase call; tests inject a closure to exercise the
+    /// NO_USER_ROW→sync-user→retry path and typed-error mapping without a network.
+    /// Throws the raw transport error (a `PostgrestError` whose `message`/`code`
+    /// carries the server token); `createCompanyViaRPC` does the token mapping.
+    typealias CreateCompanyRPCInvoking = (
+        _ name: String,
+        _ industries: [String],
+        _ email: String?,
+        _ phone: String?,
+        _ address: String?
+    ) async throws -> CreateCompanyRPCResult
+
+    private let createCompanyRPC: CreateCompanyRPCInvoking
+
     var dataControllerForTesting: DataController {
         dataController
     }
@@ -49,9 +64,14 @@ class OnboardingManager: ObservableObject {
 
     // MARK: - Initialization
 
-    init(dataController: DataController, onboardingService: OnboardingServiceProtocol = OnboardingService()) {
+    init(
+        dataController: DataController,
+        onboardingService: OnboardingServiceProtocol = OnboardingService(),
+        createCompanyRPC: CreateCompanyRPCInvoking? = nil
+    ) {
         self.dataController = dataController
         self.onboardingService = onboardingService
+        self.createCompanyRPC = createCompanyRPC ?? OnboardingManager.liveCreateCompanyRPC
 
         // Load saved state or create initial
         if let savedState = OnboardingState.load() {
@@ -1000,6 +1020,246 @@ class OnboardingManager: ObservableObject {
         } catch {
             state.profileCompanyPhase = .form
             throw error
+        }
+    }
+
+    // MARK: - create_company_for_owner RPC (Company Creator flow, v4)
+
+    /// Decoded result of `public.create_company_for_owner`.
+    /// The RPC returns `{ company_id, company_code, already_existed }` on success;
+    /// failures surface as a thrown `PostgrestError` (token in `message`/`code`),
+    /// never as a field on this struct.
+    struct CreateCompanyRPCResult: Decodable {
+        let companyId: String
+        let companyCode: String
+        let alreadyExisted: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case companyId = "company_id"
+            case companyCode = "company_code"
+            case alreadyExisted = "already_existed"
+        }
+    }
+
+    /// Typed outcomes the CrewCode/company-creation UI can branch on. Maps the
+    /// server's RAISE-EXCEPTION tokens (`NO_USER_ROW`, `ALREADY_IN_COMPANY`,
+    /// `INVALID_NAME`, …) to a small Swift surface.
+    enum CreateCompanyError: LocalizedError {
+        /// `NO_USER_ROW` survived a sync-user re-run + one retry — the users row
+        /// the RPC keys on (firebase_uid = JWT sub) still isn't visible.
+        case userRowMissing
+        case alreadyInCompany
+        case invalidName
+        case noUserId
+        case generic(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .userRowMissing:
+                return "We couldn't finish setting up your account. Check your connection and try again."
+            case .alreadyInCompany:
+                return "This account already belongs to a company."
+            case .invalidName:
+                return "Enter a company name to continue."
+            case .noUserId:
+                return "User ID not found. Please try again."
+            case .generic(let message):
+                return message
+            }
+        }
+    }
+
+    /// Live `create_company_for_owner` invocation. Identity comes from the caller's
+    /// JWT (Firebase-bridged Supabase session) → `users.firebase_uid`; the RPC
+    /// accepts no user-id param. Decodes the JSONB result; PostgREST may wrap a
+    /// scalar JSONB in an array, so both shapes are handled. Errors propagate raw.
+    private static func liveCreateCompanyRPC(
+        name: String,
+        industries: [String],
+        email: String?,
+        phone: String?,
+        address: String?
+    ) async throws -> CreateCompanyRPCResult {
+        let params: [String: AnyJSON] = [
+            "p_name": .string(name),
+            "p_industries": .array(industries.map { .string($0) }),
+            "p_email": email.map { .string($0) } ?? .null,
+            "p_phone": phone.map { .string($0) } ?? .null,
+            "p_address": address.map { .string($0) } ?? .null
+        ]
+
+        let responseData: Data = try await SupabaseService.shared.client
+            .rpc("create_company_for_owner", params: params)
+            .execute()
+            .data
+
+        let decoder = JSONDecoder()
+        if let single = try? decoder.decode(CreateCompanyRPCResult.self, from: responseData) {
+            return single
+        }
+        if let array = try? decoder.decode([CreateCompanyRPCResult].self, from: responseData),
+           let first = array.first {
+            return first
+        }
+        let raw = String(data: responseData, encoding: .utf8) ?? "nil"
+        throw OnboardingManagerError.serverError("Could not parse company-creation response: \(raw.prefix(300))")
+    }
+
+    /// Extracts the server token (e.g. `NO_USER_ROW`) from a thrown RPC error.
+    /// `create_company_for_owner` raises the token AS the exception message, and
+    /// `PostgrestError.message` carries it. Falls back to `localizedDescription`.
+    private func rpcErrorToken(from error: Error) -> String {
+        if let pgError = error as? PostgrestError {
+            return pgError.message
+        }
+        return error.localizedDescription
+    }
+
+    /// Maps an RPC error's server token to a `CreateCompanyError`.
+    private func mapCreateCompanyError(_ error: Error) -> CreateCompanyError {
+        let token = rpcErrorToken(from: error)
+        if token.contains("NO_USER_ROW") { return .userRowMissing }
+        if token.contains("ALREADY_IN_COMPANY") { return .alreadyInCompany }
+        if token.contains("INVALID_NAME") { return .invalidName }
+        return .generic(token)
+    }
+
+    /// Create a company via the shared `create_company_for_owner` RPC (v4 flow).
+    ///
+    /// Additive sibling to `createCompany()` — it does NOT replace it. The server RPC
+    /// owns the company insert, owner record (role/admin/user_type), user_roles Owner
+    /// upsert, and `initialize_company_defaults`, so this method only: updates the
+    /// caller's profile fields the RPC doesn't touch, invokes the RPC (with a single
+    /// sync-user-then-retry on `NO_USER_ROW`), then persists company_id/company_code
+    /// into local state exactly like `createCompany()` so the CrewCode screen shows
+    /// the DB-truth code.
+    ///
+    /// - Returns: the DB-truth company code.
+    /// - Throws: `CreateCompanyError` the UI can branch on.
+    @discardableResult
+    func createCompanyViaRPC() async throws -> String {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        guard let userId = state.userData.userId ?? dataController.currentUser?.id else {
+            throw CreateCompanyError.noUserId
+        }
+
+        let trimmedName = state.companyData.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw CreateCompanyError.invalidName
+        }
+
+        print("[ONBOARDING_MANAGER] ========== CREATE COMPANY (RPC) START ==========")
+        print("[ONBOARDING_MANAGER] Creating company via RPC: \(trimmedName), userId: \(userId)")
+
+        state.profileCompanyPhase = .processing
+
+        let industries = state.companyData.industry.isEmpty ? [] : [state.companyData.industry]
+        let email = state.companyData.email.isEmpty ? nil : state.companyData.email
+        let phone = state.companyData.phone.isEmpty ? nil : state.companyData.phone
+        let address = state.companyData.address.isEmpty ? nil : state.companyData.address
+
+        do {
+            // Write first/last/phone the RPC does not set, before creating the company.
+            try await updateUserProfile()
+
+            let result: CreateCompanyRPCResult
+            do {
+                result = try await createCompanyRPC(trimmedName, industries, email, phone, address)
+            } catch {
+                // NO_USER_ROW = the sync-user row isn't visible yet (race). Re-run
+                // sync-user, then retry the RPC exactly once before surfacing a
+                // typed error.
+                if rpcErrorToken(from: error).contains("NO_USER_ROW") {
+                    print("[ONBOARDING_MANAGER] RPC NO_USER_ROW — re-running sync-user then retrying once")
+                    _ = try? await onboardingService.syncUser(
+                        email: state.userData.email,
+                        firstName: state.userData.firstName.isEmpty ? nil : state.userData.firstName,
+                        lastName: state.userData.lastName.isEmpty ? nil : state.userData.lastName,
+                        photoURL: nil
+                    )
+                    do {
+                        result = try await createCompanyRPC(trimmedName, industries, email, phone, address)
+                    } catch {
+                        print("[ONBOARDING_MANAGER] RPC retry still failed: \(rpcErrorToken(from: error))")
+                        throw mapCreateCompanyError(error)
+                    }
+                } else {
+                    throw mapCreateCompanyError(error)
+                }
+            }
+
+            let companyId = result.companyId
+            let companyCode = result.companyCode
+            print("[ONBOARDING_MANAGER] RPC company \(result.alreadyExisted ? "reused" : "created"): \(companyId), code: \(companyCode)")
+
+            // Persist into local state exactly like createCompany() does, so the
+            // CrewCode screen renders the DB-truth code and resume is correct.
+            state.companyData.companyId = companyId
+            state.companyData.companyCode = companyCode
+            state.profileCompanyPhase = .success
+            state.hasExistingCompany = true
+            state.resumeBoundary = .completionPendingServerACK
+            state.save()
+
+            UserDefaults.standard.set(companyId, forKey: "company_id")
+            UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
+            UserDefaults.standard.set(trimmedName, forKey: "Company Name")
+
+            // Update local user (the RPC already wrote role/admin/user_type server-side).
+            if let currentUser = dataController.currentUser {
+                currentUser.companyId = companyId
+                currentUser.firstName = state.userData.firstName
+                currentUser.lastName = state.userData.lastName
+                if !state.userData.phone.isEmpty {
+                    currentUser.phone = state.userData.phone
+                }
+                currentUser.role = .owner
+                currentUser.userType = .company
+                try? dataController.modelContext?.save()
+                print("[ONBOARDING_MANAGER] ✅ Updated local user — companyId: \(companyId)")
+            } else {
+                print("[ONBOARDING_MANAGER] ⚠️ DataController.currentUser is NIL after RPC create")
+            }
+
+            // Create Company object in SwiftData if not already present.
+            if let modelContext = dataController.modelContext {
+                let compDesc = FetchDescriptor<Company>(
+                    predicate: #Predicate<Company> { $0.id == companyId }
+                )
+                if (try? modelContext.fetch(compDesc).first) == nil {
+                    let companyObject = Company(id: companyId, name: trimmedName)
+                    companyObject.email = email ?? ""
+                    companyObject.phone = phone ?? ""
+                    companyObject.address = address ?? ""
+                    companyObject.subscriptionStatus = "trial"
+                    companyObject.subscriptionPlan = "trial"
+                    companyObject.trialStartDate = Date()
+                    companyObject.trialEndDate = Calendar.current.date(byAdding: .day, value: 30, to: Date())
+                    companyObject.maxSeats = 10
+                    companyObject.seatedEmployeeIds = userId
+                    companyObject.adminIdsString = userId
+                    modelContext.insert(companyObject)
+                    try? modelContext.save()
+                    print("[ONBOARDING_MANAGER] ✅ Company saved to SwiftData")
+                }
+            }
+
+            // Reconfigure sync + load company data.
+            dataController.syncEngine.reconfigureForCompany()
+            await dataController.triggerCompanySync()
+
+            print("[ONBOARDING_MANAGER] ========== CREATE COMPANY (RPC) END ==========")
+            return companyCode
+
+        } catch let error as CreateCompanyError {
+            state.profileCompanyPhase = .form
+            throw error
+        } catch {
+            state.profileCompanyPhase = .form
+            throw mapCreateCompanyError(error)
         }
     }
 

@@ -133,6 +133,12 @@ struct OnboardingGateway: View {
         case .login:
             loginView
 
+        case .companyName:
+            companyNameView
+
+        case .crewCode:
+            crewCodeView
+
         default:
             OnboardingPlaceholderStep(
                 step: coordinator.currentStep,
@@ -249,6 +255,54 @@ struct OnboardingGateway: View {
                 onSignOut: { handleSignOut() }
             )
         }
+    }
+
+    // MARK: - S4o (Company name — the company-creation commit point)
+
+    /// The real S4o screen, wired to the live company-creation boundary over the
+    /// `OnboardingManager`. Like S3 the manager is constructed on first appear;
+    /// until it exists (a transient first-frame race the `.onAppear` resolves
+    /// immediately) the placeholder renders so the view is never empty.
+    ///
+    /// On success the boundary returns the DB-truth crew code; the screen persists
+    /// it into `formData.generatedCrewCode` and advances to `.crewCode` (which then
+    /// renders that code).
+    @ViewBuilder
+    private var companyNameView: some View {
+        if let manager = onboardingManager {
+            CompanyNameStepView(
+                boundary: CompanyCreationLiveBoundary(manager: manager),
+                onUpdateFormData: { mutate in coordinator.update(mutate) },
+                onCreated: { code in
+                    // Persist the DB-truth crew code, then advance to the payoff.
+                    coordinator.update { $0.generatedCrewCode = code }
+                    coordinator.advance(to: .crewCode)
+                },
+                onBack: { coordinator.goBack() }
+            )
+        } else {
+            OnboardingPlaceholderStep(
+                step: .companyName,
+                canGoBack: coordinator.canGoBack,
+                onContinue: {},
+                onBack: { coordinator.goBack() },
+                onSignOut: { handleSignOut() }
+            )
+        }
+    }
+
+    // MARK: - S5o (Crew code — the payoff)
+
+    /// The real S5o screen. Reads the DB-truth code + company name straight off the
+    /// coordinator's form data (persisted by S4o on success). Forward-only — ENTER
+    /// OPS advances to the completion gate (still a placeholder until 4.3, which is
+    /// fine — it renders the placeholder for now).
+    private var crewCodeView: some View {
+        CrewCodeStepView(
+            crewCode: coordinator.formData.generatedCrewCode ?? "",
+            companyName: coordinator.formData.companyName ?? "",
+            onEnter: { coordinator.advance(to: .completionGate) }
+        )
     }
 
     /// The step a NEW account advances to off S3 (spec §4.2 S3):

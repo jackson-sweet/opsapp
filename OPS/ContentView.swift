@@ -453,8 +453,14 @@ struct ContentView: View {
         } else if !dataController.isAuthenticated || shouldRouteToRebuiltOnboarding {
             // Unauthenticated OR authenticated-but-onboarding-incomplete → the
             // rebuilt gateway owns placement (it derives resume from server
-            // state internally).
-            OnboardingGateway()
+            // state internally). The returning-login preload-gate hooks mirror
+            // EXACTLY what the legacy LandingView/LoginView branch passes, so the
+            // rebuilt LOGIN screen arms the WorkspacePreloadGate over its initial
+            // sync the same way the legacy path does (bug 95bf7c82).
+            OnboardingGateway(
+                onLoginInitiated: { pendingReturningLogin = true },
+                onLoginAbandoned: { disarmWorkspacePreload() }
+            )
                 .environmentObject(dataController)
                 .environmentObject(appState)
                 .environmentObject(locationManager)

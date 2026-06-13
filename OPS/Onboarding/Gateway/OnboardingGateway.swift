@@ -34,7 +34,22 @@ struct OnboardingGateway: View {
     /// the coordinator stays free of singleton reach and unit-testable.
     @StateObject private var coordinator: OnboardingFlowCoordinator
 
-    init() {
+    /// Returning-login preload-gate hooks (bug 95bf7c82). ContentView's rebuilt
+    /// branch passes the SAME closures the legacy LandingView/LoginView branch
+    /// passes (`pendingReturningLogin = true` / `disarmWorkspacePreload()`); the
+    /// gateway forwards them into the `LoginLiveBoundary` so the WorkspacePreloadGate
+    /// covers a returning login's initial sync in this branch too. Optional +
+    /// nil-default so any other call site (and the flag-off path) is unaffected.
+    private let onLoginInitiated: (() -> Void)?
+    private let onLoginAbandoned: (() -> Void)?
+
+    init(
+        onLoginInitiated: (() -> Void)? = nil,
+        onLoginAbandoned: (() -> Void)? = nil
+    ) {
+        self.onLoginInitiated = onLoginInitiated
+        self.onLoginAbandoned = onLoginAbandoned
+
         // `dataController` is not yet available here (environment objects are
         // injected after init), so the closures capture it lazily. They run only
         // after the view is in the hierarchy — `start()` is called from
@@ -115,6 +130,9 @@ struct OnboardingGateway: View {
         case .createAccount:
             createAccountView
 
+        case .login:
+            loginView
+
         default:
             OnboardingPlaceholderStep(
                 step: coordinator.currentStep,
@@ -169,6 +187,62 @@ struct OnboardingGateway: View {
         } else {
             OnboardingPlaceholderStep(
                 step: .createAccount,
+                canGoBack: coordinator.canGoBack,
+                onContinue: {},
+                onBack: { coordinator.goBack() },
+                onSignOut: { handleSignOut() }
+            )
+        }
+    }
+
+    // MARK: - S4 (Login)
+
+    /// The real S4 (Login) screen, wired to the live login boundary. Like S3 the
+    /// manager is constructed on first appear; until it exists (a transient
+    /// first-frame race the `.onAppear` resolves immediately) the placeholder
+    /// renders so the view is never empty.
+    ///
+    /// Outcome wiring (mirrors S3's structure, login's semantics):
+    ///   • onComplete         → host admit path (`handleComplete`).
+    ///   • onIncomplete       → resume at the derived step.
+    ///   • onNewIdentity      → brand-new social identity → `.rolePick`.
+    ///   • onBack             → `coordinator.goBack()` (back-edge is `.welcome`).
+    ///   • prefilledEmail     → the email persisted on the SIGN IN handoff from S3.
+    @ViewBuilder
+    private var loginView: some View {
+        if let manager = onboardingManager {
+            LoginStepView(
+                boundary: LoginLiveBoundary(
+                    dataController: dataController,
+                    manager: manager,
+                    resumeStepForCurrentUser: {
+                        guard let user = dataController.currentUser else { return nil }
+                        return OnboardingResume.derive(Self.serverState(for: user))
+                    },
+                    // Preload-gate parity: forward the host hooks (no-ops when the
+                    // call site didn't supply them, e.g. previews).
+                    onLoginInitiated: { onLoginInitiated?() },
+                    onLoginAbandoned: { onLoginAbandoned?() }
+                ),
+                onUpdateFormData: { mutate in coordinator.update(mutate) },
+                onComplete: {
+                    // Returning + complete account → admit to the app.
+                    handleComplete()
+                },
+                onIncomplete: { resumeStep in
+                    // Existing + incomplete → resume at the derived step.
+                    coordinator.advance(to: resumeStep)
+                },
+                onNewIdentity: {
+                    // Brand-new SOCIAL identity (auth satisfied) → into the flow at role pick.
+                    coordinator.advance(to: .rolePick)
+                },
+                onBack: { coordinator.goBack() },
+                prefilledEmail: coordinator.formData.email
+            )
+        } else {
+            OnboardingPlaceholderStep(
+                step: .login,
                 canGoBack: coordinator.canGoBack,
                 onContinue: {},
                 onBack: { coordinator.goBack() },

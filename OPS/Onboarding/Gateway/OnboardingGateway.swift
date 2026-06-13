@@ -160,6 +160,12 @@ struct OnboardingGateway: View {
         case .confirmCompany(let source):
             confirmCompanyView(source: source)
 
+        case .profile:
+            profileView
+
+        case .emergencyContact:
+            emergencyContactView
+
         case .completionGate:
             completionGateView
 
@@ -468,6 +474,81 @@ struct OnboardingGateway: View {
         switch source {
         case .picker:    return "Invites"
         case .codeEntry: return "Code"
+        }
+    }
+
+    // MARK: - S6c (Profile — crew post-join)
+
+    /// The real S6c screen, wired to the live profile boundary over the
+    /// `OnboardingManager`. The name/phone fields prefill from the form data the
+    /// account/confirm screens persisted (editable). The avatar uploads through the
+    /// boundary's THROWING path so a failure surfaces a retry-able error (R7 — never
+    /// silent). On CONTINUE the name/phone save commits and the gateway advances to
+    /// `.emergencyContact`. There is no Back (the join is committed —
+    /// `profile.backEdge=nil`); SIGN OUT is the escape. Like the other boundary-over-
+    /// manager screens the manager is constructed on first appear; until it exists (a
+    /// transient first-frame race the `.onAppear` resolves immediately) the placeholder
+    /// renders so the view is never empty.
+    @ViewBuilder
+    private var profileView: some View {
+        if let manager = onboardingManager {
+            ProfileStepView(
+                boundary: ProfileLiveBoundary(manager: manager),
+                prefillFirstName: coordinator.formData.firstName,
+                prefillLastName: coordinator.formData.lastName,
+                prefillPhone: coordinator.formData.phone,
+                onUpdateFormData: { mutate in coordinator.update(mutate) },
+                onContinue: {
+                    // Profile saved — advance to the (optional) emergency-contact step.
+                    coordinator.advance(to: .emergencyContact)
+                },
+                onSignOut: { handleSignOut() }
+            )
+        } else {
+            OnboardingPlaceholderStep(
+                step: .profile,
+                canGoBack: coordinator.canGoBack,
+                onContinue: {},
+                onBack: { coordinator.goBack() },
+                onSignOut: { handleSignOut() }
+            )
+        }
+    }
+
+    // MARK: - S7c (Emergency contact — crew, optional + skippable)
+
+    /// The real S7c screen, wired to the live emergency-contact boundary over the
+    /// `OnboardingManager`. Truly optional: SKIP advances to `.completionGate` WITHOUT
+    /// saving; FINISH saves the emergency fields (carrying the profile identity S6c
+    /// committed) and then advances to `.completionGate`. Back returns to `.profile`
+    /// (`emergencyContact.backEdge=profile`). Like the other boundary-over-manager
+    /// screens the manager is constructed on first appear; until it exists (a transient
+    /// first-frame race the `.onAppear` resolves immediately) the placeholder renders so
+    /// the view is never empty.
+    @ViewBuilder
+    private var emergencyContactView: some View {
+        if let manager = onboardingManager {
+            EmergencyContactStepView(
+                boundary: EmergencyContactLiveBoundary(manager: manager),
+                onUpdateFormData: { mutate in coordinator.update(mutate) },
+                onFinish: {
+                    // Emergency contact saved — both crew paths terminate at the gate.
+                    coordinator.advance(to: .completionGate)
+                },
+                onSkip: {
+                    // Truly optional — advance to the gate WITHOUT saving.
+                    coordinator.advance(to: .completionGate)
+                },
+                onBack: { coordinator.goBack() }
+            )
+        } else {
+            OnboardingPlaceholderStep(
+                step: .emergencyContact,
+                canGoBack: coordinator.canGoBack,
+                onContinue: {},
+                onBack: { coordinator.goBack() },
+                onSignOut: { handleSignOut() }
+            )
         }
     }
 

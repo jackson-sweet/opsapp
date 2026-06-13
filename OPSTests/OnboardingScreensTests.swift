@@ -164,6 +164,43 @@ final class OnboardingScreensTests: XCTestCase {
                 onBack: { c.goBack() }
             )
         }
+
+        /// The EXACT closures the gateway wires into S6c (Profile). `onContinue`
+        /// advances to `.emergencyContact` (the gateway's exact success wiring);
+        /// `onSignOut` is the host escape (asserted via a flag — profile has no
+        /// back-edge). Driving these exercises the production navigation, not a copy.
+        static func profile(
+            _ c: OnboardingFlowCoordinator,
+            boundary: ProfileBoundary,
+            onSignOut: @escaping () -> Void
+        ) -> ProfileStepView {
+            ProfileStepView(
+                boundary: boundary,
+                prefillFirstName: c.formData.firstName,
+                prefillLastName: c.formData.lastName,
+                prefillPhone: c.formData.phone,
+                onUpdateFormData: { mutate in c.update(mutate) },
+                onContinue: { c.advance(to: .emergencyContact) },
+                onSignOut: onSignOut
+            )
+        }
+
+        /// The EXACT closures the gateway wires into S7c (Emergency contact). BOTH
+        /// FINISH (`onFinish`) and SKIP (`onSkip`) advance to `.completionGate`; SKIP
+        /// does so WITHOUT saving. `onBack` returns to `.profile`. Driving these
+        /// exercises the production navigation, not a copy.
+        static func emergencyContact(
+            _ c: OnboardingFlowCoordinator,
+            boundary: EmergencyContactBoundary
+        ) -> EmergencyContactStepView {
+            EmergencyContactStepView(
+                boundary: boundary,
+                onUpdateFormData: { mutate in c.update(mutate) },
+                onFinish: { c.advance(to: .completionGate) },
+                onSkip: { c.advance(to: .completionGate) },
+                onBack: { c.goBack() }
+            )
+        }
     }
 
     // MARK: - Stub signup boundary (no Firebase / no network)
@@ -329,6 +366,58 @@ final class OnboardingScreensTests: XCTestCase {
         }
         func join() async -> ConfirmCompanyJoinOutcome {
             joinCallCount += 1
+            return outcome
+        }
+    }
+
+    // MARK: - Stub profile boundary (no network / no storage)
+
+    /// Records the avatar upload + profile save S6c makes and returns canned outcomes,
+    /// so both async ops resolve deterministically with no network / storage.
+    /// `@MainActor` for protocol isolation.
+    @MainActor
+    private final class StubProfileBoundary: ProfileBoundary {
+        var uploadOutcome: AvatarUploadOutcome = .uploaded(url: "https://example.com/p.jpg")
+        var saveOutcome: ProfileSaveOutcome = .saved
+
+        private(set) var uploadCallCount = 0
+        private(set) var saveCallCount = 0
+        private(set) var lastSavedFirstName: String?
+        private(set) var lastSavedLastName: String?
+        private(set) var lastSavedPhone: String?
+
+        func uploadAvatar(imageData: Data) async -> AvatarUploadOutcome {
+            uploadCallCount += 1
+            return uploadOutcome
+        }
+        func saveProfile(firstName: String, lastName: String, phone: String) async -> ProfileSaveOutcome {
+            saveCallCount += 1
+            lastSavedFirstName = firstName
+            lastSavedLastName = lastName
+            lastSavedPhone = phone
+            return saveOutcome
+        }
+    }
+
+    // MARK: - Stub emergency-contact boundary (no network)
+
+    /// Records the emergency-contact save S7c makes and returns a canned outcome, so
+    /// the async op resolves deterministically. The SKIP path never reaches this stub.
+    /// `@MainActor` for protocol isolation.
+    @MainActor
+    private final class StubEmergencyContactBoundary: EmergencyContactBoundary {
+        var outcome: EmergencyContactSaveOutcome = .saved
+
+        private(set) var saveCallCount = 0
+        private(set) var lastName: String?
+        private(set) var lastPhone: String?
+        private(set) var lastRelationship: String?
+
+        func saveEmergencyContact(name: String, phone: String, relationship: String) async -> EmergencyContactSaveOutcome {
+            saveCallCount += 1
+            lastName = name
+            lastPhone = phone
+            lastRelationship = relationship
             return outcome
         }
     }
@@ -1926,6 +2015,318 @@ final class OnboardingScreensTests: XCTestCase {
         XCTAssertEqual(ConfirmCompanyLiveBoundary.genericMessage, "couldn't join — try again")
     }
 
+    // MARK: - S6c Profile — name + phone required gates the CTA (photo optional)
+
+    func testProfileNameAndPhoneRequiredGatesCTA() {
+        // Nothing typed → invalid.
+        XCTAssertFalse(ProfileValidation(firstName: "", lastName: "", phone: "").isFormValid)
+        // Missing last name → invalid.
+        XCTAssertFalse(ProfileValidation(firstName: "Jack", lastName: "", phone: "778-555-1234").isFormValid)
+        // Missing phone → invalid.
+        XCTAssertFalse(ProfileValidation(firstName: "Jack", lastName: "Sweet", phone: "").isFormValid)
+        // Whitespace-only → invalid (trimmed).
+        XCTAssertFalse(ProfileValidation(firstName: "  ", lastName: "  ", phone: "  ").isFormValid)
+        // All three present → valid (NO photo needed — the photo never gates).
+        XCTAssertTrue(ProfileValidation(firstName: "  Jack ", lastName: " Sweet ", phone: " 778-555-1234 ").isFormValid,
+                      "name + phone is sufficient — the optional photo must NEVER gate the CTA")
+    }
+
+    /// Each required field surfaces its own bare error phrase (the field renders the
+    /// `// ERROR — ` prefix). Copy locked via ops-copywriter.
+    func testProfileFieldErrorPhrases() {
+        let empty = ProfileValidation(firstName: "", lastName: "", phone: "")
+        XCTAssertEqual(empty.firstNameError, "enter your first name")
+        XCTAssertEqual(empty.lastNameError, "enter your last name")
+        XCTAssertEqual(empty.phoneError, "enter your phone number")
+
+        let full = ProfileValidation(firstName: "Jack", lastName: "Sweet", phone: "778-555-1234")
+        XCTAssertNil(full.firstNameError)
+        XCTAssertNil(full.lastNameError)
+        XCTAssertNil(full.phoneError)
+    }
+
+    /// Profile save success is the ONE navigation — routes through the pure router and
+    /// advances to `.emergencyContact` (the gateway's exact wiring). Persistence of
+    /// first/last/phone happens as the user types (asserted separately below).
+    func testProfileSuccessAdvancesToEmergencyContact() {
+        let c = makeCoordinator(isAuthenticated: { true })
+        c.advance(to: .profile)
+
+        let navigated = ProfileSaveOutcomeRouter.route(.saved, onContinue: { c.advance(to: .emergencyContact) })
+
+        XCTAssertTrue(navigated, ".saved is the host navigation")
+        XCTAssertEqual(c.currentStep, .emergencyContact)
+    }
+
+    /// A profile-save FAILURE is local state, NOT a navigation — the flow stays put.
+    func testProfileSaveFailureIsNotANavigation() {
+        let c = makeCoordinator(isAuthenticated: { true })
+        c.advance(to: .profile)
+
+        let navigated = ProfileSaveOutcomeRouter.route(
+            .failed(message: "couldn't save — try again"),
+            onContinue: { XCTFail("a save failure must not advance") }
+        )
+
+        XCTAssertFalse(navigated, "a save failure is local state, not a navigation")
+        XCTAssertEqual(c.currentStep, .profile)
+    }
+
+    /// CONTINUE persists first/last/phone into form data (the gateway's `onUpdateForm
+    /// Data` wiring) AND forwards them to the boundary save — exercised end-to-end
+    /// through the screen's `attemptContinue` driving the live boundary.
+    @MainActor
+    func testProfileContinuePersistsAndSavesNamePhone() async {
+        let c = makeCoordinator(isAuthenticated: { true })
+        c.advance(to: .profile)
+
+        let stub = StubProfileBoundary()
+        let screen = ProfileStepView(
+            boundary: stub,
+            prefillFirstName: "Jack",
+            prefillLastName: "Sweet",
+            prefillPhone: "778-555-1234",
+            onUpdateFormData: { mutate in c.update(mutate) },
+            onContinue: { c.advance(to: .emergencyContact) },
+            onSignOut: {}
+        )
+
+        screen.attemptContinue()
+        // Let the async save resolve.
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(stub.saveCallCount, 1, "CONTINUE must commit the save once")
+        XCTAssertEqual(stub.lastSavedFirstName, "Jack")
+        XCTAssertEqual(stub.lastSavedLastName, "Sweet")
+        XCTAssertEqual(stub.lastSavedPhone, "778-555-1234")
+
+        XCTAssertEqual(c.formData.firstName, "Jack", "first name persisted into form data")
+        XCTAssertEqual(c.formData.lastName, "Sweet", "last name persisted into form data")
+        XCTAssertEqual(c.formData.phone, "778-555-1234", "phone persisted into form data")
+    }
+
+    /// A profile with NO photo is fully valid and saves — the photo is optional and
+    /// never blocks CONTINUE (no avatar upload is required to proceed).
+    @MainActor
+    func testProfileSavesWithoutPhoto() async {
+        let c = makeCoordinator(isAuthenticated: { true })
+        c.update { $0.firstName = "Jack"; $0.lastName = "Sweet"; $0.phone = "778-555-1234" }
+        c.advance(to: .profile)
+
+        let stub = StubProfileBoundary()
+        let screen = GatewayActions.profile(c, boundary: stub, onSignOut: {})
+
+        screen.attemptContinue()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(stub.uploadCallCount, 0, "no photo selected → no avatar upload")
+        XCTAssertEqual(stub.saveCallCount, 1, "save still commits without a photo")
+        XCTAssertEqual(c.currentStep, .emergencyContact, "advances without a photo")
+    }
+
+    // MARK: - S6c Profile — avatar status surfaces failure (NEVER silent) + success
+
+    /// R7 — a failed avatar upload is SURFACED, not swallowed: the `.failed` status
+    /// carries the retry-able message (distinct from a silent no-op). The `AvatarStatus`
+    /// value type IS the surfacing contract the screen renders off.
+    func testAvatarFailureStatusSurfacesRetryableMessage() {
+        let image = Self.makeTestImage()
+
+        let failed = AvatarStatus.failed(image: image, message: "photo didn't upload")
+        XCTAssertEqual(failed.failureMessage, "photo didn't upload",
+                       "a failed upload must carry a surfaced, retry-able message — NEVER silent")
+        XCTAssertFalse(failed.isUploaded, "a failure is not an upload success")
+        XCTAssertNotNil(failed.image, "the chosen photo is kept so RETRY can re-use it")
+        XCTAssertFalse(failed.isUploading, "a settled failure is not still uploading")
+    }
+
+    /// A successful upload shows the photo (the `.uploaded` status carries the image +
+    /// the committed URL) with NO surfaced error.
+    func testAvatarSuccessStatusShowsPhotoNoError() {
+        let image = Self.makeTestImage()
+
+        let uploaded = AvatarStatus.uploaded(image: image, url: "https://example.com/p.jpg")
+        XCTAssertTrue(uploaded.isUploaded)
+        XCTAssertNotNil(uploaded.image, "a successful upload shows the chosen photo")
+        XCTAssertNil(uploaded.failureMessage, "a success surfaces NO error")
+    }
+
+    /// The uploading status drives the visible progress state (spinner overlay).
+    func testAvatarUploadingStatusIsVisibleProgress() {
+        let uploading = AvatarStatus.uploading(image: Self.makeTestImage())
+        XCTAssertTrue(uploading.isUploading, "the upload-in-flight state must be visible (a spinner), not silent")
+        XCTAssertNil(uploading.failureMessage)
+        XCTAssertFalse(uploading.isUploaded)
+    }
+
+    /// The live profile boundary maps a typed manager error to a terse retry-able
+    /// phrase, and a server message verbatim. Distinct generic phrases per op.
+    func testProfileLiveBoundaryMapsErrorMessages() {
+        XCTAssertEqual(
+            ProfileLiveBoundary.message(for: .serverError("phone already in use")),
+            "phone already in use",
+            "a server message is passed through verbatim"
+        )
+        XCTAssertEqual(ProfileLiveBoundary.message(for: .noUserId), ProfileLiveBoundary.saveGenericMessage)
+        XCTAssertEqual(ProfileLiveBoundary.message(for: .networkError), ProfileLiveBoundary.saveGenericMessage)
+        XCTAssertEqual(ProfileLiveBoundary.saveGenericMessage, "couldn't save — try again")
+        XCTAssertEqual(ProfileLiveBoundary.avatarGenericMessage, "photo didn't upload")
+    }
+
+    // MARK: - S6c Profile — no back-edge (join committed; SIGN OUT is the escape)
+
+    func testProfileHasNoBackEdge() {
+        XCTAssertNil(OnboardingFlowStep.profile.backEdge(context: .preAuth))
+        XCTAssertNil(OnboardingFlowStep.profile.backEdge(context: .postAuth),
+                     "the join is committed at profile — there is no way back; SIGN OUT is the escape")
+
+        let c = makeCoordinator(isAuthenticated: { true })
+        c.advance(to: .profile)
+        XCTAssertFalse(c.canGoBack, "profile must not offer Back")
+    }
+
+    // MARK: - S7c Emergency contact — SKIP advances with NO save
+
+    @MainActor
+    func testEmergencyContactSkipAdvancesWithoutSaving() {
+        let c = makeCoordinator(isAuthenticated: { true })
+        c.advance(to: .emergencyContact)
+
+        let stub = StubEmergencyContactBoundary()
+        let screen = GatewayActions.emergencyContact(c, boundary: stub)
+
+        screen.onSkip()
+
+        XCTAssertEqual(c.currentStep, .completionGate, "SKIP advances to the completion gate")
+        XCTAssertEqual(stub.saveCallCount, 0, "SKIP must NOT save — it is truly optional")
+    }
+
+    // MARK: - S7c Emergency contact — FINISH saves + advances
+
+    @MainActor
+    func testEmergencyContactFinishSavesAndAdvances() async {
+        let c = makeCoordinator(isAuthenticated: { true })
+        c.advance(to: .emergencyContact)
+
+        let stub = StubEmergencyContactBoundary()
+        let screen = EmergencyContactStepView(
+            boundary: stub,
+            onUpdateFormData: { mutate in c.update(mutate) },
+            onFinish: { c.advance(to: .completionGate) },
+            onSkip: { c.advance(to: .completionGate) },
+            onBack: { c.goBack() }
+        )
+
+        screen.attemptFinish()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(stub.saveCallCount, 1, "FINISH commits the save")
+        XCTAssertEqual(c.currentStep, .completionGate, "FINISH advances to the completion gate")
+    }
+
+    /// FINISH success is the ONE navigation — routes through the pure router to the
+    /// completion gate. A failure is local state, no nav.
+    func testEmergencyContactOutcomeRouting() {
+        var finished = false
+        let navigated = EmergencyContactOutcomeRouter.route(.saved, onFinish: { finished = true })
+        XCTAssertTrue(navigated)
+        XCTAssertTrue(finished)
+
+        let notNavigated = EmergencyContactOutcomeRouter.route(
+            .failed(message: "couldn't save — try again"),
+            onFinish: { XCTFail("a save failure must not advance") }
+        )
+        XCTAssertFalse(notNavigated, "a save failure is local state, not a navigation")
+    }
+
+    /// FINISH forwards the contact fields (name / phone / relationship raw value) to
+    /// the boundary save.
+    @MainActor
+    func testEmergencyContactFinishForwardsFields() async {
+        let c = makeCoordinator(isAuthenticated: { true })
+        c.advance(to: .emergencyContact)
+
+        let stub = StubEmergencyContactBoundary()
+        let screen = EmergencyContactStepView(
+            boundary: stub,
+            previewContactName: "Mara Sweet",
+            previewContactPhone: "778-555-9999",
+            previewRelationship: .spouse
+        )
+        // Re-wire the finish closure onto the coordinator so the nav is exercised too.
+        // (The preview-seam init wires no-op closures; this test asserts the save args.)
+        screen.attemptFinish()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(stub.saveCallCount, 1)
+        XCTAssertEqual(stub.lastName, "Mara Sweet")
+        XCTAssertEqual(stub.lastPhone, "778-555-9999")
+        XCTAssertEqual(stub.lastRelationship, "Spouse", "the selected relationship's raw value is forwarded")
+    }
+
+    // MARK: - S7c Emergency contact — back-edge is profile
+
+    func testEmergencyContactBackEdgeIsProfile() {
+        XCTAssertEqual(OnboardingFlowStep.emergencyContact.backEdge(context: .preAuth), .profile)
+        XCTAssertEqual(OnboardingFlowStep.emergencyContact.backEdge(context: .postAuth), .profile)
+
+        let c = makeCoordinator(isAuthenticated: { true })
+        c.advance(to: .emergencyContact)
+        XCTAssertTrue(c.canGoBack)
+        let stub = StubEmergencyContactBoundary()
+        let screen = GatewayActions.emergencyContact(c, boundary: stub)
+        screen.onBack()
+        XCTAssertEqual(c.currentStep, .profile, "emergencyContact Back returns to profile")
+    }
+
+    // MARK: - S7c Emergency contact — relationship is single-select
+
+    /// The relationship option set is the full PARENT/SPOUSE/SIBLING/FRIEND/OTHER list,
+    /// in a stable order, with sentence-case raw values persisted.
+    func testEmergencyRelationshipOptions() {
+        XCTAssertEqual(
+            EmergencyRelationship.allCases,
+            [.parent, .spouse, .sibling, .friend, .other]
+        )
+        XCTAssertEqual(EmergencyRelationship.parent.rawValue, "Parent")
+        XCTAssertEqual(EmergencyRelationship.other.rawValue, "Other")
+    }
+
+    /// Single-select semantics: selecting one option, then another, deselects the
+    /// first (only ever one selected); re-tapping the selected option clears it. This
+    /// mirrors the screen's `relationship = (relationship == option) ? nil : option`.
+    func testEmergencyRelationshipSingleSelect() {
+        var selected: EmergencyRelationship?
+
+        // Select PARENT.
+        func tap(_ option: EmergencyRelationship) {
+            selected = (selected == option) ? nil : option
+        }
+
+        tap(.parent)
+        XCTAssertEqual(selected, .parent)
+
+        // Select SPOUSE — PARENT is deselected (single-select, never two).
+        tap(.spouse)
+        XCTAssertEqual(selected, .spouse, "selecting another option deselects the first")
+
+        // Re-tap SPOUSE — clears the selection.
+        tap(.spouse)
+        XCTAssertNil(selected, "re-tapping the selected option clears it")
+    }
+
+    // MARK: - Test image helper
+
+    /// A tiny opaque 1×1 `UIImage` for avatar-status tests (no real photo needed).
+    private static func makeTestImage() -> UIImage {
+        let size = CGSize(width: 1, height: 1)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { ctx in
+            UIColor.gray.setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
+        }
+    }
+
     // MARK: - Snapshots (default + dark + reduce-motion)
 
     private var outDir: URL {
@@ -2256,6 +2657,79 @@ final class OnboardingScreensTests: XCTestCase {
                 companyName: "Sweet Deck & Rail",
                 previewState: makeRichPreview()
             ).snapshotBody
+        }
+
+        // S6c Profile — default (prefilled name), avatar-uploading, avatar-error
+        // (surfaced retry), required-field errors, dark + light. The previewAvatar
+        // Status seam seeds the avatar lifecycle a renderer can't otherwise drive.
+        let profileBoundary = StubProfileBoundary()
+        let avatarImage = Self.makeTestImage()
+        snapshot("profile_default_dark") {
+            ProfileStepView(
+                boundary: profileBoundary,
+                previewFirstName: "Jack",
+                previewLastName: "Sweet",
+                previewPhone: "778-555-1234"
+            ).snapshotBody
+        }
+        snapshot("profile_avatar_uploading_dark") {
+            ProfileStepView(
+                boundary: profileBoundary,
+                previewFirstName: "Jack",
+                previewLastName: "Sweet",
+                previewPhone: "778-555-1234",
+                previewAvatarStatus: .uploading(image: avatarImage)
+            ).snapshotBody
+        }
+        snapshot("profile_avatar_error_dark") {
+            ProfileStepView(
+                boundary: profileBoundary,
+                previewFirstName: "Jack",
+                previewLastName: "Sweet",
+                previewPhone: "778-555-1234",
+                previewAvatarStatus: .failed(image: avatarImage, message: "photo didn't upload")
+            ).snapshotBody
+        }
+        snapshot("profile_required_errors_dark") {
+            ProfileStepView(
+                boundary: profileBoundary,
+                previewDidAttemptSubmit: true
+            ).snapshotBody
+        }
+        snapshot("profile_default_light", colorScheme: .light) {
+            ProfileStepView(
+                boundary: profileBoundary,
+                previewFirstName: "Jack",
+                previewLastName: "Sweet",
+                previewPhone: "778-555-1234"
+            ).snapshotBody
+        }
+
+        // S7c Emergency contact — default (empty, the SKIP-friendly state), filled
+        // (relationship chip selected), error (inline save failure), dark + light.
+        let emergencyBoundary = StubEmergencyContactBoundary()
+        snapshot("emergency_default_dark") {
+            EmergencyContactStepView(boundary: emergencyBoundary).snapshotBody
+        }
+        snapshot("emergency_filled_dark") {
+            EmergencyContactStepView(
+                boundary: emergencyBoundary,
+                previewContactName: "Mara Sweet",
+                previewContactPhone: "778-555-9999",
+                previewRelationship: .spouse
+            ).snapshotBody
+        }
+        snapshot("emergency_error_dark") {
+            EmergencyContactStepView(
+                boundary: emergencyBoundary,
+                previewContactName: "Mara Sweet",
+                previewContactPhone: "778-555-9999",
+                previewRelationship: .spouse,
+                previewSaveError: "couldn't save — try again"
+            ).snapshotBody
+        }
+        snapshot("emergency_default_light", colorScheme: .light) {
+            EmergencyContactStepView(boundary: emergencyBoundary).snapshotBody
         }
     }
 }

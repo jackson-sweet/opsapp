@@ -263,6 +263,50 @@ final class OnboardingFlowCoordinatorTests: XCTestCase {
         XCTAssertNil(makeStore().load(), "complete must clear local state")
     }
 
+    func testCompleteResetsInMemoryState() {
+        // Advance to the end of the flow with form data populated, then call
+        // complete(). Both in-memory state and the store must return to neutral.
+        let coordinator = makeCoordinator(isAuthenticated: { true })
+        coordinator.start()
+        coordinator.advance(to: .completionGate)
+        coordinator.update { $0.firstName = "Lee"; $0.companyName = "Apex Roofing" }
+
+        coordinator.complete()
+
+        XCTAssertEqual(coordinator.currentStep, .welcome,
+                       "complete() must reset currentStep to .welcome")
+        XCTAssertEqual(coordinator.formData, OnboardingFormData(),
+                       "complete() must reset formData to empty")
+        XCTAssertNil(makeStore().load(),
+                     "complete() must clear the persisted blob")
+    }
+
+    // MARK: - start() idempotency
+
+    func testStartIsIdempotent() {
+        // start() once, then advance and fill form data to simulate the user
+        // being mid-flow. A second start() must be a no-op — it must NOT
+        // restore from the store or re-derive the step, clobbering in-flight
+        // state.
+        let coordinator = makeCoordinator(isAuthenticated: { true })
+        coordinator.start()
+        coordinator.advance(to: .companyName)
+        coordinator.update { $0.firstName = "Sam" }
+
+        let stepAfterFirst = coordinator.currentStep
+        let dataAfterFirst = coordinator.formData
+
+        // Second start() — must be ignored entirely.
+        coordinator.start()
+
+        XCTAssertEqual(coordinator.currentStep, stepAfterFirst,
+                       "second start() must not change currentStep")
+        XCTAssertEqual(coordinator.formData, dataAfterFirst,
+                       "second start() must not change formData")
+        XCTAssertEqual(coordinator.formData.firstName, "Sam",
+                       "in-flight form data must survive the second start()")
+    }
+
     // MARK: - Provenance preserved through advance → goBack
 
     func testProvenancePreservedThroughAdvanceAndGoBack() {

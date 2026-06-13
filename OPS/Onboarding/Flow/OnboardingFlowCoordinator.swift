@@ -67,7 +67,15 @@ final class OnboardingFlowCoordinator: ObservableObject {
 
     // MARK: - Lifecycle
 
+    /// Guards against a second `start()` call (e.g. a re-fired onAppear)
+    /// snapping the user back to the last persisted position and clobbering
+    /// in-flight form state.
+    private var hasStarted = false
+
     /// Resolve the flow's entry point. Call once when the gateway appears.
+    ///
+    /// Idempotent: a second call is a no-op, leaving `currentStep` and
+    /// `formData` exactly where the user already is.
     ///
     /// Order (§5.3):
     /// 1. Run the one-shot v3→v4 migration (no-op if already migrated).
@@ -81,6 +89,9 @@ final class OnboardingFlowCoordinator: ObservableObject {
     ///      `.welcome`.
     /// 4. Persist the resolved state so a kill resumes.
     func start() {
+        guard !hasStarted else { return }
+        hasStarted = true
+
         store.migrateV3IfNeeded()
 
         let saved = store.load()
@@ -150,10 +161,21 @@ final class OnboardingFlowCoordinator: ObservableObject {
         currentStep = .welcome
     }
 
-    /// Onboarding finished — drop the local optimisation blob. The actual
-    /// completion ACK lives elsewhere (P4); this stays deliberately minimal.
+    /// Onboarding finished — drop the local optimisation blob and return to
+    /// neutral in-memory state. The actual completion ACK lives elsewhere (P4).
+    ///
+    /// Distinct from `reset()`: complete = finished successfully; reset/signOut
+    /// = abandoned mid-flow. Both leave the coordinator in a neutral state, but
+    /// the call sites and semantic intent differ — keep both methods.
+    ///
+    /// In-memory reset is required because the coordinator may outlive the
+    /// dismissal (async presentation, error-recovery re-show). Without it a
+    /// later `start()` would see no blob, re-derive to the wrong step, and
+    /// carry stale form data forward.
     func complete() {
         store.clear()
+        currentStep = .welcome
+        formData = OnboardingFormData()
     }
 
     // MARK: - Internals

@@ -304,6 +304,12 @@ enum OPSStyle {
         /// Display heading — Cake Mono Light 30pt (auth h1s, wizard step titles)
         static let display = Font.display
 
+        /// Mobile screen title — Cake Mono Light 28pt (MOBILE.md §2.1 nav-bar / onboarding step title)
+        static let screenTitle = Font.screenTitle
+
+        /// Mobile screen title (long) — Cake Mono Light 22pt (drops past ~14 chars, MOBILE.md §2.1)
+        static let screenTitleCompact = Font.screenTitleCompact
+
         /// Section heading — Cake Mono Light 18pt (settings subheads)
         static let section = Font.section
 
@@ -406,6 +412,11 @@ enum OPSStyle {
         static let touchTargetMin = 44.0
         static let touchTargetStandard = 56.0
         static let touchTargetLarge = 64.0
+
+        // Mobile control heights — `ops-design-system/project/mobile/MOBILE.md`.
+        // Spec'd component heights that sit between the touch-target presets.
+        static let inputHeight: CGFloat = 48.0          // §9 text input height (mobile touch)
+        static let bottomCTAHeight: CGFloat = 52.0      // §8 bottom-anchored primary CTA (thumb zone)
 
         // MARK: - Corner radius (spec v2 — sharp, tactical, no 999px pills)
         // Prefer the new semantic names (panelRadius, chipRadius, etc.).

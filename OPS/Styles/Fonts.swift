@@ -33,6 +33,18 @@ extension Font {
         return Font.custom("CakeMono-Light", size: 30)
     }
 
+    /// Mobile screen title — Cake Mono Light 28pt (`mobile/MOBILE.md` §1/§2.1
+    /// nav-bar / onboarding step title — bigger on mobile for thumb-scroll readability).
+    public static var screenTitle: Font {
+        return Font.custom("CakeMono-Light", size: 28)
+    }
+
+    /// Mobile screen title (long) — Cake Mono Light 22pt. `mobile/MOBILE.md` §2.1:
+    /// the screen title drops from 28pt to 22pt past ~14 characters.
+    public static var screenTitleCompact: Font {
+        return Font.custom("CakeMono-Light", size: 22)
+    }
+
     /// Section heading — Cake Mono Light 18pt (settings subheads, admin section headers)
     public static var section: Font {
         return Font.custom("CakeMono-Light", size: 18)

@@ -1059,12 +1059,10 @@ class OnboardingManager: ObservableObject {
 
             print("[ONBOARDING_MANAGER] ✅ RPC success — role: \(joinResult.roleName ?? "unassigned"), seat_granted: \(joinResult.seatGranted ?? false)")
 
-            // Set employee-specific fields not handled by the RPC.
-            let userRepo = UserRepository(companyId: companyId)
-            try? await userRepo.updateFields(userId: userId, fields: [
-                "is_company_admin": .bool(false),
-                "user_type": .string("employee")
-            ])
+            // user_type / is_company_admin are now written by join_user_to_company
+            // itself (atomically, with an owner/admin non-demotion guard). The old
+            // client-side PostgREST update is therefore both redundant and unsafe
+            // (it would blindly demote an owner re-joining), so it is removed.
 
             state.companyData.companyId = companyId
             state.companyData.companyCode = companyCodeProof
@@ -1124,29 +1122,14 @@ class OnboardingManager: ObservableObject {
             await dataController.triggerCompanySync()
             print("[ONBOARDING_MANAGER] Company sync triggered after join")
 
-            // Notify company admins that a new member joined (push only — the RPC
-            // does not create web-rail notifications; OneSignal push is iOS-only here).
+            // Push company admins that a new member joined. The in-app rail rows
+            // are now fanned out by join_user_to_company itself (one 'role_needed'
+            // row per admin, deduped). Inserting a client-side 'team_join' row here
+            // double-notified, so it is removed; only the OneSignal push — which a
+            // DB RPC cannot deliver — stays on the client.
             do {
                 let notifyIds = joinResult.adminIds ?? companyDTO.adminIds ?? []
                 let memberName = "\(state.userData.firstName) \(state.userData.lastName)"
-                // Create in-app notifications for each admin
-                let notifRepo = NotificationRepository()
-                for adminId in notifyIds {
-                    let dto = NotificationRepository.CreateNotificationDTO(
-                        userId: adminId,
-                        companyId: companyId,
-                        type: "team_join",
-                        title: "New Team Member",
-                        body: "\(memberName) joined as Crew. Tap to set their role.",
-                        projectId: nil,
-                        noteId: nil,
-                        expenseId: nil,
-                        batchId: nil,
-                        deepLinkType: "manageTeam"
-                    )
-                    try? await notifRepo.createNotification(dto)
-                }
-                // Send push
                 try await OneSignalService.shared.notifyTeamJoin(
                     adminUserIds: notifyIds,
                     newMemberName: memberName,
@@ -1154,7 +1137,7 @@ class OnboardingManager: ObservableObject {
                     companyId: companyId
                 )
             } catch {
-                print("[ONBOARDING_MANAGER] ⚠️ Failed to send team join notification: \(error)")
+                print("[ONBOARDING_MANAGER] ⚠️ Failed to send team join push: \(error)")
             }
 
             print("[ONBOARDING_MANAGER] Joined company: \(companyId)")
@@ -1353,12 +1336,10 @@ class OnboardingManager: ObservableObject {
 
             print("[ONBOARDING_MANAGER] ✅ RPC success — role: \(joinResult.roleName ?? "unassigned"), seat_granted: \(joinResult.seatGranted ?? false)")
 
-            // Set employee-specific fields not handled by the RPC
-            let userRepo = UserRepository(companyId: companyId)
-            try? await userRepo.updateFields(userId: userId, fields: [
-                "is_company_admin": .bool(false),
-                "user_type": .string("employee")
-            ])
+            // user_type / is_company_admin are now written by join_user_to_company
+            // itself (atomically, with an owner/admin non-demotion guard). The old
+            // client-side PostgREST update is therefore both redundant and unsafe
+            // (it would blindly demote an owner re-joining), so it is removed.
 
             // Store company info in state and UserDefaults
             state.companyData.companyId = companyId
@@ -1409,28 +1390,14 @@ class OnboardingManager: ObservableObject {
             await dataController.triggerCompanySync()
             print("[ONBOARDING_MANAGER] Company sync triggered after join")
 
-            // Notify company admins that a new member joined
+            // Push company admins that a new member joined. The in-app rail rows
+            // are now fanned out by join_user_to_company itself (one 'role_needed'
+            // row per admin, deduped). Inserting a client-side 'team_join' row here
+            // double-notified, so it is removed; only the OneSignal push — which a
+            // DB RPC cannot deliver — stays on the client.
             do {
                 let notifyIds = joinResult.adminIds ?? companyDTO.adminIds ?? []
                 let memberName = "\(state.userData.firstName) \(state.userData.lastName)"
-                // Create in-app notifications for each admin
-                let notifRepo = NotificationRepository()
-                for adminId in notifyIds {
-                    let dto = NotificationRepository.CreateNotificationDTO(
-                        userId: adminId,
-                        companyId: companyId,
-                        type: "team_join",
-                        title: "New Team Member",
-                        body: "\(memberName) joined as Crew. Tap to set their role.",
-                        projectId: nil,
-                        noteId: nil,
-                        expenseId: nil,
-                        batchId: nil,
-                        deepLinkType: "manageTeam"
-                    )
-                    try? await notifRepo.createNotification(dto)
-                }
-                // Send push
                 try await OneSignalService.shared.notifyTeamJoin(
                     adminUserIds: notifyIds,
                     newMemberName: memberName,
@@ -1438,7 +1405,7 @@ class OnboardingManager: ObservableObject {
                     companyId: companyId
                 )
             } catch {
-                print("[ONBOARDING_MANAGER] ⚠️ Failed to send team join notification: \(error)")
+                print("[ONBOARDING_MANAGER] ⚠️ Failed to send team join push: \(error)")
             }
 
             print("[ONBOARDING_MANAGER] Successfully joined company \(companyId)")

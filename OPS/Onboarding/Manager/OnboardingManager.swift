@@ -165,6 +165,18 @@ class OnboardingManager: ObservableObject {
             return (true, manager)
         }
 
+        // A queued completion (new v4 flow, server ACK still pending) counts as
+        // complete: the user already finished onboarding and was admitted locally,
+        // so they must not be re-onboarded while the sync sweep retries the ACK.
+        if UserDefaults.standard.bool(forKey: OnboardingStorageKeys.completionPending),
+           let user = dataController.currentUser,
+           !(user.companyId ?? "").isEmpty,
+           user.userType != nil {
+            OnboardingState.clear()
+            print("[ONBOARDING_MANAGER] Completion is queued (pending server ACK) — skipping onboarding")
+            return (false, nil)
+        }
+
         // Check if currentUser exists
         guard let user = dataController.currentUser else {
             let manager = OnboardingManager(dataController: dataController)
@@ -1906,6 +1918,52 @@ class OnboardingManager: ObservableObject {
             onComplete?()
         }
         return true
+    }
+
+    /// Outcome of `markOnboardingCompleteOrQueue()`.
+    enum CompletionOutcome {
+        /// Server ACK landed (or was already complete) — fully completed.
+        case acknowledged
+        /// Server ACK failed/timed out — completion is queued. The user is let into
+        /// the app locally; the sync sweep retries the ACK and clears the flag.
+        case queued
+    }
+
+    /// Complete onboarding, queueing the server ACK when offline (new v4 flow only).
+    ///
+    /// Additive sibling to `completeOnboardingAwaitingServerAck()`. The legacy A/B
+    /// flow never calls this and so never sets `completionPending` — its behavior is
+    /// unchanged. On ACK success this behaves exactly like the awaiting path. On ACK
+    /// failure it persists `onboarding_completion_pending = true`, completes locally
+    /// so the CompletionGate can admit the user, and returns `.queued`; the SyncEngine
+    /// sweep (`retryPendingOnboardingCompletion`) re-sends the ACK and clears the flag.
+    @discardableResult
+    func markOnboardingCompleteOrQueue(callCompletion: Bool = true) async -> CompletionOutcome {
+        // Fast path: a clean ACK is indistinguishable from today's behavior.
+        do {
+            _ = try await completeOnboardingAwaitingServerAck(callCompletion: callCompletion)
+            // A prior queued attempt that has now succeeded should clear the flag.
+            UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.completionPending)
+            return .acknowledged
+        } catch {
+            print("[ONBOARDING_MANAGER] Completion ACK failed — queuing: \(error.localizedDescription)")
+        }
+
+        // Queue: mark pending, complete locally so the user gets into the app, and
+        // let the sync sweep retry the server ACK.
+        UserDefaults.standard.set(true, forKey: OnboardingStorageKeys.completionPending)
+
+        storeCredentials()
+        dataController.currentUser?.hasCompletedAppOnboarding = true
+        OnboardingState.markCompleted()
+        ABTestFlowStep.clearSaved()
+        UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
+        state.resumeBoundary = nil
+
+        if callCompletion {
+            onComplete?()
+        }
+        return .queued
     }
 
     /// Store user credentials for app to use after onboarding

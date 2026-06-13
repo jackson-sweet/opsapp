@@ -645,6 +645,31 @@ final class SyncEngine {
         if !hasError {
             kickoffPhotoPrefetch()
         }
+
+        // Retry a queued onboarding-completion ACK if one is outstanding. This runs
+        // on every full sync (periodic timer + foreground + post-login), so a user
+        // who finished onboarding offline gets their server ACK re-sent and the
+        // pending flag cleared as soon as connectivity returns.
+        await retryPendingOnboardingCompletion()
+    }
+
+    /// Re-sends the onboarding-completion ACK (POST /api/onboarding/complete) when a
+    /// prior attempt was queued offline, clearing `onboarding_completion_pending` on
+    /// success. No-op when nothing is queued. Best-effort: failures are swallowed and
+    /// retried on the next sweep.
+    private func retryPendingOnboardingCompletion() async {
+        guard UserDefaults.standard.bool(forKey: OnboardingStorageKeys.completionPending) else {
+            return
+        }
+        guard let userId = currentUserId, !userId.isEmpty else { return }
+
+        do {
+            try await OnboardingService().markOnboardingComplete(userId: userId)
+            UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.completionPending)
+            print("[SYNC_ENGINE] Queued onboarding completion ACK delivered — flag cleared")
+        } catch {
+            print("[SYNC_ENGINE] Queued onboarding completion ACK still failing — will retry: \(error.localizedDescription)")
+        }
     }
 
     /// Pushes all pending local operations to the server via OutboundProcessor.

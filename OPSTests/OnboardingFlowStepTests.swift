@@ -350,26 +350,31 @@ final class OnboardingFlowStepTests: XCTestCase {
         XCTAssertEqual(OnboardingResume.derive(state), .completionGate)
     }
 
-    func testResumeOwnerWithCompanyDerivesCrewCode() {
+    func testResumeOwnerWithCompanyDerivesCompletionGate() {
+        // On RESUME / cross-device, a resuming owner skips the one-time crew-code
+        // reveal (which would be BLANK with no v4 blob) and goes straight to the gate.
+        // The fresh owner flow never reaches derive(); it shows the code via the
+        // screen CTA path, so the payoff is preserved there.
         let state = serverState(hasCompany: true, role: "owner", userType: "company")
-        XCTAssertEqual(OnboardingResume.derive(state), .crewCode)
+        XCTAssertEqual(OnboardingResume.derive(state), .completionGate)
     }
 
-    func testResumeTitleCaseOwnerDerivesCrewCode() {
+    func testResumeTitleCaseOwnerDerivesCompletionGate() {
         // Legacy rows in users.role may carry title-case "Owner" — must resolve identically.
         let state = serverState(hasCompany: true, role: "Owner", webComplete: false)
-        XCTAssertEqual(OnboardingResume.derive(state), .crewCode)
+        XCTAssertEqual(OnboardingResume.derive(state), .completionGate)
     }
 
     func testResumeOwnerIgnoresProfileCompleteness() {
-        // The owner path re-shows the code regardless of profile state.
+        // The owner resume path goes to the gate regardless of profile state — it
+        // never re-shows the (blank-on-resume) crew code.
         XCTAssertEqual(
             OnboardingResume.derive(serverState(hasCompany: true, role: "owner", profileComplete: false)),
-            .crewCode
+            .completionGate
         )
         XCTAssertEqual(
             OnboardingResume.derive(serverState(hasCompany: true, role: "owner", profileComplete: true)),
-            .crewCode
+            .completionGate
         )
     }
 

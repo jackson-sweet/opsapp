@@ -367,6 +367,17 @@ struct OnboardingGateway: View {
     /// code / logo) + the invitation id into form data and advances to
     /// `.confirmCompany(source: .picker)`. "Enter a different code" advances to
     /// `.codeEntry(provenance: .fromPicker)`. Back → role pick.
+    ///
+    /// SELF-HEAL (kill+resume) — `fetchedInvites` lives in gateway `@State`, NOT in
+    /// the persisted v4 blob (the full DTOs are too large to persist). A kill+resume
+    /// that restores a saved step of `.invitePicker` therefore arrives with an EMPTY
+    /// invite list → the picker would render "Pick your crew" with zero cards. Rather
+    /// than show that dead end, re-route to `.inviteCheck` on appear so the auto-check
+    /// re-fetches and re-routes correctly (invites → picker WITH cards; none →
+    /// codeEntry; failure → the visible retry). The normal flow always arrives via
+    /// S4c which fills `fetchedInvites` first, so this only fires on a resume — no
+    /// loop: `.inviteCheck` only sends a NON-empty list back here (an empty re-fetch
+    /// goes to codeEntry), so a second empty render can't occur.
     private var invitePickerView: some View {
         InvitePickerStepView(
             invites: fetchedInvites,
@@ -383,6 +394,14 @@ struct OnboardingGateway: View {
             onEnterDifferentCode: { coordinator.advance(to: .codeEntry(provenance: .fromPicker)) },
             onBack: { coordinator.goBack() }
         )
+        .onAppear {
+            if InvitePickerResumeHealer.shouldReRunInviteCheck(
+                step: coordinator.currentStep,
+                fetchedInvites: fetchedInvites
+            ) {
+                coordinator.advance(to: .inviteCheck)
+            }
+        }
     }
 
     // MARK: - S4c-code (Crew code entry)
@@ -698,6 +717,31 @@ struct OnboardingGateway: View {
         case .emergencyContact:  return .completionGate
         case .completionGate:    return nil // terminal — CONTINUE completes
         }
+    }
+}
+
+// MARK: - Invite-picker resume self-heal (pure decision)
+
+/// Decides whether the invite picker, on appear, should bounce back to
+/// `.inviteCheck` to re-fetch. Extracted from the gateway so the kill+resume
+/// self-heal (and its loop guard) is unit-testable without a render.
+///
+/// Re-run ONLY when BOTH hold:
+///   • the coordinator is genuinely on `.invitePicker` (guards against a stale
+///     `.onAppear` firing after the coordinator already advanced elsewhere), AND
+///   • `fetchedInvites` is empty (the picker has nothing to show — the kill+resume
+///     signature, since the normal S4c arrival always fills the list first).
+///
+/// Loop safety: re-running `.inviteCheck` either re-fetches a NON-empty list (→
+/// picker WITH cards, `fetchedInvites` now populated, this returns false) or routes
+/// to `.codeEntry` / the failure state — `.inviteCheck` never sends an EMPTY list
+/// back to the picker, so the empty-picker render cannot recur.
+enum InvitePickerResumeHealer {
+    static func shouldReRunInviteCheck(
+        step: OnboardingFlowStep,
+        fetchedInvites: [PendingInviteDTO]
+    ) -> Bool {
+        step == .invitePicker && fetchedInvites.isEmpty
     }
 }
 

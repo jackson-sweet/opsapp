@@ -1659,6 +1659,71 @@ final class OnboardingScreensTests: XCTestCase {
                        "invitePicker Back must return to rolePick")
     }
 
+    // MARK: - Invite picker — empty-on-resume self-heal (kill+resume re-fetch)
+
+    /// KILL+RESUME: a v4 saved step of `.invitePicker` resumes with an EMPTY
+    /// `fetchedInvites` (the DTOs live in gateway @State, never the persisted blob).
+    /// On appear the picker must bounce back to `.inviteCheck` to re-fetch rather
+    /// than render "Pick your crew" with zero cards.
+    func testInvitePickerEmptyOnResumeReRoutesToInviteCheck() {
+        XCTAssertTrue(
+            InvitePickerResumeHealer.shouldReRunInviteCheck(step: .invitePicker, fetchedInvites: []),
+            "an empty invite list on the picker step must re-run the invite check"
+        )
+    }
+
+    /// NORMAL FLOW: the picker arrived via S4c, which filled `fetchedInvites` before
+    /// advancing here. With a populated list the picker renders its cards — it must
+    /// NOT bounce back (which would discard the fetched invites and loop).
+    func testInvitePickerWithInvitesDoesNotReRoute() {
+        XCTAssertFalse(
+            InvitePickerResumeHealer.shouldReRunInviteCheck(
+                step: .invitePicker,
+                fetchedInvites: [makeInvite()]
+            ),
+            "a populated picker must render its cards, not bounce back to the check"
+        )
+    }
+
+    /// LOOP / STALE-APPEAR GUARD: a `.onAppear` that fires after the coordinator has
+    /// already advanced off `.invitePicker` (e.g. the re-route already happened, or a
+    /// selection moved the flow on) must NOT re-route — the decision is gated on the
+    /// coordinator genuinely being on `.invitePicker`.
+    func testInvitePickerHealerOnlyActsOnTheInvitePickerStep() {
+        // Already advanced to inviteCheck (the re-route landed) — a trailing appear
+        // must be inert.
+        XCTAssertFalse(
+            InvitePickerResumeHealer.shouldReRunInviteCheck(step: .inviteCheck, fetchedInvites: []),
+            "a stale appear after advancing to inviteCheck must not re-route again"
+        )
+        // Any other current step with an empty list is likewise inert.
+        XCTAssertFalse(
+            InvitePickerResumeHealer.shouldReRunInviteCheck(step: .codeEntry(provenance: .fromPicker), fetchedInvites: [])
+        )
+    }
+
+    /// END-TO-END at the coordinator seam: drive the gateway's exact `.onAppear`
+    /// decision + advance. An empty-invite resume on `.invitePicker` advances the
+    /// coordinator to `.inviteCheck`; the re-run then re-routes correctly so the user
+    /// never sits on the blank picker.
+    func testInvitePickerEmptyResumeAdvancesCoordinatorToInviteCheck() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.advance(to: .invitePicker)
+
+        // Mirror the gateway's invitePickerView .onAppear with an empty fetched list.
+        let fetchedInvites: [PendingInviteDTO] = []
+        if InvitePickerResumeHealer.shouldReRunInviteCheck(
+            step: c.currentStep,
+            fetchedInvites: fetchedInvites
+        ) {
+            c.advance(to: .inviteCheck)
+        }
+
+        XCTAssertEqual(c.currentStep, .inviteCheck,
+                       "an empty-invite picker resume must re-run the invite check")
+    }
+
     // MARK: - S4c-code Code entry — CodeEntryOutcomeRouter
 
     /// `.found` → `onFound` invoked AND returns true (the only host-navigating outcome).

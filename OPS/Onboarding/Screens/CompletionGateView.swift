@@ -49,6 +49,59 @@
 
 import SwiftUI
 
+// MARK: - Outcome router (pure — the acknowledged/queued decision)
+
+/// Maps a `CompletionOutcome` to the two decisions the gate acts on: whether to
+/// fire the FINISH success haptic, and that the gate must admit. Pure and
+/// rendering-free so the success-haptic placement and the "every outcome admits"
+/// guarantee are unit-testable directly (the house pattern — see
+/// `LoginOutcomeRouter` / `CompanyCreationOutcomeRouter`).
+enum CompletionGateOutcomeRouter {
+
+    /// The gate's decision for a given completion outcome.
+    struct Decision: Equatable {
+        /// Fire the success notification haptic — the single most important success
+        /// moment in onboarding. ONLY on a clean server ACK.
+        let firesSuccessHaptic: Bool
+        /// Show the brief "finishes in the background" reassurance before admitting.
+        /// ONLY on the queued path.
+        let showsQueuedStatus: Bool
+    }
+
+    /// The contract: `.acknowledged` fires the success haptic and admits straight
+    /// away; `.queued` shows the background-sync reassurance, then admits. BOTH
+    /// outcomes admit — the gate never traps the user. This function encodes only
+    /// the per-outcome differences; the admit itself is unconditional and lives in
+    /// the view (funnelled through the once-only admit guard).
+    static func decide(_ outcome: OnboardingManager.CompletionOutcome) -> Decision {
+        switch outcome {
+        case .acknowledged:
+            return Decision(firesSuccessHaptic: true, showsQueuedStatus: false)
+        case .queued:
+            return Decision(firesSuccessHaptic: false, showsQueuedStatus: true)
+        }
+    }
+}
+
+// MARK: - Admit guard (once-only — the never-trapped invariant)
+
+/// A tiny value type guaranteeing the gate admits to the app EXACTLY ONCE. The
+/// ack/queued path, the hard watchdog, and the escape button all funnel through
+/// `tryAdmit`; the first caller wins and every later arrival is a no-op. Extracted
+/// so the once-only invariant — the backbone of "the user is never trapped, and is
+/// never double-admitted" — is unit-testable without SwiftUI.
+struct CompletionAdmitGuard {
+    private(set) var hasAdmitted = false
+
+    /// Attempt to admit. Returns `true` and latches on the FIRST call; returns
+    /// `false` (a no-op) on every subsequent call.
+    mutating func tryAdmit() -> Bool {
+        guard !hasAdmitted else { return false }
+        hasAdmitted = true
+        return true
+    }
+}
+
 // MARK: - Completion boundary (the injected ACK-or-queue seam)
 
 /// The single async action the completion gate performs: ACK onboarding
@@ -166,7 +219,9 @@ struct CompletionGateView: View {
 
     // Escape hatch + lifecycle guards.
     @State private var showEscapeHatch = false
-    @State private var hasAdmitted = false
+    /// Once-only admit guard — the backbone of the never-trapped / never-double-
+    /// admit invariant. Ack/queued/watchdog/escape all funnel through it.
+    @State private var admitGuard = CompletionAdmitGuard()
     @State private var escapeHatchTask: Task<Void, Never>?
     @State private var watchdogTask: Task<Void, Never>?
     @State private var completionTask: Task<Void, Never>?
@@ -312,15 +367,16 @@ struct CompletionGateView: View {
         completionTask?.cancel()
         completionTask = Task { @MainActor in
             let outcome = await boundary.complete()
-            guard !Task.isCancelled, !hasAdmitted else { return }
+            guard !Task.isCancelled, !admitGuard.hasAdmitted else { return }
 
-            switch outcome {
-            case .acknowledged:
+            let decision = CompletionGateOutcomeRouter.decide(outcome)
+
+            if decision.firesSuccessHaptic {
                 // The single most important success moment in onboarding.
                 OnboardingHaptics.success()
-                admit(reason: .acknowledged)
+            }
 
-            case .queued:
+            if decision.showsQueuedStatus {
                 // Show the reassurance, then admit. The SyncEngine retries the ACK.
                 if reduceMotion {
                     phase = .queued
@@ -328,8 +384,10 @@ struct CompletionGateView: View {
                     withAnimation(OPSStyle.Animation.hover) { phase = .queued }
                 }
                 try? await Task.sleep(nanoseconds: UInt64(Self.queuedDwell * 1_000_000_000))
-                guard !Task.isCancelled, !hasAdmitted else { return }
+                guard !Task.isCancelled, !admitGuard.hasAdmitted else { return }
                 admit(reason: .queued)
+            } else {
+                admit(reason: .acknowledged)
             }
         }
     }
@@ -339,7 +397,7 @@ struct CompletionGateView: View {
         escapeHatchTask?.cancel()
         escapeHatchTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: UInt64(Self.escapeHatchDelay * 1_000_000_000))
-            guard !Task.isCancelled, !hasAdmitted else { return }
+            guard !Task.isCancelled, !admitGuard.hasAdmitted else { return }
             if reduceMotion {
                 showEscapeHatch = true
             } else {
@@ -354,7 +412,7 @@ struct CompletionGateView: View {
         watchdogTask?.cancel()
         watchdogTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: UInt64(Self.watchdogDelay * 1_000_000_000))
-            guard !Task.isCancelled, !hasAdmitted else { return }
+            guard !Task.isCancelled, !admitGuard.hasAdmitted else { return }
             admit(reason: .watchdog)
         }
     }
@@ -371,8 +429,7 @@ struct CompletionGateView: View {
     /// later arrival is dropped. Cancels every outstanding timer/task so nothing
     /// fires after admit.
     private func admit(reason: AdmitReason) {
-        guard !hasAdmitted else { return }
-        hasAdmitted = true
+        guard admitGuard.tryAdmit() else { return }
         cancelAll()
         print("[COMPLETION_GATE] Admitting — reason: \(reason.rawValue)")
         onAdmit()

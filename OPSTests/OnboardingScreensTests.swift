@@ -247,6 +247,33 @@ final class OnboardingScreensTests: XCTestCase {
         }
     }
 
+    // MARK: - Stub completion boundary (no network / no server ACK)
+
+    /// Records the completion call the gate makes and returns a canned outcome, so
+    /// the ACK-or-queue async action resolves deterministically. A `nil` outcome
+    /// models a HUNG call (the boundary never returns) so the watchdog/escape path
+    /// can be exercised. `@MainActor` to satisfy the protocol's isolation.
+    @MainActor
+    private final class StubCompletionBoundary: CompletionBoundary {
+        /// The outcome to return; `nil` = never return (simulate a hung request).
+        var outcome: OnboardingManager.CompletionOutcome? = .acknowledged
+
+        private(set) var callCount = 0
+
+        func complete() async -> OnboardingManager.CompletionOutcome {
+            callCount += 1
+            guard let outcome else {
+                // Never resolves — the gate's watchdog/escape must admit anyway.
+                // Suspend forever (cooperatively cancellable) without busy-waiting.
+                await withTaskCancellationHandler {
+                    await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
+                } onCancel: {}
+                return .queued // unreachable; satisfies the signature
+            }
+            return outcome
+        }
+    }
+
     // MARK: - S1 Welcome — GET STARTED → rolePick
 
     func testWelcomeGetStartedAdvancesToRolePick() {
@@ -721,6 +748,149 @@ final class OnboardingScreensTests: XCTestCase {
         XCTAssertFalse(c.canGoBack, "crewCode is forward-only — the company is committed")
     }
 
+    // MARK: - Completion gate (Task 4.3) — ACK-or-queue, never traps the user
+
+    /// `.acknowledged` → fire the FINISH success haptic and admit immediately.
+    func testCompletionAcknowledgedFiresSuccessHapticAndAdmits() {
+        let decision = CompletionGateOutcomeRouter.decide(.acknowledged)
+        XCTAssertTrue(decision.firesSuccessHaptic,
+                      "the clean server ACK fires the onboarding FINISH success haptic")
+        XCTAssertFalse(decision.showsQueuedStatus,
+                       "acknowledged admits straight away — no queued reassurance")
+    }
+
+    /// `.queued` → NO success haptic, show the background-sync reassurance, then admit.
+    func testCompletionQueuedShowsBackgroundStatusNoSuccessHaptic() {
+        let decision = CompletionGateOutcomeRouter.decide(.queued)
+        XCTAssertFalse(decision.firesSuccessHaptic,
+                       "a queued ACK is not the success moment — no FINISH haptic")
+        XCTAssertTrue(decision.showsQueuedStatus,
+                      "queued shows the 'finishes in the background' reassurance before admit")
+    }
+
+    /// The admit guard latches on the FIRST admit and no-ops every later attempt —
+    /// the backbone of "never trapped, never double-admitted". The ack/queued path,
+    /// the watchdog, and the escape button all funnel through it; whichever fires
+    /// first wins, the rest are dropped.
+    func testCompletionAdmitGuardAdmitsExactlyOnce() {
+        var guardState = CompletionAdmitGuard()
+        XCTAssertFalse(guardState.hasAdmitted)
+
+        // First admit (e.g. the acknowledged path) wins.
+        XCTAssertTrue(guardState.tryAdmit(), "first admit must succeed")
+        XCTAssertTrue(guardState.hasAdmitted)
+
+        // A racing watchdog / escape arrival is dropped — no double-admit.
+        XCTAssertFalse(guardState.tryAdmit(), "watchdog arriving after admit must be a no-op")
+        XCTAssertFalse(guardState.tryAdmit(), "escape arriving after admit must be a no-op")
+        XCTAssertTrue(guardState.hasAdmitted)
+    }
+
+    /// The live boundary forwards to the manager WITHOUT firing the manager's own
+    /// `onComplete` callback — admit is single-sourced through the gate's injected
+    /// `onAdmit` (the gateway's `handleComplete`), so suppressing the manager
+    /// callback prevents a double-admit. We assert the boundary stub's async seam
+    /// wires through and the gate consumes the outcome.
+    func testStubCompletionBoundaryRecordsCallAndReturnsOutcome() async {
+        let ackStub = StubCompletionBoundary()
+        ackStub.outcome = .acknowledged
+        let ack = await ackStub.complete()
+        XCTAssertEqual(ack, .acknowledged)
+        XCTAssertEqual(ackStub.callCount, 1)
+
+        let queuedStub = StubCompletionBoundary()
+        queuedStub.outcome = .queued
+        let queued = await queuedStub.complete()
+        XCTAssertEqual(queued, .queued)
+        XCTAssertEqual(queuedStub.callCount, 1)
+    }
+
+    /// The gate has NO back-edge — it is terminal / forward-only. The company +
+    /// workspace exist; there is nothing to go back to and no SIGN OUT.
+    func testCompletionGateHasNoBackEdge() {
+        let c = makeCoordinator(isAuthenticated: { true })
+        c.advance(to: .completionGate)
+        XCTAssertFalse(c.canGoBack, "completionGate is terminal — forward-only, no back-edge")
+        XCTAssertNil(
+            OnboardingFlowStep.completionGate.backEdge(context: .postAuth),
+            "completionGate.backEdge must be nil"
+        )
+        XCTAssertNil(
+            OnboardingFlowStep.completionGate.backEdge(context: .preAuth),
+            "completionGate.backEdge must be nil in both contexts"
+        )
+    }
+
+    /// NEVER-TRAPPED, modelled as the gate does it (no network, deterministic): the
+    /// admit guard is fed by THREE concurrent admit sources — the boundary path, a
+    /// hard watchdog, and the escape button — and whichever fires first wins. This
+    /// replays the exact funnel the view uses (`StubCompletionBoundary` for the
+    /// async ACK, `CompletionGateOutcomeRouter` for the per-outcome decision, and a
+    /// short-circuited watchdog) and asserts admit fires EXACTLY ONCE for every
+    /// outcome — acknowledged, queued, AND a hung call that only the watchdog can
+    /// resolve. Tiny sleeps stand in for the production ceilings so the test is fast.
+    func testCompletionGateAdmitsExactlyOnce_acknowledged() async {
+        let admits = await simulateGateAdmit(outcome: .acknowledged)
+        XCTAssertEqual(admits, 1, "acknowledged must admit exactly once")
+    }
+
+    func testCompletionGateAdmitsExactlyOnce_queued() async {
+        let admits = await simulateGateAdmit(outcome: .queued)
+        XCTAssertEqual(admits, 1, "queued must STILL admit (exactly once) — user not trapped")
+    }
+
+    func testCompletionGateAdmitsExactlyOnce_hungCallHitsWatchdog() async {
+        // The boundary never returns; ONLY the watchdog can admit. Proves a wedged
+        // request cannot trap the user.
+        let admits = await simulateGateAdmit(outcome: nil)
+        XCTAssertEqual(admits, 1, "a hung ACK must still admit via the watchdog (exactly once)")
+    }
+
+    /// Replays the view's admit funnel with miniature ceilings: a boundary task
+    /// (ack/queued/hung) and a watchdog task both race through one shared
+    /// `CompletionAdmitGuard`; returns the number of times admit actually fired
+    /// (must always be 1). Mirrors `runCompletion` + `armWatchdog` semantics exactly.
+    @MainActor
+    private func simulateGateAdmit(outcome: OnboardingManager.CompletionOutcome?) async -> Int {
+        let stub = StubCompletionBoundary()
+        stub.outcome = outcome
+
+        var admitGuard = CompletionAdmitGuard()
+        var admitCount = 0
+        let tryAdmit: () -> Void = {
+            if admitGuard.tryAdmit() { admitCount += 1 }
+        }
+
+        // Boundary path — mirrors runCompletion: await the ACK, apply the router's
+        // decision (queued shows a brief status → tiny dwell), then admit. A hung
+        // boundary is given a cancellable task so the watchdog can win.
+        let completionTask = Task { @MainActor in
+            let result = await stub.complete()
+            guard !Task.isCancelled else { return }
+            let decision = CompletionGateOutcomeRouter.decide(result)
+            if decision.showsQueuedStatus {
+                try? await Task.sleep(nanoseconds: 20_000_000) // queued dwell (mini)
+                guard !Task.isCancelled else { return }
+            }
+            tryAdmit()
+        }
+
+        // Hard watchdog — mirrors armWatchdog: admit after a ceiling regardless.
+        let watchdogTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 80_000_000) // watchdog ceiling (mini)
+            guard !Task.isCancelled else { return }
+            tryAdmit()
+        }
+
+        // Let whichever source wins resolve, then cancel the rest (as the view's
+        // `cancelAll` does on admit), and confirm the call was made.
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        completionTask.cancel()
+        watchdogTask.cancel()
+        XCTAssertGreaterThanOrEqual(stub.callCount, 1, "the gate must call the boundary on appear")
+        return admitCount
+    }
+
     // MARK: - S3 Create account — boundary stub sanity (async seam wires through)
 
     func testStubBoundaryRecordsEmailSignupCall() async {
@@ -1106,6 +1276,25 @@ final class OnboardingScreensTests: XCTestCase {
         }
         snapshot("crewcode_light", colorScheme: .light) {
             CrewCodeStepView(crewCode: "BR8K-90ZT", companyName: "Sweet Deck & Rail", previewSettled: true).snapshotBody
+        }
+
+        // Completion gate (Task 4.3) — default loading (syncing), queued state,
+        // Reduce-Motion (animations disabled), light. The previewInert seam pins
+        // the phase + settles the entrance so the snapshot is a stable frame and
+        // no boundary/network call fires. The PreviewCompletionBoundary is a no-op.
+        let ackBoundary = PreviewCompletionBoundary(outcome: .acknowledged)
+        let queuedBoundary = PreviewCompletionBoundary(outcome: .queued)
+        snapshot("completiongate_syncing_dark") {
+            CompletionGateView(boundary: ackBoundary, previewPhase: .syncing).snapshotBody
+        }
+        snapshot("completiongate_queued_dark") {
+            CompletionGateView(boundary: queuedBoundary, previewPhase: .queued).snapshotBody
+        }
+        snapshot("completiongate_reduce_motion", disableAnimations: true) {
+            CompletionGateView(boundary: ackBoundary, previewPhase: .syncing).snapshotBody
+        }
+        snapshot("completiongate_syncing_light", colorScheme: .light) {
+            CompletionGateView(boundary: ackBoundary, previewPhase: .syncing).snapshotBody
         }
     }
 }

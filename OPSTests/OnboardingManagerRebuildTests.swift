@@ -254,6 +254,33 @@ final class OnboardingManagerRebuildTests: XCTestCase {
         XCTAssertNil(manager.state.resumeBoundary)
     }
 
+    // MARK: - markOnboardingCompleteOrQueue: clears pending flag when ACK succeeds
+
+    /// Pre-existing queued completion (flag = true) + a succeeding ACK must return
+    /// `.acknowledged` AND clear `onboarding_completion_pending` so the sweep
+    /// doesn't retry an already-completed ACK on the next launch.
+    func testMarkOnboardingCompleteOrQueueClearsPendingFlagOnSuccess() async {
+        // Arrange — simulate a previous queued run that set the flag.
+        UserDefaults.standard.set(true, forKey: OnboardingStorageKeys.completionPending)
+
+        let service = CountingOnboardingService() // completionError == nil → ACK succeeds
+        let manager = OnboardingManager(dataController: DataController(), onboardingService: service)
+        manager.state.userData.userId = "supabase-user-id"
+        manager.state.companyData.companyId = "company-id"
+
+        // Act
+        let outcome = await manager.markOnboardingCompleteOrQueue(callCompletion: false)
+
+        // Assert — ACK landed; flag must be gone.
+        XCTAssertEqual(outcome, .acknowledged, "succeeding ACK must return .acknowledged")
+        XCTAssertFalse(
+            UserDefaults.standard.bool(forKey: OnboardingStorageKeys.completionPending),
+            "pending flag must be cleared after a successful ACK"
+        )
+        XCTAssertTrue(UserDefaults.standard.bool(forKey: "onboarding_completed"),
+                      "onboarding_completed must be set")
+    }
+
     // MARK: - shouldShowOnboarding treats queued completion as complete
 
     func testShouldShowOnboardingSkipsWhenCompletionQueued() {

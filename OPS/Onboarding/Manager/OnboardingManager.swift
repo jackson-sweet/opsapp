@@ -693,9 +693,11 @@ class OnboardingManager: ObservableObject {
             state.userData.email = email
             state.userData.userId = userId
             UserDefaults.standard.set(email, forKey: "user_email")
-            // Plaintext passwords are never persisted. No live path re-reads
-            // `user_password` (the only historical reader was the retired legacy
-            // OnboardingViewModel); Firebase Auth owns the session/credential.
+            // Plaintext passwords are never persisted. No *reachable* path re-reads
+            // `user_password`; the one remaining reader lives in the legacy
+            // OnboardingViewModel / OnboardingContainerView / EmailView flow, which
+            // is unwired (its presenter is replaced by MinimalSignupView in the live
+            // A/B path) and will be deleted in P7. Firebase Auth owns session/credential.
             UserDefaults.standard.set(userId, forKey: "user_id")
             UserDefaults.standard.set(userId, forKey: "currentUserId")
             UserDefaults.standard.set(flow.userType.rawValue, forKey: "selected_user_type")
@@ -1075,8 +1077,9 @@ class OnboardingManager: ObservableObject {
                 return "Enter a company name to continue."
             case .noUserId:
                 return "User ID not found. Please try again."
-            case .generic(let message):
-                return message
+            case .generic:
+                // TODO(P3/P4 copy): final error copy via ops-copywriter
+                return "Something went wrong creating your company. Try again."
             }
         }
     }
@@ -1128,11 +1131,14 @@ class OnboardingManager: ObservableObject {
     }
 
     /// Maps an RPC error's server token to a `CreateCompanyError`.
+    /// The raw token is always logged here so `.generic` can return a human
+    /// fallback string without losing debuggability.
     private func mapCreateCompanyError(_ error: Error) -> CreateCompanyError {
         let token = rpcErrorToken(from: error)
         if token.contains("NO_USER_ROW") { return .userRowMissing }
         if token.contains("ALREADY_IN_COMPANY") { return .alreadyInCompany }
         if token.contains("INVALID_NAME") { return .invalidName }
+        print("[ONBOARDING_MANAGER] ❌ Unrecognised RPC token (generic): \(token)")
         return .generic(token)
     }
 
@@ -1352,8 +1358,12 @@ class OnboardingManager: ObservableObject {
             UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
             UserDefaults.standard.set(companyDTO.name, forKey: "Company Name")
 
-            // Reconfigure sync engine now that company_id is set in UserDefaults
-            dataController.syncEngine.reconfigureForCompany()
+            // Reconfigure sync engine now that company_id is set in UserDefaults.
+            // `syncEngine` is an IUO that only exists once a model context has been
+            // set; guard so a not-yet-configured controller (e.g. tests) can't crash.
+            if dataController.syncEngine != nil {
+                dataController.syncEngine.reconfigureForCompany()
+            }
 
             // NOW update profile data — userRepo is available after repo reconfiguration
             try await updateUserProfile()
@@ -1629,8 +1639,12 @@ class OnboardingManager: ObservableObject {
             UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
             UserDefaults.standard.set(companyDTO.name, forKey: "Company Name")
 
-            // Reconfigure sync engine now that company_id is set in UserDefaults
-            dataController.syncEngine.reconfigureForCompany()
+            // Reconfigure sync engine now that company_id is set in UserDefaults.
+            // `syncEngine` is an IUO that only exists once a model context has been
+            // set; guard so a not-yet-configured controller (e.g. tests) can't crash.
+            if dataController.syncEngine != nil {
+                dataController.syncEngine.reconfigureForCompany()
+            }
 
             // DO NOT call updateUserProfile() — Profile screen hasn't been filled yet
 

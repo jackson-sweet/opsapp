@@ -91,6 +91,62 @@ final class OnboardingScreensTests: XCTestCase {
                 onSignOut: onSignOut
             )
         }
+
+        /// The EXACT closures the gateway wires into S3. The `onCreated` advance
+        /// is the gateway's `createAccountNextStep(role:)` rule; `onSignIn` routes
+        /// to `.login` (email already persisted into formData for prefill). Driving
+        /// these from the test exercises the production navigation, not a copy.
+        static func createAccount(
+            _ c: OnboardingFlowCoordinator,
+            boundary: CreateAccountSignupBoundary
+        ) -> CreateAccountStepView {
+            CreateAccountStepView(
+                selectedRole: c.formData.selectedRole,
+                boundary: boundary,
+                onUpdateFormData: { mutate in c.update(mutate) },
+                onCreated: {
+                    c.advance(to: OnboardingGateway.createAccountNextStep(role: c.formData.selectedRole))
+                },
+                onExistingComplete: { /* host admit path — asserted via a flag in tests */ },
+                onExistingIncomplete: { resume in c.advance(to: resume) },
+                onSignIn: { c.advance(to: .login) },
+                onBack: { c.goBack() }
+            )
+        }
+    }
+
+    // MARK: - Stub signup boundary (no Firebase / no network)
+
+    /// Records the calls S3 makes and returns canned outcomes per provider, so the
+    /// async actions resolve deterministically. `@MainActor` to satisfy the
+    /// protocol's isolation.
+    @MainActor
+    private final class StubSignupBoundary: CreateAccountSignupBoundary {
+        var emailOutcome: CreateAccountOutcome = .created
+        var appleOutcome: CreateAccountOutcome = .created
+        var googleOutcome: CreateAccountOutcome = .created
+        var socialNameOutcome: CreateAccountOutcome = .created
+
+        private(set) var emailCallCount = 0
+        private(set) var appleCallCount = 0
+        private(set) var googleCallCount = 0
+        private(set) var socialNameCallCount = 0
+        private(set) var lastEmail: String?
+        private(set) var lastFirstName: String?
+        private(set) var lastLastName: String?
+
+        func signUpEmail(firstName: String, lastName: String, email: String, password: String) async -> CreateAccountOutcome {
+            emailCallCount += 1
+            lastEmail = email; lastFirstName = firstName; lastLastName = lastName
+            return emailOutcome
+        }
+        func signUpApple() async -> CreateAccountOutcome { appleCallCount += 1; return appleOutcome }
+        func signUpGoogle() async -> CreateAccountOutcome { googleCallCount += 1; return googleOutcome }
+        func completeSocialName(firstName: String, lastName: String, email: String) async -> CreateAccountOutcome {
+            socialNameCallCount += 1
+            lastFirstName = firstName; lastLastName = lastName; lastEmail = email
+            return socialNameOutcome
+        }
     }
 
     // MARK: - S1 Welcome — GET STARTED → rolePick
@@ -176,6 +232,226 @@ final class OnboardingScreensTests: XCTestCase {
         screen.onSignOut()
 
         XCTAssertTrue(didSignOut, "SIGN OUT escape must invoke the host handler")
+    }
+
+    // MARK: - S3 Create account — name-required gating (pure validator)
+
+    func testCreateAccountNameRequiredGatesSubmit() {
+        // No first/last → invalid regardless of a perfect email + password.
+        let noNames = CreateAccountFormValidation(
+            firstName: "", lastName: "",
+            email: "jack@ops.app", password: "hunter2hunter2",
+            isCompletingSocialName: false
+        )
+        XCTAssertFalse(noNames.isFormValid)
+        XCTAssertEqual(noNames.firstNameError, "enter your first name")
+        XCTAssertEqual(noNames.lastNameError, "enter your last name")
+
+        // First only → still invalid (last missing).
+        let firstOnly = CreateAccountFormValidation(
+            firstName: "Jack", lastName: "  ",
+            email: "jack@ops.app", password: "hunter2hunter2",
+            isCompletingSocialName: false
+        )
+        XCTAssertFalse(firstOnly.isFormValid)
+        XCTAssertEqual(firstOnly.lastNameError, "enter your last name")
+
+        // All present + valid → valid.
+        let complete = CreateAccountFormValidation(
+            firstName: "Jack", lastName: "Sweet",
+            email: "jack@ops.app", password: "hunter2hunter2",
+            isCompletingSocialName: false
+        )
+        XCTAssertTrue(complete.isFormValid)
+        XCTAssertNil(complete.firstNameError)
+        XCTAssertNil(complete.lastNameError)
+        XCTAssertNil(complete.emailError)
+        XCTAssertNil(complete.passwordError)
+    }
+
+    func testCreateAccountEmailAndPasswordGating() {
+        // Names present but bad email → invalid.
+        let badEmail = CreateAccountFormValidation(
+            firstName: "Jack", lastName: "Sweet",
+            email: "not-an-email", password: "hunter2hunter2",
+            isCompletingSocialName: false
+        )
+        XCTAssertFalse(badEmail.isFormValid)
+        XCTAssertEqual(badEmail.emailError, "enter a valid email")
+
+        // Names + email present but short password → invalid.
+        let shortPw = CreateAccountFormValidation(
+            firstName: "Jack", lastName: "Sweet",
+            email: "jack@ops.app", password: "short",
+            isCompletingSocialName: false
+        )
+        XCTAssertFalse(shortPw.isFormValid)
+        XCTAssertEqual(shortPw.passwordError, "use at least 8 characters")
+    }
+
+    func testCreateAccountSocialNameCompletionOnlyRequiresName() {
+        // In the social-name sub-state, email/password are NOT collected — names
+        // alone gate the continue.
+        let namesOnly = CreateAccountFormValidation(
+            firstName: "Jack", lastName: "Sweet",
+            email: "", password: "",
+            isCompletingSocialName: true
+        )
+        XCTAssertTrue(namesOnly.isFormValid)
+
+        let missingName = CreateAccountFormValidation(
+            firstName: "", lastName: "Sweet",
+            email: "", password: "",
+            isCompletingSocialName: true
+        )
+        XCTAssertFalse(missingName.isFormValid)
+    }
+
+    func testEmailShapeValidator() {
+        XCTAssertTrue(CreateAccountFormValidation.isValidEmail("jack@ops.app"))
+        XCTAssertTrue(CreateAccountFormValidation.isValidEmail("a.b+c@sub.domain.io"))
+        XCTAssertFalse(CreateAccountFormValidation.isValidEmail("jack"))
+        XCTAssertFalse(CreateAccountFormValidation.isValidEmail("jack@ops"))
+        XCTAssertFalse(CreateAccountFormValidation.isValidEmail("@ops.app"))
+        XCTAssertFalse(CreateAccountFormValidation.isValidEmail("jack@.app"))
+        XCTAssertFalse(CreateAccountFormValidation.isValidEmail("jack@@ops.app"))
+    }
+
+    // MARK: - S3 Create account — successful new signup advance (role-branched)
+
+    /// Mirrors the gateway's `onCreated`: a created outcome advances to the
+    /// role-appropriate next step via the pure router + the gateway rule.
+    private func routeCreated(_ c: OnboardingFlowCoordinator) {
+        CreateAccountOutcomeRouter.route(
+            .created,
+            onCreated: { c.advance(to: OnboardingGateway.createAccountNextStep(role: c.formData.selectedRole)) },
+            onExistingComplete: {},
+            onExistingIncomplete: { c.advance(to: $0) }
+        )
+    }
+
+    func testCreateAccountOwnerSuccessAdvancesToCompanyName() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.update { $0.selectedRole = .owner }
+        c.advance(to: .createAccount)
+
+        routeCreated(c)
+
+        XCTAssertEqual(c.currentStep, .companyName)
+    }
+
+    func testCreateAccountCrewSuccessAdvancesToInviteCheck() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.update { $0.selectedRole = .crew }
+        c.advance(to: .createAccount)
+
+        routeCreated(c)
+
+        XCTAssertEqual(c.currentStep, .inviteCheck)
+    }
+
+    // MARK: - S3 Create account — existing-account branches
+
+    func testCreateAccountExistingCompleteAdmitsToApp() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.advance(to: .createAccount)
+
+        var didAdmit = false
+        let handled = CreateAccountOutcomeRouter.route(
+            .existingComplete,
+            onCreated: { XCTFail("should not advance") },
+            onExistingComplete: { didAdmit = true },
+            onExistingIncomplete: { _ in XCTFail("should not resume") }
+        )
+        XCTAssertTrue(handled)
+        XCTAssertTrue(didAdmit, "existing-complete must take the host admit path")
+        // No flow advance — the host admits to the app instead.
+        XCTAssertEqual(c.currentStep, .createAccount)
+    }
+
+    func testCreateAccountExistingIncompleteResumesAtDerivedStep() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.update { $0.selectedRole = .crew }
+        c.advance(to: .createAccount)
+
+        // Existing-but-incomplete account → resume at the derived step (.profile),
+        // exactly as Login will. The gateway wires onExistingIncomplete → advance.
+        CreateAccountOutcomeRouter.route(
+            .existingIncomplete(resumeStep: .profile),
+            onCreated: { XCTFail("should not advance to next") },
+            onExistingComplete: { XCTFail("should not admit") },
+            onExistingIncomplete: { c.advance(to: $0) }
+        )
+
+        XCTAssertEqual(c.currentStep, .profile)
+    }
+
+    func testCreateAccountSocialNoNameIsNotANavigation() {
+        // A no-name social result is local-state-only (the screen reveals + requires
+        // the name fields). The router must NOT treat it as a navigation, so the
+        // flow stays on createAccount.
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.update { $0.selectedRole = .owner }
+        c.advance(to: .createAccount)
+
+        let handled = CreateAccountOutcomeRouter.route(
+            .socialNeedsName(email: "jack@ops.app"),
+            onCreated: { XCTFail("no advance") },
+            onExistingComplete: { XCTFail("no admit") },
+            onExistingIncomplete: { _ in XCTFail("no resume") }
+        )
+        XCTAssertFalse(handled, "social-no-name is local state, not a navigation")
+        XCTAssertEqual(c.currentStep, .createAccount)
+    }
+
+    func testCreateAccountEmailAlreadyRegisteredIsNotANavigationAndSignInHandsOff() {
+        // emailAlreadyRegistered is local-state-only too — the router doesn't move
+        // the flow; the SIGN IN button is what hands off to .login.
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.advance(to: .createAccount)
+
+        let handled = CreateAccountOutcomeRouter.route(
+            .emailAlreadyRegistered,
+            onCreated: { XCTFail() },
+            onExistingComplete: { XCTFail() },
+            onExistingIncomplete: { _ in XCTFail() }
+        )
+        XCTAssertFalse(handled)
+        XCTAssertEqual(c.currentStep, .createAccount)
+
+        // The SIGN IN handoff routes to .login with the typed email persisted for
+        // Login to prefill.
+        c.update { $0.email = "jack@ops.app" }
+        let screen = GatewayActions.createAccount(c, boundary: StubSignupBoundary())
+        screen.onSignIn()
+
+        XCTAssertEqual(c.currentStep, .login)
+        XCTAssertEqual(c.formData.email, "jack@ops.app")
+    }
+
+    func testCreateAccountNextStepRule() {
+        XCTAssertEqual(OnboardingGateway.createAccountNextStep(role: .owner), .companyName)
+        XCTAssertEqual(OnboardingGateway.createAccountNextStep(role: .crew), .inviteCheck)
+        XCTAssertEqual(OnboardingGateway.createAccountNextStep(role: nil), .inviteCheck)
+    }
+
+    // MARK: - S3 Create account — boundary stub sanity (async seam wires through)
+
+    func testStubBoundaryRecordsEmailSignupCall() async {
+        let stub = StubSignupBoundary()
+        let outcome = await stub.signUpEmail(
+            firstName: "Jack", lastName: "Sweet",
+            email: "jack@ops.app", password: "hunter2hunter2"
+        )
+        XCTAssertEqual(outcome, .created)
+        XCTAssertEqual(stub.emailCallCount, 1)
+        XCTAssertEqual(stub.lastEmail, "jack@ops.app")
     }
 
     // MARK: - Snapshots (default + dark + reduce-motion)
@@ -267,6 +543,36 @@ final class OnboardingScreensTests: XCTestCase {
                 onSelectOwner: {}, onSelectCrew: {},
                 canGoBack: true, onBack: {}, onSignOut: {}
             )
+        }
+
+        // S3 Create account — default (dark), error state, social-no-name (name
+        // fields shown), light. Uses the DEBUG snapshot seam to reach the post-
+        // interaction states a renderer can't otherwise drive.
+        let stub = StubSignupBoundary()
+        snapshot("createaccount_default_dark") {
+            CreateAccountStepView(selectedRole: .owner, boundary: stub).snapshotBody
+        }
+        snapshot("createaccount_error_dark") {
+            CreateAccountStepView(
+                selectedRole: .owner,
+                boundary: stub,
+                previewFirstName: "Jack",
+                previewLastName: "Sweet",
+                previewEmail: "jack@ops.app",
+                previewPassword: "short",
+                previewDidAttemptSubmit: true,
+                previewEmailAlreadyRegistered: true
+            ).snapshotBody
+        }
+        snapshot("createaccount_social_no_name_dark") {
+            CreateAccountStepView(
+                selectedRole: .crew,
+                boundary: stub,
+                previewSocialNameEmail: "jack@ops.app"
+            ).snapshotBody
+        }
+        snapshot("createaccount_default_light", colorScheme: .light) {
+            CreateAccountStepView(selectedRole: .owner, boundary: stub).snapshotBody
         }
     }
 }

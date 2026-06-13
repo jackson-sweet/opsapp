@@ -377,6 +377,12 @@ struct CompletionGateView: View {
             }
 
             if decision.showsQueuedStatus {
+                // Funnel (P6, spec §8): the completion ACK didn't land synchronously
+                // — it was persisted for the SyncEngine sweep. Record it so the
+                // funnel can separate clean completions from queued ones (a queued
+                // completion still admits, but it's a different server-latency
+                // story). Screen-local diagnostic, mirroring `InviteCheckDiagnostics`.
+                CompletionGateDiagnostics.recordQueued()
                 // Show the reassurance, then admit. The SyncEngine retries the ACK.
                 if reduceMotion {
                     phase = .queued
@@ -446,6 +452,27 @@ struct CompletionGateView: View {
     /// just suppresses side effects via `previewInert`.
     var snapshotBody: some View { body }
     #endif
+}
+
+// MARK: - Diagnostics
+
+/// Fires the `onboarding_completion_queued` funnel event when the completion ACK
+/// is queued for the SyncEngine sweep instead of landing synchronously (spec §8).
+/// Isolated so the gate stays free of the analytics singleton and the call is
+/// testable as a unit (mirrors `InviteCheckDiagnostics`).
+enum CompletionGateDiagnostics {
+    static func recordQueued() {
+        // Hop to the main actor — `AnalyticsService.track` is @MainActor. This is
+        // already called from a `@MainActor` Task in the gate, but the explicit hop
+        // keeps the call site uniform with the other onboarding diagnostics and is
+        // a no-op cost when already on main.
+        Task { @MainActor in
+            AnalyticsService.shared.track(
+                eventType: .lifecycle,
+                eventName: "onboarding_completion_queued"
+            )
+        }
+    }
 }
 
 // MARK: - Sweep Bar

@@ -93,6 +93,16 @@ struct OnboardingGateway: View {
     /// always arrives via S4c which fills it.
     @State private var fetchedInvites: [PendingInviteDTO] = []
 
+    /// Funnel instrumentation (P6, spec §8). Held for the gateway's lifetime so the
+    /// once-per-entry `step_viewed` guard, the viewed-step count, and the flow
+    /// start instant persist across re-renders. The coordinator stays
+    /// analytics-free (it is dependency-injected and unit-tested) — the gateway is
+    /// the firing surface: it OBSERVES `coordinator.currentStep` and translates the
+    /// tracker's pure event output into `AnalyticsService.shared.track`. All of the
+    /// funnel decisions (step id, path, dedupe) live in `OnboardingFunnelTracker`,
+    /// which is unit-tested directly. See `OnboardingFunnelAnalytics.swift`.
+    @State private var funnel = OnboardingFunnelTracker()
+
     var body: some View {
         currentStepView
             .onAppear {
@@ -103,7 +113,48 @@ struct OnboardingGateway: View {
                     onboardingManager = OnboardingManager(dataController: dataController)
                 }
                 coordinator.start()
+                // First funnel touch — fire `step_viewed` for the resolved entry
+                // step. The tracker's once-per-entry guard makes the immediately
+                // following `onChange` (which fires for the same initial step) a
+                // no-op, so this never double-fires.
+                recordStepViewed()
             }
+            // Funnel: fire `step_viewed` on every genuine step transition. The
+            // tracker dedupes by the step's stable `analyticsId`, so a re-render
+            // for an unchanged step, or a parameter-only change on `.codeEntry` /
+            // `.confirmCompany`, does not re-fire.
+            .onChange(of: coordinator.currentStep) { _, _ in
+                recordStepViewed()
+            }
+    }
+
+    // MARK: - Funnel instrumentation (gateway-observed)
+
+    /// The current funnel path, derived from the role the user picked on S2.
+    private var funnelPath: OnboardingFunnelPath {
+        OnboardingFunnelPath.from(role: coordinator.formData.selectedRole)
+    }
+
+    /// Record an entry to the coordinator's current step and fire
+    /// `onboarding_step_viewed` if the tracker says it's a genuine new entry. The
+    /// dedupe lives in the tracker; this is the thin firing surface.
+    private func recordStepViewed() {
+        if let event = funnel.recordStepEntry(step: coordinator.currentStep, path: funnelPath) {
+            fire(event)
+        }
+    }
+
+    /// Fire one funnel event through `AnalyticsService`. The view body runs on the
+    /// main actor and `AnalyticsService.track` is `@MainActor`, so this is a direct
+    /// call — no hop needed (unlike the screen-local diagnostics fired from
+    /// possibly-nonisolated contexts).
+    private func fire(_ event: OnboardingFunnelEvent) {
+        AnalyticsService.shared.track(
+            eventType: event.type,
+            eventName: event.name,
+            properties: event.properties.mapValues { $0.analyticsValue },
+            durationMs: event.durationMs
+        )
     }
 
     /// Renders the real screen for the current step. P3 lights up the first two
@@ -637,6 +688,12 @@ struct OnboardingGateway: View {
     /// user actually exists; a stub-walked flow with no signed-in user simply
     /// resets without falsely entering the app.
     private func handleComplete() {
+        // Funnel: fire `onboarding_completed` BEFORE `coordinator.complete()`
+        // wipes the form data — the path is derived from `selectedRole`, and the
+        // tracker's step-count / duration are read off its own state (unaffected by
+        // the reset), but the path read must precede the reset.
+        fire(funnel.completedEvent(path: funnelPath))
+
         coordinator.complete()
         if dataController.currentUser != nil {
             dataController.isAuthenticated = true
@@ -647,6 +704,11 @@ struct OnboardingGateway: View {
     /// `isAuthenticated`, clears the user, posts `LogoutInitiated`, and wipes
     /// auth tokens) AND resets the coordinator's local flow state.
     private func handleSignOut() {
+        // Funnel: fire `onboarding_abandoned` BEFORE `coordinator.signOut()` resets
+        // the step + form data — the event carries the step the user was on and the
+        // path they were on when they bailed, both of which the reset would clear.
+        fire(funnel.abandonedEvent(lastStep: coordinator.currentStep, path: funnelPath))
+
         coordinator.signOut()
         dataController.logout()
     }

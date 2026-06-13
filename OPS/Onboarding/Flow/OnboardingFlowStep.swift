@@ -139,6 +139,37 @@ enum OnboardingFlowStep: Codable, Equatable {
         }
     }
 
+    // MARK: - Analytics identity (stable funnel key)
+
+    /// A stable, parameter-free string identifier for this step, used as the
+    /// `step` / `last_step` property on the onboarding funnel events
+    /// (`onboarding_step_viewed`, `onboarding_abandoned`). Deliberately collapses
+    /// the parameterised cases (`.codeEntry`, `.confirmCompany`) to their base
+    /// identifier — the funnel cares WHICH screen the user is on, not the
+    /// provenance/source that routed them there (that nuance lives in the back-map,
+    /// not the conversion funnel). The values intentionally mirror the persisted
+    /// `StepIdentifier` raw values so the funnel reads consistently with the wire
+    /// format, but this is a SEPARATE, additive surface: it is read-only telemetry
+    /// and never feeds decoding, so it can evolve independently of the pinned
+    /// Codable identifiers if a funnel rename is ever needed.
+    var analyticsId: String {
+        switch self {
+        case .welcome:          return "welcome"
+        case .login:            return "login"
+        case .rolePick:         return "rolePick"
+        case .createAccount:    return "createAccount"
+        case .companyName:      return "companyName"
+        case .crewCode:         return "crewCode"
+        case .inviteCheck:      return "inviteCheck"
+        case .invitePicker:     return "invitePicker"
+        case .codeEntry:        return "codeEntry"
+        case .confirmCompany:   return "confirmCompany"
+        case .profile:          return "profile"
+        case .emergencyContact: return "emergencyContact"
+        case .completionGate:   return "completionGate"
+        }
+    }
+
     // MARK: - Codable (pinned wire format)
 
     private enum CodingKeys: String, CodingKey {

@@ -661,7 +661,9 @@ class OnboardingManager: ObservableObject {
             state.userData.email = email
             state.userData.userId = userId
             UserDefaults.standard.set(email, forKey: "user_email")
-            UserDefaults.standard.set(password, forKey: "user_password")
+            // Plaintext passwords are never persisted. No live path re-reads
+            // `user_password` (the only historical reader was the retired legacy
+            // OnboardingViewModel); Firebase Auth owns the session/credential.
             UserDefaults.standard.set(userId, forKey: "user_id")
             UserDefaults.standard.set(userId, forKey: "currentUserId")
             UserDefaults.standard.set(flow.userType.rawValue, forKey: "selected_user_type")

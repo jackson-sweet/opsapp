@@ -1147,6 +1147,487 @@ final class OnboardingScreensTests: XCTestCase {
                        "Couldn't sign you in. Check your connection and try again.")
     }
 
+    // MARK: - S4c Invite check — InviteCheckRouter (R13 regression guard + routing)
+
+    /// `.found` with a non-empty list → `onHasInvites` fires with the forwarded
+    /// invites; `onNoInvites` and `onFailed` must NOT fire.
+    func testInviteCheckRouterFoundWithInvitesCallsOnHasInvites() {
+        let invite = makeInvite()
+        var hasInvitesCalled = false
+        var noInvitesCalled = false
+        var failedCalled = false
+        var receivedInvites: [PendingInviteDTO] = []
+
+        InviteCheckRouter.route(
+            .found([invite]),
+            onHasInvites: { invites in
+                hasInvitesCalled = true
+                receivedInvites = invites
+            },
+            onNoInvites: { noInvitesCalled = true },
+            onFailed: { failedCalled = true }
+        )
+
+        XCTAssertTrue(hasInvitesCalled, "found([invite]) must invoke onHasInvites")
+        XCTAssertFalse(noInvitesCalled, "found([invite]) must NOT invoke onNoInvites")
+        XCTAssertFalse(failedCalled, "found([invite]) must NOT invoke onFailed")
+        XCTAssertEqual(
+            receivedInvites.map(\.invitationId),
+            [invite.invitationId],
+            "the invite must be forwarded verbatim to onHasInvites"
+        )
+    }
+
+    /// `.found([])` (zero invites) → `onNoInvites` only. Confirms the router
+    /// correctly disambiguates the empty-list case from the failure case.
+    func testInviteCheckRouterFoundEmptyCallsOnNoInvites() {
+        var hasInvitesCalled = false
+        var noInvitesCalled = false
+        var failedCalled = false
+
+        InviteCheckRouter.route(
+            .found([]),
+            onHasInvites: { _ in hasInvitesCalled = true },
+            onNoInvites: { noInvitesCalled = true },
+            onFailed: { failedCalled = true }
+        )
+
+        XCTAssertFalse(hasInvitesCalled, "found([]) must NOT invoke onHasInvites")
+        XCTAssertTrue(noInvitesCalled, "found([]) must invoke onNoInvites")
+        XCTAssertFalse(failedCalled, "found([]) must NOT invoke onFailed")
+    }
+
+    /// R13 regression guard: `.failed` → `onFailed` only. Explicitly asserts
+    /// `onNoInvites` is NOT called — failure must never be silently treated as
+    /// zero invites (the bug this case guards against).
+    func testInviteCheckRouterFailedCallsOnFailedNotOnNoInvites() {
+        var hasInvitesCalled = false
+        var noInvitesCalled = false
+        var failedCalled = false
+
+        InviteCheckRouter.route(
+            .failed,
+            onHasInvites: { _ in hasInvitesCalled = true },
+            onNoInvites: { noInvitesCalled = true },
+            onFailed: { failedCalled = true }
+        )
+
+        XCTAssertFalse(hasInvitesCalled, "failed must NOT invoke onHasInvites")
+        // R13: this is the critical assertion — failure ≠ zero invites.
+        XCTAssertFalse(
+            noInvitesCalled,
+            "R13 REGRESSION: .failed must NOT invoke onNoInvites — failure is not zero invites"
+        )
+        XCTAssertTrue(failedCalled, "failed must invoke onFailed")
+    }
+
+    /// Multiple invites are all forwarded — the router does not truncate or reorder.
+    func testInviteCheckRouterForwardsMultipleInvitesInOrder() {
+        let a = makeInvite(invitationId: "aaa", companyName: "Alpha Co")
+        let b = makeInvite(invitationId: "bbb", companyName: "Bravo Co")
+        var received: [PendingInviteDTO] = []
+
+        InviteCheckRouter.route(
+            .found([a, b]),
+            onHasInvites: { received = $0 },
+            onNoInvites: { XCTFail("must not fire") },
+            onFailed: { XCTFail("must not fire") }
+        )
+
+        XCTAssertEqual(received.map(\.invitationId), ["aaa", "bbb"])
+    }
+
+    // MARK: - S4c Invite check — gateway wiring (navigator driven at the coordinator seam)
+
+    /// `onHasInvites` + gateway wiring → coordinator advances to `.invitePicker`.
+    func testInviteCheckGatewayWiringFoundAdvancesToInvitePicker() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.update { $0.selectedRole = .crew }
+        c.advance(to: .inviteCheck)
+
+        var inviteStore: [PendingInviteDTO] = []
+        let invite = makeInvite()
+
+        // Mirror the gateway's exact closures for inviteCheckView.
+        var onInvitesFetched: ([PendingInviteDTO]) -> Void = { inviteStore = $0 }
+        var onHasInvites: () -> Void = { c.advance(to: .invitePicker) }
+        var onNoInvites: () -> Void = { c.advance(to: .codeEntry(provenance: .zeroInvites)) }
+        var onFailed: () -> Void = { /* local phase flip — not testable here */ }
+
+        InviteCheckRouter.route(
+            .found([invite]),
+            onHasInvites: { invites in
+                onInvitesFetched(invites)
+                onHasInvites()
+            },
+            onNoInvites: { onNoInvites() },
+            onFailed: { onFailed() }
+        )
+
+        XCTAssertEqual(c.currentStep, .invitePicker, "found([invite]) must advance to .invitePicker")
+        XCTAssertEqual(inviteStore.map(\.invitationId), [invite.invitationId],
+                       "fetched invites must be forwarded to the gateway's invite store")
+    }
+
+    /// `onNoInvites` + gateway wiring → `.codeEntry(provenance: .zeroInvites)`.
+    func testInviteCheckGatewayWiringZeroInvitesAdvancesToCodeEntry() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.update { $0.selectedRole = .crew }
+        c.advance(to: .inviteCheck)
+
+        InviteCheckRouter.route(
+            .found([]),
+            onHasInvites: { _ in XCTFail("must not fire") },
+            onNoInvites: { c.advance(to: .codeEntry(provenance: .zeroInvites)) },
+            onFailed: { XCTFail("must not fire") }
+        )
+
+        XCTAssertEqual(c.currentStep, .codeEntry(provenance: .zeroInvites),
+                       "zero invites must advance to codeEntry(.zeroInvites)")
+    }
+
+    /// `onEnterCodeInstead` (the failure-state escape) also routes to
+    /// `.codeEntry(.zeroInvites)`, distinct from the zero-invite path but same
+    /// destination.
+    func testInviteCheckEnterCodeInsteadEscapeAdvancesToCodeEntry() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.update { $0.selectedRole = .crew }
+        c.advance(to: .inviteCheck)
+
+        // Gateway wires onEnterCodeInstead the same as onNoInvites.
+        let onEnterCodeInstead: () -> Void = { c.advance(to: .codeEntry(provenance: .zeroInvites)) }
+        onEnterCodeInstead()
+
+        XCTAssertEqual(c.currentStep, .codeEntry(provenance: .zeroInvites),
+                       "ENTER CODE INSTEAD escape must advance to codeEntry(.zeroInvites)")
+    }
+
+    /// inviteCheck has NO back-edge (it is an auto-transition screen).
+    func testInviteCheckHasNoBackEdge() {
+        XCTAssertNil(OnboardingFlowStep.inviteCheck.backEdge(context: .preAuth))
+        XCTAssertNil(OnboardingFlowStep.inviteCheck.backEdge(context: .postAuth))
+    }
+
+    // MARK: - S4c Invite check — stub boundary sanity (async seam wires through)
+
+    func testStubInviteCheckBoundaryRecordsCallAndReturnsOutcome() async {
+        let invite = makeInvite()
+        let stub = StubInviteCheckBoundary()
+        stub.outcome = .found([invite])
+
+        let outcome = await stub.checkInvites()
+
+        XCTAssertEqual(outcome, .found([invite]))
+        XCTAssertEqual(stub.callCount, 1)
+    }
+
+    func testStubInviteCheckBoundaryReturnsFailedOutcome() async {
+        let stub = StubInviteCheckBoundary()
+        stub.outcome = .failed
+
+        let outcome = await stub.checkInvites()
+
+        XCTAssertEqual(outcome, .failed)
+        XCTAssertEqual(stub.callCount, 1)
+    }
+
+    // MARK: - Invite picker — card selection persists invite fields + advances
+
+    /// Selecting a card via the gateway's exact wiring persists the invite's
+    /// company fields into form data and advances to
+    /// `.confirmCompany(source: .picker)`.
+    func testInvitePickerSelectPersistsInviteAndAdvancesToConfirmCompany() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.update { $0.selectedRole = .crew }
+        c.advance(to: .invitePicker)
+
+        let invite = makeInvite(
+            invitationId: "inv-123",
+            companyId: "co-456",
+            companyName: "Sweet Deck & Rail",
+            companyCode: "BR8K90ZT"
+        )
+
+        // Mirror the gateway's exact onSelectInvite closure.
+        let onSelectInvite: (PendingInviteDTO) -> Void = { selected in
+            c.update {
+                $0.joinCompanyId = selected.companyId
+                $0.joinCompanyName = selected.companyName
+                $0.joinCompanyCode = selected.companyCode
+                $0.joinCompanyLogoUrl = selected.companyLogoUrl
+                $0.joinInvitationId = selected.invitationId
+            }
+            c.advance(to: .confirmCompany(source: .picker))
+        }
+
+        onSelectInvite(invite)
+
+        XCTAssertEqual(c.currentStep, .confirmCompany(source: .picker),
+                       "selecting an invite must advance to confirmCompany(.picker)")
+        XCTAssertEqual(c.formData.joinCompanyId, "co-456")
+        XCTAssertEqual(c.formData.joinCompanyName, "Sweet Deck & Rail")
+        XCTAssertEqual(c.formData.joinCompanyCode, "BR8K90ZT")
+        XCTAssertNil(c.formData.joinCompanyLogoUrl)
+        // Critical: the invitation id must be set (drives the invite-acceptance write).
+        XCTAssertEqual(c.formData.joinInvitationId, "inv-123",
+                       "joinInvitationId must be persisted from the selected invite")
+    }
+
+    /// "Enter a different code" → `.codeEntry(provenance: .fromPicker)`.
+    func testInvitePickerEnterDifferentCodeAdvancesToCodeEntryFromPicker() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.update { $0.selectedRole = .crew }
+        c.advance(to: .invitePicker)
+
+        // Mirror the gateway's onEnterDifferentCode closure.
+        let onEnterDifferentCode: () -> Void = { c.advance(to: .codeEntry(provenance: .fromPicker)) }
+        onEnterDifferentCode()
+
+        XCTAssertEqual(c.currentStep, .codeEntry(provenance: .fromPicker),
+                       "Enter a different code must advance to codeEntry(.fromPicker)")
+    }
+
+    /// invitePicker Back → rolePick (back-edge is rolePick).
+    func testInvitePickerBackReturnsToRolePick() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.advance(to: .invitePicker)
+        XCTAssertTrue(c.canGoBack)
+
+        c.goBack()
+
+        XCTAssertEqual(c.currentStep, .rolePick,
+                       "invitePicker Back must return to rolePick")
+    }
+
+    // MARK: - S4c-code Code entry — CodeEntryOutcomeRouter
+
+    /// `.found` → `onFound` invoked AND returns true (the only host-navigating outcome).
+    func testCodeEntryRouterFoundCallsOnFoundAndReturnsTrue() {
+        let company = FoundCompany(
+            companyId: "co-1", companyName: "Sweet Deck & Rail",
+            companyCode: "BR8K90ZT", companyLogoUrl: nil
+        )
+        var receivedCompany: FoundCompany?
+
+        let handled = CodeEntryOutcomeRouter.route(
+            .found(company),
+            onFound: { receivedCompany = $0 }
+        )
+
+        XCTAssertTrue(handled, ".found must return true (it is the host-navigation outcome)")
+        XCTAssertEqual(receivedCompany, company, "the resolved company must be forwarded to onFound")
+    }
+
+    /// `.notFound` → `onFound` NOT called, returns false (inline error, no nav).
+    func testCodeEntryRouterNotFoundReturnsFalseAndDoesNotCallOnFound() {
+        let handled = CodeEntryOutcomeRouter.route(
+            .notFound,
+            onFound: { _ in XCTFail("onFound must not be called for .notFound") }
+        )
+        XCTAssertFalse(handled, ".notFound is a local-state error — returns false")
+    }
+
+    /// `.failed` → `onFound` NOT called, returns false (inline retry error, no nav).
+    func testCodeEntryRouterFailedReturnsFalseAndDoesNotCallOnFound() {
+        let handled = CodeEntryOutcomeRouter.route(
+            .failed,
+            onFound: { _ in XCTFail("onFound must not be called for .failed") }
+        )
+        XCTAssertFalse(handled, ".failed is a local-state error — returns false")
+    }
+
+    // MARK: - S4c-code Code entry — CodeEntryValidation (non-empty only)
+
+    /// Empty string is invalid (the CTA is disabled; submit never fires).
+    func testCodeEntryValidationEmptyStringIsInvalid() {
+        XCTAssertFalse(CodeEntryValidation(code: "").isFormValid)
+    }
+
+    /// Whitespace-only is invalid (trimming collapses it to empty).
+    func testCodeEntryValidationWhitespaceOnlyIsInvalid() {
+        XCTAssertFalse(CodeEntryValidation(code: "   ").isFormValid)
+        XCTAssertFalse(CodeEntryValidation(code: "\t\n").isFormValid)
+    }
+
+    /// A normal crew code (8-char block) is valid.
+    func testCodeEntryValidationNormalCodeIsValid() {
+        XCTAssertTrue(CodeEntryValidation(code: "BR8K90ZT").isFormValid)
+    }
+
+    /// A legacy `PREFIX-XXXXXX` hyphenated code must be accepted without
+    /// rejection — NO client format rule applies (spec: "NO CLIENT FORMAT REJECTION").
+    func testCodeEntryValidationLegacyHyphenatedCodeIsValid() {
+        XCTAssertTrue(CodeEntryValidation(code: "BR8K-90ZT").isFormValid,
+                      "legacy hyphenated codes must pass the client gate — format validation is server-only")
+    }
+
+    /// A single character is sufficient to unlock the CTA; minimum is non-empty.
+    func testCodeEntryValidationSingleCharIsValid() {
+        XCTAssertTrue(CodeEntryValidation(code: "X").isFormValid)
+    }
+
+    /// Surrounding whitespace is stripped — the trimmed code is what gates validity.
+    func testCodeEntryValidationTrimmingApplied() {
+        XCTAssertTrue(CodeEntryValidation(code: "  BR8K90ZT  ").isFormValid)
+        XCTAssertFalse(CodeEntryValidation(code: "   ").isFormValid)
+    }
+
+    // MARK: - S4c-code Code entry — company persistence (code-entry found path)
+
+    /// When `.found` fires, the screen persists company id / name / code / logo into
+    /// form data and explicitly clears `joinInvitationId` (this path is NOT from a
+    /// picker-accepted invite). The coordinator then advances to
+    /// `.confirmCompany(source: .codeEntry(provenance))`.
+    func testCodeEntryFoundPathPersistsCompanyAndClearsInvitationId() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.update { $0.selectedRole = .crew }
+        // Seed a stale joinInvitationId (e.g. from a previous picker session) to
+        // confirm the code-entry path explicitly clears it.
+        c.update { $0.joinInvitationId = "stale-inv-id" }
+        c.advance(to: .codeEntry(provenance: .zeroInvites))
+
+        let company = FoundCompany(
+            companyId: "co-789",
+            companyName: "North Ridge HVAC",
+            companyCode: "NR4G99AB",
+            companyLogoUrl: "https://cdn.ops.app/logo.png"
+        )
+        let provenance = CodeEntryProvenance.zeroInvites
+
+        // Mirror the gateway's exact onFound closure wiring (which the screen calls
+        // after persistCompany; drive both effects here to test the full seam).
+        let persistCompany: (FoundCompany) -> Void = { co in
+            c.update {
+                $0.joinCompanyId = co.companyId
+                $0.joinCompanyName = co.companyName
+                $0.joinCompanyCode = co.companyCode
+                $0.joinCompanyLogoUrl = co.companyLogoUrl
+                $0.joinInvitationId = nil // code-entry path: no invitation
+            }
+        }
+        let onFound: (FoundCompany) -> Void = { co in
+            persistCompany(co)
+            c.advance(to: .confirmCompany(source: .codeEntry(provenance)))
+        }
+
+        // Simulate CodeEntryOutcomeRouter routing .found → onFound.
+        CodeEntryOutcomeRouter.route(.found(company), onFound: onFound)
+
+        XCTAssertEqual(c.currentStep, .confirmCompany(source: .codeEntry(.zeroInvites)),
+                       "code-entry found must advance to confirmCompany(source: .codeEntry(.zeroInvites))")
+        XCTAssertEqual(c.formData.joinCompanyId, "co-789")
+        XCTAssertEqual(c.formData.joinCompanyName, "North Ridge HVAC")
+        XCTAssertEqual(c.formData.joinCompanyCode, "NR4G99AB")
+        XCTAssertEqual(c.formData.joinCompanyLogoUrl, "https://cdn.ops.app/logo.png")
+        // Critical: joinInvitationId must be nil for the code-entry path.
+        XCTAssertNil(c.formData.joinInvitationId,
+                     "code-entry path must clear joinInvitationId — no invite-acceptance write")
+    }
+
+    // MARK: - S4c-code Code entry — provenance carried through to confirmCompany
+
+    /// Entered with `.zeroInvites` → confirmCompany carries `.codeEntry(.zeroInvites)`.
+    func testCodeEntryZeroInvitesProvenanceCarriedToConfirmCompany() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.advance(to: .codeEntry(provenance: .zeroInvites))
+
+        let company = FoundCompany(companyId: "c1", companyName: "Alpha", companyCode: nil, companyLogoUrl: nil)
+        let provenance = CodeEntryProvenance.zeroInvites
+
+        CodeEntryOutcomeRouter.route(.found(company)) { _ in
+            c.advance(to: .confirmCompany(source: .codeEntry(provenance)))
+        }
+
+        XCTAssertEqual(c.currentStep, .confirmCompany(source: .codeEntry(.zeroInvites)),
+                       "zeroInvites provenance must be carried into the confirmCompany source")
+    }
+
+    /// Entered with `.fromPicker` → confirmCompany carries `.codeEntry(.fromPicker)`.
+    func testCodeEntryFromPickerProvenanceCarriedToConfirmCompany() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.advance(to: .codeEntry(provenance: .fromPicker))
+
+        let company = FoundCompany(companyId: "c1", companyName: "Alpha", companyCode: nil, companyLogoUrl: nil)
+        let provenance = CodeEntryProvenance.fromPicker
+
+        CodeEntryOutcomeRouter.route(.found(company)) { _ in
+            c.advance(to: .confirmCompany(source: .codeEntry(provenance)))
+        }
+
+        XCTAssertEqual(c.currentStep, .confirmCompany(source: .codeEntry(.fromPicker)),
+                       "fromPicker provenance must be carried into the confirmCompany source")
+    }
+
+    // MARK: - S4c-code Code entry — "different code" from picker → codeEntry(.fromPicker)
+
+    /// "Enter a different code" from the picker → codeEntry with `.fromPicker`
+    /// provenance. This is the picker's secondary CTA; the gateway wires it as
+    /// `onEnterDifferentCode → advance(.codeEntry(provenance: .fromPicker))`.
+    func testPickerDifferentCodeAdvancesToCodeEntryFromPicker() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.advance(to: .invitePicker)
+
+        // Mirror the gateway's onEnterDifferentCode closure.
+        c.advance(to: .codeEntry(provenance: .fromPicker))
+
+        XCTAssertEqual(c.currentStep, .codeEntry(provenance: .fromPicker))
+    }
+
+    // MARK: - S4c-code Code entry — back edges (provenance-dependent)
+
+    /// `.zeroInvites` → Back returns to rolePick (came from role, no picker stop).
+    func testCodeEntryZeroInvitesBackEdgeIsRolePick() {
+        XCTAssertEqual(
+            OnboardingFlowStep.codeEntry(provenance: .zeroInvites).backEdge(context: .preAuth),
+            .rolePick
+        )
+    }
+
+    /// `.fromPicker` → Back returns to invitePicker.
+    func testCodeEntryFromPickerBackEdgeIsInvitePicker() {
+        XCTAssertEqual(
+            OnboardingFlowStep.codeEntry(provenance: .fromPicker).backEdge(context: .preAuth),
+            .invitePicker
+        )
+    }
+
+    // MARK: - S4c-code Code entry — stub boundary sanity
+
+    func testStubCodeEntryBoundaryRecordsCallAndReturnsOutcome() async {
+        let stub = StubCodeEntryBoundary()
+        let company = FoundCompany(
+            companyId: "c1", companyName: "Sweet Deck & Rail",
+            companyCode: "BR8K90ZT", companyLogoUrl: nil
+        )
+        stub.outcome = .found(company)
+
+        let outcome = await stub.lookUpCompany(code: "BR8K90ZT")
+
+        XCTAssertEqual(outcome, .found(company))
+        XCTAssertEqual(stub.callCount, 1)
+        XCTAssertEqual(stub.lastCode, "BR8K90ZT")
+    }
+
+    func testStubCodeEntryBoundaryNotFoundOutcome() async {
+        let stub = StubCodeEntryBoundary()
+        stub.outcome = .notFound
+
+        let outcome = await stub.lookUpCompany(code: "BADCODE")
+
+        XCTAssertEqual(outcome, .notFound)
+        XCTAssertEqual(stub.callCount, 1)
+    }
+
     // MARK: - Snapshots (default + dark + reduce-motion)
 
     private var outDir: URL {
@@ -1334,6 +1815,87 @@ final class OnboardingScreensTests: XCTestCase {
         }
         snapshot("crewcode_light", colorScheme: .light) {
             CrewCodeStepView(crewCode: "BR8K-90ZT", companyName: "Sweet Deck & Rail", previewSettled: true).snapshotBody
+        }
+
+        // S4c Invite check — checking state, failed/error state, light.
+        // The previewInert seam pins the phase and prevents the boundary from
+        // auto-running so the captured frame is stable.
+        let inviteCheckBoundary = StubInviteCheckBoundary()
+        snapshot("invitecheck_checking_dark") {
+            InviteCheckStepView(
+                boundary: inviteCheckBoundary,
+                previewPhase: .checking
+            ).snapshotBody
+        }
+        snapshot("invitecheck_failed_dark") {
+            InviteCheckStepView(
+                boundary: inviteCheckBoundary,
+                previewPhase: .failed
+            ).snapshotBody
+        }
+        snapshot("invitecheck_checking_light", colorScheme: .light) {
+            InviteCheckStepView(
+                boundary: inviteCheckBoundary,
+                previewPhase: .checking
+            ).snapshotBody
+        }
+
+        // Invite picker — multiple invites (the normal case), single-invite
+        // (still shows the card so the user confirms), light.
+        let singleInvite = makeInvite()
+        let multiInvites = [
+            makeInvite(companyName: "Sweet Deck & Rail"),
+            makeInvite(invitationId: UUID().uuidString, companyId: UUID().uuidString,
+                       companyName: "North Ridge HVAC")
+        ]
+        snapshot("invitepicker_multiple_dark") {
+            InvitePickerStepView(
+                invites: multiInvites,
+                previewSettled: true
+            ).snapshotBody
+        }
+        snapshot("invitepicker_single_dark") {
+            InvitePickerStepView(
+                invites: [singleInvite],
+                previewSettled: true
+            ).snapshotBody
+        }
+        snapshot("invitepicker_multiple_light", colorScheme: .light) {
+            InvitePickerStepView(
+                invites: multiInvites,
+                previewSettled: true
+            ).snapshotBody
+        }
+
+        // S4c-code Code entry — default (empty field), with a code typed, error
+        // (not-found inline), light. Uses the DEBUG snapshot seam.
+        let codeEntryBoundary = StubCodeEntryBoundary()
+        snapshot("codeentry_default_dark") {
+            CodeEntryStepView(
+                provenance: .zeroInvites,
+                boundary: codeEntryBoundary
+            ).snapshotBody
+        }
+        snapshot("codeentry_typed_dark") {
+            CodeEntryStepView(
+                provenance: .zeroInvites,
+                boundary: codeEntryBoundary,
+                previewCode: "BR8K90ZT"
+            ).snapshotBody
+        }
+        snapshot("codeentry_error_dark") {
+            CodeEntryStepView(
+                provenance: .fromPicker,
+                boundary: codeEntryBoundary,
+                previewCode: "BADCODE",
+                previewError: "no company found with that code. check with your boss"
+            ).snapshotBody
+        }
+        snapshot("codeentry_default_light", colorScheme: .light) {
+            CodeEntryStepView(
+                provenance: .zeroInvites,
+                boundary: codeEntryBoundary
+            ).snapshotBody
         }
 
         // Completion gate (Task 4.3) — default loading (syncing), queued state,

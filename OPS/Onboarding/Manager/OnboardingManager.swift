@@ -1729,7 +1729,7 @@ class OnboardingManager: ObservableObject {
         }
 
         do {
-            let fields: [String: AnyJSON] = ["has_completed_app_tutorial": .bool(true)]
+            let fields: [String: AnyJSON] = ["has_completed_tutorial": .bool(true)]
             try await dataController.updateUserFields(userId: userId, fields: fields)
             print("[ONBOARDING_MANAGER] hasCompletedAppTutorial synced to true (pre-signup tutorial)")
         } catch {

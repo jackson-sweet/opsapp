@@ -157,6 +157,9 @@ struct OnboardingGateway: View {
         case .codeEntry(let provenance):
             codeEntryView(provenance: provenance)
 
+        case .confirmCompany(let source):
+            confirmCompanyView(source: source)
+
         case .completionGate:
             completionGateView
 
@@ -410,6 +413,61 @@ struct OnboardingGateway: View {
                 onBack: { coordinator.goBack() },
                 onSignOut: { handleSignOut() }
             )
+        }
+    }
+
+    // MARK: - S5c (Confirm company — the crew JOIN commit point)
+
+    /// The real S5c screen, wired to the live confirm-company boundary over the
+    /// `OnboardingManager`. Reads the company identity the picker / code-entry screen
+    /// persisted into form data (`joinCompany*` + `joinInvitationId`) — the screen
+    /// renders that immediately and the boundary best-effort enriches it with the team
+    /// preview (`fetchCompanyJoinDetails`). On the live JOIN
+    /// (`joinCompanyFromOnboarding`) success the gateway advances to `.profile`;
+    /// failure surfaces inline on the screen with no nav. Back follows the back map for
+    /// the source (`.picker` → invite picker; `.codeEntry(prov)` → code entry), so the
+    /// back label is resolved from the source. Like the other boundary-over-manager
+    /// screens the manager is constructed on first appear; until it exists (a transient
+    /// first-frame race the `.onAppear` resolves immediately) the placeholder renders so
+    /// the view is never empty.
+    @ViewBuilder
+    private func confirmCompanyView(source: ConfirmSource) -> some View {
+        if let manager = onboardingManager {
+            ConfirmCompanyStepView(
+                boundary: ConfirmCompanyLiveBoundary(
+                    manager: manager,
+                    companyId: coordinator.formData.joinCompanyId ?? "",
+                    invitationId: coordinator.formData.joinInvitationId,
+                    companyCode: coordinator.formData.joinCompanyCode
+                ),
+                companyName: coordinator.formData.joinCompanyName ?? "",
+                companyLogoUrl: coordinator.formData.joinCompanyLogoUrl,
+                backLabel: Self.confirmCompanyBackLabel(source: source),
+                onJoined: {
+                    // Crew JOIN committed — advance to profile (the crew-path
+                    // post-join screen). The screen already fired the success haptic.
+                    coordinator.advance(to: .profile)
+                },
+                onBack: { coordinator.goBack() }
+            )
+        } else {
+            OnboardingPlaceholderStep(
+                step: .confirmCompany(source: source),
+                canGoBack: coordinator.canGoBack,
+                onContinue: {},
+                onBack: { coordinator.goBack() },
+                onSignOut: { handleSignOut() }
+            )
+        }
+    }
+
+    /// The previous-screen short name for S5c's Back control — depends on the source
+    /// (matches the back map: `.picker` → invite picker; `.codeEntry(prov)` → code
+    /// entry). The screen stays ignorant of the source; the gateway resolves the label.
+    static func confirmCompanyBackLabel(source: ConfirmSource) -> String {
+        switch source {
+        case .picker:    return "Invites"
+        case .codeEntry: return "Code"
         }
     }
 

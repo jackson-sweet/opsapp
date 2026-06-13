@@ -1767,6 +1767,47 @@ class OnboardingManager: ObservableObject {
         }
     }
 
+    /// Upload the onboarding avatar and write the user row's `profile_image_url`,
+    /// THROWING on any failure and returning the public URL on success.
+    ///
+    /// This is the surfaced-failure sibling of `uploadAvatarDuringOnboarding` (which
+    /// deliberately swallows its error for the legacy join-time best-effort upload).
+    /// The rebuilt S6c profile screen needs a real success/failure signal so it can
+    /// show a retry-able error (R7 — never silent), so this variant propagates the
+    /// throw. The legacy method is left untouched for its existing caller.
+    ///
+    /// - Returns: the public URL the row was pointed at.
+    func uploadOnboardingAvatarThrowing(imageData: Data) async throws -> String {
+        guard let userId = state.userData.userId ?? dataController.currentUser?.id else {
+            throw OnboardingManagerError.noUserId
+        }
+
+        let fileName = "\(userId)/profile.jpg"
+        try await SupabaseService.shared.client.storage
+            .from("profile-images")
+            .upload(
+                path: fileName,
+                file: imageData,
+                options: .init(contentType: "image/jpeg", upsert: true)
+            )
+
+        let publicURL = try SupabaseService.shared.client.storage
+            .from("profile-images")
+            .getPublicURL(path: fileName)
+
+        let companyId = state.companyData.companyId ?? dataController.currentUser?.companyId ?? ""
+        let userRepo = UserRepository(companyId: companyId)
+        try await userRepo.updateProfileImageUrl(userId: userId, url: publicURL.absoluteString)
+
+        // Reflect the new avatar locally so the rest of the app sees it immediately.
+        dataController.currentUser?.profileImageURL = publicURL.absoluteString
+        dataController.currentUser?.profileImageData = imageData
+        try? dataController.modelContext?.save()
+
+        print("[ONBOARDING_MANAGER] ✅ Avatar uploaded (throwing): \(publicURL.absoluteString)")
+        return publicURL.absoluteString
+    }
+
     /// Save employee profile fields including emergency contact to Supabase.
     /// Called from the employee onboarding profile screen.
     func saveEmployeeProfile(

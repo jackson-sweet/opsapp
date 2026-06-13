@@ -113,6 +113,36 @@ final class OnboardingScreensTests: XCTestCase {
             )
         }
 
+        /// The EXACT closures the gateway wires into S4o (Company name). `onCreated`
+        /// persists the DB-truth code into `generatedCrewCode` and advances to
+        /// `.crewCode` — the gateway's exact success wiring; `onBack` mirrors the
+        /// gateway. Driving these exercises the production navigation, not a copy.
+        static func companyName(
+            _ c: OnboardingFlowCoordinator,
+            boundary: CompanyCreationBoundary
+        ) -> CompanyNameStepView {
+            CompanyNameStepView(
+                boundary: boundary,
+                onUpdateFormData: { mutate in c.update(mutate) },
+                onCreated: { code in
+                    c.update { $0.generatedCrewCode = code }
+                    c.advance(to: .crewCode)
+                },
+                onBack: { c.goBack() }
+            )
+        }
+
+        /// The EXACT closures the gateway wires into S5o (Crew code). It reads the
+        /// code + company name off form data; ENTER OPS advances to the completion
+        /// gate. Driving the closure exercises the production navigation.
+        static func crewCode(_ c: OnboardingFlowCoordinator) -> CrewCodeStepView {
+            CrewCodeStepView(
+                crewCode: c.formData.generatedCrewCode ?? "",
+                companyName: c.formData.companyName ?? "",
+                onEnter: { c.advance(to: .completionGate) }
+            )
+        }
+
         /// The EXACT closures the gateway wires into S3. The `onCreated` advance
         /// is the gateway's `createAccountNextStep(role:)` rule; `onSignIn` routes
         /// to `.login` (email already persisted into formData for prefill). Driving
@@ -194,6 +224,27 @@ final class OnboardingScreensTests: XCTestCase {
         }
         func logInApple() async -> LoginOutcome { appleCallCount += 1; return appleOutcome }
         func logInGoogle() async -> LoginOutcome { googleCallCount += 1; return googleOutcome }
+    }
+
+    // MARK: - Stub company-creation boundary (no network / no RPC)
+
+    /// Records the company-create call S4o makes and returns a canned outcome, so
+    /// the async commit resolves deterministically. `@MainActor` to satisfy the
+    /// protocol's isolation.
+    @MainActor
+    private final class StubCompanyBoundary: CompanyCreationBoundary {
+        var outcome: CompanyCreationOutcome = .created(code: "BR8K-90ZT")
+
+        private(set) var callCount = 0
+        private(set) var lastName: String?
+        private(set) var lastIndustries: [String]?
+
+        func createCompany(name: String, industries: [String]) async -> CompanyCreationOutcome {
+            callCount += 1
+            lastName = name
+            lastIndustries = industries
+            return outcome
+        }
     }
 
     // MARK: - S1 Welcome — GET STARTED → rolePick
@@ -486,6 +537,188 @@ final class OnboardingScreensTests: XCTestCase {
         XCTAssertEqual(OnboardingGateway.createAccountNextStep(role: .owner), .companyName)
         XCTAssertEqual(OnboardingGateway.createAccountNextStep(role: .crew), .inviteCheck)
         XCTAssertEqual(OnboardingGateway.createAccountNextStep(role: nil), .inviteCheck)
+    }
+
+    // MARK: - S4o Company name — name-required gating (pure validator)
+
+    func testCompanyNameRequiredGatesSubmit() {
+        // Empty / whitespace → invalid, with the bare field-error phrase.
+        let empty = CompanyNameValidation(companyName: "")
+        XCTAssertFalse(empty.isFormValid)
+        XCTAssertEqual(empty.nameError, "enter a company name")
+
+        let blank = CompanyNameValidation(companyName: "   ")
+        XCTAssertFalse(blank.isFormValid)
+        XCTAssertEqual(blank.nameError, "enter a company name")
+
+        // A real name → valid, no error. Trimming is applied.
+        let named = CompanyNameValidation(companyName: "  Sweet Deck & Rail  ")
+        XCTAssertTrue(named.isFormValid)
+        XCTAssertNil(named.nameError)
+        XCTAssertEqual(named.trimmedName, "Sweet Deck & Rail")
+    }
+
+    // MARK: - S4o Company name — successful creation persists code + advances
+
+    func testCompanyNameSuccessPersistsCodeAndAdvancesToCrewCode() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.update { $0.selectedRole = .owner }
+        c.advance(to: .companyName)
+
+        // The created outcome carries the DB-truth code. Routing it via the gateway's
+        // exact wiring must persist `generatedCrewCode` AND advance to `.crewCode`.
+        CompanyCreationOutcomeRouter.route(
+            .created(code: "BR8K-90ZT"),
+            onCreated: { code in
+                c.update { $0.generatedCrewCode = code }
+                c.advance(to: .crewCode)
+            }
+        )
+
+        XCTAssertEqual(c.formData.generatedCrewCode, "BR8K-90ZT")
+        XCTAssertEqual(c.currentStep, .crewCode)
+    }
+
+    // MARK: - S4o Company name — invalidName is a FIELD error, no nav
+
+    func testCompanyNameInvalidNameIsNotANavigation() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.update { $0.selectedRole = .owner }
+        c.advance(to: .companyName)
+
+        let handled = CompanyCreationOutcomeRouter.route(
+            .invalidName(message: "enter a company name"),
+            onCreated: { _ in XCTFail("invalidName must not advance") }
+        )
+        XCTAssertFalse(handled, "invalidName is a field error, not a navigation")
+        XCTAssertEqual(c.currentStep, .companyName)
+        XCTAssertNil(c.formData.generatedCrewCode)
+    }
+
+    // MARK: - S4o Company name — alreadyInCompany surfaces inline, no nav
+
+    func testCompanyNameAlreadyInCompanyIsNotANavigation() {
+        // The RPC handles the IDEMPOTENT reuse internally (returns the existing code
+        // as `.created`). A `.alreadyInCompany` outcome therefore means this account
+        // already owns a company it did NOT create here — no code, so the screen
+        // surfaces an inline error and the flow does NOT advance.
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.update { $0.selectedRole = .owner }
+        c.advance(to: .companyName)
+
+        let handled = CompanyCreationOutcomeRouter.route(
+            .alreadyInCompany(message: "this account already belongs to a company"),
+            onCreated: { _ in XCTFail("alreadyInCompany must not advance") }
+        )
+        XCTAssertFalse(handled, "alreadyInCompany is local state, not a navigation")
+        XCTAssertEqual(c.currentStep, .companyName)
+        XCTAssertNil(c.formData.generatedCrewCode)
+    }
+
+    func testCompanyNameFailedIsNotANavigation() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.advance(to: .companyName)
+
+        let handled = CompanyCreationOutcomeRouter.route(
+            .failed(message: "couldn't create your company — try again"),
+            onCreated: { _ in XCTFail("failure must not advance") }
+        )
+        XCTAssertFalse(handled, "failure is local state, not a navigation")
+        XCTAssertEqual(c.currentStep, .companyName)
+    }
+
+    // MARK: - S4o Company name — back-edge is rolePick in BOTH contexts
+
+    func testCompanyNameBackReturnsToRolePick() {
+        // Pre-auth: companyName backs to rolePick (the wrong-role escape).
+        let pre = makeCoordinator(isAuthenticated: { false })
+        pre.start()
+        pre.advance(to: .companyName)
+        XCTAssertTrue(pre.canGoBack)
+        let screen = GatewayActions.companyName(pre, boundary: StubCompanyBoundary())
+        screen.onBack()
+        XCTAssertEqual(pre.currentStep, .rolePick)
+
+        // Post-auth resume: companyName STILL backs to rolePick (role uncommitted
+        // until a company exists), so Back is available post-auth too.
+        let post = makeCoordinator(isAuthenticated: { true })
+        post.advance(to: .companyName)
+        XCTAssertTrue(post.canGoBack, "companyName has a back-edge in both contexts")
+    }
+
+    // MARK: - S4o Company name — stub boundary records the create call
+
+    func testStubCompanyBoundaryRecordsCreateCall() async {
+        let stub = StubCompanyBoundary()
+        stub.outcome = .created(code: "BR8K-90ZT")
+        let outcome = await stub.createCompany(name: "Sweet Deck & Rail", industries: ["Carpentry"])
+        XCTAssertEqual(outcome, .created(code: "BR8K-90ZT"))
+        XCTAssertEqual(stub.callCount, 1)
+        XCTAssertEqual(stub.lastName, "Sweet Deck & Rail")
+        XCTAssertEqual(stub.lastIndustries, ["Carpentry"])
+    }
+
+    // MARK: - S4o Company name — live-boundary typed-error mapping
+
+    func testCompanyCreationLiveBoundaryMapsTypedErrors() {
+        // invalidName → field error; alreadyInCompany → its inline phrase; the
+        // remaining typed cases collapse to a retry-able failure.
+        XCTAssertEqual(
+            CompanyCreationLiveBoundary.map(.invalidName),
+            .invalidName(message: "enter a company name")
+        )
+        XCTAssertEqual(
+            CompanyCreationLiveBoundary.map(.alreadyInCompany),
+            .alreadyInCompany(message: "this account already belongs to a company")
+        )
+        XCTAssertEqual(
+            CompanyCreationLiveBoundary.map(.userRowMissing),
+            .failed(message: "couldn't finish setup — try again")
+        )
+        XCTAssertEqual(
+            CompanyCreationLiveBoundary.map(.noUserId),
+            .failed(message: "couldn't finish setup — try again")
+        )
+        XCTAssertEqual(
+            CompanyCreationLiveBoundary.map(.generic("RAW_TOKEN")),
+            .failed(message: "couldn't create your company — try again")
+        )
+    }
+
+    // MARK: - S5o Crew code — renders the form-data code, CTA advances to gate
+
+    func testCrewCodeRendersFormDataCodeAndEntersToCompletionGate() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.update {
+            $0.selectedRole = .owner
+            $0.companyName = "Sweet Deck & Rail"
+            $0.generatedCrewCode = "BR8K-90ZT"
+        }
+        c.advance(to: .crewCode)
+
+        // The screen reads the code + company name straight off form data.
+        let screen = GatewayActions.crewCode(c)
+        XCTAssertEqual(screen.crewCode, "BR8K-90ZT",
+                       "S5o must render the DB-truth code persisted by S4o")
+        XCTAssertEqual(screen.companyName, "Sweet Deck & Rail")
+
+        // ENTER OPS → completion gate (forward-only).
+        screen.onEnter()
+        XCTAssertEqual(c.currentStep, .completionGate)
+    }
+
+    // MARK: - S5o Crew code — forward-only (no back-edge)
+
+    func testCrewCodeHasNoBackEdge() {
+        let c = makeCoordinator(isAuthenticated: { false })
+        c.start()
+        c.advance(to: .crewCode)
+        XCTAssertFalse(c.canGoBack, "crewCode is forward-only — the company is committed")
     }
 
     // MARK: - S3 Create account — boundary stub sanity (async seam wires through)
@@ -834,6 +1067,45 @@ final class OnboardingScreensTests: XCTestCase {
         }
         snapshot("login_default_light", colorScheme: .light) {
             LoginStepView(boundary: loginStub, previewEmail: "jack@ops.app").snapshotBody
+        }
+
+        // S4o Company name — default (dark), loading + selected-trade, error
+        // (already-in-company top-level error), light. Uses the DEBUG snapshot seam
+        // to reach the post-interaction states a renderer can't otherwise drive.
+        let companyStub = StubCompanyBoundary()
+        snapshot("companyname_default_dark") {
+            CompanyNameStepView(boundary: companyStub).snapshotBody
+        }
+        snapshot("companyname_loading_dark") {
+            CompanyNameStepView(
+                boundary: companyStub,
+                previewCompanyName: "Sweet Deck & Rail",
+                previewSelectedTrade: "Carpentry",
+                previewIsCreating: true
+            ).snapshotBody
+        }
+        snapshot("companyname_error_dark") {
+            CompanyNameStepView(
+                boundary: companyStub,
+                previewCompanyName: "",
+                previewDidAttemptSubmit: true,
+                previewTopLevelError: "this account already belongs to a company"
+            ).snapshotBody
+        }
+        snapshot("companyname_default_light", colorScheme: .light) {
+            CompanyNameStepView(boundary: companyStub).snapshotBody
+        }
+
+        // S5o Crew code — default (dark), Reduce-Motion (animations disabled), light.
+        // The payoff screen is static after entrance; the snapshot seam settles it.
+        snapshot("crewcode_dark") {
+            CrewCodeStepView(crewCode: "BR8K-90ZT", companyName: "Sweet Deck & Rail", previewSettled: true).snapshotBody
+        }
+        snapshot("crewcode_reduce_motion", disableAnimations: true) {
+            CrewCodeStepView(crewCode: "BR8K-90ZT", companyName: "Sweet Deck & Rail", previewSettled: true).snapshotBody
+        }
+        snapshot("crewcode_light", colorScheme: .light) {
+            CrewCodeStepView(crewCode: "BR8K-90ZT", companyName: "Sweet Deck & Rail", previewSettled: true).snapshotBody
         }
     }
 }

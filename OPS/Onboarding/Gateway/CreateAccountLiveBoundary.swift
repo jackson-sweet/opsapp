@@ -58,6 +58,16 @@ struct CreateAccountLiveBoundary: CreateAccountSignupBoundary {
 
         do {
             try await manager.createAccount(email: email, password: password)
+            // Brand-new account confirmed — fire the Google Ads sign-up conversion.
+            // existingUserLoggedIn is caught below, so this runs only once, only for
+            // genuinely new email signups. Social paths have their own fire sites in
+            // DataController (Apple) and DataController (Google).
+            let userType: UserType? = switch selectedRole {
+            case .owner: .company
+            case .crew:  .employee
+            case .none:  nil
+            }
+            AnalyticsManager.shared.trackSignUp(userType: userType, method: .email)
             return .created
         } catch OnboardingManagerError.existingUserLoggedIn {
             // Existing + complete account — createAccount already logged them in.

@@ -233,92 +233,17 @@ struct ContentView: View {
     var body: some View {
         ZStack {
         Group {
-            if isCheckingAuth {
-                // Show the splash loading view first, BEFORE evaluating the
-                // offline gate. On a fresh launch `isConnected` defaults to
-                // false until the first connectivity check completes — if
-                // the offline gate check runs first, the "NO CONNECTION"
-                // screen flashes for a fraction of a second before the
-                // initial auth+connectivity checks complete.
-                SplashLoadingView()
-            } else if !dataController.isConnected
-                && !dataController.isAuthenticated
-                && !hasCompletedOnboarding
-                && !hasAnyCachedUser {
-                // Offline gate ONLY for fresh installs with no cached account.
-                // Returning users who logged out keep a Firebase session (and
-                // usually a SwiftData cache during the 1s logout-wipe race)
-                // — they should see the landing/login page so they can sign
-                // back in, not get trapped in the offline lockout screen.
-                OfflineGateView(
-                    cachedUserName: cachedAccountName,
-                    onCachedLogin: loginWithCachedAccount
-                )
-            } else if showABTestOnboarding && variantManager.isReady, let manager = onboardingManagerInstance {
-                // A/B/C test onboarding for new users
-                OnboardingABTestCoordinator(
-                    variantManager: variantManager,
-                    onboardingManager: manager,
-                    onComplete: {
-                        // OnboardingABTestCoordinator already waited for the
-                        // server ACK before invoking this callback.
-                        dataController.isAuthenticated = true
-                        showABTestOnboarding = false
-                        onboardingManagerInstance = nil
-                    },
-                    onShowLogin: {
-                        withAnimation(.easeInOut(duration: 0.35)) {
-                            showABTestOnboarding = false
-                            showExistingLogin = true
-                        }
-                        onboardingManagerInstance = nil
-                    }
-                )
-                .environmentObject(dataController)
-                .environmentObject(appState)
-                .environmentObject(locationManager)
-            } else if showExistingLogin {
-                // "I already have an account" from A/B test → direct login form
-                LoginView(
-                    onBack: {
-                        // Go back to A/B test splash
-                        showExistingLogin = false
-                        onboardingManagerInstance = OnboardingManager(dataController: dataController)
-                        showABTestOnboarding = true
-                    },
-                    onNeedsOnboarding: {
-                        // User logged in but hasn't completed onboarding — route to A/B test
-                        showExistingLogin = false
-                        onboardingManagerInstance = OnboardingManager(dataController: dataController)
-                        showABTestOnboarding = true
-                    },
-                    onLoginInitiated: {
-                        // Returning login started — mark it pending so the gate
-                        // arms the instant the initial sync begins, covering the
-                        // sync rather than freezing the login button (bug 95bf7c82).
-                        pendingReturningLogin = true
-                    },
-                    onLoginAbandoned: {
-                        // Login ended without entering the app (wrong password,
-                        // cancelled sign-in, or a route into onboarding) — tear
-                        // the gate down and clear the pending flag.
-                        disarmWorkspacePreload()
-                    }
-                )
-                .environmentObject(appState)
-                .environmentObject(locationManager)
-            } else if !dataController.isAuthenticated {
-                // General unauthenticated state → landing page
-                LandingView(
-                    onLoginInitiated: { pendingReturningLogin = true },
-                    onLoginAbandoned: { disarmWorkspacePreload() }
-                )
-                    .environmentObject(appState)
-                    .environmentObject(locationManager)
+            if FeatureFlags.useRebuiltOnboarding {
+                // Rebuilt onboarding routing (flag-gated). Minimal by design: the
+                // legacy A/B-test coordinator, the showExistingLogin/showABTest
+                // routing flags, and the variant manager are all bypassed — the
+                // single OnboardingGateway owns the entire unauthenticated /
+                // incomplete-onboarding surface. The flag defaults false, so this
+                // branch is dead until cutover; the else-branch below remains the
+                // live router, untouched.
+                rebuiltRouting
             } else {
-                // Check if PIN authentication is required
-                // Access the PIN manager directly as @ObservedObject to ensure proper state updates
-                PINGatedView(dataController: dataController, appState: appState, locationManager: locationManager)
+                legacyRouting
             }
         }
         .preferredColorScheme(.dark)
@@ -329,22 +254,41 @@ struct ContentView: View {
         .onAppear {
             // DO NOT request location permissions here - wait for proper context in onboarding or when needed
             // Removed: locationManager.requestPermissionIfNeeded(requestAlways: true)
-            
+
             // Allow more time for auth checking to complete
             let isAuthAlreadySet = dataController.isAuthenticated
-            
+
             let isAuthenticatedInDefaults = UserDefaults.standard.bool(forKey: "is_authenticated")
             let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
-            
-            
+
+
             // Guard against re-running after Google auth UI dismissal triggers onAppear again
             guard !hasCompletedInitialAuthCheck else { return }
 
             // Wait longer to ensure auth check completes
+            //
+            // TODO(P2): replace this 2.5s timer with a signal-driven auth-check
+            // completion. Deferred: the timer also clears `isCheckingAuth` for
+            // the live legacy router below, and the same `isCheckingAuth` @State
+            // backs BOTH branches. Decoupling it for the rebuilt branch without
+            // touching the legacy timer is entangled, so for now both branches
+            // share this mechanism. The rebuilt branch reads `isCheckingAuth`
+            // identically.
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                 print("[CONTENT_VIEW] ========== AUTH CHECK ==========")
                 print("[CONTENT_VIEW] isAuthenticated: \(dataController.isAuthenticated)")
                 print("[CONTENT_VIEW] currentUser: \(dataController.currentUser?.id ?? "nil")")
+
+                // The rebuilt branch lets OnboardingGateway own placement (it
+                // derives resume from server state itself) — so the legacy
+                // onboarding-routing side effects below are skipped entirely.
+                // We only finish the loading phase.
+                if FeatureFlags.useRebuiltOnboarding {
+                    isCheckingAuth = false
+                    hasCompletedInitialAuthCheck = true
+                    print("[CONTENT_VIEW] ===== END AUTH CHECK (rebuilt) =====")
+                    return
+                }
 
                 // Check if we need to show onboarding using new system
                 let (shouldShowOnboarding, _) = OnboardingManager.shouldShowOnboarding(dataController: dataController)
@@ -480,6 +424,151 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    // MARK: - Rebuilt onboarding routing (flag-gated)
+
+    /// Minimal routing for the rebuilt onboarding flow. Mirrors the legacy
+    /// router's structural skeleton — splash while checking auth, offline gate
+    /// for fresh installs, then the authenticated/onboarding split — but routes
+    /// the entire unauthenticated / incomplete-onboarding surface through the
+    /// single `OnboardingGateway`. PINGatedView and the offline gate are
+    /// identical to legacy. The WorkspacePreloadGate overlay and all preload
+    /// watchers live on the shared modifier chain above, so the returning-login
+    /// gate works in this branch too.
+    @ViewBuilder
+    private var rebuiltRouting: some View {
+        if isCheckingAuth {
+            SplashLoadingView()
+        } else if !dataController.isConnected
+            && !dataController.isAuthenticated
+            && !hasCompletedOnboarding
+            && !hasAnyCachedUser {
+            // Offline gate ONLY for fresh installs with no cached account
+            // (identical predicate to legacy).
+            OfflineGateView(
+                cachedUserName: cachedAccountName,
+                onCachedLogin: loginWithCachedAccount
+            )
+        } else if !dataController.isAuthenticated || shouldRouteToRebuiltOnboarding {
+            // Unauthenticated OR authenticated-but-onboarding-incomplete → the
+            // rebuilt gateway owns placement (it derives resume from server
+            // state internally).
+            OnboardingGateway()
+                .environmentObject(dataController)
+                .environmentObject(appState)
+                .environmentObject(locationManager)
+        } else {
+            PINGatedView(dataController: dataController, appState: appState, locationManager: locationManager)
+        }
+    }
+
+    /// Whether an authenticated user still needs onboarding, for the rebuilt
+    /// branch. Reuses the legacy completion authority (`OnboardingManager`) so
+    /// the "is onboarding done" judgement is identical to the live app — only
+    /// the screens shown differ.
+    private var shouldRouteToRebuiltOnboarding: Bool {
+        guard dataController.isAuthenticated else { return false }
+        let (shouldShow, _) = OnboardingManager.shouldShowOnboarding(dataController: dataController)
+        return shouldShow
+    }
+
+    // MARK: - Legacy routing (live — unchanged)
+
+    /// The ENTIRE existing router, moved verbatim from `body`. While
+    /// `FeatureFlags.useRebuiltOnboarding` is false (its default), this is the
+    /// live routing and is byte-identical to the pre-seam implementation.
+    @ViewBuilder
+    private var legacyRouting: some View {
+        Group {
+            if isCheckingAuth {
+                // Show the splash loading view first, BEFORE evaluating the
+                // offline gate. On a fresh launch `isConnected` defaults to
+                // false until the first connectivity check completes — if
+                // the offline gate check runs first, the "NO CONNECTION"
+                // screen flashes for a fraction of a second before the
+                // initial auth+connectivity checks complete.
+                SplashLoadingView()
+            } else if !dataController.isConnected
+                && !dataController.isAuthenticated
+                && !hasCompletedOnboarding
+                && !hasAnyCachedUser {
+                // Offline gate ONLY for fresh installs with no cached account.
+                // Returning users who logged out keep a Firebase session (and
+                // usually a SwiftData cache during the 1s logout-wipe race)
+                // — they should see the landing/login page so they can sign
+                // back in, not get trapped in the offline lockout screen.
+                OfflineGateView(
+                    cachedUserName: cachedAccountName,
+                    onCachedLogin: loginWithCachedAccount
+                )
+            } else if showABTestOnboarding && variantManager.isReady, let manager = onboardingManagerInstance {
+                // A/B/C test onboarding for new users
+                OnboardingABTestCoordinator(
+                    variantManager: variantManager,
+                    onboardingManager: manager,
+                    onComplete: {
+                        // OnboardingABTestCoordinator already waited for the
+                        // server ACK before invoking this callback.
+                        dataController.isAuthenticated = true
+                        showABTestOnboarding = false
+                        onboardingManagerInstance = nil
+                    },
+                    onShowLogin: {
+                        withAnimation(.easeInOut(duration: 0.35)) {
+                            showABTestOnboarding = false
+                            showExistingLogin = true
+                        }
+                        onboardingManagerInstance = nil
+                    }
+                )
+                .environmentObject(dataController)
+                .environmentObject(appState)
+                .environmentObject(locationManager)
+            } else if showExistingLogin {
+                // "I already have an account" from A/B test → direct login form
+                LoginView(
+                    onBack: {
+                        // Go back to A/B test splash
+                        showExistingLogin = false
+                        onboardingManagerInstance = OnboardingManager(dataController: dataController)
+                        showABTestOnboarding = true
+                    },
+                    onNeedsOnboarding: {
+                        // User logged in but hasn't completed onboarding — route to A/B test
+                        showExistingLogin = false
+                        onboardingManagerInstance = OnboardingManager(dataController: dataController)
+                        showABTestOnboarding = true
+                    },
+                    onLoginInitiated: {
+                        // Returning login started — mark it pending so the gate
+                        // arms the instant the initial sync begins, covering the
+                        // sync rather than freezing the login button (bug 95bf7c82).
+                        pendingReturningLogin = true
+                    },
+                    onLoginAbandoned: {
+                        // Login ended without entering the app (wrong password,
+                        // cancelled sign-in, or a route into onboarding) — tear
+                        // the gate down and clear the pending flag.
+                        disarmWorkspacePreload()
+                    }
+                )
+                .environmentObject(appState)
+                .environmentObject(locationManager)
+            } else if !dataController.isAuthenticated {
+                // General unauthenticated state → landing page
+                LandingView(
+                    onLoginInitiated: { pendingReturningLogin = true },
+                    onLoginAbandoned: { disarmWorkspacePreload() }
+                )
+                    .environmentObject(appState)
+                    .environmentObject(locationManager)
+            } else {
+                // Check if PIN authentication is required
+                // Access the PIN manager directly as @ObservedObject to ensure proper state updates
+                PINGatedView(dataController: dataController, appState: appState, locationManager: locationManager)
+            }
+        }
     }
 }
 

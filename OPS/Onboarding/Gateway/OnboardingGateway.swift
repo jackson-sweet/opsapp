@@ -139,6 +139,9 @@ struct OnboardingGateway: View {
         case .crewCode:
             crewCodeView
 
+        case .completionGate:
+            completionGateView
+
         default:
             OnboardingPlaceholderStep(
                 step: coordinator.currentStep,
@@ -305,6 +308,34 @@ struct OnboardingGateway: View {
         )
     }
 
+    // MARK: - Completion gate (the terminal screen — both paths end here)
+
+    /// The real completion gate (Task 4.3). BOTH paths terminate here — owner
+    /// (crewCode → completionGate) and crew (emergencyContact → completionGate, the
+    /// crew screens land in P5). On appear it ACKs completion through the live
+    /// `CompletionLiveBoundary` (which wraps `OnboardingManager.markOnboarding
+    /// CompleteOrQueue`) and admits via the host's `handleComplete`. Like the other
+    /// boundary-backed screens the manager is constructed on first appear; until it
+    /// exists (a transient first-frame race the `.onAppear` resolves immediately)
+    /// the placeholder renders so the view is never empty.
+    @ViewBuilder
+    private var completionGateView: some View {
+        if let manager = onboardingManager {
+            CompletionGateView(
+                boundary: CompletionLiveBoundary(manager: manager),
+                onAdmit: { handleComplete() }
+            )
+        } else {
+            OnboardingPlaceholderStep(
+                step: .completionGate,
+                canGoBack: coordinator.canGoBack,
+                onContinue: { handleComplete() },
+                onBack: { coordinator.goBack() },
+                onSignOut: { handleSignOut() }
+            )
+        }
+    }
+
     /// The step a NEW account advances to off S3 (spec §4.2 S3):
     ///   owner → companyName, crew (and unknown) → inviteCheck.
     static func createAccountNextStep(role: OnboardingFlowRole?) -> OnboardingFlowStep {
@@ -329,16 +360,19 @@ struct OnboardingGateway: View {
         }
     }
 
-    /// Onboarding finished. Drop the coordinator's local optimisation blob and
-    /// admit the user into the authenticated app.
+    /// Onboarding finished — admit the user into the authenticated app. Drop the
+    /// coordinator's local optimisation blob and flip `isAuthenticated` so the app
+    /// routes to PINGatedView.
     ///
-    /// TODO(P4): the full completion gate — server `onboarding_completed.ios`
-    /// ACK, the completion-pending sweep, and the precise admit predicate
-    /// (DataController.isAppBound) — is wired in P4. For P2 scaffolding this
-    /// performs the minimal correct host action: clear local flow state and flip
-    /// `isAuthenticated` so the app routes to PINGatedView. It is guarded so it
-    /// only admits when a user actually exists; a stub-walked flow with no signed
-    /// -in user simply resets without falsely entering the app.
+    /// The server `onboarding_completed.ios` ACK + the completion-pending sweep now
+    /// run inside `CompletionGateView` (Task 4.3) via `CompletionLiveBoundary`
+    /// before this host admit fires — so by the time `handleComplete` runs,
+    /// completion is already ACKed (or queued for the SyncEngine retry). This host
+    /// step is therefore the pure admit: it only flips local auth state. It is the
+    /// admit closure the gate injects (`onAdmit`), and is also the admit path for
+    /// the existing-account branches on S3/S4. Guarded so it only admits when a
+    /// user actually exists; a stub-walked flow with no signed-in user simply
+    /// resets without falsely entering the app.
     private func handleComplete() {
         coordinator.complete()
         if dataController.currentUser != nil {

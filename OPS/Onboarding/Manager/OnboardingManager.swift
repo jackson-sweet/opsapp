@@ -1259,9 +1259,14 @@ class OnboardingManager: ObservableObject {
                 }
             }
 
-            // Reconfigure sync + load company data.
-            dataController.syncEngine.reconfigureForCompany()
-            await dataController.triggerCompanySync()
+            // Reconfigure sync + load company data. `syncEngine` is an
+            // implicitly-unwrapped optional that only exists once a model context
+            // has been set; guard so a not-yet-configured controller (e.g. tests,
+            // or a create that races sync-manager init) can't crash on force-unwrap.
+            if dataController.syncEngine != nil {
+                dataController.syncEngine.reconfigureForCompany()
+                await dataController.triggerCompanySync()
+            }
 
             print("[ONBOARDING_MANAGER] ========== CREATE COMPANY (RPC) END ==========")
             return companyCode
@@ -1921,7 +1926,7 @@ class OnboardingManager: ObservableObject {
     }
 
     /// Outcome of `markOnboardingCompleteOrQueue()`.
-    enum CompletionOutcome {
+    enum CompletionOutcome: Equatable {
         /// Server ACK landed (or was already complete) — fully completed.
         case acknowledged
         /// Server ACK failed/timed out — completion is queued. The user is let into

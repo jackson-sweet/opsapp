@@ -56,7 +56,7 @@ struct TaskListDebugView: View {
                     Spacer()
                 } else if let error = errorMessage {
                     Spacer()
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         Image(systemName: OPSStyle.Icons.alert)
                             .font(.system(size: 50))
                             .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -72,7 +72,7 @@ struct TaskListDebugView: View {
                     Spacer()
                 } else if tasks.isEmpty {
                     Spacer()
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         Image(systemName: "list.bullet.rectangle")
                             .font(.system(size: 50))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -86,7 +86,7 @@ struct TaskListDebugView: View {
                     Spacer()
                 } else {
                     ScrollView {
-                        VStack(spacing: 12) {
+                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
                             ForEach(tasks, id: \.id) { task in
                                 TaskDetailCard(task: task)
                                     .onTapGesture {
@@ -174,7 +174,7 @@ struct TaskDetailCard: View {
     let task: ProjectTask
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             // Header
             HStack {
                 if let icon = task.taskType?.icon {
@@ -190,7 +190,7 @@ struct TaskDetailCard: View {
                 
                 Text(task.status.displayName)
                     .font(OPSStyle.Typography.caption)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
                     .padding(.vertical, 2)
                     .background(statusColor(for: task.status))
                     .foregroundColor(.white)
@@ -201,7 +201,7 @@ struct TaskDetailCard: View {
                 .background(OPSStyle.Colors.tertiaryText)
             
             // Fields grid
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 FieldRow(label: "ID", value: task.id)
                 FieldRow(label: "Project ID", value: task.projectId)
                 FieldRow(label: "Company ID", value: task.companyId)
@@ -266,11 +266,11 @@ struct TaskDetailSheet: View {
                     .edgesIgnoringSafeArea(.all)
                 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         // Task Type Info
                         if let taskType = task.taskType {
                             Section("Task Type") {
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     FieldRow(label: "Display", value: taskType.display)
                                     FieldRow(label: "Color", value: taskType.color)
                                     FieldRow(label: "Icon", value: taskType.icon ?? "none")
@@ -285,7 +285,7 @@ struct TaskDetailSheet: View {
                         // Project Info
                         if let project = task.project {
                             Section("Project") {
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     FieldRow(label: "Title", value: project.title)
                                     FieldRow(label: "Status", value: project.status.displayName)
                                     FieldRow(label: "Client", value: project.effectiveClientName)
@@ -300,7 +300,7 @@ struct TaskDetailSheet: View {
                         // Team Members
                         if !task.teamMembers.isEmpty {
                             Section("Team Members") {
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     ForEach(task.teamMembers, id: \.id) { member in
                                         HStack {
                                             Text(member.fullName)
@@ -345,7 +345,7 @@ private struct Section<Content: View>: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text(title)
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)

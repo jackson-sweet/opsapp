@@ -13,7 +13,7 @@ struct MapLocationPermissionView: View {
     let onSkip: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
             Spacer()
 
             Image(systemName: "location.fill")
@@ -30,7 +30,7 @@ struct MapLocationPermissionView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .lineSpacing(4)
 
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Enable button (solid white primary CTA)
                 Button(action: onEnable) {
                     Text("ENABLE LOCATION")
@@ -58,7 +58,7 @@ struct MapLocationPermissionView: View {
 
             Spacer()
         }
-        .padding(32)
+        .padding(OPSStyle.Layout.spacing5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(OPSStyle.Colors.background)
     }

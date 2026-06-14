@@ -53,7 +53,7 @@ struct AppMessageView: View {
                 Spacer()
 
                 // Content Card
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                     // Callout at top
                     Text("[ \(messageType.displayName.uppercased()) ]")
                         .font(OPSStyle.Typography.smallCaption)
@@ -94,11 +94,11 @@ struct AppMessageView: View {
                             barCount: 6,
                             barWidth: 2,
                             barHeight: 6,
-                            spacing: 4,
+                            spacing: OPSStyle.Layout.spacing1,
                             emptyColor: OPSStyle.Colors.inputFieldBorder,
                             fillColor: accentColor.opacity(0.6)
                         )
-                        .padding(.top, 8)
+                        .padding(.top, OPSStyle.Layout.spacing2)
                     }
 
                     // Action area inside card
@@ -107,8 +107,8 @@ struct AppMessageView: View {
                         Rectangle()
                             .fill(OPSStyle.Colors.cardBorderSubtle)
                             .frame(height: 1)
-                            .padding(.top, 8)
-                            .padding(.bottom, 20)
+                            .padding(.top, OPSStyle.Layout.spacing2)
+                            .padding(.bottom, OPSStyle.Layout.spacing3_5)
 
                         if isDismissable {
                             Button(action: {
@@ -148,7 +148,7 @@ struct AppMessageView: View {
                                 .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.5))
                                 .tracking(2)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
+                                .padding(.vertical, OPSStyle.Layout.spacing2)
                         }
                     }
                 }

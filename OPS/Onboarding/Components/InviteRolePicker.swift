@@ -81,7 +81,7 @@ struct InviteRolePicker: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             // Section label
             Text("ASSIGN ROLE")
                 .font(OPSStyle.Typography.captionBold)
@@ -155,7 +155,7 @@ struct InviteRolePicker: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(12)
+        .padding(OPSStyle.Layout.spacing2_5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -173,7 +173,7 @@ struct InviteRolePicker: View {
         OPSStyle.Colors.background.ignoresSafeArea()
 
         InviteRolePicker(selectedRoleId: .constant(InviteRoleOption.defaultRoleId))
-            .padding(24)
+            .padding(OPSStyle.Layout.spacing4)
     }
 }
 
@@ -182,6 +182,6 @@ struct InviteRolePicker: View {
         OPSStyle.Colors.background.ignoresSafeArea()
 
         InviteRolePicker(selectedRoleId: .constant(InviteRoleOption.admin.rawValue))
-            .padding(24)
+            .padding(OPSStyle.Layout.spacing4)
     }
 }

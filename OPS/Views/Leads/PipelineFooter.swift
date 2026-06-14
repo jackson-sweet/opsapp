@@ -158,7 +158,7 @@ struct PipelineFooter: View {
                 .won: 12,
                 .lost: 4
             ])
-            .padding(20)
+            .padding(OPSStyle.Layout.spacing3_5)
             Spacer()
         }
     }
@@ -171,7 +171,7 @@ struct PipelineFooter: View {
         VStack {
             Spacer()
             PipelineFooter(counts: [:])
-                .padding(20)
+                .padding(OPSStyle.Layout.spacing3_5)
             Spacer()
         }
     }

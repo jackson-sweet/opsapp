@@ -19,10 +19,10 @@ struct TaskBioSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                     photoCarousel
 
-                    VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                         headerSection
                         divider
                         projectInfoSection
@@ -39,8 +39,8 @@ struct TaskBioSheet: View {
                         divider
                         fullDetailsButton
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 32)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.bottom, OPSStyle.Layout.spacing5)
                 }
             }
             .background(OPSStyle.Colors.background)
@@ -89,7 +89,7 @@ struct TaskBioSheet: View {
                 .fill(OPSStyle.Colors.cardBackgroundDark)
                 .frame(height: 200)
                 .overlay(
-                    VStack(spacing: 8) {
+                    VStack(spacing: OPSStyle.Layout.spacing2) {
                         Image(systemName: "photo.on.rectangle")
                             .font(.system(size: 32))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -100,14 +100,14 @@ struct TaskBioSheet: View {
                 )
         } else {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     ForEach(photos, id: \.self) { url in
                         PhotoThumbnail(url: url, project: task.project)
                             .frame(width: 200, height: 200)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.modalRadius))
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
             .frame(height: 200)
         }
@@ -116,12 +116,12 @@ struct TaskBioSheet: View {
     // MARK: - Header
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             // Color bar
             Rectangle()
                 .fill(Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent)
                 .frame(height: 4)
-                .cornerRadius(2)
+                .cornerRadius(OPSStyle.Layout.progressBarRadius)
 
             // Task title
             Text(task.displayTitle.uppercased())
@@ -132,7 +132,7 @@ struct TaskBioSheet: View {
             Text(task.status.displayName.uppercased())
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(.white)
-                .padding(.horizontal, 8)
+                .padding(.horizontal, OPSStyle.Layout.spacing2)
                 .padding(.vertical, 3)
                 .background(Capsule().fill(task.status.color))
         }
@@ -141,10 +141,10 @@ struct TaskBioSheet: View {
     // MARK: - Project Info
 
     private var projectInfoSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             sectionHeader(icon: "folder.fill", title: "PROJECT")
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 if let project = task.project {
                     Text(project.title.uppercased())
                         .font(OPSStyle.Typography.bodyBold)
@@ -173,10 +173,10 @@ struct TaskBioSheet: View {
     // MARK: - Schedule
 
     private var scheduleSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             sectionHeader(icon: "calendar", title: "SCHEDULE")
 
-            HStack(spacing: 24) {
+            HStack(spacing: OPSStyle.Layout.spacing4) {
                 if let start = task.startDate {
                     dateColumn("SCHEDULED", date: start)
                 }
@@ -214,7 +214,7 @@ struct TaskBioSheet: View {
     // MARK: - Team
 
     private var teamSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             sectionHeader(icon: "person.2.fill", title: "TEAM")
 
             if resolvedMembers.isEmpty {
@@ -224,7 +224,7 @@ struct TaskBioSheet: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(resolvedMembers, id: \.id) { member in
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             UserAvatar(user: member, size: 36)
 
                             VStack(alignment: .leading, spacing: 2) {
@@ -248,7 +248,7 @@ struct TaskBioSheet: View {
     // MARK: - Notes
 
     private func notesSection(_ notes: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             sectionHeader(icon: "note.text", title: "NOTES")
 
             Text(notes)

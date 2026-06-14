@@ -75,7 +75,7 @@ enum FieldErrorHandler {
         }
 
         var body: some View {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Icon based on error type
                 Image(systemName: isNetworkError ? "wifi.slash" : "exclamationmark.triangle")
                     .foregroundColor(OPSStyle.Colors.primaryText)

@@ -30,12 +30,12 @@ struct SendEstimateStep: View {
                 estimateCard
                     .scaleEffect(showHeader ? 1.0 : 0.96)
                     .opacity(showHeader ? 1.0 : 0)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
             } else {
                 estimateCard
                     .offset(x: exitProgress * 420)
                     .opacity(1 - exitProgress)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -48,7 +48,7 @@ struct SendEstimateStep: View {
     private var estimateCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text("ESTIMATE")
                     .font(.status)
                     .foregroundStyle(OPSStyle.Colors.primaryAccent)
@@ -64,7 +64,7 @@ struct SendEstimateStep: View {
                     .foregroundStyle(OPSStyle.Colors.secondaryText)
             }
             .opacity(showHeader ? 1 : 0)
-            .padding(.bottom, 16)
+            .padding(.bottom, OPSStyle.Layout.spacing3)
 
             // Line items — stagger in
             VStack(spacing: 0) {
@@ -88,7 +88,7 @@ struct SendEstimateStep: View {
                 Rectangle()
                     .fill(OPSStyle.Colors.cardBorder)
                     .frame(height: 1)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
             }
 
             // Total
@@ -119,10 +119,10 @@ struct SendEstimateStep: View {
                                 .fill(OPSStyle.Colors.primaryAccent)
                         )
                 }
-                .padding(.top, 16)
+                .padding(.top, OPSStyle.Layout.spacing3)
             }
         }
-        .padding(20)
+        .padding(OPSStyle.Layout.spacing3_5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -168,7 +168,7 @@ struct SendEstimateStep: View {
                 .font(.bodyBold)
                 .foregroundStyle(OPSStyle.Colors.primaryText)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
     }
 
     // MARK: - Build Sequence

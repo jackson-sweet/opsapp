@@ -440,15 +440,15 @@ struct MainTabView: View {
                             .padding(.trailing, persistentSearchTrailingInset)
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.top, OPSStyle.Layout.spacing2_5)
                 Spacer()
             }
             .allowsHitTesting(selectedTab != 0)
             .zIndex(3)
 
             // Image sync progress bar and sync status at top
-            VStack(spacing: 8) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
                 ImageSyncProgressView(syncManager: imageSyncProgressManager)
 
                 // Sync status indicator — hidden when sync restored banner is showing
@@ -457,7 +457,7 @@ struct MainTabView: View {
                         Spacer()
                         SyncStatusIndicator()
                             .environmentObject(dataController)
-                            .padding(.trailing, 16)
+                            .padding(.trailing, OPSStyle.Layout.spacing3)
                     }
                 }
 

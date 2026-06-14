@@ -13,7 +13,7 @@ struct NavigationLoadingBanner: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Loading spinner
                 ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
@@ -46,15 +46,15 @@ struct NavigationLoadingBanner: View {
                     Text("Cancel")
                         .font(OPSStyle.Typography.caption)
                         .fontWeight(.bold)
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                         .padding(.vertical, 6)
                         .background(OPSStyle.Colors.errorStatus)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(OPSStyle.Colors.cardBackground)
         }
@@ -81,7 +81,7 @@ struct NavigationControlsView: View {
     
     var body: some View {
         ZStack {
-            VStack(spacing: 24) {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
                 // Action buttons for active project - at bottom
                 Spacer()
                 actionButtons
@@ -93,7 +93,7 @@ struct NavigationControlsView: View {
                     // Top position with safe area spacing
                     navigationView
                         .padding(.horizontal)
-                        .padding(.top, 8)
+                        .padding(.top, OPSStyle.Layout.spacing2)
                     
                     Spacer()
                 }

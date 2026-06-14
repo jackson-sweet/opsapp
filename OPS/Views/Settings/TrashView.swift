@@ -64,19 +64,19 @@ struct TrashView: View {
                 )
 
                 segmentedPicker
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.top, OPSStyle.Layout.spacing3)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                 if totalCount == 0 {
                     emptyState
                 } else {
                     ScrollView {
-                        VStack(spacing: 12) {
+                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
                             currentContent
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 32)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.bottom, OPSStyle.Layout.spacing5)
                     }
                 }
             }
@@ -117,7 +117,7 @@ struct TrashView: View {
                     }
                     .foregroundColor(segment == option ? OPSStyle.Colors.background : OPSStyle.Colors.primaryText)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .fill(segment == option ? OPSStyle.Colors.primaryAccent : Color.clear)
@@ -126,7 +126,7 @@ struct TrashView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(4)
+        .padding(OPSStyle.Layout.spacing1)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius + 4)
                 .fill(OPSStyle.Colors.cardBackgroundDark)
@@ -213,7 +213,7 @@ struct TrashView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .frame(width: 28)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(title.uppercased())
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -251,8 +251,8 @@ struct TrashView: View {
                         .tracking(0.8)
                 }
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
@@ -261,7 +261,7 @@ struct TrashView: View {
             .buttonStyle(.plain)
             .disabled(restoringId != nil)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, 14)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -274,7 +274,7 @@ struct TrashView: View {
     // MARK: - Empty States
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
             Image(systemName: "trash")
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
@@ -293,7 +293,7 @@ struct TrashView: View {
     }
 
     private func emptySegmentState(label: String) -> some View {
-        VStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
             Text(label.uppercased())
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)

@@ -13,12 +13,12 @@ struct ProjectNotificationPreferences: View {
     @Binding var notifyProjectCompletion: Bool
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             Text("Project Notifications")
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
             
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 NotificationToggleItem(
                     isOn: $notifyProjectAssignment,
                     title: "Project Assignments",
@@ -44,7 +44,7 @@ struct ProjectNotificationPreferences: View {
                 )
             }
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.largeCornerRadius)
         .overlay(
@@ -63,10 +63,10 @@ struct AdvanceNoticePreferences: View {
     private let dayOptions = [1, 2, 3, 5, 7, 14]
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             // Master toggle with title
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("Advance Project Notices")
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -84,13 +84,13 @@ struct AdvanceNoticePreferences: View {
             }
             
             if notifyProjectAdvance {
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     Text("Send me reminders:")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     
                     // Day selectors
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         reminderDaySelector(dayBinding: $advanceNoticeDays1, label: "1")
                         reminderDaySelector(dayBinding: $advanceNoticeDays2, label: "2")
                         reminderDaySelector(dayBinding: $advanceNoticeDays3, label: "3")
@@ -101,11 +101,11 @@ struct AdvanceNoticePreferences: View {
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .multilineTextAlignment(.center)
-                        .padding(.top, 4)
+                        .padding(.top, OPSStyle.Layout.spacing1)
                 }
             }
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.largeCornerRadius)
         .overlay(
@@ -135,7 +135,7 @@ struct AdvanceNoticePreferences: View {
                 
                 Text("\(dayBinding.wrappedValue) days")
                     .font(OPSStyle.Typography.captionBold)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     .padding(.vertical, 6)
                     .background(OPSStyle.Colors.cardBackground)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -156,8 +156,8 @@ struct NotificationToggleItem: View {
     var description: String
     
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2_5) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(title)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -178,7 +178,7 @@ struct NotificationToggleItem: View {
 }
 
 #Preview {
-    VStack(spacing: 20) {
+    VStack(spacing: OPSStyle.Layout.spacing3_5) {
         ProjectNotificationPreferences(
             notifyProjectAssignment: .constant(true),
             notifyProjectScheduleChanges: .constant(true),

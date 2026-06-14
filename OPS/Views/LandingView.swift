@@ -54,7 +54,7 @@ struct LandingView: View {
             OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
 
             // Main content
-            VStack(spacing: 24) {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
 
                 Spacer()
 
@@ -69,18 +69,18 @@ struct LandingView: View {
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 44, height: 44)
-                            .padding(.bottom, 8)
+                            .padding(.bottom, OPSStyle.Layout.spacing2)
                         Text("OPS")
                             .font(OPSStyle.Typography.largeTitle.weight(.bold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                         Spacer()
 
-                    }.padding(.leading, 4)
+                    }.padding(.leading, OPSStyle.Layout.spacing1)
 
                     Spacer()
 
                     // Bold message inspired by your inspiration designs
-                    VStack(alignment: .leading, spacing: 32) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing5) {
 
 
                         VStack(alignment: .leading) {
@@ -94,7 +94,7 @@ struct LandingView: View {
                         Text("Designed in the field, not in a tech office.")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .padding(.top, 4)
+                            .padding(.top, OPSStyle.Layout.spacing1)
 
                         Spacer()
                             .frame(height: 40)
@@ -104,7 +104,7 @@ struct LandingView: View {
                     // Login/Signup Options
 
                     // Initial options (Sign In or Sign Up)
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         Spacer()
                         // Primary action - Sign Up button
                         Button(action: {
@@ -135,11 +135,11 @@ struct LandingView: View {
                                         Image(systemName: "arrow.right")
                                             .foregroundColor(OPSStyle.Colors.invertedText)
                                             .font(OPSStyle.Typography.caption.weight(.semibold))
-                                            .padding(.trailing, 20)
+                                            .padding(.trailing, OPSStyle.Layout.spacing3_5)
                                     }
                                 )
                         }
-                        .padding(.bottom, 4)
+                        .padding(.bottom, OPSStyle.Layout.spacing1)
 
                         // Secondary action - Log In button
                         Button(action: {
@@ -173,7 +173,7 @@ struct LandingView: View {
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
                 } else {
                     // Login form (once Sign In is selected)
-                    VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                         // Back button
                         Button(action: {
                             // Dismiss keyboard
@@ -191,7 +191,7 @@ struct LandingView: View {
                                 }
                             }
                         }) {
-                            HStack(spacing: 4) {
+                            HStack(spacing: OPSStyle.Layout.spacing1) {
                                 Image(systemName: "chevron.left")
                                     .font(OPSStyle.Typography.caption.weight(.semibold))
                                 Text("Back")
@@ -204,7 +204,7 @@ struct LandingView: View {
                         Text("Enter your credentials")
                             .font(OPSStyle.Typography.title.weight(.bold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                            .padding(.bottom, 16)
+                            .padding(.bottom, OPSStyle.Layout.spacing3)
 
                         // Username field with floating label design
                         VStack(alignment: .leading, spacing: 6) {
@@ -215,7 +215,7 @@ struct LandingView: View {
                             TextField("", text: $username)
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
-                                .padding(.vertical, 12)
+                                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                                 .autocapitalization(.none)
                                 .autocorrectionDisabled(true)
                                 .overlay(
@@ -227,7 +227,7 @@ struct LandingView: View {
                                     }
                                 )
                         }
-                        .padding(.bottom, 12)
+                        .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                         // Password field with floating label design
                         VStack(alignment: .leading, spacing: 6) {
@@ -238,7 +238,7 @@ struct LandingView: View {
                             SecureField("", text: $password)
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
-                                .padding(.vertical, 12)
+                                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                                 .overlay(
                                     VStack {
                                         Spacer()
@@ -255,7 +255,7 @@ struct LandingView: View {
                                 if isLoggingIn {
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: .black))
-                                        .padding(.trailing, 8)
+                                        .padding(.trailing, OPSStyle.Layout.spacing2)
                                 }
 
                                 Text(isLoggingIn ? "Signing in..." : "Continue")
@@ -273,13 +273,13 @@ struct LandingView: View {
                                     Image(systemName: "arrow.right")
                                         .foregroundColor(OPSStyle.Colors.invertedText)
                                         .font(OPSStyle.Typography.caption.weight(.semibold))
-                                        .padding(.trailing, 20)
+                                        .padding(.trailing, OPSStyle.Layout.spacing3_5)
                                 } : nil
                             )
                             .disabledButtonStyle(isDisabled: isLoggingIn || username.isEmpty || password.isEmpty)
                         }
                         .disabled(isLoggingIn || username.isEmpty || password.isEmpty)
-                        .padding(.top, 20)
+                        .padding(.top, OPSStyle.Layout.spacing3_5)
 
                         // Forgot password link
                         Button(action: {
@@ -288,7 +288,7 @@ struct LandingView: View {
                             Text("Forgot password?")
                                 .font(OPSStyle.Typography.button)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .padding(.top, 12)
+                                .padding(.top, OPSStyle.Layout.spacing2_5)
                         }
                         .frame(maxWidth: .infinity, alignment: .center)
 
@@ -301,13 +301,13 @@ struct LandingView: View {
                             Text("OR")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                .padding(.horizontal, 16)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                             Rectangle()
                                 .frame(height: 1)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.3))
                         }
-                        .padding(.vertical, 16)
+                        .padding(.vertical, OPSStyle.Layout.spacing3)
 
                         // Google Sign-In button
                         GoogleSignInButton(onSignIn: handleGoogleSignIn)
@@ -326,7 +326,7 @@ struct LandingView: View {
                 Text("[ VERSION \(AppConfiguration.AppInfo.version.uppercased()) ]")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
-                    .padding(.bottom, 20)
+                    .padding(.bottom, OPSStyle.Layout.spacing3_5)
             }
             .padding(40)
             .scaleEffect(pageScale)
@@ -596,7 +596,7 @@ struct GoogleSignInButton: View {
 
     var body: some View {
         Button(action: onSignIn) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image("google_logo")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
@@ -623,7 +623,7 @@ struct AppleSignInButton: View {
 
     var body: some View {
         Button(action: onSignIn) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: "apple.logo")
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -659,7 +659,7 @@ struct LoginSuccessView: View {
                     .frame(height: 2)
                     .opacity(0.8)
 
-                VStack(spacing: 24) {
+                VStack(spacing: OPSStyle.Layout.spacing4) {
                     ZStack {
                         Circle()
                             .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.thick)
@@ -674,8 +674,8 @@ struct LoginSuccessView: View {
                     }
                     .animation(OPSStyle.Animation.standard, value: showCheckmark)
 
-                    VStack(spacing: 8) {
-                        HStack(spacing: 8) {
+                    VStack(spacing: OPSStyle.Layout.spacing2) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             Text("STATUS:")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -706,7 +706,7 @@ struct LoginSuccessView: View {
                     .opacity(showCheckmark ? 1 : 0)
                     .animation(OPSStyle.Animation.fast.delay(0.4), value: showCheckmark)
                 }
-                .padding(.horizontal, 32)
+                .padding(.horizontal, OPSStyle.Layout.spacing5)
                 .padding(.vertical, 28)
 
                 Rectangle()

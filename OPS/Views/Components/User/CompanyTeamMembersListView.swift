@@ -15,19 +15,19 @@ struct CompanyTeamMembersListView: View {
     @EnvironmentObject private var dataController: DataController
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             // Header
             Text("TEAM MEMBERS")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.bottom, 4)
+                .padding(.bottom, OPSStyle.Layout.spacing1)
             
             if company.teamMembers.isEmpty {
                 // Empty state
                 Text("No team members loaded")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
-                    .padding(.vertical, 8)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
                 
                 // Loading button
                 Button(action: { 
@@ -36,7 +36,7 @@ struct CompanyTeamMembersListView: View {
                     Label("Load Team Members", systemImage: "arrow.clockwise")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
                 }
             } else {
                 // Team member list
@@ -63,12 +63,12 @@ struct CompanyTeamMemberListRow: View {
     let teamMember: TeamMember
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Avatar - using unified UserAvatar component
             TeamMemberAvatar(teamMember: teamMember, size: 40)
             
             // User details
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(teamMember.fullName)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -89,7 +89,7 @@ struct CompanyTeamMemberListRow: View {
             Spacer()
             
             // Action buttons
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Email button
                 if let email = teamMember.email, !email.isEmpty {
                     Button(action: {
@@ -119,7 +119,7 @@ struct CompanyTeamMemberListRow: View {
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
     }
 }
 

@@ -51,7 +51,7 @@ struct ActivityEntryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             // Header: avatar + name + timestamp + menu
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 // Avatar
                 if let member = teamMember {
                     TeamMemberAvatar(teamMember: member, size: 28)
@@ -101,7 +101,7 @@ struct ActivityEntryView: View {
 
             // Content
             if isEditing {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     TextField("Edit note...", text: $editText, axis: .vertical)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -146,7 +146,7 @@ struct ActivityEntryView: View {
             let allPhotos = notePhotoURLs
             if !allPhotos.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         ForEach(Array(allPhotos.enumerated()), id: \.offset) { index, url in
                             Button(action: {
                                 onPhotoTap?(allPhotos, index)

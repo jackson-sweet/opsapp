@@ -200,8 +200,8 @@ struct JobBoardProjectListView: View {
         VStack(spacing: 0) {
             if showingFilters && hasActiveFilters {
                 activeFilterBadges
-                    .padding(.top, 4)
-                    .padding(.bottom, 8)
+                    .padding(.top, OPSStyle.Layout.spacing1)
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
                     .transition(.asymmetric(
                         insertion: .move(edge: .top).combined(with: .opacity),
                         removal: .opacity.combined(with: .move(edge: .top))
@@ -218,7 +218,7 @@ struct JobBoardProjectListView: View {
             } else {
                 ScrollViewReader { scrollProxy in
                     ScrollView {
-                        LazyVStack(spacing: 12) {
+                        LazyVStack(spacing: OPSStyle.Layout.spacing2_5) {
                             ForEach(Array(activeProjects.enumerated()), id: \.element.id) { index, project in
                             let isFocusedProject = !shouldGreyOutProject(project)
 
@@ -258,7 +258,7 @@ struct JobBoardProjectListView: View {
 
                         // Closed and Archived section buttons
                         if !closedProjects.isEmpty || !archivedProjects.isEmpty {
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 if !closedProjects.isEmpty {
                                     SectionButton(
                                         title: "CLOSED",
@@ -285,11 +285,11 @@ struct JobBoardProjectListView: View {
                                     }
                                 }
                             }
-                            .padding(.top, 8)
+                            .padding(.top, OPSStyle.Layout.spacing2)
                             .id("closedProjectsSection")
                         }
                     }
-                    .padding(.top, 12)
+                    .padding(.top, OPSStyle.Layout.spacing2_5)
                     .padding(.bottom, 120)
                     // Tab content ignores the bottom safe area, so the wizard
                     // instruction bar (inserted as safeAreaInset on MainTabView)
@@ -527,7 +527,7 @@ struct JobBoardProjectListView: View {
 
     /// Tutorial instruction for swipe gesture
     private var tutorialSwipeInstruction: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: "hand.draw.fill")
                 .font(.system(size: OPSStyle.Layout.IconSize.xl, weight: .medium))
                 .foregroundColor(emphasisSwipeInstruction ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent)
@@ -545,7 +545,7 @@ struct JobBoardProjectListView: View {
 
     private var activeFilterBadges: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(Array(selectedStatuses), id: \.self) { status in
                     FilterBadge(
                         text: status.displayName,
@@ -580,7 +580,7 @@ struct JobBoardProjectListView: View {
                     }
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 
@@ -728,8 +728,8 @@ struct FilterBadge: View {
                     .frame(width: 20, height: 20)
             }
         }
-        .padding(.leading, 8)
-        .padding(.trailing, 4)
+        .padding(.leading, OPSStyle.Layout.spacing2)
+        .padding(.trailing, OPSStyle.Layout.spacing1)
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -820,8 +820,8 @@ struct CollapsibleSection<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Text("[ \(title) ]")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -838,7 +838,7 @@ struct CollapsibleSection<Content: View>: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .contentShape(Rectangle())
             .onTapGesture {
                 withAnimation(.accessibleEaseInOut(duration: 0.25)) {
@@ -847,7 +847,7 @@ struct CollapsibleSection<Content: View>: View {
             }
 
             if isExpanded {
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     content()
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -866,7 +866,7 @@ struct SectionButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Circle()
                     .fill(color)
                     .frame(width: 8, height: 8)
@@ -883,8 +883,8 @@ struct SectionButton: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .frame(maxWidth: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -928,7 +928,7 @@ struct ProjectListSheet: View {
 
                 VStack(spacing: 0) {
                     // Search bar
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Image(systemName: OPSStyle.Icons.search)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -946,15 +946,15 @@ struct ProjectListSheet: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.top, OPSStyle.Layout.spacing2_5)
 
                     if filteredProjects.isEmpty {
-                        VStack(spacing: 16) {
+                        VStack(spacing: OPSStyle.Layout.spacing3) {
                             Image(systemName: "folder")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -965,15 +965,15 @@ struct ProjectListSheet: View {
                         .frame(maxHeight: .infinity)
                     } else {
                         ScrollView {
-                            LazyVStack(spacing: 12) {
+                            LazyVStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 ForEach(filteredProjects) { project in
                                     UniversalJobBoardCard(cardType: .project(project), disableSwipe: true)
                                         .environmentObject(dataController)
                                         .id("\(project.id)-\(project.teamMemberIdsString)")
                                 }
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
                         }
                     }
                 }

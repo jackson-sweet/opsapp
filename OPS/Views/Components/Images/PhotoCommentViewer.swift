@@ -125,7 +125,7 @@ struct PhotoCommentViewer: View {
                 // Annotation toolbar
                 VStack(spacing: 0) {
                     annotationToolbar
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                     Spacer()
 
@@ -144,7 +144,7 @@ struct PhotoCommentViewer: View {
                 // Normal viewer overlay
                 VStack(spacing: 0) {
                     topBar
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.top, 48)
 
                     Spacer()
@@ -469,7 +469,7 @@ struct PhotoCommentViewer: View {
                 Image(systemName: OPSStyle.Icons.xmark)
                     .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(12)
+                    .padding(OPSStyle.Layout.spacing2_5)
             }
 
             Spacer()

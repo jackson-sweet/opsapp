@@ -13,7 +13,7 @@ struct ScheduleScopeSelector: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 // Team member chips with avatar + initials
                 ForEach(viewModel.availableTeamMembers, id: \.id) { member in
                     let isSelected: Bool = {
@@ -28,7 +28,7 @@ struct ScheduleScopeSelector: View {
                     }
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 

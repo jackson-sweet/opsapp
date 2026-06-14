@@ -36,7 +36,7 @@ struct EmployeeEmergencyContactView: View {
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 44, height: 44)
-                            .padding(.bottom, 8)
+                            .padding(.bottom, OPSStyle.Layout.spacing2)
                         Text("OPS")
                             .font(OPSStyle.Typography.largeTitle.weight(.bold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -50,7 +50,7 @@ struct EmployeeEmergencyContactView: View {
                                 .frame(minWidth: 44, minHeight: 44)
                         }
                     }
-                    .padding(.leading, 4)
+                    .padding(.leading, OPSStyle.Layout.spacing1)
 
                     Spacer().frame(height: 40)
 
@@ -71,12 +71,12 @@ struct EmployeeEmergencyContactView: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Spacer()
                     }
-                    .padding(.top, 8)
+                    .padding(.top, OPSStyle.Layout.spacing2)
 
                     Spacer().frame(height: 32)
 
                     // Fields
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         underlineField("Contact Name", text: $contactName, contentType: .name)
                         underlineField("Contact Phone", text: $contactPhone, contentType: .telephoneNumber, keyboard: .phonePad)
                     }
@@ -84,14 +84,14 @@ struct EmployeeEmergencyContactView: View {
                     Spacer().frame(height: 32)
 
                     // Relationship picker
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                         Text("RELATIONSHIP")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                             .tracking(1)
 
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
                                 ForEach(relationships, id: \.self) { rel in
                                     Button {
                                         relationship = (relationship == rel) ? "" : rel
@@ -99,7 +99,7 @@ struct EmployeeEmergencyContactView: View {
                                         Text(rel.uppercased())
                                             .font(OPSStyle.Typography.smallCaption)
                                             .foregroundColor(relationship == rel ? OPSStyle.Colors.background : OPSStyle.Colors.secondaryText)
-                                            .padding(.horizontal, 16)
+                                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                                             .padding(.vertical, 10)
                                             .background(
                                                 relationship == rel
@@ -129,7 +129,7 @@ struct EmployeeEmergencyContactView: View {
                         Text(errorMessage)
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.errorStatus)
-                            .padding(.bottom, 12)
+                            .padding(.bottom, OPSStyle.Layout.spacing2_5)
                     }
 
                     // Finish button (last step of onboarding)
@@ -149,7 +149,7 @@ struct EmployeeEmergencyContactView: View {
                             }
                         }
                         .foregroundColor(OPSStyle.Colors.invertedText)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
                         .background(OPSStyle.Colors.primaryText)
@@ -173,7 +173,7 @@ struct EmployeeEmergencyContactView: View {
         contentType: UITextContentType? = nil,
         keyboard: UIKeyboardType = .default
     ) -> some View {
-        VStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
             TextField("", text: text, prompt: Text(placeholder).foregroundColor(OPSStyle.Colors.secondaryText))
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)

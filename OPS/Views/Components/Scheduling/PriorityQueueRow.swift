@@ -21,7 +21,7 @@ struct PriorityQueueRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Text(rankNumber.map(String.init) ?? "—")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(rankNumber == nil ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent)

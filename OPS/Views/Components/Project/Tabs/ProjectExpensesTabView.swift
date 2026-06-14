@@ -15,7 +15,7 @@ struct ProjectExpensesTabView: View {
     let onTapExpense: (ExpenseDTO) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             // Running total card (hidden when no expenses)
             if !viewModel.projectExpenses.isEmpty {
                 totalCard
@@ -36,7 +36,7 @@ struct ProjectExpensesTabView: View {
 
             // Add expense button
             Button(action: onAddExpense) {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: "plus")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     Text("ADD EXPENSE")
@@ -53,12 +53,12 @@ struct ProjectExpensesTabView: View {
                 )
             }
             .buttonStyle(PlainButtonStyle())
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
 
             Spacer()
                 .frame(height: 200)
         }
-        .padding(.top, 16)
+        .padding(.top, OPSStyle.Layout.spacing3)
         .task {
             await viewModel.loadExpenses()
         }
@@ -67,7 +67,7 @@ struct ProjectExpensesTabView: View {
     // MARK: - Total Card
 
     private var totalCard: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             Text(formatCurrency(viewModel.expenseTotal))
                 .font(OPSStyle.Typography.title)
                 .foregroundColor(OPSStyle.Colors.accountingCost)
@@ -80,13 +80,13 @@ struct ProjectExpensesTabView: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
     // MARK: - Empty State
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: "doc.text.viewfinder")
                 .font(.system(size: OPSStyle.Layout.IconSize.xl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -131,7 +131,7 @@ struct ProjectExpensesTabView: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
     // MARK: - Helpers

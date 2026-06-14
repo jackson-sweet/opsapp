@@ -23,7 +23,7 @@ struct TaskTeamView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             if loadedTeamMembers.isEmpty && task.teamMembers.isEmpty {
                 emptyStateView
             } else {
@@ -58,7 +58,7 @@ struct TaskTeamView: View {
 
             Spacer()
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
     }
 
     private func teamMembersView() -> some View {
@@ -72,7 +72,7 @@ struct TaskTeamView: View {
     }
 
     private func teamMemberRow(_ member: User) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             UserAvatar(user: member, size: 40)
 
             VStack(alignment: .leading, spacing: 2) {

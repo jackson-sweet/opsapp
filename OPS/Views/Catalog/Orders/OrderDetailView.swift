@@ -169,7 +169,7 @@ struct OrderDetailView: View {
 
     @ViewBuilder
     private func fieldRow(label: String, text: Binding<String>, placeholder: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             Text(label)
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -191,7 +191,7 @@ struct OrderDetailView: View {
     }
 
     private var deliveryRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             Text("EXPECTED DELIVERY")
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -232,7 +232,7 @@ struct OrderDetailView: View {
     }
 
     private var notesRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             Text("NOTES")
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -287,7 +287,7 @@ struct OrderDetailView: View {
         let label = variantLabel(for: item.catalogVariantId)
         let isEditing = editingItemId == item.id
 
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text((family?.name ?? "Unknown").uppercased())
@@ -352,7 +352,7 @@ struct OrderDetailView: View {
                 }
             } else {
                 HStack(spacing: OPSStyle.Layout.spacing3) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Text("\(formatNumber(item.quantityRequested))")
                             .font(OPSStyle.Typography.dataValue)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -361,7 +361,7 @@ struct OrderDetailView: View {
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                     if let cost = item.costPerUnit {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Text("@")
                                 .font(OPSStyle.Typography.metadata)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)

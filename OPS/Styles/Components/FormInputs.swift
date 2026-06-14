@@ -28,7 +28,7 @@ struct FormField: View {
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text(title.uppercased())
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.text3)
@@ -97,7 +97,7 @@ struct FormTextEditor: View {
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text(title.uppercased())
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.text3)
@@ -150,8 +150,8 @@ struct FormTextEditor: View {
                 Text(placeholder)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.text3)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.vertical, OPSStyle.Layout.spacing3)
                     .allowsHitTesting(false)
             }
         }
@@ -169,7 +169,7 @@ struct FormToggle: View {
 
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(title.uppercased())
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.text)
@@ -191,7 +191,7 @@ struct FormToggle: View {
             .labelsHidden()
             .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.buttonRadius)
         .overlay(
@@ -213,7 +213,7 @@ struct RadioOption: View {
     var body: some View {
         Button(action: action) {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(title.uppercased())
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.text)
@@ -239,7 +239,7 @@ struct RadioOption: View {
                 }
             }
             .contentShape(Rectangle())
-            .padding(16)
+            .padding(OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(
@@ -261,7 +261,7 @@ struct SearchBar: View {
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             HStack {
                 Image(systemName: "magnifyingglass")
                     .font(OPSStyle.Typography.body)
@@ -288,7 +288,7 @@ struct SearchBar: View {
                 }
             }
             .padding(.vertical, 10)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(
@@ -319,7 +319,7 @@ struct EmptyStateView: View {
                 Image(systemName: icon)
                     .font(.system(size: 48))
                     .foregroundColor(OPSStyle.Colors.textMute)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
                 Spacer()
             }
 
@@ -334,7 +334,7 @@ struct EmptyStateView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, alignment: .center)
         }
-        .padding(24)
+        .padding(OPSStyle.Layout.spacing4)
     }
 }
 
@@ -347,7 +347,7 @@ struct FormComponentsPreview: View {
     @State private var searchText = ""
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             FormField(title: "Name", placeholder: "Enter your name", text: $text)
 
             FormField(title: "Email", placeholder: "Enter email address", text: $emptyText, keyboardType: .emailAddress)

@@ -69,10 +69,10 @@ struct PriorityQueueView: View {
             Text("\(n) scheduled")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
-                .padding(.horizontal, 16).padding(.vertical, 10)
+                .padding(.horizontal, OPSStyle.Layout.spacing3).padding(.vertical, 10)
                 .background(Capsule().fill(OPSStyle.Colors.cardBackgroundDark))
                 .overlay(Capsule().stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard))
-                .padding(.top, 12)
+                .padding(.top, OPSStyle.Layout.spacing2_5)
                 .transition(.opacity)
         }
     }
@@ -87,15 +87,15 @@ struct PriorityQueueView: View {
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
     }
 
     private var toggles: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             toggleChip("INCLUDE UNRANKED", isOn: vm.includeUnranked) { vm.includeUnranked.toggle() }
             Spacer()
         }
-        .padding(.horizontal, 16).padding(.vertical, 8)
+        .padding(.horizontal, OPSStyle.Layout.spacing3).padding(.vertical, OPSStyle.Layout.spacing2)
     }
 
     // MARK: - The prioritized list (custom scroll + VStack)
@@ -126,9 +126,9 @@ struct PriorityQueueView: View {
                     card(project, combinedIndex: vm.ranked.count + j)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.top, OPSStyle.Layout.spacing2)
+            .padding(.bottom, OPSStyle.Layout.spacing4)
         }
         .scrollDisabled(waterlineEngaged || draggingCardId != nil)
         // When either gesture deactivates (lift OR cancel OR teardown), force the
@@ -184,7 +184,7 @@ struct PriorityQueueView: View {
 
     private var waterlineHandle: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: "line.3.horizontal")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(waterlineEngaged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
@@ -202,7 +202,7 @@ struct PriorityQueueView: View {
                 .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 8)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
         .contentShape(Rectangle())
         .offset(y: waterlineHandleOffset)
         .animation(waterlineEngaged || reduceMotion ? nil : OPSStyle.Animation.standard, value: waterlineHandleOffset)
@@ -214,7 +214,7 @@ struct PriorityQueueView: View {
     }
 
     private var runBar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Button { Task { await vm.tapToPlaceNext() } } label: {
                 Text("SCHEDULE NEXT").frame(maxWidth: .infinity)
             }
@@ -229,7 +229,7 @@ struct PriorityQueueView: View {
             .buttonStyle(PrimaryRunButtonStyle())
             .disabled(!vm.canScheduleAll)
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
     }
 
     private var waterlineLabel: String {
@@ -420,7 +420,7 @@ struct PriorityQueueView: View {
             Text(label)
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(isOn ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, 12).padding(.vertical, 8)
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5).padding(.vertical, OPSStyle.Layout.spacing2)
                 .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius).fill(isOn ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark))
                 .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius).stroke(isOn ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard))
         }

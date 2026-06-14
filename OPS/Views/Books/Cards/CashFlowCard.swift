@@ -360,14 +360,14 @@ struct CashFlowCard: View {
 #if DEBUG
 #Preview("CashFlowCard — seeded") {
     CashFlowCard(viewModel: .previewStub())
-        .padding(.vertical, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing4)
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
 }
 
 #Preview("CashFlowCard — empty") {
     CashFlowCard(viewModel: .previewEmpty())
-        .padding(.vertical, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing4)
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
 }

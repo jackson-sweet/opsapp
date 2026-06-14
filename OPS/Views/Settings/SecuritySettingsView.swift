@@ -47,9 +47,9 @@ struct SecuritySettingsView: View {
 
                 ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         // App Access section
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("APP ACCESS")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -57,7 +57,7 @@ struct SecuritySettingsView: View {
                             VStack(spacing: 0) {
                                 // PIN toggle
                                 HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
+                                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                         Text("LOCK IT DOWN")
                                             .font(OPSStyle.Typography.cardTitle)
                                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -79,7 +79,7 @@ struct SecuritySettingsView: View {
                                     ))
                                     .tint(OPSStyle.Colors.text)
                                 }
-                                .padding(16)
+                                .padding(OPSStyle.Layout.spacing3)
                                 .wizardTarget("enable_pin", style: .row)
 
                                 if pinManager.hasPINEnabled {
@@ -92,7 +92,7 @@ struct SecuritySettingsView: View {
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     }
                                     .padding(.vertical, 14)
-                                    .padding(.horizontal, 16)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                                 }
                             }
                             .background(OPSStyle.Colors.cardBackgroundDark)
@@ -102,12 +102,12 @@ struct SecuritySettingsView: View {
                                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .id(AnchorID.appAccess)
                         .deepLinkSpotlight(highlightedSection == AnchorID.appAccess)
 
                         // Account Security section
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("ACCOUNT SECURITY")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -129,12 +129,12 @@ struct SecuritySettingsView: View {
                                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .id(AnchorID.accountSecurity)
                         .deepLinkSpotlight(highlightedSection == AnchorID.accountSecurity)
                     }
-                    .padding(.vertical, 24)
-                    .padding(.top, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing4)
+                    .padding(.top, OPSStyle.Layout.spacing2_5)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: SettingsDeepLink.security)) { notification in
                     guard let section = notification.userInfo?[SettingsDeepLink.userInfoSectionKey] as? String else { return }
@@ -195,22 +195,22 @@ struct SecuritySettingsView: View {
             OPSStyle.Colors.backgroundGradient
                 .ignoresSafeArea()
 
-            VStack(spacing: 24) {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
                 Text("Reset Password")
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.top, 24)
+                    .padding(.top, OPSStyle.Layout.spacing4)
 
                 if !passwordResetSuccess {
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         Text("Enter your email address to receive a password reset link.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 8)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.bottom, OPSStyle.Layout.spacing2)
 
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("Email Address")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -232,7 +232,7 @@ struct SecuritySettingsView: View {
                             // Show developer mode button when secret phrase is entered
                             // Check directly without onChange
                             if resetEmail.lowercased() == "railmetwice" {
-                                VStack(spacing: 8) {
+                                VStack(spacing: OPSStyle.Layout.spacing2) {
                                     if UserDefaults.standard.bool(forKey: "developerModeEnabled") {
                                         // Show if already enabled
                                         HStack {
@@ -242,7 +242,7 @@ struct SecuritySettingsView: View {
                                                 .font(OPSStyle.Typography.caption)
                                                 .foregroundColor(OPSStyle.Colors.successStatus)
                                         }
-                                        .padding(.top, 8)
+                                        .padding(.top, OPSStyle.Layout.spacing2)
                                     } else {
                                         // Show activation button
                                         Button(action: activateDeveloperMode) {
@@ -254,32 +254,32 @@ struct SecuritySettingsView: View {
                                             }
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                                             .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 12)
+                                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
                                             .background(
                                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                                     .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                                             )
                                         }
-                                        .padding(.top, 8)
+                                        .padding(.top, OPSStyle.Layout.spacing2)
                                     }
                                 }
                                 .transition(.scale.combined(with: .opacity))
                             }
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         if let error = passwordResetError {
                             Text(error)
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.errorStatus)
                                 .multilineTextAlignment(.center)
-                                .padding(.horizontal, 20)
-                                .padding(.top, 8)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                                .padding(.top, OPSStyle.Layout.spacing2)
                         }
 
                         Spacer()
 
-                        HStack(spacing: 16) {
+                        HStack(spacing: OPSStyle.Layout.spacing3) {
                             Button(action: {
                                 resetPasswordFields()
                                 showResetPasswordSheet = false
@@ -288,7 +288,7 @@ struct SecuritySettingsView: View {
                                     .font(OPSStyle.Typography.button)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 16)
+                                    .padding(.vertical, OPSStyle.Layout.spacing3)
                                     .background(OPSStyle.Colors.cardBackgroundDark)
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
@@ -300,7 +300,7 @@ struct SecuritySettingsView: View {
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.invertedText))
                                         .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 16)
+                                        .padding(.vertical, OPSStyle.Layout.spacing3)
                                         .background(OPSStyle.Colors.primaryAccent)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 } else {
@@ -308,23 +308,23 @@ struct SecuritySettingsView: View {
                                         .font(OPSStyle.Typography.button)
                                         .foregroundColor(OPSStyle.Colors.invertedText)
                                         .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 16)
+                                        .padding(.vertical, OPSStyle.Layout.spacing3)
                                         .background(OPSStyle.Colors.primaryAccent)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 }
                             }
                             .disabled(!isEmailValid || passwordResetInProgress)
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .padding(.bottom, 40)
                     }
                 } else {
                     // Success message
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         Image(systemName: developerModeActivated ? "hammer.circle.fill" : OPSStyle.Icons.checkmarkCircleFill)
                             .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(developerModeActivated ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.successStatus)
-                            .padding(.bottom, 8)
+                            .padding(.bottom, OPSStyle.Layout.spacing2)
 
                         Text(developerModeActivated ? "Developer Mode Activated!" : "Reset Link Sent!")
                             .font(OPSStyle.Typography.bodyBold)
@@ -334,7 +334,7 @@ struct SecuritySettingsView: View {
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         Spacer()
 
@@ -345,16 +345,16 @@ struct SecuritySettingsView: View {
                                 .font(OPSStyle.Typography.button)
                                 .foregroundColor(OPSStyle.Colors.invertedText)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
+                                .padding(.vertical, OPSStyle.Layout.spacing3)
                                 .background(OPSStyle.Colors.primaryAccent)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .padding(.bottom, 40)
                     }
                 }
             }
-            .padding(.vertical, 20)
+            .padding(.vertical, OPSStyle.Layout.spacing3_5)
         }
     }
 
@@ -438,7 +438,7 @@ struct PINSetupSheet: View {
             ZStack {
                 OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
 
-                VStack(spacing: 24) {
+                VStack(spacing: OPSStyle.Layout.spacing4) {
                     if !showConfirmation {
                         // Enter new PIN
                         Text("ENTER NEW 4-DIGIT PIN")
@@ -500,7 +500,7 @@ struct PINSetupSheet: View {
                                 }
                             }
 
-                        HStack(spacing: 16) {
+                        HStack(spacing: OPSStyle.Layout.spacing3) {
                             Button("BACK") {
                                 showConfirmation = false
                                 confirmedPIN = ""

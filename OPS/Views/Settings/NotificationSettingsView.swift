@@ -120,11 +120,11 @@ struct NotificationSettingsView: View {
                     title: "Notifications",
                     onBackTapped: { dismiss() }
                 )
-                .padding(.bottom, 24)
+                .padding(.bottom, OPSStyle.Layout.spacing4)
 
                 ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         // Permission Status Card
                         notificationStatusCard
 
@@ -183,7 +183,7 @@ struct NotificationSettingsView: View {
                         .id(AnchorID.temporaryMute)
                         .deepLinkSpotlight(highlightedSection == AnchorID.temporaryMute)
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .padding(.bottom, 40)
                 }
                 .wizardTarget("configure_notifications")
@@ -281,7 +281,7 @@ struct NotificationSettingsView: View {
     // MARK: - Gold Standard Helpers
 
     private func settingsSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text(title)
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -301,7 +301,7 @@ struct NotificationSettingsView: View {
     // MARK: - Loading & Error States
 
     private var loadingCard: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             ProgressView()
                 .tint(OPSStyle.Colors.loadingSpinner)
             Text("Loading preferences...")
@@ -309,7 +309,7 @@ struct NotificationSettingsView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing4)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
@@ -319,8 +319,8 @@ struct NotificationSettingsView: View {
     }
 
     private func errorCard(_ message: String) -> some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -337,7 +337,7 @@ struct NotificationSettingsView: View {
                 Text("RETRY")
                     .font(OPSStyle.Typography.button)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
                     .padding(.vertical, 10)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -346,7 +346,7 @@ struct NotificationSettingsView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing4)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
@@ -451,7 +451,7 @@ struct NotificationSettingsView: View {
     private func channelPreferencesSection(eventTypes: [NotificationEventType]) -> some View {
         VStack(spacing: 0) {
             // Category header with bulk picker (lighter background — matches permissions)
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 HStack(spacing: 6) {
                     Text("ALL IN SECTION")
                         .font(OPSStyle.Typography.captionBold)
@@ -476,7 +476,7 @@ struct NotificationSettingsView: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 14)
             .background(OPSStyle.Colors.subtleBackground)
 
@@ -505,7 +505,7 @@ struct NotificationSettingsView: View {
         let toggle = preferences?.toggle(for: eventType) ?? ChannelToggle(push: true, email: false)
         let currentMode = ChannelMode.from(toggle: toggle)
 
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack {
                 Text(eventType.displayName)
                     .font(OPSStyle.Typography.body)
@@ -527,8 +527,8 @@ struct NotificationSettingsView: View {
                 setChannelMode(eventType: eventType, mode: newMode)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
     }
 
     // Picker is now SettingsSegmentedPicker in Styles/Components/SegmentedControl.swift
@@ -582,7 +582,7 @@ struct NotificationSettingsView: View {
         return VStack(spacing: 0) {
             // Enable toggle
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("Quiet Hours")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -610,19 +610,19 @@ struct NotificationSettingsView: View {
                 .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
             }
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
 
             if isEnabled {
                 Divider().background(OPSStyle.Colors.cardBorder)
 
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     Text("QUIET HOURS")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                    HStack(spacing: 16) {
+                    HStack(spacing: OPSStyle.Layout.spacing3) {
                         // Start time picker
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                             Text("From")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -648,15 +648,15 @@ struct NotificationSettingsView: View {
                                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
+                                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                                .padding(.vertical, OPSStyle.Layout.spacing2)
                                 .background(OPSStyle.Colors.cardBackground)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
                         }
 
                         // End time picker
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                             Text("To")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -682,8 +682,8 @@ struct NotificationSettingsView: View {
                                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
+                                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                                .padding(.vertical, OPSStyle.Layout.spacing2)
                                 .background(OPSStyle.Colors.cardBackground)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
@@ -695,10 +695,10 @@ struct NotificationSettingsView: View {
                     Text("Notifications silenced \(formatHour(quietHoursStartInt)) - \(formatHour(quietHoursEndInt))")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .padding(.top, 4)
+                        .padding(.top, OPSStyle.Layout.spacing1)
                 }
                 .padding(.vertical, 14)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
         }
     }
@@ -785,7 +785,7 @@ struct NotificationSettingsView: View {
                 isOn: $notifyProjectAdvance
             )
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .onChange(of: notifyProjectAdvance) { _, newValue in
                 if newValue {
                     rescheduleAllNotifications()
@@ -799,12 +799,12 @@ struct NotificationSettingsView: View {
             if notifyProjectAdvance {
                 Divider().background(OPSStyle.Colors.cardBorder)
 
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     Text("REMINDER SCHEDULE")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         DaySelector(value: $advanceNoticeDays1, label: "First", allowNone: false)
                             .onChange(of: advanceNoticeDays1) { _, _ in rescheduleAllNotifications() }
                         DaySelector(value: $advanceNoticeDays2, label: "Second", allowNone: true)
@@ -817,14 +817,14 @@ struct NotificationSettingsView: View {
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .frame(maxWidth: .infinity)
-                        .padding(.top, 8)
+                        .padding(.top, OPSStyle.Layout.spacing2)
                 }
                 .padding(.vertical, 14)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                 Divider().background(OPSStyle.Colors.cardBorder)
 
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     Text("NOTIFICATION TIME")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -854,7 +854,7 @@ struct NotificationSettingsView: View {
                     }
                 }
                 .padding(.vertical, 14)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
         }
     }
@@ -862,7 +862,7 @@ struct NotificationSettingsView: View {
     // MARK: - Test Notification
 
     private var testNotificationCard: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Text("Send a test to verify settings")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -880,7 +880,7 @@ struct NotificationSettingsView: View {
                 }
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing3)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.thick)
@@ -890,7 +890,7 @@ struct NotificationSettingsView: View {
             .opacity(notificationManager.isNotificationsEnabled ? 1.0 : 0.5)
         }
         .padding(.vertical, 14)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
     // MARK: - Temporary Mute Settings (local-only, unchanged)
@@ -898,7 +898,7 @@ struct NotificationSettingsView: View {
     private var temporaryMuteSettings: some View {
         VStack(spacing: 0) {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("Mute All Notifications")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -922,17 +922,17 @@ struct NotificationSettingsView: View {
                     }
             }
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
 
             if isMuted {
                 Divider().background(OPSStyle.Colors.cardBorder)
 
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     Text("MUTE DURATION")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         ForEach([1, 2, 4, 8, 24], id: \.self) { hours in
                             Button {
                                 muteHours = hours
@@ -941,7 +941,7 @@ struct NotificationSettingsView: View {
                                 Text("\(hours)h")
                                     .font(OPSStyle.Typography.caption)
                                     .padding(.vertical, 6)
-                                    .padding(.horizontal, 12)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                                     .background(muteHours == hours ?
                                                 OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackground)
                                     .foregroundColor(muteHours == hours ? OPSStyle.Colors.invertedText : OPSStyle.Colors.primaryText)
@@ -961,11 +961,11 @@ struct NotificationSettingsView: View {
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
                         }
-                        .padding(.top, 4)
+                        .padding(.top, OPSStyle.Layout.spacing1)
                     }
                 }
                 .padding(.vertical, 14)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
         }
     }
@@ -1050,12 +1050,12 @@ struct DaySelector: View {
                 }
             }
         } label: {
-            VStack(spacing: 4) {
+            VStack(spacing: OPSStyle.Layout.spacing1) {
                 Text(label.uppercased())
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     if value == 0 {
                         Text("NONE")
                             .font(OPSStyle.Typography.bodyBold)
@@ -1074,8 +1074,8 @@ struct DaySelector: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
                 .background(OPSStyle.Colors.cardBackground)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             }

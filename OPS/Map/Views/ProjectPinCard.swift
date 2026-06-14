@@ -30,7 +30,7 @@ struct ProjectPinCard: View {
             // ── Drag indicator ──
             HStack {
                 Spacer()
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                     .fill(Color.white.opacity(0.20))
                     .frame(width: 36, height: 4)
                 Spacer()
@@ -43,7 +43,7 @@ struct ProjectPinCard: View {
 
                 // ── Header: Project name + Status badge ──
                 HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                         Text(project.title.uppercased())
                             .font(OPSStyle.Typography.caption)
                             .tracking(0.5)
@@ -75,10 +75,10 @@ struct ProjectPinCard: View {
 
                 // ── Divider before buttons ──
                 divider
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
                 // ── Action buttons ──
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Button(action: onNavigate) {
                         Text("NAVIGATE")
                             .font(OPSStyle.Typography.caption)
@@ -107,7 +107,7 @@ struct ProjectPinCard: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(.bottom, 4)
+                .padding(.bottom, OPSStyle.Layout.spacing1)
 
                 // ── Expand hint (when collapsed) ──
                 if !isExpanded {
@@ -122,7 +122,7 @@ struct ProjectPinCard: View {
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Spacer()
                     }
-                    .padding(.top, 4)
+                    .padding(.top, OPSStyle.Layout.spacing1)
                 }
 
                 // ── Expanded content: Tasks, Team, Photos ──
@@ -131,7 +131,7 @@ struct ProjectPinCard: View {
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.bottom, 14)
         }
         .background(
@@ -207,8 +207,8 @@ struct ProjectPinCard: View {
             .font(OPSStyle.Typography.miniLabel)
             .tracking(0.3)
             .foregroundColor(project.status.color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
+            .padding(.vertical, OPSStyle.Layout.spacing1)
             .background(
                 RoundedRectangle(cornerRadius: 3)
                     .fill(project.status.color.opacity(0.15))
@@ -222,8 +222,8 @@ struct ProjectPinCard: View {
         // ── Tasks ──
         if !allTasks.isEmpty {
             divider
-                .padding(.top, 8)
-                .padding(.bottom, 12)
+                .padding(.top, OPSStyle.Layout.spacing2)
+                .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
             Text("TASKS")
                 .font(OPSStyle.Typography.microLabel)
@@ -237,7 +237,7 @@ struct ProjectPinCard: View {
         // ── Team ──
         if !teamMembers.isEmpty {
             divider
-                .padding(.vertical, 12)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
             Text("TEAM")
                 .font(OPSStyle.Typography.microLabel)
@@ -265,7 +265,7 @@ struct ProjectPinCard: View {
         let taskColor = Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent
         let isDone = task.status == .completed || task.status == .cancelled
 
-        return HStack(spacing: 4) {
+        return HStack(spacing: OPSStyle.Layout.spacing1) {
             Circle()
                 .fill(taskColor)
                 .frame(width: 6, height: 6)
@@ -277,7 +277,7 @@ struct ProjectPinCard: View {
                 .strikethrough(isDone, color: OPSStyle.Colors.tertiaryText)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
         .padding(.vertical, 5)
         .background(
             RoundedRectangle(cornerRadius: 3)
@@ -374,7 +374,7 @@ struct ProjectPinCard: View {
 
         if !imageURLs.isEmpty {
             divider
-                .padding(.vertical, 12)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
             Text("PHOTOS")
                 .font(OPSStyle.Typography.microLabel)
@@ -383,7 +383,7 @@ struct ProjectPinCard: View {
                 .padding(.bottom, 6)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach(imageURLs, id: \.self) { urlString in
                         if let url = URL(string: urlString) {
                             AsyncImage(url: url) { phase in
@@ -393,7 +393,7 @@ struct ProjectPinCard: View {
                                         .resizable()
                                         .scaledToFill()
                                         .frame(width: 80, height: 80)
-                                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                                        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
                                 case .failure:
                                     photoPlaceholder
                                 case .empty:
@@ -407,12 +407,12 @@ struct ProjectPinCard: View {
                     }
                 }
             }
-            .padding(.bottom, 12)
+            .padding(.bottom, OPSStyle.Layout.spacing2_5)
         }
     }
 
     private var photoPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 4)
+        RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
             .fill(Color.white.opacity(0.05))
             .frame(width: 80, height: 80)
             .overlay(

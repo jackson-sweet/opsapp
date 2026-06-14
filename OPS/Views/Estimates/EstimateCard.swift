@@ -132,7 +132,7 @@ struct EstimateCard: View {
 
     private var statusBadge: some View {
         let color = estimate.status.color
-        return HStack(spacing: 4) {
+        return HStack(spacing: OPSStyle.Layout.spacing1) {
             Circle()
                 .fill(color)
                 .frame(width: 8, height: 8)

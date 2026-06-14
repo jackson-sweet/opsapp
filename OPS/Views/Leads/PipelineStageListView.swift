@@ -74,12 +74,12 @@ struct PipelineStageListView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         titleRow
-                            .padding(.horizontal, 20)
-                            .padding(.top, 12)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.top, OPSStyle.Layout.spacing2_5)
                             .padding(.bottom, 14)
 
                         listContent
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             .padding(.bottom, 100)   // clears the tab bar
                     }
                 }
@@ -133,7 +133,7 @@ struct PipelineStageListView: View {
                 .padding(.vertical, 28)
                 .frame(maxWidth: .infinity)
         } else {
-            LazyVStack(spacing: 8) {
+            LazyVStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(leads) { lead in
                     LeadActionCard(
                         opportunity: lead,
@@ -224,7 +224,7 @@ private struct StageListNavBar: View {
                         .textCase(.uppercase)
                 }
                 .foregroundColor(OPSStyle.Colors.text2)
-                .padding(.leading, 4)
+                .padding(.leading, OPSStyle.Layout.spacing1)
                 .padding(.trailing, 10)
                 .padding(.vertical, 6)
                 .frame(minHeight: 44)   // meet the 44pt touch floor (review W-10)
@@ -235,7 +235,7 @@ private struct StageListNavBar: View {
 
             Spacer()
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .frame(height: 52)
     }
 }

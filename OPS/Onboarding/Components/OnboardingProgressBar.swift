@@ -95,9 +95,9 @@ extension OnboardingProgressBar {
 // MARK: - Preview
 
 #Preview("Company Creator Flow") {
-    VStack(spacing: 32) {
+    VStack(spacing: OPSStyle.Layout.spacing5) {
         ForEach(1...5, id: \.self) { step in
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("Step \(step) of 5")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -113,9 +113,9 @@ extension OnboardingProgressBar {
 }
 
 #Preview("Employee Flow") {
-    VStack(spacing: 32) {
+    VStack(spacing: OPSStyle.Layout.spacing5) {
         ForEach(1...3, id: \.self) { step in
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("Step \(step) of 3")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)

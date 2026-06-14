@@ -51,10 +51,10 @@ struct TaskDetailPopupSheet: View {
                 .fill(Color.white.opacity(0.3))
                 .frame(width: 36, height: 5)
                 .padding(.top, 10)
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                     header
                     if task.status == .active {
                         completeButton
@@ -64,8 +64,8 @@ struct TaskDetailPopupSheet: View {
                     infoCard
                     actionButtons
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 32)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.bottom, OPSStyle.Layout.spacing5)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -95,9 +95,9 @@ struct TaskDetailPopupSheet: View {
     private var header: some View {
         let taskColor = Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent
 
-        return VStack(alignment: .leading, spacing: 12) {
+        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             // Task type badge + status pill
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 TaskBadge(
                     name: task.taskType?.display ?? "Task",
                     color: taskColor,
@@ -136,7 +136,7 @@ struct TaskDetailPopupSheet: View {
         Button(action: {
             onComplete(task)
         }) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                 Text("MARK COMPLETE")
@@ -162,7 +162,7 @@ struct TaskDetailPopupSheet: View {
         Button(action: {
             showReopenAlert = true
         }) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: "arrow.uturn.backward.circle.fill")
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                 Text("REOPEN TASK")
@@ -219,7 +219,7 @@ struct TaskDetailPopupSheet: View {
         Button(action: {
             onScheduleTap?(task)
         }) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: "calendar")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -240,8 +240,8 @@ struct TaskDetailPopupSheet: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
@@ -272,7 +272,7 @@ struct TaskDetailPopupSheet: View {
                 }
             }
         }) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: "person.2")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -314,7 +314,7 @@ struct TaskDetailPopupSheet: View {
                                     Text("+\(selectedMembers.count - 5)")
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                        .padding(.leading, 8)
+                                        .padding(.leading, OPSStyle.Layout.spacing2)
                                 }
                             }
                         }
@@ -327,8 +327,8 @@ struct TaskDetailPopupSheet: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
@@ -379,14 +379,14 @@ struct TaskDetailPopupSheet: View {
 
                         Spacer()
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding(.bottom, 4)
+        .padding(.bottom, OPSStyle.Layout.spacing1)
         .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
@@ -444,15 +444,15 @@ struct TaskDetailPopupSheet: View {
             .disabled(!teamDraftIsDirty)
             .accessibilityIdentifier("taskDetailTeamDoneButton")
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.top, OPSStyle.Layout.spacing2)
+        .padding(.bottom, OPSStyle.Layout.spacing1)
     }
 
     // MARK: - Static Info Row
 
     private func infoRow(icon: String, label: String, value: String) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: icon)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -470,15 +470,15 @@ struct TaskDetailPopupSheet: View {
 
             Spacer()
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
     }
 
     private var divider: some View {
         Rectangle()
             .fill(OPSStyle.Colors.cardBorder)
             .frame(height: 1)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
     // MARK: - Action Buttons

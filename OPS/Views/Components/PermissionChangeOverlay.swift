@@ -59,7 +59,7 @@ struct PermissionChangeOverlay: View {
                         .font(OPSStyle.Typography.button)
                         .foregroundColor(OPSStyle.Colors.buttonText)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .padding(.vertical, OPSStyle.Layout.spacing3)
                         .background(OPSStyle.Colors.primaryAccent)
                         .cornerRadius(OPSStyle.Layout.buttonRadius)
                 }

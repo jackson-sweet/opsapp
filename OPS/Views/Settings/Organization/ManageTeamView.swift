@@ -125,14 +125,14 @@ struct ManageTeamView: View {
                     title: "Manage Team",
                     onBackTapped: { dismiss() }
                 )
-                .padding(.bottom, 8)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
 
                 if isLoading {
                     loadingView
                 } else {
                     ScrollViewReader { proxy in
                         ScrollView {
-                            VStack(alignment: .leading, spacing: 24) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                                 // Search + seat count
                                 headerSection
 
@@ -144,7 +144,7 @@ struct ManageTeamView: View {
                                 // Team member sections by role
                                 if filteredMembers.isEmpty {
                                     emptyStateView
-                                        .padding(.horizontal, 20)
+                                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                                 } else {
                                     teamSections
                                 }
@@ -159,7 +159,7 @@ struct ManageTeamView: View {
                                     inviteButton
                                 }
                             }
-                            .padding(.vertical, 16)
+                            .padding(.vertical, OPSStyle.Layout.spacing3)
                             .refreshable {
                                 await refreshTeamData()
                             }
@@ -305,11 +305,11 @@ struct ManageTeamView: View {
     // MARK: - Header Section
 
     private var headerSection: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             SearchBar(searchText: $searchText, placeholder: "Search team members...")
 
             // Seat usage bar
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Text("\(teamMembers.count) MEMBER\(teamMembers.count == 1 ? "" : "S")")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -318,7 +318,7 @@ struct ManageTeamView: View {
 
                 if isCompanyAdmin {
                     Button(action: { showSeatManagement = true }) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "person.crop.rectangle.stack")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             Text("SEATS")
@@ -329,13 +329,13 @@ struct ManageTeamView: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Team Sections
 
     private var teamSections: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
             // Owner first: split admin members into owners and non-owner admins
             let owners = filteredMembers.filter { $0.role == .owner }
                 .sorted { u1, u2 in
@@ -372,7 +372,7 @@ struct ManageTeamView: View {
     // MARK: - Collapsible Unassigned Section
 
     private var collapsibleUnassignedSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             // Tappable section header
             Button(action: {
                 withAnimation(.easeInOut(duration: 0.2)) {
@@ -397,7 +397,7 @@ struct ManageTeamView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             if !isUnassignedCollapsed {
                 VStack(spacing: 0) {
@@ -417,7 +417,7 @@ struct ManageTeamView: View {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -426,12 +426,12 @@ struct ManageTeamView: View {
     // MARK: - Role Section
 
     private func roleSection(title: String, icon: String, members: [User], color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             // Section header — title only, no decorative role icon
             Text("\(title) (\(members.count))")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             // Members card
             VStack(spacing: 0) {
@@ -451,7 +451,7 @@ struct ManageTeamView: View {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 
@@ -462,7 +462,7 @@ struct ManageTeamView: View {
         let isCreator = member.id == companyCreatorId
 
         return Button(action: { memberToView = member }) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Avatar with role accent — creator gets a gold ring
                 ZStack {
                     UserAvatar(user: member, size: 44)
@@ -585,8 +585,8 @@ struct ManageTeamView: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
@@ -595,7 +595,7 @@ struct ManageTeamView: View {
     // MARK: - Pending Invitations Section
 
     private var pendingInvitesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: 6) {
                 Image(systemName: "clock.arrow.circlepath")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
@@ -604,7 +604,7 @@ struct ManageTeamView: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             VStack(spacing: 0) {
                 ForEach(pendingInvitations) { invite in
@@ -623,12 +623,12 @@ struct ManageTeamView: View {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 
     private func pendingInviteRow(_ invite: PendingInvitation) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Icon avatar
             ZStack {
                 Circle()
@@ -683,15 +683,15 @@ struct ManageTeamView: View {
                     .frame(width: 32, height: 32)
             }
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
     // MARK: - Invite Button
 
     private var inviteButton: some View {
         Button(action: { showInviteSheet = true }) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: "person.badge.plus")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 Text("INVITE TEAM MEMBERS")
@@ -707,14 +707,14 @@ struct ManageTeamView: View {
                     .stroke(OPSStyle.Colors.buttonBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .wizardTarget("view_company_code")
     }
 
     // MARK: - Supporting Views
 
     private var loadingView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             ProgressView()
                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                 .scaleEffect(1.2)
@@ -736,7 +736,7 @@ struct ManageTeamView: View {
     }
 
     private func errorBanner(_ error: String) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.errorStatus)
@@ -744,7 +744,7 @@ struct ManageTeamView: View {
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.errorStatus)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Wizard Prerequisites
@@ -1031,9 +1031,9 @@ struct TeamInviteSheet: View {
                     .ignoresSafeArea()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                         // Header
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("INVITE TEAM MEMBERS")
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -1042,16 +1042,16 @@ struct TeamInviteSheet: View {
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         // Company code section
                         if !companyCode.isEmpty {
                             companyCodeCard
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
 
                         // Input fields
-                        VStack(spacing: 12) {
+                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
                             ForEach(inviteInputs.indices, id: \.self) { index in
                                 inviteInputRow(index: index)
                             }
@@ -1059,7 +1059,7 @@ struct TeamInviteSheet: View {
                             // Add another button
                             if inviteInputs.count < 10 {
                                 Button(action: addInputField) {
-                                    HStack(spacing: 8) {
+                                    HStack(spacing: OPSStyle.Layout.spacing2) {
                                         Image(systemName: "plus.circle.fill")
                                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -1068,19 +1068,19 @@ struct TeamInviteSheet: View {
                                             .font(OPSStyle.Typography.body)
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     }
-                                    .padding(.vertical, 8)
+                                    .padding(.vertical, OPSStyle.Layout.spacing2)
                                 }
                             }
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         // Role picker
                         InviteRolePicker(selectedRoleId: $selectedRoleId)
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         // Error message
                         if let error = errorMessage {
-                            HStack(spacing: 8) {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.errorStatus)
@@ -1089,12 +1089,12 @@ struct TeamInviteSheet: View {
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.errorStatus)
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
 
                         Spacer()
                     }
-                    .padding(.vertical, 20)
+                    .padding(.vertical, OPSStyle.Layout.spacing3_5)
                 }
             }
             .standardSheetToolbar(
@@ -1116,7 +1116,7 @@ struct TeamInviteSheet: View {
     // MARK: - Company Code Card
 
     private var companyCodeCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("CREW CODE")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -1137,7 +1137,7 @@ struct TeamInviteSheet: View {
 
                     Spacer()
 
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: showCopiedFeedback ? "checkmark" : "doc.on.doc")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         Text(showCopiedFeedback ? "COPIED" : "COPY")
@@ -1170,7 +1170,7 @@ struct TeamInviteSheet: View {
                 let inputType = detectInputType(input)
 
                 if !input.isEmpty {
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: inputType == .phone ? "phone.fill" : "envelope.fill")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         Text(inputType == .phone ? "PHONE" : "EMAIL")
@@ -1198,7 +1198,7 @@ struct TeamInviteSheet: View {
                     Text("Email or phone number")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.placeholderText)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                 }
 
                 TextField("", text: Binding(
@@ -1210,7 +1210,7 @@ struct TeamInviteSheet: View {
                 .keyboardType(.emailAddress)
                 .autocapitalization(.none)
                 .autocorrectionDisabled()
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
             .padding(.vertical, 14)
             .background(OPSStyle.Colors.cardBackgroundDark)
@@ -1451,12 +1451,12 @@ struct EditTeamMemberSheet: View {
                     .ignoresSafeArea()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                         // Member info header
-                        HStack(spacing: 16) {
+                        HStack(spacing: OPSStyle.Layout.spacing3) {
                             UserAvatar(user: member, size: 56)
 
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                 Text(member.fullName)
                                     .font(OPSStyle.Typography.bodyBold)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -1470,14 +1470,14 @@ struct EditTeamMemberSheet: View {
 
                             Spacer()
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         // Role selection
                         SectionCard(
                             icon: "person.badge.key",
                             title: "Employee Role"
                         ) {
-                            VStack(spacing: 12) {
+                            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 ForEach(UserRole.allCases.sorted(by: { $0.hierarchy < $1.hierarchy }), id: \.rawValue) { role in
                                     roleOption(
                                         role: role,
@@ -1487,9 +1487,9 @@ struct EditTeamMemberSheet: View {
                                 }
                             }
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     }
-                    .padding(.vertical, 20)
+                    .padding(.vertical, OPSStyle.Layout.spacing3_5)
                 }
             }
             .navigationTitle("Edit Role")
@@ -1528,12 +1528,12 @@ struct EditTeamMemberSheet: View {
         Button(action: {
             selectedRole = role
         }) {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: selectedRole == role ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(selectedRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(title.uppercased())
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(selectedRole == role ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
@@ -1546,7 +1546,7 @@ struct EditTeamMemberSheet: View {
 
                 Spacer()
             }
-            .padding(16)
+            .padding(OPSStyle.Layout.spacing3)
             .background(selectedRole == role ? OPSStyle.Colors.subtleBackground : Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(

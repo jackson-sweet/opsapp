@@ -55,14 +55,14 @@ struct ProjectReminderChecklist: View {
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                 VStack(spacing: OPSStyle.Layout.spacing3) {
                     ForEach(Array(groupedReminders.enumerated()), id: \.offset) { _, group in
                         TaskRemindersGroup(task: group.task, reminders: group.reminders)
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
         }
     }
@@ -82,7 +82,7 @@ private struct TaskRemindersGroup: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Circle()
                     .fill(Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent)
                     .frame(width: 8, height: 8)

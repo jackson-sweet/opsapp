@@ -78,7 +78,7 @@ struct PlanSelectionView: View {
                     .ignoresSafeArea()
                 
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         // Header
                         headerSection
                         
@@ -104,7 +104,7 @@ struct PlanSelectionView: View {
                         
                         // Payment button
                         paymentButton
-                            .padding(.top, 20)
+                            .padding(.top, OPSStyle.Layout.spacing3_5)
                         
                         // Terms and conditions
                         termsSection
@@ -198,7 +198,7 @@ struct PlanSelectionView: View {
                     // Main content
                     VStack(spacing: 28) {
                         // Status indicator section
-                        VStack(spacing: 20) {
+                        VStack(spacing: OPSStyle.Layout.spacing3_5) {
                             // Tactical icon with accent
                             ZStack {
                                 // Background circle with subtle accent
@@ -215,8 +215,8 @@ struct PlanSelectionView: View {
                             .animation(OPSStyle.Animation.standard, value: isPollingSubscriptionStatus)
                             
                             // Status text stack
-                            VStack(spacing: 8) {
-                                HStack(spacing: 8) {
+                            VStack(spacing: OPSStyle.Layout.spacing2) {
+                                HStack(spacing: OPSStyle.Layout.spacing2) {
                                     Text("STATUS:")
                                         .font(OPSStyle.Typography.captionBold)
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -247,12 +247,12 @@ struct PlanSelectionView: View {
                                         .animation(.easeInOut(duration: 0.4).repeatForever().delay(Double(index) * 0.2), value: pollingAttempts)
                                 }
                             }
-                            .padding(.vertical, 8)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
                         } else {
                             // Timeout state
-                            VStack(spacing: 20) {
+                            VStack(spacing: OPSStyle.Layout.spacing3_5) {
                                 // Warning indicator
-                                HStack(spacing: 8) {
+                                HStack(spacing: OPSStyle.Layout.spacing2) {
                                     Image(systemName: "exclamationmark.triangle")
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -271,7 +271,7 @@ struct PlanSelectionView: View {
                                 Button(action: {
                                     stopPollingAndDismiss()
                                 }) {
-                                    HStack(spacing: 8) {
+                                    HStack(spacing: OPSStyle.Layout.spacing2) {
                                         Text("CONTINUE")
                                             .font(OPSStyle.Typography.captionBold)
                                         
@@ -279,7 +279,7 @@ struct PlanSelectionView: View {
                                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                                     }
                                     .foregroundColor(OPSStyle.Colors.primaryText)
-                                    .padding(.horizontal, 20)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                                     .padding(.vertical, 10)
                                     .background(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -291,7 +291,7 @@ struct PlanSelectionView: View {
                         
                         // Bottom status indicator
                         if pollingAttempts < maxPollingAttempts {
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 Text("ATTEMPT")
                                     .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -300,10 +300,10 @@ struct PlanSelectionView: View {
                                     .font(OPSStyle.Typography.captionBold)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
-                            .padding(.top, 8)
+                            .padding(.top, OPSStyle.Layout.spacing2)
                         }
                     }
-                    .padding(.horizontal, 32)
+                    .padding(.horizontal, OPSStyle.Layout.spacing5)
                     .padding(.vertical, 36)
                     
                     // Bottom accent line
@@ -318,7 +318,7 @@ struct PlanSelectionView: View {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
                 .scaleEffect(isPollingSubscriptionStatus ? 1.0 : 0.95)
                 .opacity(isPollingSubscriptionStatus ? 1.0 : 0)
                 .animation(OPSStyle.Animation.fast, value: isPollingSubscriptionStatus)
@@ -329,7 +329,7 @@ struct PlanSelectionView: View {
     // MARK: - Header Section
     
     private var headerSection: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: OPSStyle.Layout.spacing1) {
             Text("SELECT PLAN")
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -338,13 +338,13 @@ struct PlanSelectionView: View {
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
-        .padding(.top, 20)
+        .padding(.top, OPSStyle.Layout.spacing3_5)
     }
     
     // MARK: - Billing Toggle
     
     private var billingToggle: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             // Minimal section header
             Text("BILLING CYCLE")
                 .font(OPSStyle.Typography.smallCaption)
@@ -358,14 +358,14 @@ struct PlanSelectionView: View {
                             selectedSchedule = schedule
                         }
                     }) {
-                        VStack(spacing: 4) {
+                        VStack(spacing: OPSStyle.Layout.spacing1) {
                             Text(schedule.displayName.uppercased())
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(selectedSchedule == schedule ? .black : OPSStyle.Colors.primaryText)
                             
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, OPSStyle.Layout.spacing2_5)
                         .background(
                             selectedSchedule == schedule ? 
                             Color.white : 
@@ -385,13 +385,13 @@ struct PlanSelectionView: View {
     // MARK: - Plan Cards
     
     private var planCards: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             // Minimal section header
             Text("AVAILABLE PLANS")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             
-            VStack(spacing: 8) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach([SubscriptionPlan.starter, SubscriptionPlan.team, SubscriptionPlan.business], id: \.self) { plan in
                     PlanCard(
                         plan: plan,
@@ -413,7 +413,7 @@ struct PlanSelectionView: View {
     // MARK: - Features Section
     
     private var featuresSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             // Minimal section header
             Text("ALL PLANS INCLUDE")
                 .font(OPSStyle.Typography.smallCaption)
@@ -421,15 +421,15 @@ struct PlanSelectionView: View {
             
             // Features grid
             VStack(spacing: 0) {
-                HStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing3) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         FeatureRow(text: "Unlimited projects")
                         FeatureRow(text: "Photo attachments")
                         FeatureRow(text: "Team collaboration")
                         FeatureRow(text: "Offline mode")
                     }
                     
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         FeatureRow(text: "Real-time sync")
                         FeatureRow(text: "Calendar scheduling")
                         FeatureRow(text: "Location tracking")
@@ -438,7 +438,7 @@ struct PlanSelectionView: View {
                 }
             }
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
@@ -451,7 +451,7 @@ struct PlanSelectionView: View {
     // MARK: - Promo Code Section
     
     private var promoCodeSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             // Toggle button to show/hide promo field
             Button(action: {
                 withAnimation(OPSStyle.Animation.fast) {
@@ -489,13 +489,13 @@ struct PlanSelectionView: View {
             
             // Promo code input field
             if showPromoField {
-                VStack(spacing: 12) {
-                    HStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         TextField("ENTER CODE", text: $promoCode)
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
                             .background(OPSStyle.Colors.subtleBackground)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
@@ -743,12 +743,12 @@ struct PlanSelectionView: View {
     // MARK: - Terms Section
     
     private var termsSection: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
             Text("By subscribing, you agree to our")
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             
-            HStack(spacing: 16) {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
                 Button("Terms of Service") {
                     if let url = URL(string: "https://opsapp.co/legal") {
                         UIApplication.shared.open(url)
@@ -1313,8 +1313,8 @@ extension PlanSelectionView {
             
             Spacer()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
         .background(OPSStyle.Colors.warningStatus.opacity(0.1))
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
@@ -1326,7 +1326,7 @@ extension PlanSelectionView {
     // MARK: - Help Me Choose Section
     
     private var helpMeChooseSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             Button(action: {
                 withAnimation(OPSStyle.Animation.fast) {
                     showHelpMeChoose.toggle()
@@ -1350,9 +1350,9 @@ extension PlanSelectionView {
             }
             
             if showHelpMeChoose {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     // Starter plan (maxSeats: 3)
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         HStack {
                             Image(systemName: "person")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -1365,12 +1365,12 @@ extension PlanSelectionView {
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .padding(.horizontal, 14)
                     // Remove card backgrounds for minimalist look
 
                     // Team plan (maxSeats: 5)
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         HStack {
                             Image(systemName: "person.2")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -1383,12 +1383,12 @@ extension PlanSelectionView {
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .padding(.horizontal, 14)
                     // Remove card backgrounds for minimalist look
 
                     // Business plan (maxSeats: 10)
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         HStack {
                             Image(systemName: "person.3")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -1401,7 +1401,7 @@ extension PlanSelectionView {
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .padding(.horizontal, 14)
                     // Remove card backgrounds for minimalist look
                 }
@@ -1440,17 +1440,17 @@ struct PlanCard: View {
                         Text("CURRENT PLAN")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.invertedText)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
                             .background(OPSStyle.Colors.primaryText)
                             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.top, OPSStyle.Layout.spacing2_5)
                 }
                 
                 HStack {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         // Plan name
                         HStack(spacing: 6) {
                             Text(plan.displayName.uppercased())
@@ -1488,7 +1488,7 @@ struct PlanCard: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText.opacity(0.5))
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, isCurrentPlan ? 8 : 14)
                 .padding(.bottom, isCurrentPlan ? 14 : 0)
             }
@@ -1513,7 +1513,7 @@ struct FeatureRow: View {
     let text: String
     
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             Image(systemName: "checkmark")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)

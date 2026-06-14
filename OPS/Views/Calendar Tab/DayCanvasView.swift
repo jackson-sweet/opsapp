@@ -257,9 +257,9 @@ struct DayPageView: View {
         VStack(spacing: 0) {
             // Day header (pinned above scroll)
             dayHeader
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.top, OPSStyle.Layout.spacing2)
+                .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
             // Scrollable task list
             if tasksForDate.isEmpty && userEventsForDate.isEmpty {
@@ -471,7 +471,7 @@ struct DayPageView: View {
                 Image(systemName: selectedTaskIds.contains(task.id) ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 20))
                     .foregroundColor(selectedTaskIds.contains(task.id) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                    .padding(8)
+                    .padding(OPSStyle.Layout.spacing2)
             }
         }
 
@@ -482,13 +482,13 @@ struct DayPageView: View {
                 .offset(x: swipeOffset[task.id] ?? 0)
                 .background(alignment: .leading) {
                     if (swipeOffset[task.id] ?? 0) > 10 {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "arrow.right")
                             Text("+1")
                         }
                         .font(OPSStyle.Typography.button)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.leading, 12)
+                        .padding(.leading, OPSStyle.Layout.spacing2_5)
                     }
                 }
                 .simultaneousGesture(
@@ -597,11 +597,11 @@ struct DayPageView: View {
                 Text("[ EVENTS — \(count) ]")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
                     )
             }
@@ -622,7 +622,7 @@ struct DayPageView: View {
                 firstTimeSchedulePrompt
             } else {
                 // Standard empty state for a day with no tasks
-                VStack(spacing: 24) {
+                VStack(spacing: OPSStyle.Layout.spacing4) {
                     Spacer()
                     Text(emptyStateMessage)
                         .font(OPSStyle.Typography.smallCaption)
@@ -643,7 +643,7 @@ struct DayPageView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 // Icon + Title
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: OPSStyle.Icons.schedule)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.wizardAccent)
@@ -652,14 +652,14 @@ struct DayPageView: View {
                         .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
 
                 // Description
                 Text("Projects, tasks, and meetings show up here as you create them. Your crew sees their schedule the moment they open OPS.")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineSpacing(4)
-                    .padding(.bottom, 20)
+                    .padding(.bottom, OPSStyle.Layout.spacing3_5)
 
                 // Bullet points
                 VStack(alignment: .leading, spacing: 0) {
@@ -675,7 +675,7 @@ struct DayPageView: View {
                         .padding(.leading, 30)
                     wizardBullet(index: 3, text: "Schedule it on the calendar")
                 }
-                .padding(.bottom, 24)
+                .padding(.bottom, OPSStyle.Layout.spacing4)
 
                 // CTA button
                 Button {
@@ -706,12 +706,12 @@ struct DayPageView: View {
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.buttonText)
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .frame(height: OPSStyle.Layout.touchTargetStandard)
                     .background(OPSStyle.Colors.wizardAccent)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
-                .padding(.bottom, 12)
+                .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                 // Dismiss option
                 Button {
@@ -737,7 +737,7 @@ struct DayPageView: View {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             Spacer()
         }
@@ -772,9 +772,9 @@ struct DayPageView: View {
     private var bulkActionBar: some View {
         if isSelectMode && !selectedTaskIds.isEmpty {
             OPSActionBar {
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     // Push section
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Text("PUSH")
                             .font(OPSStyle.Typography.caption)
                             .tracking(0.8)
@@ -802,7 +802,7 @@ struct DayPageView: View {
                         .frame(height: 1)
 
                     // Extend section
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Text("EXTEND")
                             .font(OPSStyle.Typography.caption)
                             .tracking(0.8)
@@ -830,7 +830,7 @@ struct DayPageView: View {
                         .frame(height: 1)
 
                     // Bottom row: count + schedule + done
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Text("[ \(selectedTaskIds.count) SELECTED ]")
                             .font(OPSStyle.Typography.caption)
                             .tracking(0.8)
@@ -858,8 +858,8 @@ struct DayPageView: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.bottom, OPSStyle.Layout.spacing3)
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }

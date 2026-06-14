@@ -129,7 +129,7 @@ struct RouteDirectionsView: View {
                     
                     Image(systemName: showFullDirections ? "chevron.up" : "chevron.down")
                 }
-                .padding(.vertical, 12)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .frame(maxWidth: .infinity)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))

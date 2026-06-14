@@ -63,8 +63,8 @@ struct TaskTypeMergeSheet: View {
                             intro
                             targetList
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.top, OPSStyle.Layout.spacing3)
                         .padding(.bottom, 120)
                     }
                 }
@@ -113,7 +113,7 @@ struct TaskTypeMergeSheet: View {
 
     private var intro: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 ZStack {
                     Circle()
                         .fill(Color(hex: source.color) ?? OPSStyle.Colors.primaryAccent)
@@ -149,7 +149,7 @@ struct TaskTypeMergeSheet: View {
     }
 
     private var targetList: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("[ MERGE INTO ]")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -209,14 +209,14 @@ struct TaskTypeMergeSheet: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
                         .background(OPSStyle.Colors.background.opacity(0.6))
-                        .cornerRadius(4)
+                        .cornerRadius(OPSStyle.Layout.chipRadius)
                 }
 
                 Image(systemName: selectedTargetId == target.id ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(selectedTargetId == target.id ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .padding(.horizontal, 14)
             .contentShape(Rectangle())
         }
@@ -232,7 +232,7 @@ struct TaskTypeMergeSheet: View {
             )
             .frame(height: 20)
 
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Button(action: { dismiss() }) {
                     Text("Cancel")
                         .font(OPSStyle.Typography.bodyBold)
@@ -261,8 +261,8 @@ struct TaskTypeMergeSheet: View {
                 }
                 .disabled(selectedTarget == nil || isMerging)
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.bottom, OPSStyle.Layout.spacing4)
             .background(OPSStyle.Colors.background)
         }
     }
@@ -281,7 +281,7 @@ struct TaskTypeMergeSheet: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 32)
+                .padding(.horizontal, OPSStyle.Layout.spacing5)
         }
     }
 

@@ -153,7 +153,7 @@ struct InvoiceCard: View {
 
     private var statusBadge: some View {
         let color = invoice.status.badgeColor(isOverdue: invoice.isOverdue)
-        return HStack(spacing: 4) {
+        return HStack(spacing: OPSStyle.Layout.spacing1) {
             Circle()
                 .fill(color)
                 .frame(width: 8, height: 8)

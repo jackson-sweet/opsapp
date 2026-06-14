@@ -41,7 +41,7 @@ struct WonConvertCarousel: View {
                             onConvert: { onConvert(lead) },
                             onLater:   { onLater(lead) }
                         )
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .tag(index)
                     }
                 }
@@ -79,7 +79,7 @@ struct WonConvertCarousel: View {
     }
 
     private var dots: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             ForEach(0..<leads.count, id: \.self) { i in
                 Circle()
                     .fill(i == selected ? OPSStyle.Colors.text3 : Color.white.opacity(0.18))  // no exact token
@@ -99,9 +99,9 @@ struct WonConvertCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
                 wonBadge
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     eyebrow
                     Text(lead.contactName.isEmpty ? "Unnamed lead" : lead.contactName)
                         .font(.custom("Mohave-Medium", size: 15))
@@ -121,7 +121,7 @@ struct WonConvertCard: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Won lead, \(lead.contactName.isEmpty ? (lead.title ?? "Unnamed lead") : lead.contactName), ready to convert to a project")
 
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Button(action: {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     onConvert()

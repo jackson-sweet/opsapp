@@ -48,7 +48,7 @@ struct DataStorageSettingsView: View {
 
                 ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         synchronizationSection
                             .id(AnchorID.synchronization)
                             .deepLinkSpotlight(highlightedSection == AnchorID.synchronization)
@@ -65,7 +65,7 @@ struct DataStorageSettingsView: View {
                             .id(AnchorID.dataManagement)
                             .deepLinkSpotlight(highlightedSection == AnchorID.dataManagement)
                     }
-                    .padding(.vertical, 24)
+                    .padding(.vertical, OPSStyle.Layout.spacing4)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: SettingsDeepLink.dataStorage)) { notification in
                     guard let section = notification.userInfo?[SettingsDeepLink.userInfoSectionKey] as? String else { return }
@@ -113,7 +113,7 @@ struct DataStorageSettingsView: View {
     // MARK: - Synchronization Section
 
     private var synchronizationSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("SYNCHRONIZATION")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -127,7 +127,7 @@ struct DataStorageSettingsView: View {
 
                 Divider()
                     .background(OPSStyle.Colors.cardBorder)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
 
                 SettingsToggle(
                     title: "Background Sync",
@@ -137,7 +137,7 @@ struct DataStorageSettingsView: View {
 
                 Divider()
                     .background(OPSStyle.Colors.cardBorder)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
 
                 historicalDataRangeControl
             }
@@ -148,11 +148,11 @@ struct DataStorageSettingsView: View {
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     private var historicalDataRangeControl: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("Historical Data Range")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -161,7 +161,7 @@ struct DataStorageSettingsView: View {
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
-            VStack(spacing: 8) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
                 let monthOptions = [1, 3, 6, 12, 24, 36, -1]
                 let sliderSteps = Double(monthOptions.count - 1)
 
@@ -199,7 +199,7 @@ struct DataStorageSettingsView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, OPSStyle.Layout.spacing2)
                 .frame(height: 20)
             }
 
@@ -214,28 +214,28 @@ struct DataStorageSettingsView: View {
                 Text("Sync all historical data. This may take longer on first sync.")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .padding(.top, 4)
+                    .padding(.top, OPSStyle.Layout.spacing1)
             } else if historicalDataMonths == 1 {
                 Text("Only sync data from the past month. Reduces data usage.")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .padding(.top, 4)
+                    .padding(.top, OPSStyle.Layout.spacing1)
             }
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
     }
 
     // MARK: - Photo Storage Budget Section
 
     private var photoStorageBudgetSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("PHOTO STORAGE")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             PhotoStorageBudgetCard()
                 .environmentObject(dataController)
-                .padding(16)
+                .padding(OPSStyle.Layout.spacing3)
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
@@ -243,13 +243,13 @@ struct DataStorageSettingsView: View {
                         .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Auto-Download Section
 
     private var autoDownloadSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("AUTO-DOWNLOAD")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -262,18 +262,18 @@ struct DataStorageSettingsView: View {
                         .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Data Management Section
 
     private var dataManagementSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("DATA MANAGEMENT")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
-            VStack(spacing: 16) {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
                 SettingsButton(
                     title: "Clear Image Cache",
                     icon: OPSStyle.Icons.photo,
@@ -283,7 +283,7 @@ struct DataStorageSettingsView: View {
                     }
                 )
             }
-            .padding(16)
+            .padding(OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
@@ -291,7 +291,7 @@ struct DataStorageSettingsView: View {
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Formatting Helpers

@@ -38,7 +38,7 @@ struct SettingsHeader: View {
                 .font(OPSStyle.Typography.title)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 12)
+                .padding(.leading, OPSStyle.Layout.spacing2_5)
             
             // Edit button or spacer for balance
             if showEditButton {
@@ -58,8 +58,8 @@ struct SettingsHeader: View {
                     .frame(width: 44)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing2_5)
     }
 }
 */

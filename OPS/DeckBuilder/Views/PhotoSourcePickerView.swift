@@ -18,7 +18,7 @@ struct PhotoSourcePickerView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Source buttons
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     sourceButton(
                         icon: "camera.fill",
                         label: "Take Photo",
@@ -44,7 +44,7 @@ struct PhotoSourcePickerView: View {
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
                                 ForEach(projectPhotoURLs(projectId: projectId), id: \.self) { urlString in
                                     projectPhotoThumbnail(urlString: urlString)
                                 }
@@ -52,7 +52,7 @@ struct PhotoSourcePickerView: View {
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                         }
                     }
-                    .padding(.top, 24)
+                    .padding(.top, OPSStyle.Layout.spacing4)
                 }
 
                 Spacer()

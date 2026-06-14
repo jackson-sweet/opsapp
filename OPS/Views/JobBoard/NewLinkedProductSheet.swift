@@ -190,7 +190,7 @@ struct NewLinkedProductSheet: View {
                 }
             }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Text(selectedUnit?.display ?? "Flat rate")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)

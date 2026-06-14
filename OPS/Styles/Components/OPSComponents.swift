@@ -78,7 +78,7 @@ public struct OPSPrimaryButton: View {
             }
             .foregroundColor(OPSStyle.Colors.invertedText)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing3)
             .background(isDisabled ? OPSStyle.Colors.primaryAccent.opacity(0.5) : OPSStyle.Colors.primaryAccent)
             .cornerRadius(OPSStyle.Layout.buttonRadius)
         }
@@ -106,7 +106,7 @@ public struct OPSSecondaryButton: View {
             }
             .foregroundColor(OPSStyle.Colors.primaryAccent)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(
@@ -137,7 +137,7 @@ public struct OPSDestructiveButton: View {
             }
             .foregroundColor(OPSStyle.Colors.primaryText)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.errorStatus)
             .cornerRadius(OPSStyle.Layout.buttonRadius)
         }

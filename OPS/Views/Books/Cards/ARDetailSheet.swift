@@ -66,7 +66,7 @@ struct ARDetailSheet: View {
 
     private var topOutstandingSection: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Text("//").foregroundColor(OPSStyle.Colors.textMute)
                 Text("TOP OUTSTANDING").foregroundColor(OPSStyle.Colors.tertiaryText)
             }

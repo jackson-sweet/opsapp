@@ -29,14 +29,14 @@ struct CompanyNameView: View {
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 44, height: 44)
-                            .padding(.bottom, 8)
+                            .padding(.bottom, OPSStyle.Layout.spacing2)
                         Text("OPS")
                             .font(OPSStyle.Typography.largeTitle.weight(.bold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
 
                         Spacer()
                     }
-                    .padding(.leading, 4)
+                    .padding(.leading, OPSStyle.Layout.spacing1)
 
                     Spacer().frame(height: 40)
 
@@ -60,7 +60,7 @@ struct CompanyNameView: View {
                     Spacer().frame(height: 40)
 
                     // MARK: - Company name field
-                    VStack(spacing: 8) {
+                    VStack(spacing: OPSStyle.Layout.spacing2) {
                         TextField("", text: $companyName, prompt: Text("Company Name").foregroundColor(OPSStyle.Colors.secondaryText))
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -81,7 +81,7 @@ struct CompanyNameView: View {
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                             .multilineTextAlignment(.center)
-                            .padding(.bottom, 12)
+                            .padding(.bottom, OPSStyle.Layout.spacing2_5)
                     }
 
                     // MARK: - Continue button
@@ -107,7 +107,7 @@ struct CompanyNameView: View {
                                     Image(systemName: "arrow.right")
                                         .foregroundColor(OPSStyle.Colors.invertedText)
                                         .font(OPSStyle.Typography.caption.weight(.semibold))
-                                        .padding(.trailing, 20)
+                                        .padding(.trailing, OPSStyle.Layout.spacing3_5)
                                 }
                             }
                         )

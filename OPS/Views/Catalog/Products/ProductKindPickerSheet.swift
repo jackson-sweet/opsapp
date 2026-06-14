@@ -64,7 +64,7 @@ struct ProductKindPickerSheet: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .regular))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: 40, height: 40)
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("// \(category.displayLabel)")
                         .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)

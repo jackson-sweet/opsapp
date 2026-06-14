@@ -48,23 +48,23 @@ struct SyncStatusSection: View {
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(Color.white.opacity(0.1), lineWidth: 1)
             )
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.top, OPSStyle.Layout.spacing2)
         }
     }
 
     // MARK: - Header Row
 
     private var headerRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Status icon
             if isSyncing {
                 Image(systemName: "arrow.triangle.2.circlepath")
@@ -111,7 +111,7 @@ struct SyncStatusSection: View {
         VStack(spacing: 0) {
             Divider()
                 .background(Color.white.opacity(0.1))
-                .padding(.vertical, 8)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
 
             // Individual operation rows (show up to 15)
             let items = syncEngine.getPendingOperations() + syncEngine.getFailedOperations()
@@ -130,7 +130,7 @@ struct SyncStatusSection: View {
                 Text("+ \(syncEngine.getPendingOperations().count + syncEngine.getFailedOperations().count - 15) more")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .padding(.top, 4)
+                    .padding(.top, OPSStyle.Layout.spacing1)
             }
 
             // Retry all button for failed operations
@@ -153,13 +153,13 @@ struct SyncStatusSection: View {
                             .font(OPSStyle.Typography.smallCaption)
                     }
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
                     .frame(maxWidth: .infinity)
                     .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
                     .cornerRadius(8)
                 }
                 .buttonStyle(PlainButtonStyle())
-                .padding(.top, 8)
+                .padding(.top, OPSStyle.Layout.spacing2)
             }
         }
     }
@@ -242,7 +242,7 @@ struct SyncStatusSection: View {
                 .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
     }
 
     @ViewBuilder

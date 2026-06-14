@@ -112,7 +112,7 @@ struct PhotoFilterSheet: View {
                         // Date range section
                         filterSection(title: "DATE RANGE") {
                             HStack(spacing: OPSStyle.Layout.spacing3) {
-                                VStack(alignment: .leading, spacing: 4) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                     Text("From")
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -124,7 +124,7 @@ struct PhotoFilterSheet: View {
                                     }
                                 }
 
-                                VStack(alignment: .leading, spacing: 4) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                     Text("To")
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -141,7 +141,7 @@ struct PhotoFilterSheet: View {
                         // Task type section
                         if !taskTypes.isEmpty {
                             filterSection(title: "TASK TYPE") {
-                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 8)], spacing: 8) {
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: OPSStyle.Layout.spacing2)], spacing: OPSStyle.Layout.spacing2) {
                                     ForEach(taskTypes) { taskType in
                                         filterChip(
                                             label: taskType.display,
@@ -163,7 +163,7 @@ struct PhotoFilterSheet: View {
                             VStack(spacing: OPSStyle.Layout.spacing2) {
                                 // Selected project chips
                                 if !selectedProjects.isEmpty {
-                                    FlowLayout(spacing: 8) {
+                                    FlowLayout(spacing: OPSStyle.Layout.spacing2) {
                                         ForEach(selectedProjects) { project in
                                             selectedProjectChip(project)
                                         }
@@ -250,7 +250,7 @@ struct PhotoFilterSheet: View {
 
             content()
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Filter Chip
@@ -260,8 +260,8 @@ struct PhotoFilterSheet: View {
             Text(label.uppercased())
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
                 .background(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
@@ -311,7 +311,7 @@ struct PhotoFilterSheet: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 8)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
         .contentShape(Rectangle())
     }
 
@@ -349,7 +349,7 @@ struct PhotoFilterSheet: View {
                 Spacer()
             }
         }
-        .padding(12)
+        .padding(OPSStyle.Layout.spacing2_5)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(

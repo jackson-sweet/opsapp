@@ -57,7 +57,7 @@ struct ProjectPaymentReviewView: View {
             // UI overlay
             VStack(spacing: 0) {
                 header
-                    .padding(.top, 8)
+                    .padding(.top, OPSStyle.Layout.spacing2)
 
                 if activeProjects.isEmpty && !reviewingCompleted {
                     if !completedProjects.isEmpty {
@@ -74,14 +74,14 @@ struct ProjectPaymentReviewView: View {
                     Text("\(reviewedCount) OF \(activeProjects.count) REVIEWED")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(.white.opacity(0.7))
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                         .padding(.vertical, 6)
                         .background(Color.black.opacity(0.4))
                         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-                        .padding(.bottom, 8)
+                        .padding(.bottom, OPSStyle.Layout.spacing2)
 
                     directionHints
-                        .padding(.bottom, 8)
+                        .padding(.bottom, OPSStyle.Layout.spacing2)
                         .ignoresSafeArea(.container, edges: .bottom)
                 }
             }
@@ -190,13 +190,13 @@ struct ProjectPaymentReviewView: View {
 
             Color.clear.frame(width: 44, height: 44)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
     // MARK: - Direction Hints
 
     private var directionHints: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             hintPill(icon: "arrow.left", label: "SKIP", color: OPSStyle.Colors.tertiaryText)
             hintPill(icon: "arrow.right", label: "CLOSE", color: OPSStyle.Colors.successStatus)
             if hasFinancialAccess {
@@ -204,19 +204,19 @@ struct ProjectPaymentReviewView: View {
                 hintPill(icon: "arrow.down", label: "WRITE OFF", color: OPSStyle.Colors.errorStatus)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
     private func hintPill(icon: String, label: String, color: Color) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             Image(systemName: icon)
                 .font(.system(size: 10, weight: .bold))
             Text(label)
                 .font(OPSStyle.Typography.smallCaption)
         }
         .foregroundColor(color)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
         .background(color.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
     }
@@ -224,7 +224,7 @@ struct ProjectPaymentReviewView: View {
     // MARK: - No Overdue (but has completed)
 
     private var noOverdueView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
 
             // Icon with accent ring
@@ -249,7 +249,7 @@ struct ProjectPaymentReviewView: View {
 
             Spacer()
 
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Primary CTA
                 Button(action: {
                     withAnimation(.easeInOut(duration: 0.3)) {
@@ -272,7 +272,7 @@ struct ProjectPaymentReviewView: View {
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     }
                     .foregroundColor(OPSStyle.Colors.invertedText)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .frame(maxWidth: .infinity)
                     .frame(height: OPSStyle.Layout.touchTargetStandard)
                     .background(OPSStyle.Colors.primaryText)
@@ -292,7 +292,7 @@ struct ProjectPaymentReviewView: View {
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     }
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .frame(maxWidth: .infinity)
                     .frame(height: OPSStyle.Layout.touchTargetStandard)
                     .background(Color.clear)
@@ -310,7 +310,7 @@ struct ProjectPaymentReviewView: View {
     // MARK: - All Caught Up
 
     private var allCaughtUpView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
 
             // Icon with accent ring
@@ -349,7 +349,7 @@ struct ProjectPaymentReviewView: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 }
                 .foregroundColor(OPSStyle.Colors.invertedText)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .frame(maxWidth: .infinity)
                 .frame(height: OPSStyle.Layout.touchTargetStandard)
                 .background(OPSStyle.Colors.primaryText)

@@ -136,9 +136,9 @@ extension View {
     ZStack {
         OPSStyle.Colors.background.ignoresSafeArea()
 
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             // L1 section card with L2 nested cards inside (the canonical pattern)
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 Text("// L1 SECTION")
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.text3)
@@ -147,18 +147,18 @@ extension View {
                     .font(.custom("Mohave-Light", size: 38))
                     .foregroundColor(OPSStyle.Colors.text)
 
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     nested(label: "OVERDUE", value: "04", tone: OPSStyle.Colors.roseTextM)
                     nested(label: "DUE TODAY", value: "03", tone: OPSStyle.Colors.tanTextM)
                     nested(label: "OPEN", value: "17", tone: OPSStyle.Colors.text3)
                 }
             }
-            .padding(16)
+            .padding(OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .glassSurface()
 
             // L2 card alone on canvas (KPI tile pattern)
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Text("// L2 SOLO")
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.text3)
@@ -179,13 +179,13 @@ extension View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.text)
             }
-            .padding(16)
+            .padding(OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .glassDense()
 
             Spacer()
         }
-        .padding(20)
+        .padding(OPSStyle.Layout.spacing3_5)
     }
     .preferredColorScheme(.dark)
 }
@@ -202,7 +202,7 @@ private func nested(label: String, value: String, tone: Color) -> some View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.vertical, 10)
-    .padding(.horizontal, 12)
+    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
     .nestedCard()
 }
 #endif

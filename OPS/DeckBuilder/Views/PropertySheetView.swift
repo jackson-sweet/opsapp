@@ -19,7 +19,7 @@ struct PropertySheetView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     if viewModel.selection.hasEdges {
                         edgeProperties
                     }
@@ -32,7 +32,7 @@ struct PropertySheetView: View {
                         footprintProperties
                     }
                 }
-                .padding(20)
+                .padding(OPSStyle.Layout.spacing3_5)
             }
             .background(OPSStyle.Colors.background)
             .navigationTitle("Properties")
@@ -375,12 +375,12 @@ struct PropertySheetView: View {
                     Button {
                         viewModel.setRailingWallMaterial(edgeId, material: material)
                     } label: {
-                        VStack(spacing: 4) {
-                            RoundedRectangle(cornerRadius: 4)
+                        VStack(spacing: OPSStyle.Layout.spacing1) {
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                 .fill(Color(hex: material.fillHex) ?? .gray)
                                 .frame(height: 28)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                         .stroke(
                                             railing.wallMaterial == material
                                                 ? OPSStyle.Colors.primaryAccent
@@ -426,12 +426,12 @@ struct PropertySheetView: View {
                             viewModel.setHouseEdgeMaterial(edgeId, material: material)
                         }
                     } label: {
-                        VStack(spacing: 4) {
-                            RoundedRectangle(cornerRadius: 4)
+                        VStack(spacing: OPSStyle.Layout.spacing1) {
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                 .fill(Color(hex: material.fillHex) ?? .gray)
                                 .frame(height: 28)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                         .stroke(
                                             edge.houseEdgeMaterial == material
                                                 ? OPSStyle.Colors.primaryAccent

@@ -157,7 +157,7 @@ struct ExpenseCard: View {
 
     private var phaseLine: some View {
         let p = phase
-        return HStack(spacing: 4) {
+        return HStack(spacing: OPSStyle.Layout.spacing1) {
             Circle()
                 .fill(p.color)
                 .frame(width: OPSStyle.Layout.Indicator.dotMD, height: OPSStyle.Layout.Indicator.dotMD)

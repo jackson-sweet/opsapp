@@ -24,7 +24,7 @@ struct UserPermissionsListView: View {
     var body: some View {
         Group {
             if isLoading {
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                         .scaleEffect(1.2)
@@ -42,7 +42,7 @@ struct UserPermissionsListView: View {
             } else {
                 ScrollView {
                     ScrollViewReader { proxy in
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             // Section header
                             HStack(spacing: 6) {
                                 Image(systemName: OPSStyle.Icons.crew)
@@ -52,7 +52,7 @@ struct UserPermissionsListView: View {
                                     .font(OPSStyle.Typography.captionBold)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                             // Team members card
                             VStack(spacing: 0) {
@@ -71,9 +71,9 @@ struct UserPermissionsListView: View {
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
-                        .padding(.vertical, 16)
+                        .padding(.vertical, OPSStyle.Layout.spacing3)
                         .tabBarPadding()
                         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
                             if let stepId = notification.userInfo?["stepId"] as? String {
@@ -101,7 +101,7 @@ struct UserPermissionsListView: View {
         Button(action: {
             selectedMember = member
         }) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 UserAvatar(user: member, size: 44)
 
                 // Bug be2b9e23: a long full name + role badge + override badge
@@ -110,7 +110,7 @@ struct UserPermissionsListView: View {
                 // past the available row width, and drops the badges onto
                 // their own line below the name. Badges still wrap if the
                 // role string itself is unusually long.
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(member.fullName)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -159,8 +159,8 @@ struct UserPermissionsListView: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())

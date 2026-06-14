@@ -48,7 +48,7 @@ struct CompanyCodeDisplayView: View {
                     Button(action: {
                         viewModel.moveToPreviousStep()
                     }) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "chevron.left")
                                 .font(OPSStyle.Typography.button)
                             Text("Back")
@@ -67,26 +67,26 @@ struct CompanyCodeDisplayView: View {
                             .foregroundColor(secondaryTextColor)
                     }
                 }
-                .padding(.top, 8)
-                .padding(.bottom, 8)
+                .padding(.top, OPSStyle.Layout.spacing2)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                 // Step indicator bars
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     ForEach(0..<totalSteps) { step in
                         Rectangle()
                             .fill(step < currentStepNumber ? primaryTextColor : secondaryTextColor.opacity(0.3))
                             .frame(height: 2)
                     }
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Main content
                 ScrollView {
-                    VStack(spacing: 32) {
+                    VStack(spacing: OPSStyle.Layout.spacing5) {
                         // Header
-                        VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             Text("Your Company Code")
                                 .font(OPSStyle.Typography.title)
                                 .foregroundColor(primaryTextColor)
@@ -99,7 +99,7 @@ struct CompanyCodeDisplayView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         
                         // Company code display
-                        VStack(spacing: 24) {
+                        VStack(spacing: OPSStyle.Layout.spacing4) {
                             // Label row with copy button inline, right aligned
                             HStack {
                                 Text("COMPANY CODE")
@@ -120,7 +120,7 @@ struct CompanyCodeDisplayView: View {
                                             }
                                         }
                                     }) {
-                                        HStack(spacing: 4) {
+                                        HStack(spacing: OPSStyle.Layout.spacing1) {
                                             Image(systemName: showCopyFeedback ? "checkmark" : "doc.on.doc")
                                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                             Text(showCopyFeedback ? "COPIED!" : "COPY")
@@ -142,8 +142,8 @@ struct CompanyCodeDisplayView: View {
 
                                 Spacer()
                             }
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 16)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
@@ -154,13 +154,13 @@ struct CompanyCodeDisplayView: View {
                             Spacer()
                             
                             // Info section
-                            VStack(alignment: .leading, spacing: 16) {
-                                HStack(alignment: .top, spacing: 12) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+                                HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
                                     Image(systemName: OPSStyle.Icons.info)
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                                         .font(OPSStyle.Typography.body)
                                     
-                                    VStack(alignment: .leading, spacing: 8) {
+                                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                         Text("HOW IT WORKS")
                                             .font(OPSStyle.Typography.cardSubtitle)
                                             .foregroundColor(primaryTextColor)
@@ -173,12 +173,12 @@ struct CompanyCodeDisplayView: View {
                                     }
                                 }
                                 
-                                HStack(alignment: .top, spacing: 12) {
+                                HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
                                     Image(systemName: "shield")
                                         .foregroundColor(OPSStyle.Colors.successStatus)
                                         .font(OPSStyle.Typography.body)
                                     
-                                    VStack(alignment: .leading, spacing: 4) {
+                                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                         Text("Keep it secure".uppercased())
                                             .font(OPSStyle.Typography.cardSubtitle)
                                             .fontWeight(.semibold)
@@ -202,7 +202,7 @@ struct CompanyCodeDisplayView: View {
                 }
                 
                 // Bottom button
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     StandardContinueButton(
                         isDisabled: false,
                         isLoading: false,

@@ -71,7 +71,7 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
                     .ignoresSafeArea()
 
                 ScrollView {
-                    VStack(spacing: 20) {
+                    VStack(spacing: OPSStyle.Layout.spacing3_5) {
                         // Render each filter section
                         ForEach(filters) { filterConfig in
                             filterConfig.render()
@@ -96,7 +96,7 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
                             activeFiltersSummary
                         }
                     }
-                    .padding(.vertical, 20)
+                    .padding(.vertical, OPSStyle.Layout.spacing3_5)
                 }
             }
             .navigationTitle(title.uppercased())
@@ -155,7 +155,7 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
                         }
                     }
                     .padding(.vertical, 14)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .contentShape(Rectangle())
                     .onTapGesture {
                         selectedSort.wrappedValue = option
@@ -174,14 +174,14 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
     // MARK: - Active Filters Summary
 
     private var activeFiltersSummary: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("ACTIVE FILTERS")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             HStack {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     // Show active filter counts
                     ForEach(filters) { filterConfig in
                         filterConfig.renderActiveFilterRow()
@@ -200,7 +200,7 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
                         }
                     }
                 }
-                .padding(16)
+                .padding(OPSStyle.Layout.spacing3)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
@@ -208,7 +208,7 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
 
                 Spacer()
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 
@@ -230,8 +230,8 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
         icon: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: icon)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -240,7 +240,7 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             VStack(spacing: 0) {
                 content()
@@ -253,7 +253,7 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
                             .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             )
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 }
@@ -457,7 +457,7 @@ private struct MultiSelectFilterSection<T: Hashable>: View {
 
                 // Individual options
                 ForEach(Array(options.enumerated()), id: \.offset) { index, option in
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         // Color indicator (if provided)
                         if let getColorIndicator = getColorIndicator {
                             let indicator = getColorIndicator(option)
@@ -481,7 +481,7 @@ private struct MultiSelectFilterSection<T: Hashable>: View {
                                 .frame(width: 20)
                         }
 
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                             Text(getDisplay(option))
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -505,7 +505,7 @@ private struct MultiSelectFilterSection<T: Hashable>: View {
                         }
                     }
                     .padding(.vertical, 14)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .contentShape(Rectangle())
                     .onTapGesture {
                         toggleSelection(option)
@@ -559,7 +559,7 @@ private struct IdBasedMultiSelectSection<T: Identifiable>: View {
 
                 // Individual options
                 ForEach(Array(options.enumerated()), id: \.element.id) { index, option in
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         // Icon (if provided)
                         if let getIcon = getIcon, let getIconColor = getIconColor {
                             Image(systemName: getIcon(option))
@@ -568,7 +568,7 @@ private struct IdBasedMultiSelectSection<T: Identifiable>: View {
                                 .frame(width: 20)
                         }
 
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                             Text(getDisplay(option))
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -592,7 +592,7 @@ private struct IdBasedMultiSelectSection<T: Identifiable>: View {
                         }
                     }
                     .padding(.vertical, 14)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .contentShape(Rectangle())
                     .onTapGesture {
                         toggleSelection(getId(option))
@@ -691,7 +691,7 @@ private struct SearchableMultiSelectSection<T: Hashable & Identifiable>: View {
                     .background(OPSStyle.Colors.separator)
 
                 // Search field
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: OPSStyle.Icons.search)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -712,8 +712,8 @@ private struct SearchableMultiSelectSection<T: Hashable & Identifiable>: View {
                         }
                     }
                 }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .background(OPSStyle.Colors.background.opacity(0.5))
 
                 Divider()
@@ -733,7 +733,7 @@ private struct SearchableMultiSelectSection<T: Hashable & Identifiable>: View {
                     if index < displayedOptions.count - 1 {
                         Divider()
                             .background(OPSStyle.Colors.cardBackground)
-                            .padding(.leading, 16)
+                            .padding(.leading, OPSStyle.Layout.spacing3)
                     }
                 }
 
@@ -755,7 +755,7 @@ private struct SearchableMultiSelectSection<T: Hashable & Identifiable>: View {
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                             Spacer()
                         }
-                        .padding(.vertical, 12)
+                        .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -765,7 +765,7 @@ private struct SearchableMultiSelectSection<T: Hashable & Identifiable>: View {
                     Text("No \(title.lowercased()) found")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .padding(.vertical, 32)
+                        .padding(.vertical, OPSStyle.Layout.spacing5)
                 }
             }
         }
@@ -792,8 +792,8 @@ private struct FilterSectionContainer<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: icon)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -802,7 +802,7 @@ private struct FilterSectionContainer<Content: View>: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             VStack(spacing: 0) {
                 content()
@@ -815,7 +815,7 @@ private struct FilterSectionContainer<Content: View>: View {
                             .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             )
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 }
@@ -829,7 +829,7 @@ private struct FilterRow: View {
 
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(title)
                     .font(isSpecial ? OPSStyle.Typography.bodyBold : OPSStyle.Typography.body)
                     .foregroundColor(isSpecial ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
@@ -854,7 +854,7 @@ private struct FilterRow: View {
             }
         }
         .padding(.vertical, 14)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .contentShape(Rectangle())
         .onTapGesture(perform: action)
     }

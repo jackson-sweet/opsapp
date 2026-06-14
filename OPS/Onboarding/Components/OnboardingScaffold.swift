@@ -41,11 +41,11 @@ struct OnboardingScaffold<Content: View, Footer: View>: View {
             headerSection
 
             // Main content area (no scroll)
-            VStack(spacing: 20) {
+            VStack(spacing: OPSStyle.Layout.spacing3_5) {
                 content()
             }
             .padding(.horizontal, horizontalPadding)
-            .padding(.top, 24)
+            .padding(.top, OPSStyle.Layout.spacing4)
 
             Spacer()
 
@@ -58,7 +58,7 @@ struct OnboardingScaffold<Content: View, Footer: View>: View {
     // MARK: - Header Section
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             // Back button row
             HStack {
                 if showBackButton {
@@ -92,14 +92,14 @@ struct OnboardingScaffold<Content: View, Footer: View>: View {
             }
         }
         .padding(.horizontal, horizontalPadding)
-        .padding(.top, 16)
-        .padding(.bottom, 8)
+        .padding(.top, OPSStyle.Layout.spacing3)
+        .padding(.bottom, OPSStyle.Layout.spacing2)
     }
 
     // MARK: - Footer Section
 
     private var footerSection: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             footer()
         }
         .padding(.horizontal, horizontalPadding)
@@ -152,7 +152,7 @@ extension OnboardingScaffold where Footer == EmptyView {
         onBack: { print("Back tapped") }
     ) {
         // Content
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Text("Content goes here")
                 .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -196,7 +196,7 @@ extension OnboardingScaffold where Footer == EmptyView {
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }
     } footer: {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             Button {
                 print("Create company")
             } label: {

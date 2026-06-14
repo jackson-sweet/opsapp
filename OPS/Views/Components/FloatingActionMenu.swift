@@ -1109,9 +1109,9 @@ struct FloatingActionMenu: View {
 
     private var editModeContent: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .trailing, spacing: 16) {
+            VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing3) {
                 ForEach(Array(editModeGroupedItems.enumerated()), id: \.element.groupId) { _, section in
-                    VStack(alignment: .trailing, spacing: 4) {
+                    VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing1) {
                         // Section header (static, no drag reorder)
                         Text(section.groupTitle)
                             .font(OPSStyle.Typography.captionBold)
@@ -1151,7 +1151,7 @@ struct FloatingActionMenu: View {
                     }
                 }
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .scrollDisabled(draggingItemId != nil)
@@ -1161,7 +1161,7 @@ struct FloatingActionMenu: View {
     // MARK: - Edit Mode Action Buttons
 
     private var editModeActionButtons: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Spacer()
 
             Button(action: { saveEditMode() }) {
@@ -1186,7 +1186,7 @@ struct FloatingActionMenu: View {
                     )
             }
         }
-        .padding(.leading, 20)
+        .padding(.leading, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Menu Actions
@@ -1354,20 +1354,20 @@ struct FloatingActionMenu: View {
 
     @ViewBuilder
     private func fabItemView(row: FlatFABRow) -> some View {
-        VStack(alignment: .trailing, spacing: 4) {
+        VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing1) {
             if let header = row.groupHeader {
                 Text(header)
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .padding(.trailing, 14)
                     .padding(.top, row.showDivider ? 12 : 0)
-                    .padding(.bottom, 4)
+                    .padding(.bottom, OPSStyle.Layout.spacing1)
             }
 
             fabMenuItemView(item: row.item)
                 .offset(x: -10)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
         .opacity(itemsRevealed ? 1 : 0)
         .offset(x: itemsRevealed ? 0 : 60)
         .animation(
@@ -1390,7 +1390,7 @@ struct FloatingActionMenu: View {
                 item.action()
             }
         }) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Badge count inline with label (if present)
                 if let badge = item.badge, badge > 0, !isLocked {
                     Text("\(badge)")
@@ -1438,7 +1438,7 @@ struct FloatingActionMenu: View {
 
     @ViewBuilder
     private func editModeItemRow(item: FABMenuItem, isHidden: Bool) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Toggle: minus to hide, plus to show (outline icons)
             Button(action: {
                 var hidden = hiddenItemIds
@@ -1471,7 +1471,7 @@ struct FloatingActionMenu: View {
                 )
         }
         .opacity(isHidden ? 0.5 : 1.0)
-        .padding(.vertical, 4)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
     }
 }
 
@@ -1529,26 +1529,26 @@ fileprivate struct FABCustomizeSheet: View {
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.top, OPSStyle.Layout.spacing3_5)
+            .padding(.bottom, OPSStyle.Layout.spacing3)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                     ForEach(groups, id: \.group.id) { entry in
                         VStack(alignment: .leading, spacing: 0) {
                             Text(entry.group.title)
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                .padding(.horizontal, 20)
-                                .padding(.bottom, 8)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                                .padding(.bottom, OPSStyle.Layout.spacing2)
 
                             VStack(spacing: 0) {
                                 ForEach(entry.items, id: \.id) { item in
                                     let isEnabled = !hiddenIds.contains(item.id)
 
                                     Button(action: { toggleItem(item.id) }) {
-                                        HStack(spacing: 12) {
+                                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                             Image(systemName: item.icon)
                                                 .font(.system(size: 16, weight: .medium))
                                                 .foregroundColor(isEnabled ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
@@ -1564,7 +1564,7 @@ fileprivate struct FABCustomizeSheet: View {
                                                 .font(.system(size: 20))
                                                 .foregroundColor(isEnabled ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                                         }
-                                        .padding(.horizontal, 16)
+                                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                                         .padding(.vertical, 14)
                                     }
 
@@ -1582,11 +1582,11 @@ fileprivate struct FABCustomizeSheet: View {
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: 0.5)
                             )
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
                     }
                 }
-                .padding(.vertical, 12)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
             }
         }
         .background(OPSStyle.Colors.background)

@@ -12,12 +12,12 @@ struct LoadingOverlayModifier: ViewModifier {
                 OPSStyle.Colors.overlayMedium
                     .ignoresSafeArea()
 
-                VStack(spacing: 20) {
+                VStack(spacing: OPSStyle.Layout.spacing3_5) {
                     TacticalLoadingBarAnimated(
                         barCount: 8,
                         barWidth: 2,
                         barHeight: 10,
-                        spacing: 4,
+                        spacing: OPSStyle.Layout.spacing1,
                         emptyColor: OPSStyle.Colors.inputFieldBorder,
                         fillColor: OPSStyle.Colors.primaryAccent
                     )
@@ -27,8 +27,8 @@ struct LoadingOverlayModifier: ViewModifier {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .tracking(2)
                 }
-                .padding(.horizontal, 32)
-                .padding(.vertical, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing5)
+                .padding(.vertical, OPSStyle.Layout.spacing4)
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(

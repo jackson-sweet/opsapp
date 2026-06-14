@@ -263,7 +263,7 @@ struct TeamMemberAvatar: View {
 
 // MARK: - Previews
 #Preview("User Avatars") {
-    VStack(spacing: 20) {
+    VStack(spacing: OPSStyle.Layout.spacing3_5) {
         // With image
         UserAvatar(
             firstName: "John",
@@ -281,7 +281,7 @@ struct TeamMemberAvatar: View {
         )
         
         // Different sizes
-        HStack(spacing: 20) {
+        HStack(spacing: OPSStyle.Layout.spacing3_5) {
             UserAvatar(firstName: "A", lastName: "B", size: 30)
             UserAvatar(firstName: "C", lastName: "D", size: 40)
             UserAvatar(firstName: "E", lastName: "F", size: 50)

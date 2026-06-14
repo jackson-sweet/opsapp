@@ -79,7 +79,7 @@ struct ActivityTabView: View {
     }
 
     private var notesFeed: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             if notesViewModel.isLoading && notesViewModel.notes.isEmpty && notesViewModel.annotations.isEmpty {
                 HStack {
                     Spacer()
@@ -90,7 +90,7 @@ struct ActivityTabView: View {
                 .padding(.vertical, OPSStyle.Layout.spacing4)
             } else if feedItems.isEmpty {
                 // Empty state
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: "note.text")
                         .font(.system(size: OPSStyle.Layout.IconSize.xl))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -133,8 +133,8 @@ struct ActivityTabView: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.top, OPSStyle.Layout.spacing3)
     }
 
     // MARK: - Compose Bar
@@ -163,7 +163,7 @@ struct ActivityTabView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.vertical, OPSStyle.Layout.spacing2)
                 }
             }
@@ -178,7 +178,7 @@ struct ActivityTabView: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Spacer()
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, OPSStyle.Layout.spacing1)
             }
 
@@ -200,7 +200,7 @@ struct ActivityTabView: View {
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, OPSStyle.Layout.spacing1)
             }
 
@@ -263,7 +263,7 @@ struct ActivityTabView: View {
                 .disabled(!notesViewModel.canPost || notesViewModel.isUploading)
                 .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2)
         }
         .background(OPSStyle.Colors.cardBackgroundDark)
@@ -278,8 +278,8 @@ struct ActivityTabView: View {
                 )
         )
         .animation(.easeInOut(duration: 0.2), value: isTextFieldFocused)
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.top, OPSStyle.Layout.spacing3)
         .wizardTarget("write_note")
     }
 
@@ -334,7 +334,7 @@ struct ActivityTabView: View {
                     .buttonStyle(PlainButtonStyle())
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 6)
         }
     }
@@ -355,12 +355,12 @@ struct ActivityTabView: View {
                 imageSyncManager: imageSyncManager,
                 onPhotoTap: { index in onProjectPhotoTap?(index) }
             )
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
         } else {
             // No sync manager available yet — fall back to the static
             // carousel (no upload spinners possible without it).
             staticPhotosCarousel
-                .padding(.top, 16)
+                .padding(.top, OPSStyle.Layout.spacing3)
         }
     }
 
@@ -378,17 +378,17 @@ struct ActivityTabView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Spacer()
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
 
             if photos.isEmpty {
                 Text("Tap the camera to add project photos")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         ForEach(Array(photos.enumerated()), id: \.element) { index, url in
                             Button(action: { onProjectPhotoTap?(index) }) {
                                 PhotoThumbnail(url: url, project: project)
@@ -399,7 +399,7 @@ struct ActivityTabView: View {
                             .wizardTarget(index == 0 ? "view_photo" : "")
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                 }
             }
         }
@@ -443,7 +443,7 @@ private struct AnnotationEntryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             // Header: avatar + name + "commented on a photo" + timestamp
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 if let member = teamMember {
                     TeamMemberAvatar(teamMember: member, size: 28)
                 } else {
@@ -579,7 +579,7 @@ private struct ProjectPhotosCarousel: View {
                     .transition(.opacity)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             // 0.2s crossfade so the UPLOADING badge feels confident, not
             // jumpy. Matches OPSStyle.Animation.fast.
             .animation(OPSStyle.Animation.fast, value: uploadingCount)
@@ -589,10 +589,10 @@ private struct ProjectPhotosCarousel: View {
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         ForEach(Array(photos.enumerated()), id: \.element) { index, url in
                             ZStack(alignment: .topTrailing) {
                                 Button(action: { onPhotoTap(index) }) {
@@ -656,7 +656,7 @@ private struct ProjectPhotosCarousel: View {
                             .transition(.opacity)
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .animation(OPSStyle.Animation.fast, value: pending.map { $0.id })
                     .animation(OPSStyle.Animation.fast, value: photos.count)
                 }

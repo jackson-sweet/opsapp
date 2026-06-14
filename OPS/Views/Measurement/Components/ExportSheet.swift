@@ -38,9 +38,9 @@ public struct ExportSheet: View {
                 .font(.custom("CakeMono-Light", size: 14))
                 .tracking(1)
                 .foregroundColor(OPSStyle.Colors.text)
-                .padding(.horizontal, 20)
-                .padding(.top, 24)
-                .padding(.bottom, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.top, OPSStyle.Layout.spacing4)
+                .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
             row(symbol: "tray.and.arrow.down",
                 title: "SAVE TO PROJECT",
@@ -53,7 +53,7 @@ public struct ExportSheet: View {
 
             Divider()
                 .background(OPSStyle.Colors.line)
-                .padding(.horizontal, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
 
             row(symbol: "doc.richtext",
                 title: "EXPORT PDF",
@@ -74,9 +74,9 @@ public struct ExportSheet: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 48)
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
-            .padding(.bottom, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+            .padding(.top, OPSStyle.Layout.spacing2)
+            .padding(.bottom, OPSStyle.Layout.spacing3_5)
         }
         .frame(maxWidth: .infinity)
         .background(.ultraThinMaterial)
@@ -102,7 +102,7 @@ public struct ExportSheet: View {
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(OPSStyle.Colors.text3)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .frame(height: 56)
             .contentShape(Rectangle())
         }

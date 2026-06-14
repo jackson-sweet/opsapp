@@ -105,8 +105,8 @@ struct LeadsTabView: View {
                             waitingCount: viewModel.waitingCount,
                             avgVelocityDays: viewModel.avgVelocityDays()
                         )
-                        .padding(.horizontal, 20)
-                        .padding(.top, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.top, OPSStyle.Layout.spacing1)
 
                         // Carousel CONVERT → ConvertToProjectSheet mutates
                         // (marks won, creates a project) and its onDisappear
@@ -123,24 +123,24 @@ struct LeadsTabView: View {
 
                         queueHeader
                             .padding(.top, 22)
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         FilterChipRow(
                             selectedId: filterBinding,
                             chips: bucketChips
                         )
-                        .padding(.top, 8)
+                        .padding(.top, OPSStyle.Layout.spacing2)
 
                         queueList
-                            .padding(.top, 4)
-                            .padding(.horizontal, 20)
+                            .padding(.top, OPSStyle.Layout.spacing1)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         PipelineFooter(
                             counts: stageCounts,
                             onStageTap: { footerStage = $0 },
                             onBoardTap: { openBoard() }
                         )
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .padding(.top, 28)
                         .padding(.bottom, 100)
                     }
@@ -260,8 +260,8 @@ struct LeadsTabView: View {
                 .accessibilityLabel("New lead")
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 4)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing1)
     }
 
     private var titleRow: some View {
@@ -279,8 +279,8 @@ struct LeadsTabView: View {
                     .textCase(.uppercase)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing2_5)
         .padding(.bottom, 14)
     }
 
@@ -343,7 +343,7 @@ struct LeadsTabView: View {
                 .padding(.vertical, 28)
                 .frame(maxWidth: .infinity)
         } else {
-            LazyVStack(spacing: 8) {
+            LazyVStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(leads) { lead in
                     LeadActionCard(
                         opportunity: lead,

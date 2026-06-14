@@ -154,12 +154,12 @@ struct TutorialFlowView: View {
 
             VStack(spacing: 0) {
                 chrome
-                    .padding(.top, 8)
+                    .padding(.top, OPSStyle.Layout.spacing2)
 
                 contextHeader
                     .frame(height: 56)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 8)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
+                    .padding(.top, OPSStyle.Layout.spacing2)
                     .opacity(headerOpacity)
 
                 contentArea
@@ -182,7 +182,7 @@ struct TutorialFlowView: View {
 
     private var chrome: some View {
         HStack {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(0..<TutorialPhase.totalSteps, id: \.self) { i in
                     Circle()
                         .fill(dotColor(for: i))
@@ -204,7 +204,7 @@ struct TutorialFlowView: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     private func dotColor(for index: Int) -> Color {
@@ -217,7 +217,7 @@ struct TutorialFlowView: View {
     // MARK: - Context Header
 
     private var contextHeader: some View {
-        VStack(alignment: .center, spacing: 4) {
+        VStack(alignment: .center, spacing: OPSStyle.Layout.spacing1) {
             Text(stepHeadline)
                 .font(.heading)
                 .foregroundStyle(OPSStyle.Colors.primaryText)
@@ -262,28 +262,28 @@ struct TutorialFlowView: View {
 
             if showCard {
                 evolvingCard
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
                     .offset(y: cardOffset)
                     .opacity(estimateShellOpacity)
             }
 
             if showApproval {
                 approvalBanner
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
                     .frame(maxHeight: .infinity, alignment: .top)
-                    .padding(.top, 20)
+                    .padding(.top, OPSStyle.Layout.spacing3_5)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
             // Task cards appearing via matchedGeometryEffect from estimate line items
             if peeledCount > 0 && !projectAssembling {
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach(0..<peeledCount, id: \.self) { i in
                         taskCardRow(TutorialData.taskCards[i], index: i, showCrew: showCrewOnTasks)
                             .matchedGeometryEffect(id: "laborTask_\(i)", in: ns)
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
             }
 
             // ── PHASE 4: Task assembly ──
@@ -291,7 +291,7 @@ struct TutorialFlowView: View {
 
             if state.currentPhase == .crewExecutes && !hideProjectCard {
                 assemblingProjectView
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
                     .clipped() // Clips to visible content bounds during exit (title/progress already at opacity 0)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -299,9 +299,9 @@ struct TutorialFlowView: View {
             // ── PHASE 4→5: Calendar Gantt view ──
 
             if showCalendar {
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     if showCalendarHeader {
-                        VStack(spacing: 8) {
+                        VStack(spacing: OPSStyle.Layout.spacing2) {
                             Text("4 TASKS NOT COMPLETE")
                                 .font(.heading)
                                 .foregroundStyle(OPSStyle.Colors.warningStatus)
@@ -330,7 +330,7 @@ struct TutorialFlowView: View {
                         }
                     )
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             }
 
             // ── FLOATING DECK TASKS ──
@@ -344,7 +344,7 @@ struct TutorialFlowView: View {
 
             if showReviewStack {
                 reviewStackView
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .transition(.opacity)
             }
 
@@ -358,7 +358,7 @@ struct TutorialFlowView: View {
 
                     // Result card
                     inlineSwipeResultCard(for: idx, wasRight: swipeResults[idx])
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, OPSStyle.Layout.spacing4)
                 }
                 .opacity(completionOpacity)
             }
@@ -372,7 +372,7 @@ struct TutorialFlowView: View {
 
             if showAccounting {
                 accountingInsightsView
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .transition(.opacity)
             }
 
@@ -425,7 +425,7 @@ struct TutorialFlowView: View {
                 estimateContent
             }
         }
-        .padding(20)
+        .padding(OPSStyle.Layout.spacing3_5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -462,16 +462,16 @@ struct TutorialFlowView: View {
         // Reserve full height so card doesn't jump
         ZStack(alignment: .topLeading) {
             // Invisible spacer at final content size
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 leadBadge
                 Text(clientText).font(.headingLarge).tracking(0.8)
                 Text(projectText).font(.body)
-                leadSourceRow.padding(.top, 4)
+                leadSourceRow.padding(.top, OPSStyle.Layout.spacing1)
             }
             .opacity(0)
 
             // Visible content — types in
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 leadBadge
                     .opacity(showCard ? 1 : 0)
 
@@ -487,7 +487,7 @@ struct TutorialFlowView: View {
                     .opacity(projectChars > 0 ? 1 : 0)
 
                 leadSourceRow
-                    .padding(.top, 4)
+                    .padding(.top, OPSStyle.Layout.spacing1)
                     .opacity(showLeadSource ? 1 : 0)
             }
         }
@@ -521,7 +521,7 @@ struct TutorialFlowView: View {
     @ViewBuilder
     private var estimateContent: some View {
         // Header
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             Text("ESTIMATE")
                 .font(.status)
                 .foregroundStyle(OPSStyle.Colors.primaryAccent)
@@ -536,7 +536,7 @@ struct TutorialFlowView: View {
                 .font(.caption)
                 .foregroundStyle(OPSStyle.Colors.secondaryText)
         }
-        .padding(.bottom, 16)
+        .padding(.bottom, OPSStyle.Layout.spacing3)
 
         // Line items
         VStack(spacing: 0) {
@@ -569,7 +569,7 @@ struct TutorialFlowView: View {
             Rectangle()
                 .fill(OPSStyle.Colors.cardBorder)
                 .frame(height: 1)
-                .padding(.vertical, 12)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
         }
 
         // Total
@@ -600,7 +600,7 @@ struct TutorialFlowView: View {
                             .fill(OPSStyle.Colors.primaryAccent)
                     )
             }
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
         }
     }
 
@@ -634,7 +634,7 @@ struct TutorialFlowView: View {
                 .font(.bodyBold)
                 .foregroundStyle(OPSStyle.Colors.primaryText)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
     }
 
     // MARK: ─────────────────────────────────────────────────────────────────
@@ -642,7 +642,7 @@ struct TutorialFlowView: View {
     // MARK: ─────────────────────────────────────────────────────────────────
 
     private var approvalBanner: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 22))
                 .foregroundStyle(OPSStyle.Colors.successStatus)
@@ -657,7 +657,7 @@ struct TutorialFlowView: View {
                     .foregroundStyle(OPSStyle.Colors.primaryText)
             }
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -672,7 +672,7 @@ struct TutorialFlowView: View {
     // MARK: Task Card Row (Phase 3 — freshly peeled, BOOKED status)
 
     private func taskCardRow(_ task: TutorialData.TaskCard, index: Int, showCrew: Bool) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             RoundedRectangle(cornerRadius: 1)
                 .fill(task.color)
                 .frame(width: 3)
@@ -697,7 +697,7 @@ struct TutorialFlowView: View {
             }
         }
         .frame(height: 48)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -739,7 +739,7 @@ struct TutorialFlowView: View {
             // Project title — types in during assembly, fades during chrome dissolve
             if projectAssembling {
                 let title = TutorialData.projectTitle.uppercased()
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(projectTitleChars > 0 ? String(title.prefix(projectTitleChars)) : " ")
                         .font(.headingLarge)
                         .foregroundStyle(OPSStyle.Colors.primaryText)
@@ -751,7 +751,7 @@ struct TutorialFlowView: View {
                             .foregroundStyle(OPSStyle.Colors.secondaryText)
                     }
                 }
-                .padding(.bottom, 12)
+                .padding(.bottom, OPSStyle.Layout.spacing2_5)
                 .opacity(projectChromeFading ? 0 : 1) // Chrome fades
             }
 
@@ -782,7 +782,7 @@ struct TutorialFlowView: View {
 
             // Progress bar — appears during assembly, fades during chrome dissolve
             if projectAssembling && progressBarValue > 0 {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             Capsule()
@@ -998,7 +998,7 @@ struct TutorialFlowView: View {
     private func compactTaskContent(task: TutorialData.TaskCard, index: Int, calTask: TutorialData.CalendarScheduleTask) -> some View {
         let s = taskStatuses[index]
 
-        return HStack(spacing: 8) {
+        return HStack(spacing: OPSStyle.Layout.spacing2) {
             if s == 2 {
                 Image(systemName: "checkmark")
                     .font(.system(size: 10, weight: .medium))
@@ -1025,7 +1025,7 @@ struct TutorialFlowView: View {
     /// Gantt bar content — matches FlowCalendarWeek bar appearance.
     /// Color stripe, task name, project name.
     private func ganttBarContent(calTask: TutorialData.CalendarScheduleTask) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             RoundedRectangle(cornerRadius: 1)
                 .fill(calTask.color)
                 .frame(width: 2)
@@ -1108,7 +1108,7 @@ struct TutorialFlowView: View {
                     Text(card.client.uppercased()).font(.smallCaption)
                 }.foregroundStyle(.white.opacity(0.5))
             }
-            .padding(20)
+            .padding(OPSStyle.Layout.spacing3_5)
             .padding(.bottom, 40)
             .opacity(showText ? 1 : 0)
         }
@@ -1132,8 +1132,8 @@ struct TutorialFlowView: View {
                     .font(.microLabel)
                     .foregroundStyle(OPSStyle.Colors.tertiaryText)
                     .tracking(2)
-                    .padding(.top, 12)
-                    .padding(.bottom, 12)
+                    .padding(.top, OPSStyle.Layout.spacing2_5)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
                     .transition(.opacity)
             }
 
@@ -1174,8 +1174,8 @@ struct TutorialFlowView: View {
                 }
                 .foregroundStyle(OPSStyle.Colors.successStatus.opacity(0.7))
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 32)
+            .padding(.horizontal, OPSStyle.Layout.spacing4)
+            .padding(.bottom, OPSStyle.Layout.spacing5)
         }
     }
 
@@ -1204,14 +1204,14 @@ struct TutorialFlowView: View {
                         .foregroundStyle(OPSStyle.Colors.secondaryText)
                 }
             }
-            .padding(.bottom, 12)
+            .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
             // Task checklist
             ForEach(Array(card.projectTasks.enumerated()), id: \.offset) { _, task in
                 let isTheSwipedTask = !task.alreadyComplete
                 let isComplete = task.alreadyComplete || (isTheSwipedTask && wasRight)
 
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     if isComplete {
                         Image(systemName: "checkmark")
                             .font(.system(size: 10, weight: .medium))
@@ -1248,7 +1248,7 @@ struct TutorialFlowView: View {
                 .padding(.vertical, 10)
 
             if wasRight {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: "paperplane.fill")
                         .font(.system(size: 12))
                     Text("INVOICE SENT — \(TutorialData.formatCurrency(card.invoiceTotal))")
@@ -1258,7 +1258,7 @@ struct TutorialFlowView: View {
                 .foregroundStyle(OPSStyle.Colors.primaryAccent)
             } else {
                 let remaining = card.projectTasks.filter { !$0.alreadyComplete }.count
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: "exclamationmark.circle")
                         .font(.system(size: 12))
                     Text("\(remaining) TASK\(remaining == 1 ? "" : "S") REMAINING")
@@ -1268,7 +1268,7 @@ struct TutorialFlowView: View {
                 .foregroundStyle(OPSStyle.Colors.warningStatus)
             }
         }
-        .padding(20)
+        .padding(OPSStyle.Layout.spacing3_5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -1281,7 +1281,7 @@ struct TutorialFlowView: View {
     }
 
     private var allCaughtUpView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Circle()
                 .stroke(OPSStyle.Colors.successStatus.opacity(0.2), lineWidth: 1.5)
                 .frame(width: 64, height: 64)
@@ -1332,7 +1332,7 @@ struct TutorialFlowView: View {
                     .font(.status)
                     .foregroundStyle(OPSStyle.Colors.successStatus)
                     .tracking(1.5)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                 // Invoice cards — staggered from right
                 ForEach(0..<min(visibleInvoices, invoiceEntries.count), id: \.self) { i in
@@ -1349,8 +1349,8 @@ struct TutorialFlowView: View {
 
                 // Revenue bar — horizontal capsule filling proportionally
                 revenueBar(current: invoiceBarProgress, total: totalRevenue, maxAmount: totalRevenue)
-                    .padding(.top, 12)
-                    .padding(.bottom, 24)
+                    .padding(.top, OPSStyle.Layout.spacing2_5)
+                    .padding(.bottom, OPSStyle.Layout.spacing4)
 
                 // ── COSTS SECTION ──
                 if showExpenses {
@@ -1358,7 +1358,7 @@ struct TutorialFlowView: View {
                         .font(.status)
                         .foregroundStyle(OPSStyle.Colors.warningStatus)
                         .tracking(1.5)
-                        .padding(.bottom, 12)
+                        .padding(.bottom, OPSStyle.Layout.spacing2_5)
                         .transition(.opacity)
 
                     // Expense cards — staggered from left (opposite direction from revenue)
@@ -1370,8 +1370,8 @@ struct TutorialFlowView: View {
 
                     // Expense bar — same scale as revenue for visual comparison
                     expenseBar(current: expenseBarProgress, total: totalCosts, maxAmount: totalRevenue)
-                        .padding(.top, 12)
-                        .padding(.bottom, 24)
+                        .padding(.top, OPSStyle.Layout.spacing2_5)
+                        .padding(.bottom, OPSStyle.Layout.spacing4)
                         .transition(.opacity)
                 }
 
@@ -1387,7 +1387,7 @@ struct TutorialFlowView: View {
 
     /// Individual invoice card — project color stripe, name, client, amount, paid/deposit stamp.
     private func invoiceCard(project: String, client: String, amount: Int, color: Color, isPaid: Bool) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             RoundedRectangle(cornerRadius: 1)
                 .fill(color)
                 .frame(width: 3)
@@ -1447,8 +1447,8 @@ struct TutorialFlowView: View {
                 .font(.smallCaption)
                 .foregroundStyle(OPSStyle.Colors.primaryText)
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                 .fill(OPSStyle.Colors.cardBackgroundDark)
@@ -1457,13 +1457,13 @@ struct TutorialFlowView: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                 .stroke(OPSStyle.Colors.warningStatus.opacity(0.15), lineWidth: 0.5)
         )
-        .padding(.bottom, 4)
+        .padding(.bottom, OPSStyle.Layout.spacing1)
     }
 
     /// Horizontal capsule progress bar. `current` is 0→1 fill progress.
     /// `total` is the displayed dollar amount. `maxAmount` is the scale reference.
     private func revenueBar(current: CGFloat, total: Int, maxAmount: Int) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule()
@@ -1484,7 +1484,7 @@ struct TutorialFlowView: View {
     }
 
     private func expenseBar(current: CGFloat, total: Int, maxAmount: Int) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             GeometryReader { geo in
                 let scale = maxAmount > 0 ? CGFloat(total) / CGFloat(maxAmount) : 0
                 ZStack(alignment: .leading) {
@@ -1512,16 +1512,16 @@ struct TutorialFlowView: View {
         let isNegative = profit < 0
         let marginPercent = revenue > 0 ? Int(Double(profit) / Double(revenue) * 100) : 0
 
-        return VStack(alignment: .leading, spacing: 12) {
+        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("WHAT YOU KEEP")
                 .font(.status)
                 .foregroundStyle(OPSStyle.Colors.primaryAccent)
                 .tracking(1.5)
 
             // Stacked bars showing ratio visually
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 // Revenue reference bar (full width, success green, dimmed)
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Text("IN")
                         .font(.microLabel)
                         .foregroundStyle(OPSStyle.Colors.tertiaryText)
@@ -1536,7 +1536,7 @@ struct TutorialFlowView: View {
                 }
 
                 // Costs bar (proportional to revenue, amber)
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Text("OUT")
                         .font(.microLabel)
                         .foregroundStyle(OPSStyle.Colors.tertiaryText)
@@ -1552,7 +1552,7 @@ struct TutorialFlowView: View {
                 }
 
                 // Profit bar (the difference, primary accent, full brightness)
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Text("KEEP")
                         .font(.microLabel)
                         .foregroundStyle(OPSStyle.Colors.primaryAccent)
@@ -1584,7 +1584,7 @@ struct TutorialFlowView: View {
                         .foregroundStyle(isNegative ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent)
                         .tracking(1.5)
                 }
-                .padding(.top, 4)
+                .padding(.top, OPSStyle.Layout.spacing1)
             }
         }
     }
@@ -1639,7 +1639,7 @@ struct TutorialFlowView: View {
 
             // Tagline — appears after collapse
             if showClosingMessage {
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     Text("11 STEPS. HANDLED.")
                         .font(.heading)
                         .foregroundStyle(OPSStyle.Colors.secondaryText)
@@ -1650,7 +1650,7 @@ struct TutorialFlowView: View {
                         .foregroundStyle(OPSStyle.Colors.primaryAccent)
                         .tracking(1.5)
                 }
-                .padding(.top, 32)
+                .padding(.top, OPSStyle.Layout.spacing5)
                 .transition(.opacity)
             }
 
@@ -1658,7 +1658,7 @@ struct TutorialFlowView: View {
 
             // CTA
             if showCTA {
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     Button {
                         state.ctaTapped(action: "getStarted")
                         onComplete()
@@ -1685,7 +1685,7 @@ struct TutorialFlowView: View {
                             .tracking(1)
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
                 .padding(.bottom, 40)
                 .transition(.opacity)
             }
@@ -2601,7 +2601,7 @@ private struct FlowCalendarWeek: View {
     // MARK: - Gantt Bar (normal calendar bar)
 
     private func ganttBar(task: TutorialData.CalendarScheduleTask, isComplete: Bool, isIncomplete: Bool) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             RoundedRectangle(cornerRadius: 1)
                 .fill(task.color)
                 .frame(width: 2)
@@ -2725,7 +2725,7 @@ private struct FlowCalendarWeek: View {
                 }
                 .foregroundStyle(.white.opacity(0.5))
             }
-            .padding(20)
+            .padding(OPSStyle.Layout.spacing3_5)
             .padding(.bottom, 40)
             .opacity(showText ? 1 : 0)
         }
@@ -2832,7 +2832,7 @@ private struct FlowReviewCard: View {
                 }
                 .foregroundStyle(.white.opacity(0.5))
             }
-            .padding(20)
+            .padding(OPSStyle.Layout.spacing3_5)
             .padding(.bottom, 40)
 
             // Stamp overlays
@@ -2883,8 +2883,8 @@ private struct FlowReviewCard: View {
             .font(.headingBold)
             .foregroundStyle(color)
             .tracking(3)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(color, lineWidth: 2)

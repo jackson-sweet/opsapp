@@ -82,7 +82,7 @@ struct ARVisualizationView: View {
     private func arUnavailableOverlay(message: String) -> some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            VStack(spacing: 20) {
+            VStack(spacing: OPSStyle.Layout.spacing3_5) {
                 Image(systemName: "arkit")
                     .font(.system(size: 48))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -90,7 +90,7 @@ struct ARVisualizationView: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
+                    .padding(.horizontal, OPSStyle.Layout.spacing5)
                 if arAvailability == .cameradenied {
                     Button {
                         if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -100,8 +100,8 @@ struct ARVisualizationView: View {
                         Text("Open Settings")
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(.white)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 12)
+                            .padding(.horizontal, OPSStyle.Layout.spacing4)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
                             .background(OPSStyle.Colors.primaryAccent)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
@@ -154,7 +154,7 @@ struct ARVisualizationView: View {
     // MARK: - Bottom Status
 
     private var bottomStatus: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
             if !viewModel.statusMessage.isEmpty {
                 HStack(spacing: 10) {
                     if viewModel.placementState == .scanning {
@@ -167,7 +167,7 @@ struct ARVisualizationView: View {
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.vertical, 14)
                 .background(Color.black.opacity(0.6))
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -177,7 +177,7 @@ struct ARVisualizationView: View {
                 Text("Drag to reposition \u{2022} Two fingers to rotate")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.vertical, 10)
                     .background(Color.black.opacity(0.5))
                     .cornerRadius(OPSStyle.Layout.cornerRadius)

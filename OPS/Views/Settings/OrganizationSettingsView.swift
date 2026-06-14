@@ -39,13 +39,13 @@ struct OrganizationSettingsView: View {
                     title: "Organization",
                     onBackTapped: { dismiss() }
                 )
-                .padding(.bottom, 24)
+                .padding(.bottom, OPSStyle.Layout.spacing4)
 
                 if isLoading {
                     loadingView
                 } else {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 24) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                             // Company contact card preview
                             if let company = organization {
                                 CompanyContactCard(
@@ -60,7 +60,7 @@ struct OrganizationSettingsView: View {
                                     teamMemberCount: dataController.getTeamMembers(companyId: company.id).count,
                                     showTeamCount: true
                                 )
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             }
 
                             // Grouped navigation section
@@ -89,9 +89,9 @@ struct OrganizationSettingsView: View {
                                     )
                                 }
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
-                        .padding(.vertical, 16)
+                        .padding(.vertical, OPSStyle.Layout.spacing3)
                         .tabBarPadding()
                     }
                 }
@@ -134,7 +134,7 @@ struct OrganizationSettingsView: View {
     // MARK: - Grouped Section Builder
 
     private func settingsSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text(title)
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -172,7 +172,7 @@ struct OrganizationSettingsView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
@@ -214,7 +214,7 @@ struct OrganizationSettingsView: View {
     // MARK: - Loading View
 
     private var loadingView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             ProgressView()
                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                 .scaleEffect(1.2)

@@ -63,7 +63,7 @@ struct ProjectImageView: View {
                             Image(systemName: "cloud.slash.fill")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
-                                .padding(4)
+                                .padding(OPSStyle.Layout.spacing1)
                                 .background(OPSStyle.Colors.errorStatus)
                                 .clipShape(Circle())
                                 .padding(6)

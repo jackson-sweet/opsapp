@@ -38,7 +38,7 @@ struct SuggestedOrderRow: View {
 
     var body: some View {
         HStack(spacing: OPSStyle.Layout.spacing3) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(suggestion.familyName.uppercased())
                     .font(OPSStyle.Typography.cardTitle)
                     .foregroundColor(OPSStyle.Colors.primaryText)

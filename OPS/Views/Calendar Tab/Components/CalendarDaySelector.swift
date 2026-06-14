@@ -70,7 +70,7 @@ struct CalendarDaySelector: View {
                     // the day labels and bottom event-bars overlay get real
                     // breathing room from the card border instead of butting
                     // up against it.
-                    .padding(.vertical, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing3)
                     .padding(.horizontal, 6)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -374,7 +374,7 @@ struct CalendarDaySelector: View {
             }
         }
         .frame(height: 20)
-        .padding(.bottom, 8)
+        .padding(.bottom, OPSStyle.Layout.spacing2)
         .allowsHitTesting(false)
     }
 

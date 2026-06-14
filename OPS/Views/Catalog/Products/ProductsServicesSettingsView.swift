@@ -24,7 +24,7 @@ struct ProductsServicesSettingsView: View {
                     title: "Products & Services",
                     onBackTapped: { dismiss() }
                 )
-                .padding(.bottom, 8)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
 
                 CatalogProductsListView()
                     .environmentObject(dataController)

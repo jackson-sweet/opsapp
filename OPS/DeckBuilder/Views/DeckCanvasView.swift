@@ -1156,8 +1156,8 @@ struct DeckCanvasView: View {
                 // Selection summary overlay
                 selectionSummaryContent
             }
-            .padding(.leading, 12)
-            .padding(.bottom, 12)
+            .padding(.leading, OPSStyle.Layout.spacing2_5)
+            .padding(.bottom, OPSStyle.Layout.spacing2_5)
         }
     }
 
@@ -1165,7 +1165,7 @@ struct DeckCanvasView: View {
     @ViewBuilder
     private var deckHeightOverlay: some View {
         if let heightText = deckHeightDisplayText {
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(systemName: "arrow.up.and.down")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -1176,7 +1176,7 @@ struct DeckCanvasView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(OPSStyle.Colors.cardBackground.opacity(0.85))
-            .cornerRadius(6)
+            .cornerRadius(OPSStyle.Layout.cardRadius)
         }
     }
 
@@ -1227,7 +1227,7 @@ struct DeckCanvasView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .background(OPSStyle.Colors.cardBackground.opacity(0.85))
-                .cornerRadius(6)
+                .cornerRadius(OPSStyle.Layout.cardRadius)
         }
     }
 

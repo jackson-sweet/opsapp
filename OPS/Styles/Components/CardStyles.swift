@@ -159,14 +159,14 @@ struct OPSAccentCard: View {
 struct CardStyles_Previews: PreviewProvider {
     static var previews: some View {
         ScrollView {
-            VStack(spacing: 24) {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
                 Text("CARD STYLES")
                     .font(OPSStyle.Typography.pageTitle)
                     .foregroundColor(OPSStyle.Colors.text)
-                    .padding(.top, 16)
+                    .padding(.top, OPSStyle.Layout.spacing3)
 
                 OPSCard {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         Text("Standard Card")
                             .font(OPSStyle.Typography.cardTitle)
                             .foregroundColor(OPSStyle.Colors.text)
@@ -177,7 +177,7 @@ struct CardStyles_Previews: PreviewProvider {
                 }
 
                 OPSElevatedCard {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         Text("Elevated (Dense Glass)")
                             .font(OPSStyle.Typography.cardTitle)
                             .foregroundColor(OPSStyle.Colors.text)
@@ -188,7 +188,7 @@ struct CardStyles_Previews: PreviewProvider {
                 }
 
                 OPSInteractiveCard(action: {}) {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         Text("Interactive Card")
                             .font(OPSStyle.Typography.cardTitle)
                             .foregroundColor(OPSStyle.Colors.text)
@@ -198,7 +198,7 @@ struct CardStyles_Previews: PreviewProvider {
                     }
                 }
 
-                HStack(spacing: 16) {
+                HStack(spacing: OPSStyle.Layout.spacing3) {
                     OPSAccentCard(accentColor: OPSStyle.Colors.olive) {
                         VStack {
                             Image(systemName: "checkmark.circle.fill")

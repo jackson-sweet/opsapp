@@ -150,7 +150,7 @@ struct ProjectQuickActionsBar: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
 
@@ -163,7 +163,7 @@ struct ProjectQuickActionsBar: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             item.action()
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: item.icon)
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.successStatus)

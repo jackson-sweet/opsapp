@@ -95,11 +95,11 @@ struct DeckTabView: View {
             // bottom infoBar so the viewport owns its identifying chrome.
             .overlay(alignment: .topLeading) {
                 floatingDesignInfo(design: design)
-                    .padding(.leading, 12)
-                    .padding(.top, 12)
+                    .padding(.leading, OPSStyle.Layout.spacing2_5)
+                    .padding(.top, OPSStyle.Layout.spacing2_5)
                     .allowsHitTesting(false)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .animation(OPSStyle.Animation.fast, value: viewMode)
         }
     }
@@ -248,8 +248,8 @@ struct DeckTabView: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
     }
 
     // MARK: - Empty State
@@ -259,7 +259,7 @@ struct DeckTabView: View {
             Spacer()
 
             VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: "cube.transparent")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.wizardAccent)
@@ -268,13 +268,13 @@ struct DeckTabView: View {
                         .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
 
                 Text("Create a deck design to visualize your build, generate estimates, and share with clients.")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineSpacing(4)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, OPSStyle.Layout.spacing4)
 
                 if permissionStore.can("deck_builder.create", requiredScope: "assigned") {
                     Button {
@@ -292,7 +292,7 @@ struct DeckTabView: View {
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                                 .foregroundColor(OPSStyle.Colors.buttonText)
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .frame(height: OPSStyle.Layout.touchTargetStandard)
                         .background(OPSStyle.Colors.wizardAccent)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -309,7 +309,7 @@ struct DeckTabView: View {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             Spacer()
         }
@@ -318,7 +318,7 @@ struct DeckTabView: View {
     // MARK: - Incomplete Design Message
 
     private var incompleteDesignMessage: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             Spacer()
             Image(systemName: "square.dashed")
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))

@@ -125,12 +125,12 @@ struct CompanyConfirmationScreen: View {
                 onSignOut: { manager.signOut() }
             )
             .padding(.horizontal, 40)
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
 
             Spacer()
 
             // Company card content
-            VStack(spacing: 24) {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
                 // Company logo
                 companyLogoView
                     .opacity(logoOpacity)
@@ -151,7 +151,7 @@ struct CompanyConfirmationScreen: View {
 
                 // Team avatars + size
                 if teamSize > 0 {
-                    VStack(spacing: 8) {
+                    VStack(spacing: OPSStyle.Layout.spacing2) {
                         teamAvatarStack
 
                         Text("\(teamSize) member\(teamSize == 1 ? "" : "s")")
@@ -178,7 +178,7 @@ struct CompanyConfirmationScreen: View {
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                         .multilineTextAlignment(.center)
-                        .padding(.top, 4)
+                        .padding(.top, OPSStyle.Layout.spacing1)
                 }
             }
             .opacity(contentOpacity)
@@ -187,7 +187,7 @@ struct CompanyConfirmationScreen: View {
             Spacer()
 
             // Bottom buttons
-            VStack(spacing: 16) {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
                 Button {
                     handleBack()
                 } label: {
@@ -214,7 +214,7 @@ struct CompanyConfirmationScreen: View {
                         }
                     }
                     .foregroundColor(OPSStyle.Colors.invertedText)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
                     .background(!companyId.isEmpty ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
@@ -371,7 +371,7 @@ struct CompanyConfirmationScreen: View {
         Text("You'll join as \(role)")
             .font(OPSStyle.Typography.captionBold)
             .foregroundColor(OPSStyle.Colors.primaryAccent)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .padding(.vertical, 6)
             .background(
                 Capsule()

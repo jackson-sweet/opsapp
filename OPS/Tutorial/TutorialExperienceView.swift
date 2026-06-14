@@ -67,7 +67,7 @@ struct TutorialExperienceView: View {
 
     private var chrome: some View {
         HStack {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(0..<TutorialPhase.totalSteps, id: \.self) { i in
                     Circle()
                         .fill(dotColor(for: i))
@@ -89,8 +89,8 @@ struct TutorialExperienceView: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing3)
     }
 
     private func dotColor(for index: Int) -> Color {

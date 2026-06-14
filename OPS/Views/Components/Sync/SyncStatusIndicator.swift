@@ -13,7 +13,7 @@ struct SyncStatusIndicator: View {
 
     var body: some View {
         if dataController.hasPendingSyncs && !dataController.isConnected {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: "arrow.triangle.2.circlepath")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -22,8 +22,8 @@ struct SyncStatusIndicator: View {
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.warningStatus)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
+            .padding(.vertical, OPSStyle.Layout.spacing1)
             .background(
                 Capsule()
                     .fill(OPSStyle.Colors.warningStatus.opacity(0.15))
@@ -33,7 +33,7 @@ struct SyncStatusIndicator: View {
                     .stroke(OPSStyle.Colors.buttonBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         } else if dataController.isSyncing {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 // Tactical loading bar instead of circular progress
                 TacticalLoadingBarAnimated(
                     barCount: 6,
@@ -74,7 +74,7 @@ struct SyncRestoredAlert: View {
         VStack(spacing: 0) {
             if isPresented {
                 // Banner content
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     // Status icon with indicator
                     ZStack(alignment: .topTrailing) {
                         Image(systemName: "wifi")
@@ -136,8 +136,8 @@ struct SyncRestoredAlert: View {
                             )
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.vertical, OPSStyle.Layout.spacing3)
                 .background(
                     Rectangle()
                         .fill(OPSStyle.Colors.background)
@@ -187,7 +187,7 @@ struct SyncRestoredAlert: View {
     ZStack {
         OPSStyle.Colors.background
 
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             SyncStatusIndicator()
 
             Button("Show Alert") {

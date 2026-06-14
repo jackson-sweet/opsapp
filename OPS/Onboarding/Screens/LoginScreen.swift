@@ -35,10 +35,10 @@ struct LoginScreen: View {
                 Spacer()
             }
             .padding(.horizontal, 28)
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
 
             // Header
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("SIGN IN")
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -49,15 +49,15 @@ struct LoginScreen: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 40)
-            .padding(.top, 24)
+            .padding(.top, OPSStyle.Layout.spacing4)
 
             Spacer()
                 .frame(height: 40)
 
             // Form
-            VStack(spacing: 20) {
+            VStack(spacing: OPSStyle.Layout.spacing3_5) {
                 // Email field
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     Text("EMAIL")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -69,7 +69,7 @@ struct LoginScreen: View {
                         .autocorrectionDisabled()
                         .keyboardType(.emailAddress)
                         .padding(.vertical, 14)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
@@ -79,7 +79,7 @@ struct LoginScreen: View {
                 }
 
                 // Password field
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     Text("PASSWORD")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -88,7 +88,7 @@ struct LoginScreen: View {
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(.vertical, 14)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
@@ -133,7 +133,7 @@ struct LoginScreen: View {
                             Image(systemName: "arrow.right")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -142,10 +142,10 @@ struct LoginScreen: View {
                 .foregroundColor(OPSStyle.Colors.invertedText)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .disabled(!canLogin || isLoading)
-                .padding(.bottom, 8)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
 
                 // Divider
-                HStack(spacing: 16) {
+                HStack(spacing: OPSStyle.Layout.spacing3) {
                     Rectangle()
                         .fill(OPSStyle.Colors.cardBorder)
                         .frame(height: 1)
@@ -158,15 +158,15 @@ struct LoginScreen: View {
                         .fill(OPSStyle.Colors.cardBorder)
                         .frame(height: 1)
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
 
                 // Social login buttons
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     // Google
                     Button {
                         handleGoogleSignIn()
                     } label: {
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             Image("google_logo")
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
@@ -189,7 +189,7 @@ struct LoginScreen: View {
                     Button {
                         handleAppleSignIn()
                     } label: {
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             Image(systemName: "apple.logo")
                                 .font(.system(size: OPSStyle.Layout.IconSize.md))
 

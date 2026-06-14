@@ -74,8 +74,8 @@ struct NotificationBanner: View {
                 
                 Spacer()
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .frame(maxWidth: .infinity)
             .background(
                 BlurView(style: .systemUltraThinMaterialDark)

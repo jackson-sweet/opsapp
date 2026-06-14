@@ -72,7 +72,7 @@ struct UserInfoView: View {
                             }
                         }
                     }) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "chevron.left")
                                 .font(OPSStyle.Typography.caption.weight(.semibold))
                             Text("Back")
@@ -95,7 +95,7 @@ struct UserInfoView: View {
                 }
 
                 // Step indicator bars
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     ForEach(0..<totalSteps, id: \.self) { step in
                         Rectangle()
                             .fill(step < currentStepNumber ?
@@ -104,7 +104,7 @@ struct UserInfoView: View {
                             .frame(height: 2)
                     }
                 }
-                .padding(.top, 16)
+                .padding(.top, OPSStyle.Layout.spacing3)
 
                 Spacer()
 
@@ -201,9 +201,9 @@ struct FirstNamePhaseView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
             // Header
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("WHAT'S YOUR")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(primaryTextColor)
@@ -228,7 +228,7 @@ struct FirstNamePhaseView: View {
                 isDisabled: firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                 onTap: onContinue
             )
-            .padding(.bottom, 20)
+            .padding(.bottom, OPSStyle.Layout.spacing3_5)
         }
     }
 }
@@ -243,9 +243,9 @@ struct LastNamePhaseView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
             // Header
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("AND YOUR")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(primaryTextColor)
@@ -270,7 +270,7 @@ struct LastNamePhaseView: View {
                 isDisabled: lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                 onTap: onContinue
             )
-            .padding(.bottom, 20)
+            .padding(.bottom, OPSStyle.Layout.spacing3_5)
         }
     }
 }
@@ -294,9 +294,9 @@ struct PhoneNumberPhaseView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
             // Header
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("PHONE")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(primaryTextColor)
@@ -304,7 +304,7 @@ struct PhoneNumberPhaseView: View {
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(primaryTextColor)
             }
-            .padding(.bottom, 8)
+            .padding(.bottom, OPSStyle.Layout.spacing2)
 
             Text("For team contact info.")
                 .font(OPSStyle.Typography.body)
@@ -331,7 +331,7 @@ struct PhoneNumberPhaseView: View {
                 isDisabled: !isPhoneValid,
                 onTap: onContinue
             )
-            .padding(.bottom, 20)
+            .padding(.bottom, OPSStyle.Layout.spacing3_5)
         }
     }
 }
@@ -353,9 +353,9 @@ struct ProfilePicturePhaseView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
             // Header
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("ADD A")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(primaryTextColor)
@@ -363,7 +363,7 @@ struct ProfilePicturePhaseView: View {
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(primaryTextColor)
             }
-            .padding(.bottom, 8)
+            .padding(.bottom, OPSStyle.Layout.spacing2)
 
             Text("Helps your crew recognize you.")
                 .font(OPSStyle.Typography.body)
@@ -397,7 +397,7 @@ struct ProfilePicturePhaseView: View {
             Spacer()
 
             // Continue/Skip buttons
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 StandardContinueButton(
                     isDisabled: profileImage == nil,
                     onTap: onContinue
@@ -411,7 +411,7 @@ struct ProfilePicturePhaseView: View {
                         .frame(height: OPSStyle.Layout.touchTargetStandard)
                 }
             }
-            .padding(.bottom, 20)
+            .padding(.bottom, OPSStyle.Layout.spacing3_5)
         }
     }
 }

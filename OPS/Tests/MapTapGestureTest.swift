@@ -64,7 +64,7 @@ struct MapTapGestureTest: View {
             
             // Log display
             ScrollView {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     ForEach(tapLog, id: \.self) { log in
                         Text(log)
                             .font(.caption)
@@ -120,7 +120,7 @@ struct TestMarker: View {
             if showingPopup {
                 VStack {
                     Text(project.title)
-                        .padding(8)
+                        .padding(OPSStyle.Layout.spacing2)
                         .background(Color.white)
                         .cornerRadius(8)
                         .shadow(radius: 4)

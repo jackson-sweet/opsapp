@@ -31,7 +31,7 @@ struct HelperTextOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             Text("//")
                 .font(.panelTitle)
                 .foregroundColor(OPSStyle.Colors.textMute)
@@ -41,8 +41,8 @@ struct HelperTextOverlay: View {
                 .tracking(0.5)
                 .foregroundColor(state.foreground)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                 .fill(OPSStyle.Colors.glassDenseApprox)

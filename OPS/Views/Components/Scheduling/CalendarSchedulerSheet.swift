@@ -123,11 +123,11 @@ struct CalendarSchedulerSheet: View {
                 
                 // Calendar View
                 ScrollView {
-                    VStack(spacing: 20) {
+                    VStack(spacing: OPSStyle.Layout.spacing3_5) {
 
                         // Selected dates display (always visible, same size)
                         selectedDatesHeader
-                            .padding(.top, 8)
+                            .padding(.top, OPSStyle.Layout.spacing2)
 
                         // Filter chips — above the grid so users actually find
                         // them. They scope which events are encoded into day
@@ -151,13 +151,13 @@ struct CalendarSchedulerSheet: View {
                         // that something is. Replaces the old "conflict only"
                         // warning card with an always-available detail panel.
                         dayInspectorPanel
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         // Action Button (always visible, disabled when no dates)
                         actionButtons
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     }
-                    .padding(.bottom, 20)
+                    .padding(.bottom, OPSStyle.Layout.spacing3_5)
                 }
             }
         }
@@ -248,7 +248,7 @@ struct CalendarSchedulerSheet: View {
     private var selectedDatesHeader: some View {
         HStack(spacing: 0) {
             // Start date
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text("START")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -262,10 +262,10 @@ struct CalendarSchedulerSheet: View {
             Image(systemName: "arrow.right")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(hasSelectedDates ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                .padding(.horizontal, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
 
             // End date
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text("END")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -276,7 +276,7 @@ struct CalendarSchedulerSheet: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             // Duration
-            VStack(alignment: .trailing, spacing: 4) {
+            VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing1) {
                 Text("DURATION")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -285,31 +285,31 @@ struct CalendarSchedulerSheet: View {
                     .foregroundColor(hasSelectedDates ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
             }
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .strokeBorder(hasSelectedDates ? OPSStyle.Colors.primaryAccent.opacity(0.3) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .animation(OPSStyle.Animation.fast, value: hasSelectedDates)
     }
 
     // MARK: - Calendar Section (Full Width)
     private var calendarSectionFullWidth: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             // Month Navigation
             monthNavigationView
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             // Weekday Headers
             weekdayHeadersView
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
 
             // Calendar Grid
             calendarGridView
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
 
@@ -702,10 +702,10 @@ struct CalendarSchedulerSheet: View {
 
     // MARK: - Action Buttons
     private var actionButtons: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             if !conflictingEvents.isEmpty && hasSelectedDates {
                 // Conflicts exist - show both options
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Button(action: {
                         // Reset to single date selection
                         selectedStartDate = currentStartDate ?? Date()
@@ -760,8 +760,8 @@ struct CalendarSchedulerSheet: View {
     // MARK: - Quick Push Bar
 
     private var quickPushBar: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach([1, 2, 3], id: \.self) { days in
                     quickPushButton(label: "+\(days)", days: days)
                 }
@@ -792,7 +792,7 @@ struct CalendarSchedulerSheet: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     private func quickPushButton(label: String, days: Int) -> some View {

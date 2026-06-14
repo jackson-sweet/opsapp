@@ -76,7 +76,7 @@ struct TaskTypeReminderListSection: View {
                         nextDisplayOrder: (templates.map(\.displayOrder).max() ?? -1) + 1
                     )
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: OPSStyle.Icons.plus)
                             .font(.system(size: 12, weight: .semibold))
                         Text("ADD")
@@ -151,7 +151,7 @@ struct TaskTypeReminderListSection: View {
 
         var body: some View {
             HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(template.label.uppercased())
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -318,7 +318,7 @@ struct TaskTypeReminderEditorSheet: View {
             Text("LEAD TIME")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach([1, 2, 3, 7, 14], id: \.self) { days in
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -328,7 +328,7 @@ struct TaskTypeReminderEditorSheet: View {
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(leadTimeDays == days ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
                             .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
                             .background(leadTimeDays == days ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackgroundDark)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }

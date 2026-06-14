@@ -62,7 +62,7 @@ struct EditLeadSheet: View {
                             onDelete: { showDeleteConfirm = true }
                         )
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .padding(.top, 6)
                     .padding(.bottom, 140)
                 }
@@ -88,14 +88,14 @@ struct EditLeadSheet: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             SheetTitleLabel(title: titleText, size: .full)
             SheetCloseButton { dismiss() }
         }
-        .padding(.leading, 20)
+        .padding(.leading, OPSStyle.Layout.spacing3_5)
         .padding(.trailing, 6)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
+        .padding(.top, OPSStyle.Layout.spacing2)
+        .padding(.bottom, OPSStyle.Layout.spacing1)
     }
 
     // MARK: - Footer
@@ -105,10 +105,10 @@ struct EditLeadSheet: View {
             Spacer()
             if let errorMessage {
                 SheetStatusLine(mode: .error(errorMessage))
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             } else if isSaving || isArchiving {
                 SheetStatusLine(mode: .syncing)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             }
 
             SheetFooterButtonRow {
@@ -129,7 +129,7 @@ struct EditLeadSheet: View {
                 .disabled(!canSave)
                 .opacity(canSave ? 1 : 0.5)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.bottom, 28)
         }
         .background(

@@ -21,7 +21,7 @@ struct NetworkStatusIndicator: View {
     @State private var isAnimating = false
     
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             // Connection icon
             Image(systemName: connectionIcon)
                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
@@ -41,8 +41,8 @@ struct NetworkStatusIndicator: View {
                     .foregroundColor(connectionColor)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
         .background(
             Capsule()
                 .fill(OPSStyle.Colors.cardBackground.opacity(0.7))

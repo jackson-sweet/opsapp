@@ -22,7 +22,7 @@ struct ScaleConflictSheet: View {
     // MARK: - Drag Indicator
 
     private var dragIndicator: some View {
-        RoundedRectangle(cornerRadius: 2)
+        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
             .fill(OPSStyle.Colors.tertiaryText)
             .frame(width: 36, height: 4)
             .padding(.top, OPSStyle.Layout.spacing2)

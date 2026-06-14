@@ -101,7 +101,7 @@ struct DeveloperDashboard: View {
                                     .font(OPSStyle.Typography.caption)
                             }
                             .foregroundColor(OPSStyle.Colors.errorStatus)
-                            .padding(.horizontal, 12)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                             .padding(.vertical, 6)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -190,7 +190,7 @@ struct DeveloperDashboard: View {
                         // Database Stats
                         DatabaseStatsCard()
                             .padding(.horizontal)
-                            .padding(.bottom, 20)
+                            .padding(.bottom, OPSStyle.Layout.spacing3_5)
                     }
                 }
             }
@@ -294,12 +294,12 @@ struct InfoCard: View {
     
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Label("Development Mode Active", systemImage: "hammer.circle.fill")
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.successStatus)
                 
-                HStack(spacing: 16) {
+                HStack(spacing: OPSStyle.Layout.spacing3) {
                     if let user = dataController.currentUser {
                         Label(user.fullName, systemImage: "person.fill")
                             .font(OPSStyle.Typography.caption)

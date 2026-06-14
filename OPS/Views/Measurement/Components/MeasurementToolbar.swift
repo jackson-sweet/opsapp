@@ -84,7 +84,7 @@ public struct MeasurementToolbar: View {
             )
 
             VStack(alignment: .leading, spacing: metrics.rowSpacing) {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     undoButton
                     redoButton
                     Spacer(minLength: 0)
@@ -148,7 +148,7 @@ public struct MeasurementToolbar: View {
             activeTool = tool
             onSelect(tool)
         } label: {
-            VStack(spacing: 4) {
+            VStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(systemName: tool.sfSymbol)
                     .font(.system(size: metrics.iconSize, weight: .regular))
                     .frame(width: size, height: size * 0.45)
@@ -160,7 +160,7 @@ public struct MeasurementToolbar: View {
             }
             .frame(width: size, height: size)
             .background(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
                     .fill(active ? OPSStyle.Colors.surfaceActive : Color.clear)
             )
             .foregroundColor(

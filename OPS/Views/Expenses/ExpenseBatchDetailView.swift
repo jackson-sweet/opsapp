@@ -196,17 +196,17 @@ struct ExpenseBatchDetailView: View {
             GeometryReader { geometry in
                 HStack(spacing: 1) {
                     if cleanCount > 0 {
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .fill(OPSStyle.Colors.successStatus)
                             .frame(width: geometry.size.width * cleanFraction)
                     }
                     if flaggedCount > 0 {
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .fill(OPSStyle.Colors.warningStatus)
                             .frame(width: geometry.size.width * flaggedFraction)
                     }
                     if cleanCount == 0 && flaggedCount == 0 {
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .fill(OPSStyle.Colors.cardBorder)
                     }
                 }
@@ -271,7 +271,7 @@ struct ExpenseBatchDetailView: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
 
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Text(expense.category?.name ?? "Uncategorized")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -287,7 +287,7 @@ struct ExpenseBatchDetailView: View {
 
                     // Status line
                     if isFlagged {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "flag.fill")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             Text("FLAGGED")
@@ -295,7 +295,7 @@ struct ExpenseBatchDetailView: View {
                         }
                         .foregroundColor(OPSStyle.Colors.warningStatus)
                     } else {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Circle()
                                 .fill(expStatus.reviewColor)
                                 .frame(width: OPSStyle.Layout.Indicator.dotSM, height: OPSStyle.Layout.Indicator.dotSM)

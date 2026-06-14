@@ -15,7 +15,7 @@ struct HealthSummaryCard: View {
     let iconColor: Color
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
             HStack {
                 Image(systemName: icon)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))

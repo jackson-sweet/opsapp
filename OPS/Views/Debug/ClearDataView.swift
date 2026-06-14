@@ -72,9 +72,9 @@ struct ClearDataView: View {
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 
                 ScrollView {
-                    VStack(spacing: 20) {
+                    VStack(spacing: OPSStyle.Layout.spacing3_5) {
                         // Warning card
-                        VStack(spacing: 12) {
+                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
                             Image(systemName: OPSStyle.Icons.alert)
                                 .font(.system(size: 40))
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -93,7 +93,7 @@ struct ClearDataView: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         
                         // Clear options
-                        VStack(spacing: 12) {
+                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
                             ForEach(DataType.allCases, id: \.self) { dataType in
                                 ClearDataButton(
                                     dataType: dataType,

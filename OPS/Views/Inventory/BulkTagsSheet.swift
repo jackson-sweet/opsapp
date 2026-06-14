@@ -131,7 +131,7 @@ struct BulkTagsSheet: View {
             VStack(spacing: OPSStyle.Layout.spacing2) {
                 // Tags to add
                 if !tagsToAdd.isEmpty {
-                    FlowLayout(spacing: 8) {
+                    FlowLayout(spacing: OPSStyle.Layout.spacing2) {
                         ForEach(Array(tagsToAdd).sorted(), id: \.self) { tag in
                             InventoryPendingTagBadge(tag: tag, isAdding: true, size: .button) {
                                 tagsToAdd.remove(tag)
@@ -142,7 +142,7 @@ struct BulkTagsSheet: View {
 
                 // Tags to remove
                 if !tagsToRemove.isEmpty {
-                    FlowLayout(spacing: 8) {
+                    FlowLayout(spacing: OPSStyle.Layout.spacing2) {
                         ForEach(Array(tagsToRemove).sorted(), id: \.self) { tag in
                             InventoryPendingTagBadge(tag: tag, isAdding: false, size: .button) {
                                 tagsToRemove.remove(tag)
@@ -226,7 +226,7 @@ struct BulkTagsSheet: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
 
-            FlowLayout(spacing: 8) {
+            FlowLayout(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(availableTagsToAdd, id: \.self) { tag in
                     InventoryTagActionBadge(tag: tag, isAdd: true, size: .button) {
                         tagsToAdd.insert(tag)
@@ -248,7 +248,7 @@ struct BulkTagsSheet: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
 
-            FlowLayout(spacing: 8) {
+            FlowLayout(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(currentTags.filter { !tagsToRemove.contains($0) }, id: \.self) { tag in
                     let itemsWithTag = items.filter { $0.tagNames.contains(tag) }.count
                     InventoryTagActionBadge(tag: tag, isAdd: false, size: .button, subtitle: "\(itemsWithTag) items") {

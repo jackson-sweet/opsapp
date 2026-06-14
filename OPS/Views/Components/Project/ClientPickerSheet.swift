@@ -36,7 +36,7 @@ struct ClientPickerSheet: View {
             ScrollView {
                 VStack(spacing: 0) {
                     // Search field
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         Image(systemName: "magnifyingglass")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -44,16 +44,16 @@ struct ClientPickerSheet: View {
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
-                    .padding(12)
+                    .padding(OPSStyle.Layout.spacing2_5)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.buttonRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                             .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                     )
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.top, OPSStyle.Layout.spacing3)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                     // Client list
                     VStack(spacing: 0) {
@@ -61,7 +61,7 @@ struct ClientPickerSheet: View {
                             Text("No clients found")
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .padding(.vertical, 20)
+                                .padding(.vertical, OPSStyle.Layout.spacing3_5)
                                 .frame(maxWidth: .infinity)
                         } else {
                             ForEach(filteredClients) { client in
@@ -73,7 +73,7 @@ struct ClientPickerSheet: View {
                                         dismiss()
                                     }
                                 }) {
-                                    HStack(spacing: 12) {
+                                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                         UserAvatar(client: client, size: 32)
 
                                         Text(client.name)
@@ -90,7 +90,7 @@ struct ClientPickerSheet: View {
                                             )
                                         }
                                     }
-                                    .padding(.horizontal, 16)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                                     .padding(.vertical, 10)
                                     .contentShape(Rectangle())
                                 }
@@ -112,7 +112,7 @@ struct ClientPickerSheet: View {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                             .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                     )
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                 }
             }
             .background(OPSStyle.Colors.background)

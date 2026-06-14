@@ -554,7 +554,7 @@ struct InventorySettingsView: View {
                                         if tag.hasThresholds {
                                             HStack(spacing: OPSStyle.Layout.spacing2) {
                                                 if let warning = tag.warningThreshold {
-                                                    HStack(spacing: 4) {
+                                                    HStack(spacing: OPSStyle.Layout.spacing1) {
                                                         Circle()
                                                             .fill(OPSStyle.Colors.warningStatus)
                                                             .frame(width: 6, height: 6)
@@ -564,7 +564,7 @@ struct InventorySettingsView: View {
                                                     }
                                                 }
                                                 if let critical = tag.criticalThreshold {
-                                                    HStack(spacing: 4) {
+                                                    HStack(spacing: OPSStyle.Layout.spacing1) {
                                                         Circle()
                                                             .fill(OPSStyle.Colors.errorStatus)
                                                             .frame(width: 6, height: 6)

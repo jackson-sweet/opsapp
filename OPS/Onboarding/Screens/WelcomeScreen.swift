@@ -44,7 +44,7 @@ struct WelcomeScreen: View {
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 44, height: 44)
-                        .padding(.bottom, 8)
+                        .padding(.bottom, OPSStyle.Layout.spacing2)
 
                     Text("OPS")
                         .font(OPSStyle.Typography.largeTitle.weight(.bold))
@@ -58,7 +58,7 @@ struct WelcomeScreen: View {
                 Spacer()
 
                 // Brand message
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     VStack(alignment: .leading, spacing: 0) {
                         Text("BUILT BY TRADES.")
                             .font(OPSStyle.Typography.largeTitle.weight(.bold))
@@ -79,7 +79,7 @@ struct WelcomeScreen: View {
                 Spacer()
 
                 // Action buttons
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     // GET STARTED - Primary
                     Button {
                         manager.goToScreen(.signup)
@@ -94,7 +94,7 @@ struct WelcomeScreen: View {
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         }
                         .foregroundColor(OPSStyle.Colors.invertedText)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
                         .background(OPSStyle.Colors.primaryText)
@@ -115,7 +115,7 @@ struct WelcomeScreen: View {
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         }
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
                         .background(Color.clear)

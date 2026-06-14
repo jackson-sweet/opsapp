@@ -49,14 +49,14 @@ struct CompanyCodeScreen: View {
             PhasedContent(coordinator: animationCoordinator) {
                 VStack(spacing: 0) {
                     // Company code section
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         PhasedLabel("CREW CODE", index: 0, isLast: true, coordinator: animationCoordinator)
 
                         // Code display
                         Button {
                             copyCode()
                         } label: {
-                            VStack(spacing: 8) {
+                            VStack(spacing: OPSStyle.Layout.spacing2) {
                                 Text(showCopied ? "CODE COPIED" : "[\(companyCode)]")
                                     .font(OPSStyle.Typography.captionBold)
                                     .foregroundColor(showCopied ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryText)
@@ -68,7 +68,7 @@ struct CompanyCodeScreen: View {
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     .opacity(showCopied ? 0 : 1)
                             }
-                            .padding(16)
+                            .padding(OPSStyle.Layout.spacing3)
                             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
@@ -90,7 +90,7 @@ struct CompanyCodeScreen: View {
                     Button {
                         showInviteSheet = true
                     } label: {
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             Image(systemName: "person.2")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
 
@@ -119,7 +119,7 @@ struct CompanyCodeScreen: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 40)
-                .padding(.bottom, 24)
+                .padding(.bottom, OPSStyle.Layout.spacing4)
 
             // Continue button with phased animation
             PhasedPrimaryButton(
@@ -294,9 +294,9 @@ struct InviteTeamSheet: View {
 
     var body: some View {
         NavigationView {
-            VStack(spacing: 24) {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
                 // Header
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     Text("GET YOUR CREW ON OPS")
                         .font(OPSStyle.Typography.title)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -306,11 +306,11 @@ struct InviteTeamSheet: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 24)
+                .padding(.top, OPSStyle.Layout.spacing4)
 
                 mainInviteOptions
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing4)
             .background(OPSStyle.Colors.background)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -349,9 +349,9 @@ struct InviteTeamSheet: View {
     // MARK: - Main Invite Options
 
     private var mainInviteOptions: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             // Code display card with copy button
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("CREW CODE")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -383,7 +383,7 @@ struct InviteTeamSheet: View {
                     }
                 }
             }
-            .padding(16)
+            .padding(OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
             .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -393,7 +393,7 @@ struct InviteTeamSheet: View {
             )
 
             // Share options
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Send via Text Message (two-step: invite then code)
                 Button {
                     if MFMessageComposeViewController.canSendText() {
@@ -416,12 +416,12 @@ struct InviteTeamSheet: View {
                 .disabled(!MFMessageComposeViewController.canSendText())
 
                 // Email invite section (expands inline)
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     // Email fields (revealed when showEmailInvite is true)
                     if showEmailInvite {
-                        VStack(spacing: 12) {
+                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
                             // Section header with divider
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 Rectangle()
                                     .fill(OPSStyle.Colors.cardBorder)
                                     .frame(height: 1)
@@ -439,14 +439,14 @@ struct InviteTeamSheet: View {
                             InviteRolePicker(selectedRoleId: $selectedRoleId)
 
                             ForEach(inviteEmails.indices, id: \.self) { index in
-                                HStack(spacing: 8) {
+                                HStack(spacing: OPSStyle.Layout.spacing2) {
                                     ZStack(alignment: .leading) {
                                         if inviteEmails[index].isEmpty {
                                             Text("team.member@example.com")
                                                 .font(OPSStyle.Typography.body)
                                                 .foregroundStyle(OPSStyle.Colors.placeholderText)
                                                 .tint(OPSStyle.Colors.placeholderText)
-                                                .padding(.horizontal, 16)
+                                                .padding(.horizontal, OPSStyle.Layout.spacing3)
                                         }
                                         TextField("", text: $inviteEmails[index])
                                             .font(OPSStyle.Typography.body)
@@ -454,7 +454,7 @@ struct InviteTeamSheet: View {
                                             .keyboardType(.emailAddress)
                                             .autocapitalization(.none)
                                             .focused($focusedEmailIndex, equals: index)
-                                            .padding(.horizontal, 16)
+                                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                                     }
                                     .padding(.vertical, 14)
                                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
@@ -548,7 +548,7 @@ struct InviteTeamSheet: View {
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.successStatus)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 8)
+                            .padding(.top, OPSStyle.Layout.spacing2)
                     }
                 }
             }
@@ -556,12 +556,12 @@ struct InviteTeamSheet: View {
             Spacer()
 
             // Instructions
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("HOW IT WORKS")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("1. They download OPS (free)")
                     Text("2. They tap \"Join a Crew\"")
                     Text("3. They enter the code above")
@@ -570,7 +570,7 @@ struct InviteTeamSheet: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, 24)
+            .padding(.bottom, OPSStyle.Layout.spacing4)
         }
     }
 

@@ -376,7 +376,7 @@ struct BooksTabView: View {
 
     /// `// INVOICES · 12` data-section marker that anchors the list start.
     private var segmentLabel: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             Text("//").foregroundColor(OPSStyle.Colors.textMute)
             Text(selectedSegment.rawValue).foregroundColor(OPSStyle.Colors.tertiaryText)
             if let count = segmentCount {

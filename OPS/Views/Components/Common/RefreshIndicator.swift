@@ -17,7 +17,7 @@ struct RefreshIndicator: View {
             ZStack {
                 
                 // Indicator container
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     ZStack {
                         
                         if isLoading {
@@ -48,7 +48,7 @@ struct RefreshIndicator: View {
                         .font(OPSStyle.Typography.status)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                .padding(24)
+                .padding(OPSStyle.Layout.spacing4)
                 .background(
                     ZStack {
                         BlurView(style: .systemUltraThinMaterialDark)

@@ -148,7 +148,7 @@ struct PhotoStorageBudgetCard: View {
     // MARK: - Body
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             if let report = capHitReport {
                 capHitBanner(report: report)
             }
@@ -176,7 +176,7 @@ struct PhotoStorageBudgetCard: View {
                         .fill(isOverBudget ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryAccent)
                         .frame(width: geo.size.width * usagePercent)
                 }
-                .cornerRadius(4)
+                .cornerRadius(OPSStyle.Layout.chipRadius)
             }
             .frame(height: 8)
 
@@ -380,7 +380,7 @@ struct PhotoStorageBudgetCard: View {
                 .disabled(isApplyingBudget)
 
                 Button(action: applyPendingChange) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         if isApplyingBudget {
                             ProgressView()
                                 .tint(.white)

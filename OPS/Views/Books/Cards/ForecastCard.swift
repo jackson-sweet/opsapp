@@ -286,14 +286,14 @@ struct ForecastCard: View {
 #if DEBUG
 #Preview("ForecastCard — seeded") {
     ForecastCard(viewModel: .previewStub())
-        .padding(.vertical, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing4)
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
 }
 
 #Preview("ForecastCard — empty") {
     ForecastCard(viewModel: .previewEmpty())
-        .padding(.vertical, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing4)
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
 }

@@ -370,7 +370,7 @@ struct InlineTaskRow: View {
         companyId: "co-1"
     )
 
-    return VStack(spacing: 12) {
+    return VStack(spacing: OPSStyle.Layout.spacing2_5) {
         InlineTaskRow(
             task: LocalTask(
                 id: UUID(),

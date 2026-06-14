@@ -434,7 +434,7 @@ struct VinylOrderSheet: View {
                     emptyLine("—")
                 } else {
                     ForEach(plan.surfaces) { surface in
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                             Text(surface.displayLabel.uppercased())
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -588,7 +588,7 @@ struct VinylOrderSheet: View {
                         metricRow("SKU", sku.uppercased())
                     }
                 } else {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                         Text("VARIANT NOT SELECTED")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -599,7 +599,7 @@ struct VinylOrderSheet: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } else {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("NO PRODUCT SELECTED")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)

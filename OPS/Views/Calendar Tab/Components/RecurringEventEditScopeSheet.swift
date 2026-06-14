@@ -86,7 +86,7 @@ struct RecurringEventEditScopeSheet: View {
             Capsule()
                 .fill(OPSStyle.Colors.tertiaryText.opacity(0.5))
                 .frame(width: 36, height: 4)
-                .padding(.top, 12)
+                .padding(.top, OPSStyle.Layout.spacing2_5)
                 .padding(.bottom, OPSStyle.Layout.spacing4)
 
             // Title block

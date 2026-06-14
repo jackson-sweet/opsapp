@@ -251,7 +251,7 @@ struct ImportConfigView: View {
                 Spacer()
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, 12)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .background(isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.1) : Color.clear)
         }
         .buttonStyle(PlainButtonStyle())

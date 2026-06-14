@@ -36,14 +36,14 @@ struct MinimalSignupView: View {
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 44, height: 44)
-                            .padding(.bottom, 8)
+                            .padding(.bottom, OPSStyle.Layout.spacing2)
                         Text("OPS")
                             .font(OPSStyle.Typography.largeTitle.weight(.bold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
 
                         Spacer()
                     }
-                    .padding(.leading, 4)
+                    .padding(.leading, OPSStyle.Layout.spacing1)
 
                     Spacer().frame(height: 40)
 
@@ -58,10 +58,10 @@ struct MinimalSignupView: View {
                     Spacer().frame(height: 32)
 
                     // MARK: - Social sign-in buttons
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         // Apple Sign-In
                         Button(action: handleAppleSignIn) {
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 if isLoading {
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
@@ -87,7 +87,7 @@ struct MinimalSignupView: View {
 
                         // Google Sign-In
                         Button(action: handleGoogleSignIn) {
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 if isLoading {
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
@@ -124,7 +124,7 @@ struct MinimalSignupView: View {
                         Text("OR")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                         Rectangle()
                             .fill(OPSStyle.Colors.tertiaryText.opacity(0.3))
@@ -134,9 +134,9 @@ struct MinimalSignupView: View {
                     Spacer().frame(height: 24)
 
                     // MARK: - Input fields (auth only — no company name)
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         // Email field
-                        VStack(spacing: 8) {
+                        VStack(spacing: OPSStyle.Layout.spacing2) {
                             TextField("", text: $email, prompt: Text("Email").foregroundColor(OPSStyle.Colors.secondaryText))
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -151,7 +151,7 @@ struct MinimalSignupView: View {
                         }
 
                         // Password field
-                        VStack(spacing: 8) {
+                        VStack(spacing: OPSStyle.Layout.spacing2) {
                             SecureField("", text: $password, prompt: Text("Password").foregroundColor(OPSStyle.Colors.secondaryText))
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -171,7 +171,7 @@ struct MinimalSignupView: View {
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                             .multilineTextAlignment(.center)
-                            .padding(.bottom, 12)
+                            .padding(.bottom, OPSStyle.Layout.spacing2_5)
                     }
 
                     // MARK: - Create Account button
@@ -197,7 +197,7 @@ struct MinimalSignupView: View {
                                     Image(systemName: "arrow.right")
                                         .foregroundColor(OPSStyle.Colors.invertedText)
                                         .font(OPSStyle.Typography.caption.weight(.semibold))
-                                        .padding(.trailing, 20)
+                                        .padding(.trailing, OPSStyle.Layout.spacing3_5)
                                 }
                             }
                         )
@@ -212,7 +212,7 @@ struct MinimalSignupView: View {
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .frame(minWidth: 44, minHeight: 44)
                         }
-                        .padding(.top, 8)
+                        .padding(.top, OPSStyle.Layout.spacing2)
                     }
 
                     // Flow toggle — switch between Join/Create
@@ -230,7 +230,7 @@ struct MinimalSignupView: View {
                             .underline()
                             .frame(minHeight: 44)
                     }
-                    .padding(.top, 4)
+                    .padding(.top, OPSStyle.Layout.spacing1)
 
                     Spacer().frame(height: 20)
                 }

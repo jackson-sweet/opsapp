@@ -53,10 +53,10 @@ struct EmployeeCodeEntryView: View {
                 }
             }
             .padding(.horizontal, 28)
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
 
             // Title
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("JOIN YOUR CREW")
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -67,7 +67,7 @@ struct EmployeeCodeEntryView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 40)
-            .padding(.top, 32)
+            .padding(.top, OPSStyle.Layout.spacing5)
 
             Spacer()
 
@@ -83,7 +83,7 @@ struct EmployeeCodeEntryView: View {
                     Text(error)
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.errorStatus)
-                        .padding(.top, 16)
+                        .padding(.top, OPSStyle.Layout.spacing3)
                 }
             }
             .padding(.horizontal, 40)
@@ -91,7 +91,7 @@ struct EmployeeCodeEntryView: View {
             Spacer()
 
             // Bottom button
-            VStack(spacing: 16) {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
                 Button {
                     lookupCompany()
                 } label: {
@@ -110,7 +110,7 @@ struct EmployeeCodeEntryView: View {
                         }
                     }
                     .foregroundColor(OPSStyle.Colors.invertedText)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
                     .background(isFormValid ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)

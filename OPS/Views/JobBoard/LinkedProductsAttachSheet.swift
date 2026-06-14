@@ -162,7 +162,7 @@ struct LinkedProductsAttachSheet: View {
                 Task { await attach(product) }
             }
         } label: {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     Text(product.name)
                         .font(OPSStyle.Typography.bodyBold)

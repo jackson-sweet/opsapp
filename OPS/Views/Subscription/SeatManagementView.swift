@@ -49,7 +49,7 @@ struct SeatManagementView: View {
                     loadingView
                 } else {
                     ScrollView {
-                        VStack(spacing: 24) {
+                        VStack(spacing: OPSStyle.Layout.spacing4) {
                             // Seat usage header
                             seatUsageCard
                             
@@ -99,7 +99,7 @@ struct SeatManagementView: View {
     // MARK: - Expandable Info Section
     
     private var expandableInfoSection: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             Button(action: {
                 withAnimation(OPSStyle.Animation.fast) {
                     showInfo.toggle()
@@ -124,8 +124,8 @@ struct SeatManagementView: View {
             }
             
             if showInfo {
-                VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         HStack(spacing: 6) {
                             Text("•")
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -180,7 +180,7 @@ struct SeatManagementView: View {
             }
             .foregroundColor(OPSStyle.Colors.invertedText)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .background(OPSStyle.Colors.primaryText)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
@@ -190,10 +190,10 @@ struct SeatManagementView: View {
     // MARK: - Seat Usage Card
     
     private var seatUsageCard: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
             // Minimalist header - no card background
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("\(seatedUserIds.count)/\(maxSeats) SEATS ACTIVE")
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -241,18 +241,18 @@ struct SeatManagementView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, OPSStyle.Layout.spacing4)
     }
     
     // MARK: - Team Members List
     
     private var teamMembersList: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             // Minimal section header
             Text("TEAM MEMBERS")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
             
             // Minimalist team member list - no individual cards
             VStack(spacing: 0) {
@@ -272,7 +272,7 @@ struct SeatManagementView: View {
                         Rectangle()
                             .fill(OPSStyle.Colors.separator)
                             .frame(height: 1)
-                            .padding(.horizontal, 24)
+                            .padding(.horizontal, OPSStyle.Layout.spacing4)
                     }
                 }
             }
@@ -282,9 +282,9 @@ struct SeatManagementView: View {
     // MARK: - Upgrade Prompt
     
     private var upgradePrompt: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             // Warning message - no background
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -308,13 +308,13 @@ struct SeatManagementView: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, OPSStyle.Layout.spacing4)
     }
     
     // MARK: - Loading View
     
     private var loadingView: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             ProgressView()
                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
                 .scaleEffect(0.8)
@@ -467,11 +467,11 @@ struct TeamMemberRow: View {
     let onToggle: () -> Void
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // No avatar - minimalist approach
             
             // User info
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 HStack(spacing: 6) {
                     Text("\(user.firstName) \(user.lastName)")
                         .font(OPSStyle.Typography.bodyBold)
@@ -527,8 +527,8 @@ struct TeamMemberRow: View {
             }
             .disabled(isCurrentUser || (!canToggle && !isSeated))
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .padding(.horizontal, OPSStyle.Layout.spacing4)
         // No background card - just plain rows
     }
 }

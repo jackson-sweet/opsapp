@@ -43,7 +43,7 @@ struct ProjectRulesView: View {
                     title: "Project Rules",
                     onBackTapped: { dismiss() }
                 )
-                .padding(.bottom, 8)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
 
                 ScrollViewReader { proxy in
                 ScrollView {
@@ -52,7 +52,7 @@ struct ProjectRulesView: View {
                         settingsSection(title: "PROJECT REVIEW") {
                             // Overdue threshold stepper
                             HStack {
-                                VStack(alignment: .leading, spacing: 4) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                     Text("Overdue Threshold")
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -77,13 +77,13 @@ struct ProjectRulesView: View {
                                     .frame(width: 70, alignment: .trailing)
                             }
                             .padding(.vertical, 14)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                             sectionDivider
 
                             // Reminder frequency stepper
                             HStack {
-                                VStack(alignment: .leading, spacing: 4) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                     Text("Reminder Frequency")
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -108,13 +108,13 @@ struct ProjectRulesView: View {
                                     .frame(width: 70, alignment: .trailing)
                             }
                             .padding(.vertical, 14)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                             sectionDivider
 
                             // Match invoice payment terms toggle
                             HStack {
-                                VStack(alignment: .leading, spacing: 4) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                     Text("Match Invoice Payment Terms")
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(permissionStore.can("finances.view") ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
@@ -134,11 +134,11 @@ struct ProjectRulesView: View {
                                     }
                             }
                             .padding(.vertical, 14)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .opacity(permissionStore.can("finances.view") ? 1.0 : 0.5)
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.top, OPSStyle.Layout.spacing3_5)
                         .id(AnchorID.projectReview)
                         .deepLinkSpotlight(highlightedSection == AnchorID.projectReview)
                     }
@@ -198,7 +198,7 @@ struct ProjectRulesView: View {
     // MARK: - Grouped Section Builder
 
     private func settingsSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text(title)
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)

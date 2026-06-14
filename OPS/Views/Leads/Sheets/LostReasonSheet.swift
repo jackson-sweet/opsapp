@@ -43,8 +43,8 @@ struct LostReasonSheet: View {
                         reasonSection
                         notesSection
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 4)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.top, OPSStyle.Layout.spacing1)
                     .padding(.bottom, 130)
                 }
                 .scrollIndicators(.hidden)
@@ -61,15 +61,15 @@ struct LostReasonSheet: View {
     private var header: some View {
         // Drag handle is provided by the parent's `.presentationDragIndicator(.visible)`
         SheetTitleLabel(title: "MARK AS LOST", size: .half)
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.top, OPSStyle.Layout.spacing3_5)
             .padding(.bottom, 14)
     }
 
     // MARK: - Summary
 
     private var summaryCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: 0) {
                 Text("// ")
                     .foregroundColor(OPSStyle.Colors.textMute)
@@ -87,7 +87,7 @@ struct LostReasonSheet: View {
                 .foregroundColor(OPSStyle.Colors.text)
                 .lineLimit(2)
         }
-        .padding(.vertical, 12)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .padding(.horizontal, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .nestedCard()
@@ -146,10 +146,10 @@ struct LostReasonSheet: View {
             Spacer()
             if let errorMessage {
                 SheetStatusLine(mode: .error(errorMessage))
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             } else if isSaving {
                 SheetStatusLine(mode: .syncing)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             }
 
             SheetFooterButtonRow {
@@ -170,7 +170,7 @@ struct LostReasonSheet: View {
                 .disabled(!canSave)
                 .opacity(canSave ? 1 : 0.5)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.bottom, 28)
         }
         .background(

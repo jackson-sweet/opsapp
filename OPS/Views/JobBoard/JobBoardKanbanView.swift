@@ -146,7 +146,7 @@ private struct KanbanStatusBar: View {
                 Text("No projects")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .padding(.vertical, 20)
+                    .padding(.vertical, OPSStyle.Layout.spacing3_5)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
             } else {

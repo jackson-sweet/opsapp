@@ -86,7 +86,7 @@ struct PostTutorialCTAScreen: View {
                         }
                     }
                 }
-                .padding(.top, 12)
+                .padding(.top, OPSStyle.Layout.spacing2_5)
                 .padding(.horizontal, 40)
 
                 Spacer()
@@ -132,7 +132,7 @@ struct PostTutorialCTAScreen: View {
                                 .opacity(showButtonIcon ? 1 : 0)
                                 .offset(x: showButtonIcon ? 0 : -10)
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     }
                     .frame(height: 56)
                 }

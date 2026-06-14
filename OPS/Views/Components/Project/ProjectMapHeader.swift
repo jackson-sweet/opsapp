@@ -61,7 +61,7 @@ struct ProjectMapHeader: View {
                     .fill(OPSStyle.Colors.cardBackgroundDark)
                     .frame(height: Self.mapHeight)
                     .overlay(
-                        VStack(spacing: 8) {
+                        VStack(spacing: OPSStyle.Layout.spacing2) {
                             Image(systemName: "map")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -89,10 +89,10 @@ struct ProjectTitleOverlay: View {
     @FocusState private var titleFieldFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             if isEditingTitle {
                 // Editable title field
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     TextField("", text: $editedTitle)
                         .font(OPSStyle.Typography.title)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -108,7 +108,7 @@ struct ProjectTitleOverlay: View {
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
                             .background(OPSStyle.Colors.primaryAccent.opacity(0.15))
                             .cornerRadius(OPSStyle.Layout.buttonRadius)
                     }
@@ -144,8 +144,8 @@ struct ProjectTitleOverlay: View {
                 }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 8)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.bottom, OPSStyle.Layout.spacing2)
     }
 }
 

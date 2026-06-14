@@ -279,7 +279,7 @@ struct EstimateDetailView: View {
 
     private var statusBadge: some View {
         let color = estimate.status.badgeColor
-        return HStack(spacing: 4) {
+        return HStack(spacing: OPSStyle.Layout.spacing1) {
             Circle()
                 .fill(color)
                 .frame(width: 8, height: 8)
@@ -303,7 +303,7 @@ struct EstimateDetailView: View {
                     Button {
                         withAnimation(OPSStyle.Animation.spring) { showBreakdown.toggle() }
                     } label: {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Text(showBreakdown ? "BUNDLED" : "BREAKDOWN")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -366,7 +366,7 @@ struct EstimateDetailView: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Text(item.type.rawValue.uppercased())
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -408,7 +408,7 @@ struct EstimateDetailView: View {
         }
         .padding(.leading, OPSStyle.Layout.spacing3 + 14)
         .padding(.trailing, OPSStyle.Layout.spacing3)
-        .padding(.vertical, 4)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.3))
     }
 

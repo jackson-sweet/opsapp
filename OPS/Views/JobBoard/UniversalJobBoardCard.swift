@@ -69,7 +69,7 @@ struct UniversalJobBoardCard: View {
                 .padding(.vertical, compact ? 0 : 8)
         } else {
             taskCard
-                .padding(.vertical, 8)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
         }
     }
 
@@ -86,7 +86,7 @@ struct UniversalJobBoardCard: View {
                 ClientProjectBadges(client: client)
             }
         }
-        .padding(.vertical, 12)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .contentShape(Rectangle())
         .scaleEffect(isLongPressing ? 0.95 : 1.0)
         .animation(.accessibleEaseInOut(duration: 0.2), value: isLongPressing)
@@ -285,14 +285,14 @@ struct UniversalJobBoardCard: View {
 
                 // Tutorial mode: Wrong swipe direction hint
                 if showingWrongSwipeHint {
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         Image(systemName: "arrow.right")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                         Text("SWIPE RIGHT")
                             .font(OPSStyle.Typography.captionBold)
                     }
                     .foregroundColor(OPSStyle.Colors.errorStatus)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.vertical, 10)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -427,7 +427,7 @@ struct UniversalJobBoardCard: View {
                 .truncationMode(.tail)
 
             // Row 2: Client name - Address
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Text(subtitle)
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -448,7 +448,7 @@ struct UniversalJobBoardCard: View {
 
             // Row 3: Dates + task progress
             HStack(spacing: OPSStyle.Layout.spacing3) {
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Image(systemName: OPSStyle.Icons.calendar)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -526,8 +526,8 @@ struct UniversalJobBoardCard: View {
     @ViewBuilder
     private var standardProjectCardContent: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     titleText
                     subtitleText
                 }
@@ -587,8 +587,8 @@ struct UniversalJobBoardCard: View {
                             Text("ASSIGNED TO ME")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
+                                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                .padding(.vertical, OPSStyle.Layout.spacing1)
                                 .background(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                         .fill(.ultraThinMaterial)
@@ -602,8 +602,8 @@ struct UniversalJobBoardCard: View {
                         Text(project.status.displayName.uppercased())
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(project.status.color)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .fill(project.status.color.opacity(0.1))
@@ -614,7 +614,7 @@ struct UniversalJobBoardCard: View {
                             )
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .padding(8)
+                    .padding(OPSStyle.Layout.spacing2)
 
                     // Task progress bars — always vertically centered, right side
                     if project.status == .inProgress {
@@ -623,7 +623,7 @@ struct UniversalJobBoardCard: View {
                                 .frame(width: 60)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                        .padding(.horizontal, 8)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
                     }
 
                     // Unscheduled badge — bottom right
@@ -632,8 +632,8 @@ struct UniversalJobBoardCard: View {
                             Text("UNSCHEDULED")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
+                                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                .padding(.vertical, OPSStyle.Layout.spacing1)
                                 .background(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                         .fill(OPSStyle.Colors.warningStatus.opacity(0.1))
@@ -644,7 +644,7 @@ struct UniversalJobBoardCard: View {
                                 )
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                        .padding(8)
+                        .padding(OPSStyle.Layout.spacing2)
                     }
 
                 }
@@ -704,8 +704,8 @@ struct UniversalJobBoardCard: View {
                 .fill(taskTypeColor)
                 .frame(width: 4)
 
-            VStack(alignment: .leading, spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     titleText
                     subtitleText
                 }
@@ -734,8 +734,8 @@ struct UniversalJobBoardCard: View {
                                 Text("ASSIGNED TO ME")
                                     .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                    .padding(.vertical, OPSStyle.Layout.spacing1)
                                     .background(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                             .fill(.ultraThinMaterial)
@@ -749,8 +749,8 @@ struct UniversalJobBoardCard: View {
                             Text(task.status.displayName.uppercased())
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(task.status.color)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
+                                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                .padding(.vertical, OPSStyle.Layout.spacing1)
                                 .background(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                         .fill(task.status.color.opacity(0.1))
@@ -761,14 +761,14 @@ struct UniversalJobBoardCard: View {
                                 )
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                        .padding(8)
+                        .padding(OPSStyle.Layout.spacing2)
 
                         if task.startDate == nil {
                             Text("UNSCHEDULED")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
+                                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                .padding(.vertical, OPSStyle.Layout.spacing1)
                                 .background(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                         .fill(OPSStyle.Colors.warningStatus.opacity(0.1))
@@ -778,7 +778,7 @@ struct UniversalJobBoardCard: View {
                                         .stroke(OPSStyle.Colors.warningStatus, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                                .padding(8)
+                                .padding(OPSStyle.Layout.spacing2)
                         }
                     }
                 }
@@ -999,9 +999,9 @@ struct UniversalJobBoardCard: View {
     @ViewBuilder
     private var metadataRow: some View {
         GeometryReader { geometry in
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 ForEach(Array(metadataItems.enumerated()), id: \.offset) { index, item in
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: item.icon)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -1370,7 +1370,7 @@ struct UniversalJobBoardCard: View {
                     let activeTasks = UniversalSearchScheduleTargeting.schedulableTasks(forProject: project)
 
                     ScrollView {
-                        VStack(spacing: 12) {
+                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
                             ForEach(activeTasks, id: \.id) { task in
                                 Button(action: {
                                     selectedTaskForScheduling = task
@@ -2018,7 +2018,7 @@ struct RevealedStatusCard: View {
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(statusColor)
                 .frame(maxHeight: .infinity)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             if direction == .right {
                 Spacer()
@@ -2053,8 +2053,8 @@ struct ClientProjectBadges: View {
                     Text("\(count)")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(status.color)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .fill(status.color.opacity(0.1))

@@ -184,7 +184,7 @@ struct DataActorBenchmarkView: View {
             }
         }
         .padding(.vertical, 10)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)

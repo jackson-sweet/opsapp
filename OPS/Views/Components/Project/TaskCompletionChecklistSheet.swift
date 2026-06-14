@@ -27,7 +27,7 @@ struct TaskCompletionChecklistSheet: View {
 
                 VStack(spacing: 0) {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 20) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                             headerSection
 
                             if project.tasks.filter({ $0.status != .completed }).isEmpty {
@@ -55,7 +55,7 @@ struct TaskCompletionChecklistSheet: View {
     }
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("COMPLETE PROJECT")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -67,19 +67,19 @@ struct TaskCompletionChecklistSheet: View {
             Text("Mark all incomplete tasks as complete before finishing this project.")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.top, 4)
+                .padding(.top, OPSStyle.Layout.spacing1)
         }
     }
 
     private var allTasksAlreadyCompleteView: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             Text("All tasks for this project have been completed.")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing4)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
@@ -89,7 +89,7 @@ struct TaskCompletionChecklistSheet: View {
     }
 
     private var taskChecklistSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("INCOMPLETE TASKS")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -115,7 +115,7 @@ struct TaskCompletionChecklistSheet: View {
             let impactFeedback = UIImpactFeedbackGenerator(style: .light)
             impactFeedback.impactOccurred()
         }) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 ZStack {
                     Circle()
                         .stroke(taskStates[task.id] == true ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
@@ -128,7 +128,7 @@ struct TaskCompletionChecklistSheet: View {
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text((task.taskType?.display ?? "Task").uppercased())
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -146,7 +146,7 @@ struct TaskCompletionChecklistSheet: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
@@ -163,7 +163,7 @@ struct TaskCompletionChecklistSheet: View {
                 Text("COMPLETE PROJECT")
                     .font(OPSStyle.Typography.bodyBold)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing3)
                     .foregroundColor(allTasksComplete ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                     .background(Color.clear)
                     .overlay(

@@ -26,7 +26,7 @@ struct WizardPromptOverlay: View {
             // Card
             VStack(alignment: .leading, spacing: 0) {
                 // Title
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: wizard.iconName)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.wizardAccent)
@@ -35,14 +35,14 @@ struct WizardPromptOverlay: View {
                         .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
 
                 // Description
                 Text(wizard.displayDescription)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineSpacing(4)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                 // Time estimate
                 HStack(spacing: 6) {
@@ -54,7 +54,7 @@ struct WizardPromptOverlay: View {
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
-                .padding(.bottom, 20)
+                .padding(.bottom, OPSStyle.Layout.spacing3_5)
 
                 // Bullet points
                 VStack(alignment: .leading, spacing: 0) {
@@ -79,7 +79,7 @@ struct WizardPromptOverlay: View {
                         }
                     }
                 }
-                .padding(.bottom, 24)
+                .padding(.bottom, OPSStyle.Layout.spacing4)
 
                 // Start Guide button
                 Button {
@@ -97,12 +97,12 @@ struct WizardPromptOverlay: View {
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.buttonText)
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .frame(height: 56)
                     .background(OPSStyle.Colors.wizardAccent)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
-                .padding(.bottom, 12)
+                .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                 // Maybe Later button
                 Button {
@@ -115,7 +115,7 @@ struct WizardPromptOverlay: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
 
                 // Don't show again checkbox
                 Button {
@@ -144,7 +144,7 @@ struct WizardPromptOverlay: View {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
-            .padding(.horizontal, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing4)
         }
     }
 }

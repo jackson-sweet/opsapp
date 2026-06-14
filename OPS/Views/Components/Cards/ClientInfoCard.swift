@@ -17,17 +17,17 @@ struct ClientInfoCard: View {
             icon: OPSStyle.Icons.client,
             title: "Client"
         ) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 // Client name
                 Text(clientName)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
                 // Contact info
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     // Email
                     if let email = clientEmail, !email.isEmpty {
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             Image(systemName: OPSStyle.Icons.envelope)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -45,7 +45,7 @@ struct ClientInfoCard: View {
 
                     // Phone
                     if let phone = clientPhone, !phone.isEmpty {
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             Image(systemName: OPSStyle.Icons.phone)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.secondaryText)

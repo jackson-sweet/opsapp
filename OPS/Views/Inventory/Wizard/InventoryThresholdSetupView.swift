@@ -173,7 +173,7 @@ struct InventoryThresholdSetupView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
         .buttonStyle(PlainButtonStyle())
-        .padding(.horizontal, 4)
+        .padding(.horizontal, OPSStyle.Layout.spacing1)
     }
 
     // MARK: - Item List

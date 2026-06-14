@@ -29,7 +29,7 @@ struct BooksDrillFilterChip: View {
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 4)
+            .padding(.vertical, OPSStyle.Layout.spacing1)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                     .fill(OPSStyle.Colors.surfaceActive)

@@ -972,7 +972,7 @@ struct ProductDetailView: View {
                         .font(OPSStyle.Typography.metadata)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .frame(minHeight: OPSStyle.Layout.touchTargetMin / 2)
                 }
                 .accessibilityLabel("Edit bundle composition")
@@ -999,7 +999,7 @@ struct ProductDetailView: View {
                         .font(OPSStyle.Typography.metadata)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .frame(minHeight: OPSStyle.Layout.touchTargetMin / 2)
                 }
                 .accessibilityLabel("Edit recipe")
@@ -1035,7 +1035,7 @@ struct ProductDetailView: View {
                         .font(OPSStyle.Typography.metadata)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .frame(minHeight: OPSStyle.Layout.touchTargetMin / 2)
                 }
                 .accessibilityLabel("Edit product options and pricing modifiers")
@@ -1051,7 +1051,7 @@ struct ProductDetailView: View {
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .padding(.horizontal, OPSStyle.Layout.spacing2)
-                .padding(.vertical, 4)
+                .padding(.vertical, OPSStyle.Layout.spacing1)
                 .frame(minHeight: OPSStyle.Layout.touchTargetMin / 2)
         }
         .accessibilityHint("Opens this product in the OPS web app")

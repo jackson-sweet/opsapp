@@ -14,7 +14,7 @@ struct OrganizationTeamView: View {
     @State private var showingFullTeamList = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             // Header with see all button
             HStack {
                 Text("\(company.name.uppercased()) | \(company.teamMembers.count) TEAM MEMBERS")
@@ -33,11 +33,11 @@ struct OrganizationTeamView: View {
                     }
                 }
             }
-            .padding(.bottom, 4)
+            .padding(.bottom, OPSStyle.Layout.spacing1)
             
             if company.teamMembers.isEmpty {
                 // Empty state with refresh button
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Text("No team members found")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -51,13 +51,13 @@ struct OrganizationTeamView: View {
                         Label("Load Team Members", systemImage: "arrow.clockwise")
                             .font(OPSStyle.Typography.smallButton)
                     }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing3)
             } else {
                 // Show only first 3 team members with avatars for compact view
                 let visibleMembers = company.teamMembers.prefix(3)
@@ -66,7 +66,7 @@ struct OrganizationTeamView: View {
                     Button(action: {
                         selectedTeamMember = member
                     }) {
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             // Avatar - using unified UserAvatar component
                             TeamMemberAvatar(teamMember: member, size: 40)
                             
@@ -99,11 +99,11 @@ struct OrganizationTeamView: View {
                     Text("+ \(company.teamMembers.count - 3) more team members...")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .padding(.top, 4)
+                        .padding(.top, OPSStyle.Layout.spacing1)
                 }
             }
         }
-        .padding(12)
+        .padding(OPSStyle.Layout.spacing2_5)
         .sheet(item: $selectedTeamMember) { member in
             ContactDetailView(teamMember: member)
         }
@@ -154,10 +154,10 @@ struct OrganizationFullTeamView: View {
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                     .padding(.horizontal)
-                    .padding(.top, 8)
+                    .padding(.top, OPSStyle.Layout.spacing2)
                     
                     if filteredMembers.isEmpty {
-                        VStack(spacing: 20) {
+                        VStack(spacing: OPSStyle.Layout.spacing3_5) {
                             Spacer()
                             
                             if searchText.isEmpty {
@@ -183,7 +183,7 @@ struct OrganizationFullTeamView: View {
                                 Button("Clear Search") {
                                     searchText = ""
                                 }
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                                 .padding(.vertical, 10)
                                 .background(OPSStyle.Colors.primaryAccent)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -195,7 +195,7 @@ struct OrganizationFullTeamView: View {
                     } else {
                         // Team member list
                         ScrollView {
-                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: OPSStyle.Layout.spacing3) {
                                 ForEach(filteredMembers, id: \.id) { member in
                                     Button(action: {
                                         selectedTeamMember = member
@@ -231,7 +231,7 @@ struct TeamMemberCard: View {
     let teamMember: TeamMember
     
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
             // Avatar - using unified UserAvatar component
             TeamMemberAvatar(teamMember: teamMember, size: 70)
             

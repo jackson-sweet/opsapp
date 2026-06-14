@@ -108,7 +108,7 @@ struct CashflowForecastCard: View {
             .padding(.horizontal, OPSStyle.Layout.spacing1 + 2)
             .padding(.vertical, 2)
             .overlay(
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                     .stroke(lineColor, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .foregroundColor(lineColor)

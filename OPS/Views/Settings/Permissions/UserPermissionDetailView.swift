@@ -65,10 +65,10 @@ struct UserPermissionDetailView: View {
                         title: "Permissions",
                         onBackTapped: { dismiss() }
                     )
-                    .padding(.bottom, 8)
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
 
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 24) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                             // Member header
                             memberHeader
 
@@ -83,12 +83,12 @@ struct UserPermissionDetailView: View {
                                         .font(OPSStyle.Typography.caption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
                                 }
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             }
 
                             // Error
                             if let error = errorMessage {
-                                HStack(spacing: 8) {
+                                HStack(spacing: OPSStyle.Layout.spacing2) {
                                     Image(systemName: OPSStyle.Icons.alert)
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.errorStatus)
@@ -96,7 +96,7 @@ struct UserPermissionDetailView: View {
                                         .font(OPSStyle.Typography.caption)
                                         .foregroundColor(OPSStyle.Colors.errorStatus)
                                 }
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             }
 
                             // Section 1: Role
@@ -107,7 +107,7 @@ struct UserPermissionDetailView: View {
                                 overridesSection
                             }
                         }
-                        .padding(.vertical, 16)
+                        .padding(.vertical, OPSStyle.Layout.spacing3)
                         .tabBarPadding()
                     }
                 }
@@ -134,10 +134,10 @@ struct UserPermissionDetailView: View {
     // MARK: - Member Header
 
     private var memberHeader: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: OPSStyle.Layout.spacing3) {
             UserAvatar(user: member, size: 56)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(member.fullName)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -151,13 +151,13 @@ struct UserPermissionDetailView: View {
 
             Spacer()
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Role Section
 
     private var roleSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: 6) {
                 Image(systemName: "person.badge.key")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
@@ -166,11 +166,11 @@ struct UserPermissionDetailView: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             if isCompanyCreator {
                 // Creator lock — cannot change the account holder's role
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: "lock.fill")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -188,14 +188,14 @@ struct UserPermissionDetailView: View {
                     Spacer()
                 }
                 .padding(.vertical, 14)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             } else {
                 VStack(spacing: 0) {
                     ForEach(UserRole.allCases.sorted(by: { $0.hierarchy < $1.hierarchy }), id: \.rawValue) { role in
@@ -211,7 +211,7 @@ struct UserPermissionDetailView: View {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                 // Save role button (only when changed)
                 if selectedRole != originalRole {
@@ -228,12 +228,12 @@ struct UserPermissionDetailView: View {
                             }
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .padding(.vertical, OPSStyle.Layout.spacing3)
                         .background(OPSStyle.Colors.primaryAccent)
                         .cornerRadius(OPSStyle.Layout.buttonRadius)
                     }
                     .disabled(isSavingRole)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 }
 
                 // Edit roles link
@@ -246,14 +246,14 @@ struct UserPermissionDetailView: View {
                     }
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             }
         }
     }
 
     private func roleOption(_ role: UserRole, title: String, description: String) -> some View {
         Button(action: { selectedRole = role }) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: selectedRole == role ? OPSStyle.Icons.checkmarkCircleFill : OPSStyle.Icons.circle)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(selectedRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
@@ -270,8 +270,8 @@ struct UserPermissionDetailView: View {
 
                 Spacer()
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .background(selectedRole == role ? OPSStyle.Colors.subtleBackground : Color.clear)
             .contentShape(Rectangle())
         }
@@ -281,7 +281,7 @@ struct UserPermissionDetailView: View {
     // MARK: - Overrides Section
 
     private var overridesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: 6) {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
@@ -290,12 +290,12 @@ struct UserPermissionDetailView: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             Text("Override individual permissions beyond what the role grants.")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             ForEach(PermissionRegistry.categories, id: \.self) { category in
                 if let flag = PermissionRegistry.featureFlag(for: category),
@@ -327,14 +327,14 @@ struct UserPermissionDetailView: View {
                 Text("IN TESTING")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
                     .padding(.vertical, 3)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .fill(OPSStyle.Colors.subtleBackground)
                     )
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 14)
         }
         .buttonStyle(PlainButtonStyle())
@@ -345,7 +345,7 @@ struct UserPermissionDetailView: View {
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .opacity(0.4)
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     private func overrideCategory(_ category: String) -> some View {
@@ -355,7 +355,7 @@ struct UserPermissionDetailView: View {
 
         return VStack(spacing: 0) {
             // Top row: icon + title + bulk picker (lighter background)
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 HStack(spacing: 6) {
                     Image(systemName: PermissionRegistry.iconForCategory(category))
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
@@ -381,7 +381,7 @@ struct UserPermissionDetailView: View {
                     }
                 )
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 14)
             .background(OPSStyle.Colors.subtleBackground)
 
@@ -400,7 +400,7 @@ struct UserPermissionDetailView: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     private func overrideRow(_ perm: PermissionDefinition) -> some View {
@@ -408,7 +408,7 @@ struct UserPermissionDetailView: View {
         let baseline = roleBaselineLevel(for: perm.id)
         let hasOverride = level != baseline
 
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack {
                 Text(perm.label)
                     .font(OPSStyle.Typography.body)
@@ -433,8 +433,8 @@ struct UserPermissionDetailView: View {
                 }
             )
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
     }
 
     // MARK: - Override Scope Picker (uses shared SettingsSegmentedPicker)

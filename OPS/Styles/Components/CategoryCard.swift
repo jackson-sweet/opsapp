@@ -18,11 +18,11 @@ struct CategoryCard: View {
     var comingSoon: Bool = false
     
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2_5) {
             // Icon in colored circle
             ZStack {
                 /*
-                RoundedRectangle(cornerRadius: 5)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                     .stroke(isDisabled ? OPSStyle.Colors.tertiaryText.opacity(0.3) : OPSStyle.Colors.primaryText)
                     .frame(width: 40, height: 40)
                 */
@@ -40,7 +40,7 @@ struct CategoryCard: View {
                     if comingSoon {
                         Text("COMING SOON")
                             .font(OPSStyle.Typography.smallCaption)
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2)
                             .padding(.vertical, 2)
                             .background(Color.black)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -60,7 +60,7 @@ struct CategoryCard: View {
                 .font(OPSStyle.Typography.smallBody)
                 .foregroundColor(isDisabled ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
         }
-        .padding(24)
+        .padding(OPSStyle.Layout.spacing4)
         .background(isDisabled ? OPSStyle.Colors.cardBackgroundDark.opacity(0.3) : OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
@@ -73,8 +73,8 @@ struct OrganizationProfileCard: View {
     var company: Company
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing3) {
                 // Logo/icon - using unified CompanyAvatar component
                 CompanyAvatar(company: company, size: 60)
                 
@@ -102,7 +102,7 @@ struct OrganizationProfileCard: View {
                 Spacer()
             }
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
@@ -110,7 +110,7 @@ struct OrganizationProfileCard: View {
 
 struct CategoryCardPreview: View {
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             CategoryCard(
                 title: "App Settings",
                 description: "Manage app preferences",
@@ -130,7 +130,7 @@ struct CategoryCardPreview: View {
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(20)
+                .padding(OPSStyle.Layout.spacing3_5)
         }
         .padding()
         .background(OPSStyle.Colors.backgroundGradient)

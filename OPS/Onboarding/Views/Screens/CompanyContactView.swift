@@ -28,7 +28,7 @@ struct CompanyContactView: View {
                     Button(action: {
                         onboardingViewModel.moveToPreviousStep()
                     }) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "chevron.left")
                                 .font(OPSStyle.Typography.button)
                             Text("Back")
@@ -47,25 +47,25 @@ struct CompanyContactView: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                 }
-                .padding(.top, 8)
-                .padding(.bottom, 8)
+                .padding(.top, OPSStyle.Layout.spacing2)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                 // Step indicator bars
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     ForEach(0..<totalSteps, id: \.self) { step in
                         Rectangle()
                             .fill(step < currentStepNumber ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText.opacity(0.3))
                             .frame(height: 2)
                     }
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Main content area - top-justified
                 VStack(spacing: 0) {
-                    VStack(spacing: 32) {
-                        VStack(alignment: .leading, spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing5) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         Text("HOW DO CLIENTS REACH YOU?")
                             .font(OPSStyle.Typography.largeTitle.weight(.bold))
                             .foregroundColor(Color("TextPrimary"))
@@ -77,7 +77,7 @@ struct CompanyContactView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     
                     // Autofill buttons
-                    HStack(spacing: 24) {
+                    HStack(spacing: OPSStyle.Layout.spacing4) {
                         Button(action: {
                             email = onboardingViewModel.email
                             validateEmail()
@@ -92,7 +92,7 @@ struct CompanyContactView: View {
                             }
                             .foregroundColor(Color("AccentPrimary"))
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
-                            .padding(.vertical, 12)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .stroke(Color("AccentPrimary"), lineWidth: OPSStyle.Layout.Border.standard)
@@ -116,7 +116,7 @@ struct CompanyContactView: View {
                             }
                             .foregroundColor(Color("AccentPrimary"))
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
-                            .padding(.vertical, 12)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .stroke(Color("AccentPrimary"), lineWidth: OPSStyle.Layout.Border.standard)
@@ -125,8 +125,8 @@ struct CompanyContactView: View {
                         }
                     }
                     
-                    VStack(spacing: 24) {
-                        VStack(alignment: .leading, spacing: 8) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("Email Address")
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(Color("TextPrimary"))
@@ -148,7 +148,7 @@ struct CompanyContactView: View {
                             }
                         }
                         
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("Phone Number")
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(Color("TextPrimary"))
@@ -178,7 +178,7 @@ struct CompanyContactView: View {
                 .padding(40)
 
                 // Bottom button section
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                 StandardContinueButton(
                     isDisabled: !isFormValid,
                     onTap: {

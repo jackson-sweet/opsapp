@@ -56,13 +56,13 @@ struct PeriodPill: View {
 private struct PeriodPillPreviewHost: View {
     @State private var period: MoneyDashboardViewModel.Period = .sixMonths
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: OPSStyle.Layout.spacing4) {
             PeriodPill(selected: $period)
             Text("Selected: \(period.pillLabel)")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
-        .padding(24)
+        .padding(OPSStyle.Layout.spacing4)
         .background(OPSStyle.Colors.background)
     }
 }

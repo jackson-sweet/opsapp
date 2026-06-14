@@ -49,7 +49,7 @@ struct SwipeCardView: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(.white)
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius).fill(daysSinceCompleted > 30
                             ? OPSStyle.Colors.errorStatus
@@ -67,7 +67,7 @@ struct SwipeCardView: View {
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(.white.opacity(0.7))
             }
-            .padding(20)
+            .padding(OPSStyle.Layout.spacing3_5)
             .padding(.bottom, 100)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

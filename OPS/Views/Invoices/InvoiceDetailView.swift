@@ -157,7 +157,7 @@ struct InvoiceDetailView: View {
 
     private var statusBadge: some View {
         let color = invoice.status.detailBadgeColor(isOverdue: invoice.isOverdue)
-        return HStack(spacing: 4) {
+        return HStack(spacing: OPSStyle.Layout.spacing1) {
             Circle()
                 .fill(color)
                 .frame(width: 8, height: 8)
@@ -216,7 +216,7 @@ struct InvoiceDetailView: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Text(item.type.rawValue.uppercased())
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)

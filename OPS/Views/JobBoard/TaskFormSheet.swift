@@ -618,12 +618,12 @@ struct TaskFormSheet: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(isValid && isDoneButtonEnabled ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                     .disabled(!isValid || !isDoneButtonEnabled)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .tutorialHighlight(for: .taskFormDone, cornerRadius: 6)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
+                    .tutorialHighlight(for: .taskFormDone, cornerRadius: OPSStyle.Layout.cardRadius)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .background(OPSStyle.Colors.background)
 
                 // Divider
@@ -664,7 +664,7 @@ struct TaskFormSheet: View {
 
             ScrollView {
                 ScrollViewReader { proxy in
-                VStack(spacing: 24) {
+                VStack(spacing: OPSStyle.Layout.spacing4) {
                     // Live preview card at top (greyed out in tutorial mode to reduce distraction)
                     previewCard
                         .opacity(tutorialMode ? 0.3 : 1.0)
@@ -677,7 +677,7 @@ struct TaskFormSheet: View {
                         isExpanded: .constant(true),
                         onDelete: nil
                     ) {
-                        VStack(spacing: 16) {
+                        VStack(spacing: OPSStyle.Layout.spacing3) {
                             // Only show project field if not in draft mode
                             if !mode.isDraft {
                                 projectField
@@ -730,7 +730,7 @@ struct TaskFormSheet: View {
                     }
                     focusedField = nil
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Text("Enter")
                         Image(systemName: "return")
                     }
@@ -754,7 +754,7 @@ struct TaskFormSheet: View {
                     .frame(width: 4)
 
                 // Main content area
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     // Task type name (title)
                     Text(selectedTaskType?.display.uppercased() ?? "SELECT TASK TYPE")
                         .font(OPSStyle.Typography.bodyBold)
@@ -778,9 +778,9 @@ struct TaskFormSheet: View {
                     }
 
                     // Metadata row with icons (matching UniversalJobBoardCard)
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         // Calendar icon + date (always show)
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: OPSStyle.Icons.calendar)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -798,7 +798,7 @@ struct TaskFormSheet: View {
                         }
 
                         // Team icon + count (always show)
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: OPSStyle.Icons.personTwo)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -823,8 +823,8 @@ struct TaskFormSheet: View {
                         Text(selectedStatus.displayName.uppercased())
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(selectedStatus.color)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .fill(selectedStatus.color.opacity(0.1))
@@ -841,8 +841,8 @@ struct TaskFormSheet: View {
                             Text("UNSCHEDULED")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
+                                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                .padding(.vertical, OPSStyle.Layout.spacing1)
                                 .background(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                         .fill(OPSStyle.Colors.warningStatus.opacity(0.1))
@@ -854,8 +854,8 @@ struct TaskFormSheet: View {
                         }
                         
                     }
-                    .padding(.trailing, 8)
-                    .padding(.vertical, 8)
+                    .padding(.trailing, OPSStyle.Layout.spacing2)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
                 
             }
             
@@ -869,7 +869,7 @@ struct TaskFormSheet: View {
     }
 
     private var projectField: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("PROJECT")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -897,7 +897,7 @@ struct TaskFormSheet: View {
                         }
                     }
                     .frame(height: selectedProject != nil && !showingProjectSuggestions ? 64 : 44)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
@@ -928,7 +928,7 @@ struct TaskFormSheet: View {
                                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                                     }) {
                                         HStack {
-                                            VStack(alignment: .leading, spacing: 4) {
+                                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                                 Text(project.title)
                                                     .font(OPSStyle.Typography.bodyBold)
                                                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -938,8 +938,8 @@ struct TaskFormSheet: View {
                                             }
                                             Spacer()
                                         }
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 12)
+                                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                                        .padding(.vertical, OPSStyle.Layout.spacing2_5)
                                         .background(OPSStyle.Colors.cardBackgroundDark)
                                     }
                                     .buttonStyle(PlainButtonStyle())
@@ -974,8 +974,8 @@ struct TaskFormSheet: View {
                                         }
                                         Spacer()
                                     }
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 12)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                                     .background(OPSStyle.Colors.cardBackgroundDark)
                                 }
                                 .buttonStyle(PlainButtonStyle())
@@ -987,13 +987,13 @@ struct TaskFormSheet: View {
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
-                        .padding(.top, 4)
+                        .padding(.top, OPSStyle.Layout.spacing1)
                     }
                 }
 
                 if let project = selectedProject, !showingProjectSuggestions {
                     HStack(alignment: .center) {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                             Text(project.title)
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -1020,7 +1020,7 @@ struct TaskFormSheet: View {
     }
 
     private var taskTypeField: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             // Title and "NEW TYPE" button
             HStack {
                 Text("TASK TYPE")
@@ -1034,7 +1034,7 @@ struct TaskFormSheet: View {
                     guard !tutorialMode else { return } // Disabled in tutorial mode
                     showingCreateTaskType = true
                 }) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: OPSStyle.Icons.add)
                         Text("NEW TYPE")
                     }
@@ -1075,8 +1075,8 @@ struct TaskFormSheet: View {
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 16)
+                        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -1125,8 +1125,8 @@ struct TaskFormSheet: View {
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     }
                                 }
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                             }
                             .buttonStyle(PlainButtonStyle())
 
@@ -1159,7 +1159,7 @@ struct TaskFormSheet: View {
     }
 
     private var statusField: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("STATUS")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -1189,8 +1189,8 @@ struct TaskFormSheet: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
@@ -1202,7 +1202,7 @@ struct TaskFormSheet: View {
     }
 
     private var teamField: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("ASSIGN TEAM")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(crewHighlight.labelColor)
@@ -1228,14 +1228,14 @@ struct TaskFormSheet: View {
                             Text("+\(selectedMembers.count - 3)")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .padding(.leading, 8)
+                                .padding(.leading, OPSStyle.Layout.spacing2)
                         }
                     }
 
                     Text("\(selectedMembers.count) member\(selectedMembers.count == 1 ? "" : "s")")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(.leading, 12)
+                        .padding(.leading, OPSStyle.Layout.spacing2_5)
                 }
 
                 Spacer()
@@ -1244,8 +1244,8 @@ struct TaskFormSheet: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
@@ -1258,7 +1258,7 @@ struct TaskFormSheet: View {
     }
 
     private var datesField: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack {
                 Text("DATES")
                     .font(OPSStyle.Typography.captionBold)
@@ -1272,7 +1272,7 @@ struct TaskFormSheet: View {
                     Button(action: {
                         autoScheduleTask()
                     }) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "wand.and.stars")
                             Text("AUTO")
                         }
@@ -1305,7 +1305,7 @@ struct TaskFormSheet: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
 
                         if let startDate = startDate, let endDate = endDate {
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                 Text(formatDate(startDate))
                                     .font(OPSStyle.Typography.bodyBold)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -1325,8 +1325,8 @@ struct TaskFormSheet: View {
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
@@ -1343,7 +1343,7 @@ struct TaskFormSheet: View {
     @ViewBuilder
     private var dependenciesSection: some View {
         if let taskType = selectedTaskType, !taskType.dependencies.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 HStack {
                     Image(systemName: "arrow.triangle.branch")
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -1369,7 +1369,7 @@ struct TaskFormSheet: View {
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
                     }
-                    .padding(8)
+                    .padding(OPSStyle.Layout.spacing2)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
@@ -1393,27 +1393,27 @@ struct TaskFormSheet: View {
     }
 
     private var notesField: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("NOTES")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 ZStack(alignment: .topLeading) {
                     // Placeholder text
                     if (focusedField == .notes ? tempNotes : taskNotes).isEmpty {
                         Text("Add notes...")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .padding(.top, 20)
-                            .padding(.leading, 16)
+                            .padding(.top, OPSStyle.Layout.spacing3_5)
+                            .padding(.leading, OPSStyle.Layout.spacing3)
                     }
 
                     TextEditor(text: focusedField == .notes ? $tempNotes : $taskNotes)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(minHeight: 100, maxHeight: 200)
-                        .padding(12)
+                        .padding(OPSStyle.Layout.spacing2_5)
                         .scrollContentBackground(.hidden)
                         .focused($focusedField, equals: .notes)
                         .onChange(of: focusedField) { oldValue, newValue in
@@ -1433,7 +1433,7 @@ struct TaskFormSheet: View {
                 )
 
                 if focusedField == .notes {
-                    HStack(spacing: 16) {
+                    HStack(spacing: OPSStyle.Layout.spacing3) {
                         Spacer()
 
                         Button("CANCEL") {

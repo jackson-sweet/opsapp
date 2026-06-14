@@ -33,7 +33,7 @@ struct TopMoversSection: View {
                 }
             }
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
@@ -107,7 +107,7 @@ struct TopMoversSection: View {
         return Text(formatted)
             .font(OPSStyle.Typography.smallCaption)
             .foregroundColor(OPSStyle.Colors.primaryText)
-            .padding(.horizontal, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
             .padding(.vertical, 3)
             .background(OPSStyle.Colors.subtleBackground)
             .cornerRadius(OPSStyle.Layout.smallCornerRadius)

@@ -15,7 +15,7 @@ struct ImagePickerView: View {
     @State private var selectedItem: PhotosPickerItem?
     
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             Text("Select Profile Image")
                 .font(OPSStyle.Typography.heading)
                 .bold()

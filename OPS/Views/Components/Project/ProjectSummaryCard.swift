@@ -83,7 +83,7 @@ struct ProjectSummaryCard: View {
                 // No location fallback
                 OPSStyle.Colors.cardBackground
                     .overlay(
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             Image(systemName: "map.slash")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -115,9 +115,9 @@ struct ProjectSummaryCard: View {
 
     // MARK: - Info Row
     private var infoRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Address with map pin icon
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(systemName: "mappin.circle")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -131,7 +131,7 @@ struct ProjectSummaryCard: View {
             Spacer()
 
             // Distance in minutes
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(systemName: "car.fill")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -151,7 +151,7 @@ struct ProjectSummaryCard: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
         .padding(.vertical, 10)
         .background(OPSStyle.Colors.cardBackgroundDark)
     }

@@ -62,7 +62,7 @@ struct WeeklyReviewStep: View {
                 .foregroundStyle(OPSStyle.Colors.tertiaryText)
                 .tracking(2)
                 .padding(.top, 60)
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
 
             // Card stack
             ZStack {
@@ -80,7 +80,7 @@ struct WeeklyReviewStep: View {
                     .zIndex(Double(3 - item.idx))
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             Spacer().frame(height: 24)
 
@@ -121,7 +121,7 @@ struct WeeklyReviewStep: View {
     // MARK: - Done
 
     private var doneView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Circle()
                 .stroke(OPSStyle.Colors.successStatus.opacity(0.2), lineWidth: 1.5)
                 .frame(width: 64, height: 64)
@@ -262,7 +262,7 @@ private struct TutorialReviewSwipeCard: View {
                 .frame(height: 3)
 
             // Card info
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 // Days ago badge
                 HStack(spacing: 5) {
                     Circle()
@@ -281,7 +281,7 @@ private struct TutorialReviewSwipeCard: View {
                     .tracking(0.8)
 
                 // Project + Client
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     HStack(spacing: 6) {
                         Image(systemName: "folder.fill")
                             .font(.system(size: 11))
@@ -299,7 +299,7 @@ private struct TutorialReviewSwipeCard: View {
                     .foregroundStyle(OPSStyle.Colors.secondaryText)
                 }
             }
-            .padding(20)
+            .padding(OPSStyle.Layout.spacing3_5)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
@@ -388,8 +388,8 @@ private struct TutorialReviewSwipeCard: View {
             .font(.headingBold)
             .foregroundStyle(color)
             .tracking(3)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(color, lineWidth: 2)

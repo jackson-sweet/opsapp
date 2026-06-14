@@ -107,7 +107,7 @@ struct ClientSheet: View {
 
                 ScrollView {
                     ScrollViewReader { proxy in
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         // PREVIEW CARD
                         previewCard
 
@@ -121,9 +121,9 @@ struct ClientSheet: View {
                             isExpanded: $isClientDetailsExpanded,
                             onDelete: nil
                         ) {
-                            VStack(spacing: 16) {
+                            VStack(spacing: OPSStyle.Layout.spacing3) {
                                 // Name Field with Duplicate Detection
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     Text("CLIENT NAME")
                                         .font(OPSStyle.Typography.captionBold)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -135,9 +135,9 @@ struct ClientSheet: View {
                                             .autocorrectionDisabled(true)
                                             .textInputAutocapitalization(.words)
                                             .focused($focusedField, equals: .name)
-                                            .padding(.vertical, 12)
-                                            .padding(.leading, 16)
-                                            .padding(.trailing, 8)
+                                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                                            .padding(.leading, OPSStyle.Layout.spacing3)
+                                            .padding(.trailing, OPSStyle.Layout.spacing2)
                                             .onChange(of: name) { _, _ in
                                                 if mode.isCreate {
                                                     checkForDuplicates()
@@ -184,7 +184,7 @@ struct ClientSheet: View {
                                 }
 
                                 // Email Field
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     Text("EMAIL")
                                         .font(OPSStyle.Typography.captionBold)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -196,8 +196,8 @@ struct ClientSheet: View {
                                         .autocapitalization(.none)
                                         .autocorrectionDisabled(true)
                                         .focused($focusedField, equals: .email)
-                                        .padding(.vertical, 12)
-                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                                         .background(Color.clear)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                                         .overlay(
@@ -219,7 +219,7 @@ struct ClientSheet: View {
                                 }
 
                                 // Phone Field
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     Text("PHONE")
                                         .font(OPSStyle.Typography.captionBold)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -230,8 +230,8 @@ struct ClientSheet: View {
                                         .keyboardType(.phonePad)
                                         .autocorrectionDisabled(true)
                                         .focused($focusedField, equals: .phone)
-                                        .padding(.vertical, 12)
-                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                                         .background(Color.clear)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                                         .overlay(
@@ -253,7 +253,7 @@ struct ClientSheet: View {
                                 }
 
                                 // Address Field
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     Text("ADDRESS")
                                         .font(OPSStyle.Typography.captionBold)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -268,26 +268,26 @@ struct ClientSheet: View {
                                 }
 
                                 // Notes Field
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     Text("NOTES")
                                         .font(OPSStyle.Typography.captionBold)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                                    VStack(spacing: 12) {
+                                    VStack(spacing: OPSStyle.Layout.spacing2_5) {
                                         ZStack(alignment: .topLeading) {
                                             if (focusedField == .notes ? tempNotes : notes).isEmpty {
                                                 Text("Add notes...")
                                                     .font(OPSStyle.Typography.body)
                                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                                    .padding(.top, 20)
-                                                    .padding(.leading, 16)
+                                                    .padding(.top, OPSStyle.Layout.spacing3_5)
+                                                    .padding(.leading, OPSStyle.Layout.spacing3)
                                             }
 
                                             TextEditor(text: focusedField == .notes ? $tempNotes : $notes)
                                                 .font(OPSStyle.Typography.body)
                                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                                 .frame(minHeight: 80, maxHeight: 200)
-                                                .padding(12)
+                                                .padding(OPSStyle.Layout.spacing2_5)
                                                 .background(Color.clear)
                                                 .scrollContentBackground(.hidden)
                                                 .focused($focusedField, equals: .notes)
@@ -308,7 +308,7 @@ struct ClientSheet: View {
                                         )
 
                                         if focusedField == .notes {
-                                            HStack(spacing: 16) {
+                                            HStack(spacing: OPSStyle.Layout.spacing3) {
                                                 Spacer()
 
                                                 Button("CANCEL") {
@@ -473,7 +473,7 @@ struct ClientSheet: View {
     // MARK: - Avatar Uploader
 
     private var avatarUploader: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: OPSStyle.Layout.spacing3) {
             // Avatar circle
             Button(action: { showImagePicker = true }) {
                 ZStack {
@@ -498,7 +498,7 @@ struct ClientSheet: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(clientImage == nil ? "TAP TO ADD PHOTO" : "CHANGE PHOTO")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -857,8 +857,8 @@ struct ClientSheet: View {
 
     private var previewCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2_5) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     // Client name
                     Text(name.isEmpty ? "CLIENT NAME" : name.uppercased())
                         .font(OPSStyle.Typography.bodyBold)
@@ -884,7 +884,7 @@ struct ClientSheet: View {
                     }
 
                     // Address
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: "mappin.circle")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -931,7 +931,7 @@ struct ClientSheet: View {
                 }
             }
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(

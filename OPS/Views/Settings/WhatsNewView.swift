@@ -66,9 +66,9 @@ struct WhatsNewView: View {
                     Spacer()
                 } else {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 24) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                             // Intro
-                            VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                                 Text("We're always working to make OPS better for our crews.")
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -79,11 +79,11 @@ struct WhatsNewView: View {
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
-                            .padding(.horizontal, 20)
-                            .padding(.top, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.top, OPSStyle.Layout.spacing3_5)
 
                             // Status sections
-                            VStack(spacing: 20) {
+                            VStack(spacing: OPSStyle.Layout.spacing3_5) {
                                 ForEach(statusSections, id: \.status) { section in
                                     StatusSection(
                                         status: section.status,
@@ -107,10 +107,10 @@ struct WhatsNewView: View {
                                     )
                                 }
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                             // Feedback section
-                            VStack(alignment: .leading, spacing: 16) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                                 Text("Have a Feature Request?")
                                     .font(OPSStyle.Typography.subtitle)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -145,8 +145,8 @@ struct WhatsNewView: View {
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 }
                             }
-                            .padding(.horizontal, 20)
-                            .padding(.top, 32)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.top, OPSStyle.Layout.spacing5)
                             .padding(.bottom, 40)
                         }
                         .tabBarPadding()
@@ -396,9 +396,9 @@ private struct StatusSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             // Section header
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: statusIcon)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(statusColor)
@@ -431,8 +431,8 @@ private struct StatusSection: View {
                             Text("\(group.items.count)")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
+                                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                .padding(.vertical, OPSStyle.Layout.spacing1)
                                 .background(OPSStyle.Colors.cardBackgroundDark)
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
 
@@ -441,7 +441,7 @@ private struct StatusSection: View {
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 .rotationEffect(.degrees(expandedCategories.contains("\(status.rawValue)_\(group.categoryName)") ? 90 : 0))
                         }
-                        .padding(12)
+                        .padding(OPSStyle.Layout.spacing2_5)
                         .background(OPSStyle.Colors.cardBackground)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
@@ -449,7 +449,7 @@ private struct StatusSection: View {
 
                     // Expanded items
                     if expandedCategories.contains("\(status.rawValue)_\(group.categoryName)") {
-                        VStack(spacing: 8) {
+                        VStack(spacing: OPSStyle.Layout.spacing2) {
                             ForEach(group.items) { item in
                                 WhatsNewFeatureCard(
                                     item: item,
@@ -461,10 +461,10 @@ private struct StatusSection: View {
                                     onVote: { onVote(item) },
                                     onRequestAccess: { onRequestAccess(item) }
                                 )
-                                .padding(.leading, 20)
+                                .padding(.leading, OPSStyle.Layout.spacing3_5)
                             }
                         }
-                        .padding(.top, 8)
+                        .padding(.top, OPSStyle.Layout.spacing2)
                     }
                 }
             }
@@ -485,7 +485,7 @@ private struct WhatsNewFeatureCard: View {
     let onRequestAccess: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: OPSStyle.Layout.spacing3) {
             // Icon
             ZStack {
                 Circle()
@@ -520,7 +520,7 @@ private struct WhatsNewFeatureCard: View {
                     } else if status == .inTesting {
                         // Request Access button
                         Button(action: onRequestAccess) {
-                            HStack(spacing: 4) {
+                            HStack(spacing: OPSStyle.Layout.spacing1) {
                                 if isRequesting {
                                     ProgressView()
                                         .scaleEffect(0.7)
@@ -533,7 +533,7 @@ private struct WhatsNewFeatureCard: View {
                                 }
                             }
                             .foregroundColor(isRequested ? OPSStyle.Colors.successStatus : OPSStyle.Colors.warningStatus)
-                            .padding(.horizontal, 12)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                             .padding(.vertical, 6)
                             .background(
                                 isRequested ? OPSStyle.Colors.successStatus.opacity(0.2) : OPSStyle.Colors.warningStatus.opacity(0.2)
@@ -551,14 +551,14 @@ private struct WhatsNewFeatureCard: View {
                     } else {
                         // Vote +1 button
                         Button(action: onVote) {
-                            HStack(spacing: 4) {
+                            HStack(spacing: OPSStyle.Layout.spacing1) {
                                 Image(systemName: hasVoted ? "hand.thumbsup.fill" : "hand.thumbsup")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 Text("+1")
                                     .font(OPSStyle.Typography.caption)
                             }
                             .foregroundColor(hasVoted ? OPSStyle.Colors.successStatus : OPSStyle.Colors.secondaryText)
-                            .padding(.horizontal, 12)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                             .padding(.vertical, 6)
                             .background(
                                 hasVoted ? OPSStyle.Colors.successStatus.opacity(0.2) : OPSStyle.Colors.cardBackgroundDark
@@ -578,7 +578,7 @@ private struct WhatsNewFeatureCard: View {
                 }
             }
         }
-        .padding(12)
+        .padding(OPSStyle.Layout.spacing2_5)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(

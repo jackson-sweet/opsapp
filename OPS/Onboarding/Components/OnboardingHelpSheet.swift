@@ -32,15 +32,15 @@ struct OnboardingHelpSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: OPSStyle.Layout.spacing4) {
             // Drag indicator
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .fill(OPSStyle.Colors.tertiaryText)
                 .frame(width: 40, height: 5)
-                .padding(.top, 12)
+                .padding(.top, OPSStyle.Layout.spacing2_5)
 
             // Content
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                 // Title
                 Text(title)
                     .font(OPSStyle.Typography.title)
@@ -53,12 +53,12 @@ struct OnboardingHelpSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing4)
 
             Spacer()
 
             // Actions
-            VStack(spacing: 16) {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
                 // Alternate action (if provided)
                 if let alternateTitle = alternateActionTitle, let alternateAction = onAlternateAction {
                     Button {
@@ -92,7 +92,7 @@ struct OnboardingHelpSheet: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing4)
             .padding(.bottom, 40)
         }
         .background(OPSStyle.Colors.background)
@@ -128,7 +128,7 @@ struct OnboardingHelpButton: View {
         Button {
             showHelp = true
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: OPSStyle.Icons.info)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 Text("Need help?")

@@ -143,7 +143,7 @@ struct ProjectActionBar: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
         // Bug aa3ec6d7 — confirmation copy + action follow whichever entity
         // (project or active task) the Complete button currently targets.
@@ -225,7 +225,7 @@ struct ProjectActionBar: View {
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 80)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
             }

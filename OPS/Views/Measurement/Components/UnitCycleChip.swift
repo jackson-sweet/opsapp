@@ -43,10 +43,10 @@ public struct UnitCycleChip: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .background(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .fill(.ultraThinMaterial)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                 .strokeBorder(OPSStyle.Colors.glassBorder, lineWidth: 0.5)
                         )
                 )
@@ -117,7 +117,7 @@ public struct UnitCycleChip: View {
             popoverRow("METRIC", "M", isOn: unit == .metric) {
                 unit = .metric; showingPopover = false
             }
-            Divider().background(OPSStyle.Colors.line).padding(.vertical, 4)
+            Divider().background(OPSStyle.Colors.line).padding(.vertical, OPSStyle.Layout.spacing1)
             Toggle(isOn: $saveAsDefault) {
                 Text("SET AS DEFAULT")
                     .font(.custom("CakeMono-Light", size: 11))
@@ -125,8 +125,8 @@ public struct UnitCycleChip: View {
                     .foregroundColor(OPSStyle.Colors.text2)
             }
             .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
         }
         .frame(width: 220)
         .background(OPSStyle.Colors.background)
@@ -146,7 +146,7 @@ public struct UnitCycleChip: View {
                     .font(.custom("JetBrainsMono-Regular", size: 10))
                     .foregroundColor(isOn ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.text3)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .padding(.vertical, 10)
             .contentShape(Rectangle())
         }

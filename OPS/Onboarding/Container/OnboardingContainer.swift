@@ -43,7 +43,7 @@ struct OnboardingContainer: View {
                 // Progress bar (shown after credentials)
                 if let progressBar = OnboardingProgressBar.forState(manager.state) {
                     progressBar
-                        .padding(.top, 8)
+                        .padding(.top, OPSStyle.Layout.spacing2)
                         .transition(.opacity)
                 }
 

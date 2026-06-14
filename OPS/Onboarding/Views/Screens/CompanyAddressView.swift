@@ -30,7 +30,7 @@ struct CompanyAddressView: View {
                     Button(action: {
                         onboardingViewModel.moveToPreviousStep()
                     }) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "chevron.left")
                                 .font(OPSStyle.Typography.button)
                             Text("Back")
@@ -49,26 +49,26 @@ struct CompanyAddressView: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                 }
-                .padding(.top, 8)
-                .padding(.bottom, 8)
+                .padding(.top, OPSStyle.Layout.spacing2)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                 // Step indicator bars
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     ForEach(0..<totalSteps) { step in
                         Rectangle()
                             .fill(step < currentStepNumber ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText.opacity(0.3))
                             .frame(height: 2)
                     }
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
             
             // Main content area - top-justified
             VStack(spacing: 0) {
                 ScrollView {
-                    VStack(spacing: 32) {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing5) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         Text("WHERE ARE YOU BASED?")
                             .font(OPSStyle.Typography.largeTitle.weight(.bold))
                             .foregroundColor(Color("TextPrimary"))
@@ -79,7 +79,7 @@ struct CompanyAddressView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         AddressAutocompleteField(
                             address: $onboardingViewModel.companyAddress,
                             placeholder: "Enter company address",
@@ -122,7 +122,7 @@ struct CompanyAddressView: View {
             .padding(40)
 
             // Bottom button section
-            VStack(spacing: 16) {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
                 StandardContinueButton(
                     isDisabled: !isAddressValid,
                     onTap: {

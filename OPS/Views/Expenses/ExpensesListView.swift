@@ -243,11 +243,11 @@ struct ExpensesListView: View {
             // Animated progress bar
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                         .fill(OPSStyle.Colors.primaryAccent.opacity(0.3))
                         .frame(height: 6)
 
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                         .fill(OPSStyle.Colors.successStatus)
                         .frame(width: geometry.size.width * approvedFraction, height: 6)
                         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: approvedFraction)
@@ -284,7 +284,7 @@ struct ExpensesListView: View {
     }
 
     private func legendDot(color: Color, label: String) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             Circle()
                 .fill(color)
                 .frame(width: OPSStyle.Layout.Indicator.dotSM, height: OPSStyle.Layout.Indicator.dotSM)
@@ -466,7 +466,7 @@ struct ExpensesListView: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Circle()
                         .fill(statusColor)
                         .frame(width: OPSStyle.Layout.Indicator.dotSM, height: OPSStyle.Layout.Indicator.dotSM)

@@ -67,7 +67,7 @@ struct TaskSwipeCardView: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(.white)
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius).fill(dateBadgeColor)
                     )
@@ -92,7 +92,7 @@ struct TaskSwipeCardView: View {
                         .foregroundColor(.white.opacity(0.5))
                 }
             }
-            .padding(20)
+            .padding(OPSStyle.Layout.spacing3_5)
             .padding(.bottom, 100)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -276,7 +276,7 @@ private struct CapturedStackThumbnail: View {
                         .font(.system(size: 11, weight: .bold))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(minWidth: 18, minHeight: 18)
-                        .padding(.horizontal, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing1)
                         .background(
                             Capsule()
                                 .fill(OPSStyle.Colors.primaryAccent)
@@ -403,8 +403,8 @@ private struct CapturedStackReview: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 }
             }
         }

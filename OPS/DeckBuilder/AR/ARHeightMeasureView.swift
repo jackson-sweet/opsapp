@@ -77,7 +77,7 @@ struct ARHeightMeasureView: View {
     private func arUnavailableView(message: String) -> some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            VStack(spacing: 20) {
+            VStack(spacing: OPSStyle.Layout.spacing3_5) {
                 Image(systemName: "arkit")
                     .font(.system(size: 48))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -86,7 +86,7 @@ struct ARHeightMeasureView: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
+                    .padding(.horizontal, OPSStyle.Layout.spacing5)
 
                 if arAvailability == .cameradenied {
                     Button {
@@ -97,8 +97,8 @@ struct ARHeightMeasureView: View {
                         Text("Open Settings")
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(.white)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 12)
+                            .padding(.horizontal, OPSStyle.Layout.spacing4)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
                             .background(OPSStyle.Colors.primaryAccent)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
@@ -146,8 +146,8 @@ struct ARHeightMeasureView: View {
                     Text("Reset")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
                         .background(Color.black.opacity(0.4))
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
@@ -160,7 +160,7 @@ struct ARHeightMeasureView: View {
     // MARK: - Crosshair + Status
 
     private var heightCrosshair: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Point 1 status
             pointStatus(
                 label: "Point 1: Deck Surface",
@@ -173,8 +173,8 @@ struct ARHeightMeasureView: View {
                 Text(viewModel.liveHeightLabel)
                     .font(.system(size: 22, weight: .bold, design: .monospaced))
                     .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
                     .background(Color.black.opacity(0.5))
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
@@ -197,7 +197,7 @@ struct ARHeightMeasureView: View {
                 Text("Scanning surface...")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     .padding(.vertical, 6)
                     .background(Color.black.opacity(0.5))
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -206,14 +206,14 @@ struct ARHeightMeasureView: View {
     }
 
     private func pointStatus(label: String, isPlaced: Bool, icon: String) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             Image(systemName: icon)
                 .foregroundColor(isPlaced ? OPSStyle.Colors.successStatus : OPSStyle.Colors.secondaryText)
             Text(label)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(isPlaced ? OPSStyle.Colors.successStatus : .white)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
         .padding(.vertical, 6)
         .background(Color.black.opacity(0.4))
         .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -222,14 +222,14 @@ struct ARHeightMeasureView: View {
     // MARK: - Bottom Controls
 
     private var heightBottomControls: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Final measurement display
             if viewModel.stage == .measured,
                let height = viewModel.heightInches,
                let accuracy = viewModel.accuracyPercent {
                 let label = DimensionEngine.formatImperial(height)
                 let accLabel = AccuracyModel.formatAccuracy(dimensionInches: height, accuracyPercent: accuracy)
-                VStack(spacing: 4) {
+                VStack(spacing: OPSStyle.Layout.spacing1) {
                     Text(label)
                         .font(.system(size: 28, weight: .bold, design: .monospaced))
                         .foregroundColor(.white)
@@ -237,7 +237,7 @@ struct ARHeightMeasureView: View {
                         .font(.system(size: 16, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.warningStatus)
                 }
-                .padding(16)
+                .padding(OPSStyle.Layout.spacing3)
                 .background(Color.black.opacity(0.5))
                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             }
@@ -270,7 +270,7 @@ struct ARHeightMeasureView: View {
                 .font(.system(size: 16, weight: .bold))
                 .foregroundColor(.white)
                 .frame(minWidth: 200)
-                .padding(.vertical, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing3)
                 .background(heightButtonColor)
                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         }

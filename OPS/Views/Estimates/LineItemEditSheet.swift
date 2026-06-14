@@ -129,7 +129,7 @@ struct LineItemEditSheet: View {
 
                     sectionHeader("QUANTITY & PRICE")
                     HStack(spacing: OPSStyle.Layout.spacing2) {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                             Text("QTY")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -146,7 +146,7 @@ struct LineItemEditSheet: View {
                                 )
                         }
 
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                             Text("UNIT")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -164,7 +164,7 @@ struct LineItemEditSheet: View {
                         .frame(width: 80)
 
                         if resolution == nil {
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                 Text("UNIT PRICE")
                                     .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)

@@ -19,7 +19,7 @@ struct GracePeriodBanner: View {
         if subscriptionManager.shouldShowGracePeriodBanner {
             VStack(spacing: 0) {
                 // Banner content
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     // Warning icon - smaller, more subtle
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
@@ -42,7 +42,7 @@ struct GracePeriodBanner: View {
                                 .font(OPSStyle.Typography.smallCaption)  // Smaller tactical font
                                 .foregroundColor(OPSStyle.Colors.invertedText)
                                 .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
+                                .padding(.vertical, OPSStyle.Layout.spacing1)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                                         .stroke(OPSStyle.Colors.darkBorder, lineWidth: OPSStyle.Layout.Border.standard)
@@ -50,7 +50,7 @@ struct GracePeriodBanner: View {
                         }
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .frame(height: bannerHeight)
                 .frame(maxWidth: .infinity)
                 .background(bannerBackgroundColor.opacity(0.9))  // Slightly transparent

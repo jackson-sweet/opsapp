@@ -17,36 +17,36 @@ struct LaserMeterSettingsView: View {
                     // Bluetooth off warning
                     if laserService.bluetoothState != .poweredOn {
                         bluetoothOffBanner
-                            .padding(.horizontal, 20)
-                            .padding(.top, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.top, OPSStyle.Layout.spacing3)
                     }
 
                     // Connected device section
                     if laserService.connectionState == .connected, let device = laserService.connectedDevice {
                         connectedDeviceSection(device: device)
-                            .padding(.horizontal, 20)
-                            .padding(.top, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.top, OPSStyle.Layout.spacing3)
                     }
 
                     // Reconnecting state
                     if laserService.connectionState == .reconnecting {
                         reconnectingSection
-                            .padding(.horizontal, 20)
-                            .padding(.top, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.top, OPSStyle.Layout.spacing3)
                     }
 
                     // Scanning / discovered devices
                     if laserService.connectionState == .scanning {
                         scanningSection
-                            .padding(.horizontal, 20)
-                            .padding(.top, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.top, OPSStyle.Layout.spacing3)
                     }
 
                     // Idle state — scan button
                     if laserService.connectionState == .disconnected && laserService.bluetoothState == .poweredOn {
                         idleSection
-                            .padding(.horizontal, 20)
-                            .padding(.top, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.top, OPSStyle.Layout.spacing3)
                     }
                 }
                 .padding(.bottom, 40)
@@ -88,15 +88,15 @@ struct LaserMeterSettingsView: View {
             Color.clear
                 .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
         .background(OPSStyle.Colors.cardBackground)
     }
 
     // MARK: - Bluetooth Off
 
     private var bluetoothOffBanner: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             HStack(spacing: 10) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 16, weight: .medium))
@@ -123,12 +123,12 @@ struct LaserMeterSettingsView: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .background(OPSStyle.Colors.primaryAccent.opacity(0.15))
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.warningStatus.opacity(0.1))
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
@@ -140,7 +140,7 @@ struct LaserMeterSettingsView: View {
     // MARK: - Connected Device
 
     private func connectedDeviceSection(device: DiscoveredLaserDevice) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("CONNECTED DEVICE")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -153,7 +153,7 @@ struct LaserMeterSettingsView: View {
                         .foregroundColor(OPSStyle.Colors.successStatus)
                         .frame(width: 32, alignment: .center)
 
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                         Text(device.name)
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -180,7 +180,7 @@ struct LaserMeterSettingsView: View {
                     Spacer()
                 }
                 .padding(.vertical, 14)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                 // Last measurement
                 if let measurement = laserService.latestMeasurement {
@@ -202,7 +202,7 @@ struct LaserMeterSettingsView: View {
                         Spacer()
                     }
                     .padding(.vertical, 14)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                 }
 
                 // Forget device
@@ -227,7 +227,7 @@ struct LaserMeterSettingsView: View {
                         Spacer()
                     }
                     .padding(.vertical, 14)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -244,7 +244,7 @@ struct LaserMeterSettingsView: View {
     // MARK: - Reconnecting
 
     private var reconnectingSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("LASER METER")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -254,7 +254,7 @@ struct LaserMeterSettingsView: View {
                     .tint(OPSStyle.Colors.warningStatus)
                     .frame(width: 32)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("Reconnecting...")
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -266,7 +266,7 @@ struct LaserMeterSettingsView: View {
 
                 Spacer()
             }
-            .padding(16)
+            .padding(OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
@@ -279,7 +279,7 @@ struct LaserMeterSettingsView: View {
     // MARK: - Scanning
 
     private var scanningSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack {
                 Text("AVAILABLE DEVICES")
                     .font(OPSStyle.Typography.captionBold)
@@ -300,7 +300,7 @@ struct LaserMeterSettingsView: View {
                 if laserService.discoveredDevices.isEmpty {
                     HStack {
                         Spacer()
-                        VStack(spacing: 8) {
+                        VStack(spacing: OPSStyle.Layout.spacing2) {
                             Image(systemName: "antenna.radiowaves.left.and.right")
                                 .font(.system(size: 28, weight: .light))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -314,7 +314,7 @@ struct LaserMeterSettingsView: View {
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 .multilineTextAlignment(.center)
                         }
-                        .padding(.vertical, 24)
+                        .padding(.vertical, OPSStyle.Layout.spacing4)
                         Spacer()
                     }
                 } else {
@@ -355,7 +355,7 @@ struct LaserMeterSettingsView: View {
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                             .padding(.vertical, 14)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -377,7 +377,7 @@ struct LaserMeterSettingsView: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
@@ -391,8 +391,8 @@ struct LaserMeterSettingsView: View {
     // MARK: - Idle
 
     private var idleSection: some View {
-        VStack(spacing: 16) {
-            VStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: "antenna.radiowaves.left.and.right")
                     .font(.system(size: 36, weight: .light))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -406,7 +406,7 @@ struct LaserMeterSettingsView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .multilineTextAlignment(.center)
             }
-            .padding(.top, 24)
+            .padding(.top, OPSStyle.Layout.spacing4)
 
             Button {
                 laserService.startScanning()
@@ -420,7 +420,7 @@ struct LaserMeterSettingsView: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
         }
-        .padding(20)
+        .padding(OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Helpers

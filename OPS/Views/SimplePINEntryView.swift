@@ -42,7 +42,7 @@ struct SimplePINEntryView: View {
         ZStack {
             OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
             
-            VStack(spacing: 32) {
+            VStack(spacing: OPSStyle.Layout.spacing5) {
                 Spacer()
                 
                 // App Logo
@@ -88,7 +88,7 @@ struct SimplePINEntryView: View {
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 .padding(.bottom, 40)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
             }
             .padding()
         }
@@ -193,7 +193,7 @@ struct PINDigitBoxes: View {
                 .opacity(0)
             
             // Visual digit boxes
-            HStack(spacing: 16) {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
                 ForEach(0..<4) { index in
                     PINDigitBox(
                         digit: getDigit(at: index),

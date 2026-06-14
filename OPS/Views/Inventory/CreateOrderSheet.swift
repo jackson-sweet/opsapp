@@ -159,7 +159,7 @@ struct CreateOrderSheet: View {
             .buttonStyle(.plain)
             .accessibilityLabel(included ? "Exclude \(item.name)" : "Include \(item.name)")
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 HStack(spacing: OPSStyle.Layout.spacing1) {
                     if let badge = status.label {
                         Text(badge)
@@ -168,7 +168,7 @@ struct CreateOrderSheet: View {
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 4)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                     .stroke(status.color, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
@@ -195,7 +195,7 @@ struct CreateOrderSheet: View {
                         .frame(width: 28, height: 28)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .background(OPSStyle.Colors.subtleBackground)
-                        .cornerRadius(6)
+                        .cornerRadius(OPSStyle.Layout.cardRadius)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Decrease order quantity")
@@ -214,7 +214,7 @@ struct CreateOrderSheet: View {
                         .frame(width: 28, height: 28)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .background(OPSStyle.Colors.subtleBackground)
-                        .cornerRadius(6)
+                        .cornerRadius(OPSStyle.Layout.cardRadius)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Increase order quantity")

@@ -43,7 +43,7 @@ struct EmployeeProfileView: View {
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 44, height: 44)
-                            .padding(.bottom, 8)
+                            .padding(.bottom, OPSStyle.Layout.spacing2)
                         Text("OPS")
                             .font(OPSStyle.Typography.largeTitle.weight(.bold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -51,7 +51,7 @@ struct EmployeeProfileView: View {
 
                         // No skip — name and phone are required
                     }
-                    .padding(.leading, 4)
+                    .padding(.leading, OPSStyle.Layout.spacing1)
 
                     Spacer().frame(height: 40)
 
@@ -69,7 +69,7 @@ struct EmployeeProfileView: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Spacer()
                     }
-                    .padding(.top, 8)
+                    .padding(.top, OPSStyle.Layout.spacing2)
 
                     Spacer().frame(height: 32)
 
@@ -79,7 +79,7 @@ struct EmployeeProfileView: View {
                     Spacer().frame(height: 32)
 
                     // Name fields
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         underlineField("First Name", text: $firstName, contentType: .givenName)
                         underlineField("Last Name", text: $lastName, contentType: .familyName)
                         underlineField("Phone", text: $phone, contentType: .telephoneNumber, keyboard: .phonePad)
@@ -92,7 +92,7 @@ struct EmployeeProfileView: View {
                         Text(errorMessage)
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.errorStatus)
-                            .padding(.bottom, 12)
+                            .padding(.bottom, OPSStyle.Layout.spacing2_5)
                     }
 
                     // Continue button
@@ -112,7 +112,7 @@ struct EmployeeProfileView: View {
                             }
                         }
                         .foregroundColor(OPSStyle.Colors.invertedText)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
                         .background(isFormValid ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
@@ -151,7 +151,7 @@ struct EmployeeProfileView: View {
                                 .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                         .overlay(
-                            VStack(spacing: 4) {
+                            VStack(spacing: OPSStyle.Layout.spacing1) {
                                 Image(systemName: "camera.fill")
                                     .font(.system(size: 24))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -173,7 +173,7 @@ struct EmployeeProfileView: View {
         contentType: UITextContentType? = nil,
         keyboard: UIKeyboardType = .default
     ) -> some View {
-        VStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
             TextField("", text: text, prompt: Text(placeholder).foregroundColor(OPSStyle.Colors.secondaryText))
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)

@@ -134,7 +134,7 @@ struct PhotoOverlayEditorView: View {
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, 10)
                 .frame(maxWidth: .infinity)
                 .background(OPSStyle.Colors.errorStatus.opacity(0.15))
@@ -186,7 +186,7 @@ struct PhotoOverlayEditorView: View {
                     }
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(height: OPSStyle.Layout.touchTargetMin)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                 }
             }
             .disabled(isSaving)
@@ -203,19 +203,19 @@ struct PhotoOverlayEditorView: View {
                 }
                 .foregroundColor(.white)
                 .frame(height: OPSStyle.Layout.touchTargetMin)
-                .padding(.horizontal, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             }
             .disabled(isSaving)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
         .background(Color.black.opacity(0.85))
     }
 
     // MARK: - Bottom Controls
 
     private var bottomControls: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Opacity slider
             VStack(spacing: OPSStyle.Layout.spacing1) {
                 Text("Opacity: \(Int(fillOpacity * 100))%")
@@ -250,7 +250,7 @@ struct PhotoOverlayEditorView: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
-        .padding(.vertical, 12)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .background(Color.black.opacity(0.85))
     }
 

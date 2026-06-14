@@ -71,8 +71,8 @@ struct OptionalSectionPill: View {
                     .opacity(textOpacity)
                     .animation(isHighlighted ? .easeInOut(duration: 1.2).repeatForever(autoreverses: true) : .default, value: isHighlighted)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
@@ -108,7 +108,7 @@ struct OptionalSectionPillGroup: View {
         let collapsedPills = pills.filter { !$0.isExpanded }
 
         if !collapsedPills.isEmpty {
-            FlowLayout(spacing: 8) {
+            FlowLayout(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(Array(collapsedPills.enumerated()), id: \.offset) { _, pill in
                     OptionalSectionPill(
                         title: pill.title,

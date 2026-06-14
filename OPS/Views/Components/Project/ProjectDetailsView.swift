@@ -446,7 +446,7 @@ struct ProjectDetailsView: View {
                         projectIsActive: project.status != .completed && project.status != .closed && project.status != .archived,
                         onCompleteProject: { viewModel.handleProjectCompletion() }
                     )
-                    .padding(.bottom, 16)
+                    .padding(.bottom, OPSStyle.Layout.spacing3)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 .zIndex(5)
@@ -515,7 +515,7 @@ struct ProjectDetailsView: View {
                 Text("DONE")
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.invertedText)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     .padding(.vertical, 6)
                     .background(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.buttonRadius)
@@ -598,8 +598,8 @@ struct ProjectDetailsView: View {
                 .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.top, OPSStyle.Layout.spacing2)
     }
 
     /// Pinned section header: title + tab bar with solid background.
@@ -623,8 +623,8 @@ struct ProjectDetailsView: View {
                 onClientLongPress: { showingClientPicker = true }
             )
             ProjectDetailsTabBar(selectedTab: $viewModel.selectedTab, visibleTabs: visibleTabs)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 4)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.bottom, OPSStyle.Layout.spacing1)
         }
         .background(OPSStyle.Colors.background)
     }
@@ -908,7 +908,7 @@ struct ProjectDetailsView: View {
                                     showingTaskPicker = false
                                 }
                             }) {
-                                HStack(spacing: 8) {
+                                HStack(spacing: OPSStyle.Layout.spacing2) {
                                     // Status badge for non-active tasks
                                     if task.status == .completed {
                                         StatusBadgePill(
@@ -962,7 +962,7 @@ struct ProjectDetailsView: View {
                             Rectangle()
                                 .fill(OPSStyle.Colors.separator)
                                 .frame(width: 120, height: 1)
-                                .padding(.vertical, 4)
+                                .padding(.vertical, OPSStyle.Layout.spacing1)
 
                             Button(action: {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -989,8 +989,8 @@ struct ProjectDetailsView: View {
                         }
                     }
                     .scrollTargetLayout()
-                    .padding(.top, 8)
-                    .padding(.bottom, 16)
+                    .padding(.top, OPSStyle.Layout.spacing2)
+                    .padding(.bottom, OPSStyle.Layout.spacing3)
                 }
                 .frame(maxHeight: 400)
                 .scrollTargetBehavior(.viewAligned)
@@ -1021,7 +1021,7 @@ struct ProjectDetailsView: View {
                     .opacity.combined(with: .scale(scale: 0.8, anchor: .topTrailing))
                 )
             }
-            .padding(.trailing, 16)
+            .padding(.trailing, OPSStyle.Layout.spacing3)
         }
     }
 
@@ -1039,7 +1039,7 @@ struct ProjectDetailsView: View {
                             .font(OPSStyle.Typography.captionBold)
                     }
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.vertical, 10)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -1050,7 +1050,7 @@ struct ProjectDetailsView: View {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                             .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
                     )
-                    .padding(.bottom, 32)
+                    .padding(.bottom, OPSStyle.Layout.spacing5)
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .animation(OPSStyle.Animation.standard, value: viewModel.showingSaveNotification)

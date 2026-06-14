@@ -58,7 +58,7 @@ struct NotesDisplayField: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             // Title header ABOVE the card (per UI guidelines)
             Text(title.uppercased())
                 .font(OPSStyle.Typography.captionBold)
@@ -68,8 +68,8 @@ struct NotesDisplayField: View {
             VStack(alignment: .leading, spacing: 0) {
                 notesContent
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .background(Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
@@ -129,7 +129,7 @@ struct NotesDisplayField: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .lineLimit(collapsedLineLimit)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.bottom, 24)
+                .padding(.bottom, OPSStyle.Layout.spacing4)
 
             // Gradient fade overlay
             LinearGradient(
@@ -176,7 +176,7 @@ struct NotesDisplayField: View {
     }
 
     private var expandedView: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text(notes)
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -196,7 +196,7 @@ struct NotesDisplayField: View {
                     }) {
                         Text("EDIT")
                             .font(OPSStyle.Typography.smallCaption)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.vertical, 6)
                             .background(OPSStyle.Colors.primaryAccent)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -208,10 +208,10 @@ struct NotesDisplayField: View {
     }
 
     private var editingView: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             TextEditor(text: $editedNotes)
                 .frame(minHeight: 120)
-                .padding(12)
+                .padding(OPSStyle.Layout.spacing2_5)
                 .background(OPSStyle.Colors.cardBackground.opacity(0.6))
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .font(OPSStyle.Typography.body)
@@ -230,8 +230,8 @@ struct NotesDisplayField: View {
                 }) {
                     Text("CANCEL")
                         .font(OPSStyle.Typography.smallCaption)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
 
@@ -244,8 +244,8 @@ struct NotesDisplayField: View {
                 }) {
                     Text("SAVE")
                         .font(OPSStyle.Typography.smallCaption)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
                         .background(OPSStyle.Colors.primaryAccent)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -258,7 +258,7 @@ struct NotesDisplayField: View {
 // MARK: - Preview
 
 #Preview {
-    VStack(spacing: 20) {
+    VStack(spacing: OPSStyle.Layout.spacing3_5) {
         // With notes
         NotesDisplayField(
             title: "Team Notes",

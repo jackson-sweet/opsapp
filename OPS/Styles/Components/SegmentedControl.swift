@@ -122,7 +122,7 @@ struct SettingsSegmentedPicker<SelectionValue>: View where SelectionValue: Hasha
                                 : OPSStyle.Colors.tertiaryText
                         )
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .fill(
@@ -167,7 +167,7 @@ struct SegmentedControl_Previews: PreviewProvider {
     }
 
     static var previews: some View {
-        VStack(spacing: 32) {
+        VStack(spacing: OPSStyle.Layout.spacing5) {
             SegmentedControl(selection: .constant(TestTab.settings))
                 .padding(.horizontal)
 

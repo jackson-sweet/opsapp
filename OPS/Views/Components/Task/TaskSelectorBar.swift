@@ -72,7 +72,7 @@ struct TaskSelectorBar: View {
                             .opacity(swipeOffset < -20 ? min(abs(swipeOffset) / 60, 1.0) : 0)
                     }
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, OPSStyle.Layout.spacing2)
 
                 // Main pill
                 taskPill
@@ -162,8 +162,8 @@ struct TaskSelectorBar: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
@@ -181,13 +181,13 @@ struct TaskSelectorBar: View {
     private var taskPickerSheet: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     // Deselect option
                     Button(action: {
                         attemptTaskSwitch(to: nil)
                         showingTaskPicker = false
                     }) {
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             Circle()
                                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 .frame(width: 10, height: 10)
@@ -204,7 +204,7 @@ struct TaskSelectorBar: View {
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.vertical, 14)
                         .background(selectedTask == nil ? OPSStyle.Colors.primaryAccent.opacity(0.1) : Color.clear)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -213,7 +213,7 @@ struct TaskSelectorBar: View {
 
                     Divider()
                         .background(OPSStyle.Colors.cardBorder)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
 
                     // Task options
                     ForEach(sortedTasks, id: \.id) { task in
@@ -221,7 +221,7 @@ struct TaskSelectorBar: View {
                             attemptTaskSwitch(to: task)
                             showingTaskPicker = false
                         }) {
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 // Color indicator
                                 Circle()
                                     .fill(Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent)
@@ -247,7 +247,7 @@ struct TaskSelectorBar: View {
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 }
                             }
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.vertical, 14)
                             .background(selectedTask?.id == task.id ? OPSStyle.Colors.primaryAccent.opacity(0.1) : Color.clear)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)

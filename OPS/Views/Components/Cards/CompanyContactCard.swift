@@ -28,12 +28,12 @@ struct CompanyContactCard: View {
     private let logoSize: CGFloat = 56
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Logo on the left as a circle
             logoView
 
             // Text content
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 // Company name
                 Text(name.isEmpty ? "COMPANY NAME" : name.uppercased())
                     .font(OPSStyle.Typography.bodyBold)
@@ -52,7 +52,7 @@ struct CompanyContactCard: View {
 
                 // Team member count
                 if showTeamCount {
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: "person.2")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -66,7 +66,7 @@ struct CompanyContactCard: View {
             Spacer()
         }
         .padding(.vertical, 14)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
@@ -78,7 +78,7 @@ struct CompanyContactCard: View {
     // MARK: - Contact Row
 
     private func contactRow(icon: String, text: String, isEmpty: Bool = false) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             Image(systemName: icon)
                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                 .foregroundColor(isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.secondaryText)
@@ -201,7 +201,7 @@ extension CompanyContactCard {
         OPSStyle.Colors.background
             .ignoresSafeArea()
 
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             // With data
             CompanyContactCard(
                 name: "ABC Construction",

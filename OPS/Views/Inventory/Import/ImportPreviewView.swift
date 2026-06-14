@@ -189,7 +189,7 @@ struct ImportPreviewView: View {
         let isDupe = item.isDuplicate
 
         return Button(action: { toggleSelection(item) }) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Selection indicator
                 Image(systemName: isSelected ? "checkmark.square.fill" : "square")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -250,7 +250,7 @@ struct ImportPreviewView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 10)
             .background(isSelected ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.background)
         }
@@ -264,7 +264,7 @@ struct ImportPreviewView: View {
             // Active filters as pills
             if !activeFilters.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         ForEach(activeFilters) { filter in
                             filterPill(filter)
                         }
@@ -293,7 +293,7 @@ struct ImportPreviewView: View {
                     }
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
@@ -333,7 +333,7 @@ struct ImportPreviewView: View {
 
     private func filterPill(_ filter: ActiveFilter) -> some View {
         Button(action: { removeFilter(filter) }) {
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(systemName: filter.type == .keyword ? "magnifyingglass" : "tag")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 Text(filter.displayText)
@@ -478,7 +478,7 @@ struct ImportPreviewView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, 12)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -593,9 +593,9 @@ struct ImportPreviewView: View {
                 OPSStyle.Colors.background
                     .ignoresSafeArea()
 
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                     // Name field
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         Text("NAME")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -603,7 +603,7 @@ struct ImportPreviewView: View {
                         TextField("Item name", text: $editName)
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                            .padding(12)
+                            .padding(OPSStyle.Layout.spacing2_5)
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                             .overlay(
@@ -613,7 +613,7 @@ struct ImportPreviewView: View {
                     }
 
                     // Quantity field
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         Text("QUANTITY")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -622,7 +622,7 @@ struct ImportPreviewView: View {
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .keyboardType(.decimalPad)
-                            .padding(12)
+                            .padding(OPSStyle.Layout.spacing2_5)
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                             .overlay(
@@ -632,16 +632,16 @@ struct ImportPreviewView: View {
                     }
 
                     // Tags section
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         Text("TAGS")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                         // Existing tags
                         if !editTags.isEmpty {
-                            FlowLayout(spacing: 8) {
+                            FlowLayout(spacing: OPSStyle.Layout.spacing2) {
                                 ForEach(editTags, id: \.self) { tag in
-                                    HStack(spacing: 4) {
+                                    HStack(spacing: OPSStyle.Layout.spacing1) {
                                         Text(tag)
                                             .font(OPSStyle.Typography.smallCaption)
                                             .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -652,8 +652,8 @@ struct ImportPreviewView: View {
                                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                         }
                                     }
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                    .padding(.vertical, OPSStyle.Layout.spacing1)
                                     .background(OPSStyle.Colors.cardBackgroundDark)
                                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                                     .overlay(
@@ -665,7 +665,7 @@ struct ImportPreviewView: View {
                         }
 
                         // Add new tag
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             TextField("Add tag", text: $editNewTag)
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -697,7 +697,7 @@ struct ImportPreviewView: View {
 
                     Spacer()
                 }
-                .padding(24)
+                .padding(OPSStyle.Layout.spacing4)
             }
             .navigationTitle("EDIT ITEM")
             .navigationBarTitleDisplayMode(.inline)
@@ -727,7 +727,7 @@ struct ImportPreviewView: View {
                     .ignoresSafeArea()
 
                 if allUniqueTags.isEmpty {
-                    VStack(spacing: 12) {
+                    VStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Text("NO TAGS")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -761,7 +761,7 @@ struct ImportPreviewView: View {
     private func tagManagementRow(_ tag: String) -> some View {
         let itemCount = items.filter { $0.tags.contains(tag) }.count
 
-        return HStack(spacing: 16) {
+        return HStack(spacing: OPSStyle.Layout.spacing3) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(tag)
                     .font(OPSStyle.Typography.caption)
@@ -782,8 +782,8 @@ struct ImportPreviewView: View {
                 Text("SELECT")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .overlay(
@@ -826,8 +826,8 @@ struct ImportPreviewView: View {
             }
             .buttonStyle(PlainButtonStyle())
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing4)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .background(OPSStyle.Colors.background)
         .overlay(
             Rectangle()

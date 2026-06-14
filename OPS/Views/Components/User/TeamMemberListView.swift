@@ -25,7 +25,7 @@ struct TeamMemberListView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             headerView
             
             if isEmpty {
@@ -43,14 +43,14 @@ struct TeamMemberListView: View {
         Text("TEAM MEMBERS")
             .font(OPSStyle.Typography.captionBold)
             .foregroundColor(OPSStyle.Colors.secondaryText)
-            .padding(.bottom, 4)
+            .padding(.bottom, OPSStyle.Layout.spacing1)
     }
     
     private var emptyStateView: some View {
         Text("No team members assigned")
             .font(OPSStyle.Typography.body)
             .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
-            .padding(.vertical, 8)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
     }
     
     @ViewBuilder
@@ -80,12 +80,12 @@ struct TeamMemberRowV1: View {
     @Environment(\.openURL) private var openURL
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // User avatar - using unified UserAvatar component
             UserAvatar(user: user, size: 40)
             
             // User details
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 HStack(spacing: 6) {
                     Text("\(user.firstName) \(user.lastName)")
                         .font(OPSStyle.Typography.body)
@@ -120,7 +120,7 @@ struct TeamMemberRowV1: View {
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
     }
 }
 
@@ -131,12 +131,12 @@ struct TeamMemberRowV2: View {
     @Environment(\.openURL) private var openURL
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Avatar - using unified UserAvatar component
             TeamMemberAvatar(teamMember: teamMember, size: 40)
             
             // Details
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 HStack(spacing: 6) {
                     Text(teamMember.fullName)
                         .font(OPSStyle.Typography.body)
@@ -157,7 +157,7 @@ struct TeamMemberRowV2: View {
             Spacer()
             
             // Contact buttons
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Email button
                 if let email = teamMember.email, !email.isEmpty {
                     Button {
@@ -188,6 +188,6 @@ struct TeamMemberRowV2: View {
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
     }
 }

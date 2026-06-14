@@ -55,7 +55,7 @@ struct TaskCompletionReviewView: View {
             // UI overlay
             VStack(spacing: 0) {
                 header
-                    .padding(.top, 8)
+                    .padding(.top, OPSStyle.Layout.spacing2)
 
                 if tasks.isEmpty {
                     emptyStateView
@@ -68,14 +68,14 @@ struct TaskCompletionReviewView: View {
                     Text("\(reviewedCount) OF \(tasks.count) REVIEWED")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(.white.opacity(0.7))
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                         .padding(.vertical, 6)
                         .background(Color.black.opacity(0.4))
                         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-                        .padding(.bottom, 8)
+                        .padding(.bottom, OPSStyle.Layout.spacing2)
 
                     directionHints
-                        .padding(.bottom, 8)
+                        .padding(.bottom, OPSStyle.Layout.spacing2)
                         .ignoresSafeArea(.container, edges: .bottom)
                         .wizardTarget("task_free_review", style: .row)
                 }
@@ -202,13 +202,13 @@ struct TaskCompletionReviewView: View {
 
             Color.clear.frame(width: 44, height: 44)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
     // MARK: - Direction Hints
 
     private var directionHints: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             hintPill(icon: "arrow.left", label: "SKIP", color: OPSStyle.Colors.tertiaryText)
             hintPill(icon: "arrow.right", label: "COMPLETE", color: OPSStyle.Colors.successStatus)
             if hasCalendarAccess {
@@ -216,19 +216,19 @@ struct TaskCompletionReviewView: View {
             }
             hintPill(icon: "arrow.down", label: "CANCEL", color: OPSStyle.Colors.errorStatus)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
     private func hintPill(icon: String, label: String, color: Color) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             Image(systemName: icon)
                 .font(.system(size: 10, weight: .bold))
             Text(label)
                 .font(OPSStyle.Typography.smallCaption)
         }
         .foregroundColor(color)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
         .background(color.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
     }
@@ -236,7 +236,7 @@ struct TaskCompletionReviewView: View {
     // MARK: - Empty State
 
     private var emptyStateView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
 
             Text("NO TASKS TO REVIEW")
@@ -260,7 +260,7 @@ struct TaskCompletionReviewView: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 }
                 .foregroundColor(OPSStyle.Colors.invertedText)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .frame(maxWidth: .infinity)
                 .frame(height: OPSStyle.Layout.touchTargetStandard)
                 .background(OPSStyle.Colors.primaryText)
@@ -274,7 +274,7 @@ struct TaskCompletionReviewView: View {
     // MARK: - All Done
 
     private var allDoneView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
 
             // Icon with accent ring
@@ -313,7 +313,7 @@ struct TaskCompletionReviewView: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 }
                 .foregroundColor(OPSStyle.Colors.invertedText)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .frame(maxWidth: .infinity)
                 .frame(height: OPSStyle.Layout.touchTargetStandard)
                 .background(OPSStyle.Colors.primaryText)

@@ -39,28 +39,28 @@ struct UserTypeSelectionView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 44, height: 44)
-                        .padding(.bottom, 8)
+                        .padding(.bottom, OPSStyle.Layout.spacing2)
                         .colorMultiply(viewModel.shouldUseLightTheme ? .black : .white)
                     Text("OPS")
                         .font(OPSStyle.Typography.largeTitle.weight(.bold))
                         .foregroundColor(primaryTextColor)
                     Spacer()
                 }
-                .padding(.leading, 4)
+                .padding(.leading, OPSStyle.Layout.spacing1)
 
                 Spacer()
 
                 // Title
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     Text("WHO ARE YOU?")
                         .font(OPSStyle.Typography.largeTitle.weight(.bold))
                         .foregroundColor(primaryTextColor)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.bottom, 32)
+                .padding(.bottom, OPSStyle.Layout.spacing5)
 
                 // User type options
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     UserTypeOption(
                         type: .company,
                         title: "CREW LEAD",
@@ -99,7 +99,7 @@ struct UserTypeSelectionView: View {
                         }
                     }
                 )
-                .padding(.bottom, 20)
+                .padding(.bottom, OPSStyle.Layout.spacing3_5)
             }
             .padding(40)
         }
@@ -130,9 +130,9 @@ struct UserTypeOption: View {
     
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 16) {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
                 // Content
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(title)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(isSelected ? (isLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.invertedText) : primaryTextColor)

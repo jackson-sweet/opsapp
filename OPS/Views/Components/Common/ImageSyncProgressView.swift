@@ -15,14 +15,14 @@ struct ImageSyncProgressView: View {
         if syncManager.isVisible {
             VStack(spacing: 0) {
                 // Main progress bar
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     // Icon
                     Image(systemName: syncManager.hasError ? "exclamationmark.cloud.fill" : "icloud.and.arrow.up.fill")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(syncManager.hasError ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryAccent)
                     
                     // Progress info
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                         Text(syncManager.statusText)
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -60,8 +60,8 @@ struct ImageSyncProgressView: View {
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .background(
                     ZStack {
                         // Background blur
@@ -75,7 +75,7 @@ struct ImageSyncProgressView: View {
                 
                 // Expanded details (if showing)
                 if showingDetails {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         ForEach(syncManager.projectUploads) { upload in
                             HStack {
                                 Image(systemName: upload.isComplete ? "checkmark.circle.fill" : 
@@ -103,11 +103,11 @@ struct ImageSyncProgressView: View {
                                         .scaleEffect(0.8)
                                 }
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
                         }
                     }
-                    .padding(.bottom, 8)
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
                     .background(Color(OPSStyle.Colors.cardBackgroundDark).opacity(0.9))
                 }
             }

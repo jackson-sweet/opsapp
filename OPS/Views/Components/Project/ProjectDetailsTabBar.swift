@@ -42,7 +42,7 @@ struct ProjectDetailsTabBar: View {
                                         : OPSStyle.Colors.tertiaryText
                                 )
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
+                                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                         }
                         .buttonStyle(PlainButtonStyle())
                     }

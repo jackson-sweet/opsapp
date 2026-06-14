@@ -40,7 +40,7 @@ struct CustomAlertModifier: ViewModifier {
                     .transition(.opacity)
 
                 if let config = alert, isVisible {
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         Text(config.title)
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(config.color)
@@ -53,8 +53,8 @@ struct CustomAlertModifier: ViewModifier {
                                 .multilineTextAlignment(.center)
                         }
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
+                    .padding(.vertical, OPSStyle.Layout.spacing3_5)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
                             .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.95))

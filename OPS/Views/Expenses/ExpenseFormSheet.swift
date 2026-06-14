@@ -467,7 +467,7 @@ struct ExpenseFormSheet: View {
 
             // Amount
             detailRow(label: "AMOUNT") {
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Text(currencySymbol)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -509,7 +509,7 @@ struct ExpenseFormSheet: View {
 
             // Tax
             detailRow(label: "TAX") {
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Text(currencySymbol)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -1268,7 +1268,7 @@ private struct ExpenseProjectPickerSheet: View {
                                     .foregroundColor(OPSStyle.Colors.placeholderText)
                             }
                     }
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
@@ -1628,7 +1628,7 @@ private struct ExpenseCurrencyPickerSheet: View {
                                     .foregroundColor(OPSStyle.Colors.placeholderText)
                             }
                     }
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)

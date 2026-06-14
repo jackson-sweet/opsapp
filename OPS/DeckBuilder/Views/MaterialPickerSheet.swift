@@ -163,7 +163,7 @@ struct MaterialPickerSheet: View {
                         .padding(.vertical, OPSStyle.Layout.spacing4)
                     }
                 }
-                .padding(20)
+                .padding(OPSStyle.Layout.spacing3_5)
             }
             .background(OPSStyle.Colors.background)
             .navigationTitle(sheetTitle)
@@ -251,7 +251,7 @@ struct MaterialPickerSheet: View {
                         }
                     }
 
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Text(String(format: "$%.2f / %@", product.basePrice, isLinearMode ? "lin ft" : "sq ft"))
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)

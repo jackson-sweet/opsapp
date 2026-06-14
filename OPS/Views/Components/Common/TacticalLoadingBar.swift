@@ -135,35 +135,35 @@ struct TacticalLoadingBarAnimated: View {
             .ignoresSafeArea()
 
         VStack(spacing: 40) {
-            VStack(spacing: 8) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
                 Text("0% Progress")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 TacticalLoadingBar(progress: 0.0)
             }
 
-            VStack(spacing: 8) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
                 Text("25% Progress")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 TacticalLoadingBar(progress: 0.25)
             }
 
-            VStack(spacing: 8) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
                 Text("50% Progress")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 TacticalLoadingBar(progress: 0.5)
             }
 
-            VStack(spacing: 8) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
                 Text("75% Progress")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 TacticalLoadingBar(progress: 0.75)
             }
 
-            VStack(spacing: 8) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
                 Text("100% Progress")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -178,7 +178,7 @@ struct TacticalLoadingBarAnimated: View {
         OPSStyle.Colors.background
             .ignoresSafeArea()
 
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             Text("Indeterminate Loading")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)

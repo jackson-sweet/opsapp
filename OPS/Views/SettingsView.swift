@@ -99,7 +99,7 @@ struct SettingsView: View {
 
                 VStack(alignment: .leading, spacing: 0) {
                     AppHeader(headerType: .settings)
-                        .padding(.bottom, 8)
+                        .padding(.bottom, OPSStyle.Layout.spacing2)
 
                     // Bug G5 — when the header search is active, the settings
                     // list below is replaced by a live results list. The
@@ -115,8 +115,8 @@ struct SettingsView: View {
                         VStack(spacing: OPSStyle.Layout.spacing4) {
                             // Profile card
                             profileCard
-                                .padding(.horizontal, 20)
-                                .padding(.top, 16)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                                .padding(.top, OPSStyle.Layout.spacing3)
 
                             // Organization section — company identity, team, billing, permissions
                             settingsSection(title: "ORGANIZATION") {
@@ -154,7 +154,7 @@ struct SettingsView: View {
                                     )
                                 }
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                             // Business section — commerce-facing config (catalog, accounting)
                             if hasPipelineAccess || isPipelineGated {
@@ -187,7 +187,7 @@ struct SettingsView: View {
                                         )
                                     }
                                 }
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             }
 
                             // Operations section — workflow rules. Bug 4014b472 moved these out
@@ -227,7 +227,7 @@ struct SettingsView: View {
                                     // the Catalog Setup review step — both gated to
                                     // catalog.manage. No separate top-level row.
                                 }
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             }
 
                             // App section — device-level preferences (everyone)
@@ -288,12 +288,12 @@ struct SettingsView: View {
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     }
                                     .padding(.vertical, 14)
-                                    .padding(.horizontal, 16)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                                     .contentShape(Rectangle())
                                 }
                                 .buttonStyle(PlainButtonStyle())
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                             // Data section
                             settingsSection(title: "DATA") {
@@ -333,7 +333,7 @@ struct SettingsView: View {
                                     )
                                 }
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                             // Support section
                             settingsSection(title: "SUPPORT") {
@@ -367,7 +367,7 @@ struct SettingsView: View {
                                     action: { activeDestination = .tutorialV2 }
                                 )
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                             // Developer section (conditional)
                             if shouldShowDeveloperOptions {
@@ -378,18 +378,18 @@ struct SettingsView: View {
                                         action: { activeDestination = .developerDashboard }
                                     )
                                 }
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             }
 
                             // Log out button
                             logOutButton
-                                .padding(.horizontal, 20)
-                                .padding(.top, 8)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                                .padding(.top, OPSStyle.Layout.spacing2)
 
                             // App version footer
                             appVersionFooter
-                                .padding(.top, 8)
-                                .padding(.bottom, 24)
+                                .padding(.top, OPSStyle.Layout.spacing2)
+                                .padding(.bottom, OPSStyle.Layout.spacing4)
                         }
                         .padding(.bottom, 90) // Tab bar padding
                     }
@@ -667,12 +667,12 @@ struct SettingsView: View {
                             .tracking(0.5)
                         Spacer()
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.top, OPSStyle.Layout.spacing3)
 
                     ForEach(results) { entry in
                         settingsSearchResultRow(for: entry)
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     }
                 }
             }
@@ -751,7 +751,7 @@ struct SettingsView: View {
                     .frame(width: 28, height: 28, alignment: .center)
                     .padding(.top, 2) // Optical alignment with first text line
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(entry.title)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -766,10 +766,10 @@ struct SettingsView: View {
                 Image(systemName: OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .padding(.top, 4) // Match icon alignment
+                    .padding(.top, OPSStyle.Layout.spacing1) // Match icon alignment
             }
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .frame(minHeight: OPSStyle.Layout.touchTargetMin)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(OPSStyle.Colors.cardBackgroundDark)
@@ -844,13 +844,13 @@ struct SettingsView: View {
                 profileAvatar
 
                 // Name and subtitle
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text((dataController.currentUser?.fullName ?? "User").uppercased())
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
 
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         if let role = dataController.currentUser?.role {
                             Text(role.displayName)
                                 .font(OPSStyle.Typography.caption)
@@ -877,7 +877,7 @@ struct SettingsView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
@@ -955,7 +955,7 @@ struct SettingsView: View {
     // MARK: - Grouped Section Builder
 
     private func settingsSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             // Section header
             Text(title)
                 .font(OPSStyle.Typography.captionBold)
@@ -995,7 +995,7 @@ struct SettingsView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
@@ -1020,7 +1020,7 @@ struct SettingsView: View {
                 Text("IN TESTING")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
                     .padding(.vertical, 3)
                     .background(
                         Capsule()
@@ -1028,7 +1028,7 @@ struct SettingsView: View {
                     )
             }
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .contentShape(Rectangle())
             .opacity(0.4)
         }
@@ -1071,7 +1071,7 @@ struct SettingsView: View {
     // MARK: - App Version Footer
 
     private var appVersionFooter: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Image("LogoWhite")
                 .resizable()
                 .aspectRatio(contentMode: .fit)

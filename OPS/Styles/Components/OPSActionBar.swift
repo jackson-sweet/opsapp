@@ -16,7 +16,7 @@ import UIKit
 /// Caller controls layout via the `content` ViewBuilder — use HStack, Spacer, dividers, etc.
 ///
 ///     OPSActionBar {
-///         HStack(spacing: 4) {
+///         HStack(spacing: OPSStyle.Layout.spacing1) {
 ///             OPSActionBarButton(icon: "camera.fill", label: "PHOTO") { ... }
 ///             OPSActionBarButton(icon: "note.text", label: "NOTE") { ... }
 ///         }

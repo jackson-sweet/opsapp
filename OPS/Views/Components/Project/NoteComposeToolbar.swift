@@ -16,7 +16,7 @@ struct NoteComposeToolbar: View {
 
     var body: some View {
         OPSActionBar {
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 OPSActionBarButton(icon: OPSStyle.Icons.mention, label: "@", action: onMention)
                 OPSActionBarButton(icon: "camera.fill", label: "PHOTO", action: onPhoto)
 
@@ -31,6 +31,6 @@ struct NoteComposeToolbar: View {
                 )
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 }

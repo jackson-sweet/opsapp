@@ -93,7 +93,7 @@ struct PanelSectionHeader: View {
                 dotColor: OPSStyle.Colors.tan
             )
         }
-        .padding(20)
+        .padding(OPSStyle.Layout.spacing3_5)
     }
     .preferredColorScheme(.dark)
 }

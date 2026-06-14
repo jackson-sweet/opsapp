@@ -42,12 +42,12 @@ struct ProjectListFilterSheet: View {
 
                 VStack(spacing: 0) {
                     segmentedHeader
-                        .padding(.horizontal, 20)
-                        .padding(.top, 16)
-                        .padding(.bottom, 12)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.top, OPSStyle.Layout.spacing3)
+                        .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                     ScrollView {
-                        VStack(spacing: 16) {
+                        VStack(spacing: OPSStyle.Layout.spacing3) {
                             switch segment {
                             case .filter:
                                 filterSectionsContent
@@ -55,8 +55,8 @@ struct ProjectListFilterSheet: View {
                                 sortSectionContent
                             }
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 32)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.bottom, OPSStyle.Layout.spacing5)
                     }
                 }
             }
@@ -109,7 +109,7 @@ struct ProjectListFilterSheet: View {
                     }
                     .foregroundColor(segment == option ? OPSStyle.Colors.background : OPSStyle.Colors.primaryText)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .fill(segment == option ? OPSStyle.Colors.primaryAccent : Color.clear)
@@ -118,7 +118,7 @@ struct ProjectListFilterSheet: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(4)
+        .padding(OPSStyle.Layout.spacing1)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius + 4)
                 .fill(OPSStyle.Colors.cardBackgroundDark)
@@ -210,14 +210,14 @@ struct ProjectListFilterSheet: View {
                     }
                 }
                 .padding(.vertical, 14)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     sortOption = option
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
                 if index < ProjectSortOption.allCases.count - 1 {
-                    Divider().background(OPSStyle.Colors.cardBackground).padding(.leading, 16)
+                    Divider().background(OPSStyle.Colors.cardBackground).padding(.leading, OPSStyle.Layout.spacing3)
                 }
             }
         }
@@ -246,7 +246,7 @@ struct ProjectListFilterSheet: View {
                 }
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: icon)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -261,7 +261,7 @@ struct ProjectListFilterSheet: View {
                         Text("\(badgeCount)")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.background)
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2)
                             .padding(.vertical, 2)
                             .background(OPSStyle.Colors.primaryAccent)
                             .clipShape(Capsule())
@@ -274,7 +274,7 @@ struct ProjectListFilterSheet: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .rotationEffect(.degrees(isExpanded.wrappedValue ? 0 : -90))
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, 14)
                 .contentShape(Rectangle())
             }
@@ -310,7 +310,7 @@ struct ProjectListFilterSheet: View {
         colorIndicator: Color?,
         onTap: @escaping () -> Void
     ) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             if let colorIndicator = colorIndicator {
                 RoundedRectangle(cornerRadius: 3)
                     .fill(colorIndicator)
@@ -334,8 +334,8 @@ struct ProjectListFilterSheet: View {
                 .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .contentShape(Rectangle())
         .onTapGesture { onTap() }
     }

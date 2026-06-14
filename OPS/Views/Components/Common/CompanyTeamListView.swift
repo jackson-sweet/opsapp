@@ -15,16 +15,16 @@ struct CompanyTeamListView: View {
     @Environment(\.openURL) private var openURL
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             // Header
             Text("TEAM MEMBERS")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.bottom, 4)
+                .padding(.bottom, OPSStyle.Layout.spacing1)
             
             if company.teamMembers.isEmpty {
                 // Empty state with refresh button
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Text("No team members found")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -38,23 +38,23 @@ struct CompanyTeamListView: View {
                         Label("Load Team Members", systemImage: "arrow.clockwise")
                             .font(OPSStyle.Typography.smallButton)
                     }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing3)
             } else {
                 // Team member list with lazy loading for performance
-                LazyVStack(spacing: 12) {
+                LazyVStack(spacing: OPSStyle.Layout.spacing2_5) {
                     ForEach(company.teamMembers, id: \.id) { member in
                         CompanyTeamMemberRow(teamMember: member)
                     }
                 }
             }
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackground)
         .cornerRadius(OPSStyle.Layout.largeCornerRadius)
     }
@@ -66,12 +66,12 @@ struct CompanyTeamMemberRow: View {
     @Environment(\.openURL) private var openURL
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Avatar - using unified UserAvatar component
             TeamMemberAvatar(teamMember: teamMember, size: 48)
             
             // Contact info
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(teamMember.fullName)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -84,7 +84,7 @@ struct CompanyTeamMemberRow: View {
                     Button {
                         openEmail(email)
                     } label: {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "envelope")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             Text(email)
@@ -106,10 +106,10 @@ struct CompanyTeamMemberRow: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.lg))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
-                .padding(8)
+                .padding(OPSStyle.Layout.spacing2)
             }
         }
-        .padding(8)
+        .padding(OPSStyle.Layout.spacing2)
         .background(OPSStyle.Colors.cardBackground)
         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
     }

@@ -17,7 +17,7 @@ struct NavigationBanner: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Left icon - arrow in the direction of the turn
                 turnArrow
                     .frame(width: 30, height: 30)
@@ -38,7 +38,7 @@ struct NavigationBanner: View {
                                 Text("End")
                                     .font(OPSStyle.Typography.caption)
                                     .fontWeight(.bold)
-                                    .padding(.horizontal, 12)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                                     .padding(.vertical, 6)
                                     .background(OPSStyle.Colors.errorStatus)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -53,8 +53,8 @@ struct NavigationBanner: View {
                         .lineLimit(1)
                 }
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(OPSStyle.Colors.cardBackground)
         }
@@ -111,7 +111,7 @@ struct NavigationBanner: View {
 #if DEBUG
 struct NavigationBanner_Previews: PreviewProvider {
     static var previews: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             NavigationBanner(instruction: "Turn right onto Main St", distance: "200m", isLastStep: false)
             
             NavigationBanner(instruction: "Continue on Highway 1", distance: "2.4 km", isLastStep: false)

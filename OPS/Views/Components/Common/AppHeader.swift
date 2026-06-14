@@ -155,12 +155,12 @@ struct AppHeader: View {
         if headerType == .home {
             
             HStack {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     Text(title)
                         .font(OPSStyle.Typography.subtitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                     
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         if let company = dataController.getCurrentUserCompany() {
                             Text(company.name.uppercased())
                                 .font(OPSStyle.Typography.caption)
@@ -169,7 +169,7 @@ struct AppHeader: View {
                             // Show subscription badge if relevant
                             if let status = company.subscriptionStatus,
                                let statusEnum = SubscriptionStatus(rawValue: status) {
-                                HStack(spacing: 4) {
+                                HStack(spacing: OPSStyle.Layout.spacing1) {
                                     Circle()
                                         .fill(statusColor(for: statusEnum))
                                         .frame(width: 6, height: 6)
@@ -247,8 +247,8 @@ struct AppHeader: View {
                 }
                 .buttonStyle(PlainButtonStyle())
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .background(
                 LinearGradient(
                     colors: [
@@ -313,8 +313,8 @@ struct AppHeader: View {
             // with a leading magnifier, inline clear button, and trailing
             // CANCEL action. Animation is spring-driven via OPSStyle tokens.
             settingsSearchField
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .transition(.opacity)
         } else {
 
@@ -326,7 +326,7 @@ struct AppHeader: View {
 
                     // Show date subtitle for schedule view
                     if headerType == .schedule {
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             Text("TODAY")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -345,7 +345,7 @@ struct AppHeader: View {
                 Spacer()
                 
                 // Action buttons — schedule and job board
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     // Calendar/month toggle button (schedule only)
                     if headerType == .schedule, let onMonthTapped = onMonthTapped {
                         Button(action: onMonthTapped) {
@@ -377,7 +377,7 @@ struct AppHeader: View {
                                     Text("\(filterCount)")
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
-                                        .padding(4)
+                                        .padding(OPSStyle.Layout.spacing1)
                                         .background(OPSStyle.Colors.primaryAccent)
                                         .clipShape(Circle())
                                         .offset(x: 14, y: -14)
@@ -577,8 +577,8 @@ struct AppHeader: View {
                 }
 
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .alert("Locked", isPresented: $showLockedAlert) {
                 Button("OK", role: .cancel) { }
             } message: {
@@ -597,7 +597,7 @@ struct AppHeader: View {
     /// and flips the active flag off — SettingsView swaps back to its
     /// content on the same animation.
     private var settingsSearchField: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -730,13 +730,13 @@ struct AppHeader: View {
     // MARK: - Unused (retained for legacy)
     // Version and actions view at the bottom
     private var versionAndActionsView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Divider()
                 .background(OPSStyle.Colors.separator)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             
             // Feature request and logout buttons in HStack
-            HStack(spacing: 16) {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
                 // Feature request button (1/3 width)
                 NavigationLink(destination: FeatureRequestView()) {
                     HStack {
@@ -776,7 +776,7 @@ struct AppHeader: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             
             // App version and logo
             HStack {
@@ -795,8 +795,8 @@ struct AppHeader: View {
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.bottom, OPSStyle.Layout.spacing3)
         }
     }
 }

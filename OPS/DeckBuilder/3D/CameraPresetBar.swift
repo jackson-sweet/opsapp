@@ -6,7 +6,7 @@ struct CameraPresetBar: View {
     let onPreset: (CameraPreset) -> Void
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: OPSStyle.Layout.spacing3) {
             ForEach(CameraPreset.allCases) { preset in
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()

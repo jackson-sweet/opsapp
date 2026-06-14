@@ -16,8 +16,8 @@ struct NotificationTimeWindow: View {
     private let hours = Array(0...23)
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(title)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -27,7 +27,7 @@ struct NotificationTimeWindow: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 // Start time picker
                 HStack {
                     Text("From:")
@@ -44,8 +44,8 @@ struct NotificationTimeWindow: View {
                     .labelsHidden()
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     .background(OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
@@ -66,8 +66,8 @@ struct NotificationTimeWindow: View {
                     .labelsHidden()
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     .background(OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
@@ -77,9 +77,9 @@ struct NotificationTimeWindow: View {
             Text("You will receive notifications between \(formatHour(startHour)) and \(formatHour(endHour))")
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.top, 4)
+                .padding(.top, OPSStyle.Layout.spacing1)
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.largeCornerRadius)
         .overlay(
@@ -129,19 +129,19 @@ struct NotificationPrioritySelector: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             Text("Notification Priority")
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
             
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 ForEach(NotificationPriority.allCases) { priority in
                     Button(action: {
                         withAnimation {
                             selectedPriority = priority
                         }
                     }) {
-                        HStack(spacing: 16) {
+                        HStack(spacing: OPSStyle.Layout.spacing3) {
                             // Icon
                             ZStack {
                                 Circle()
@@ -154,7 +154,7 @@ struct NotificationPrioritySelector: View {
                                     .foregroundColor(selectedPriority == priority ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
                             }
                             
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                 Text(priority.rawValue)
                                     .font(selectedPriority == priority ? OPSStyle.Typography.bodyEmphasis : OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -174,7 +174,7 @@ struct NotificationPrioritySelector: View {
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                             }
                         }
-                        .padding(12)
+                        .padding(OPSStyle.Layout.spacing2_5)
                         .background(selectedPriority == priority ?
                                     OPSStyle.Colors.subtleBackground : OPSStyle.Colors.cardBackground)
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
@@ -182,7 +182,7 @@ struct NotificationPrioritySelector: View {
                 }
             }
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.largeCornerRadius)
         .overlay(
@@ -200,9 +200,9 @@ struct TemporaryMuteControl: View {
     private let muteOptions = [1, 2, 4, 8, 24]
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("Temporary Mute")
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -229,7 +229,7 @@ struct TemporaryMuteControl: View {
             }
             
             if isMuted {
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     // Mute duration options
                     HStack {
                         Text("Mute for:")
@@ -239,7 +239,7 @@ struct TemporaryMuteControl: View {
                         Spacer()
                         
                         // Segmented control for mute duration
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             ForEach(muteOptions, id: \.self) { hours in
                                 Button(action: {
                                     muteHours = hours
@@ -248,7 +248,7 @@ struct TemporaryMuteControl: View {
                                     Text("\(hours)h")
                                         .font(OPSStyle.Typography.caption)
                                         .padding(.vertical, 6)
-                                        .padding(.horizontal, 12)
+                                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                                         .background(muteHours == hours ?
                                                     OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackground)
                                         .foregroundColor(muteHours == hours ? OPSStyle.Colors.invertedText : OPSStyle.Colors.primaryText)
@@ -273,7 +273,7 @@ struct TemporaryMuteControl: View {
                 }
             }
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.largeCornerRadius)
         .overlay(

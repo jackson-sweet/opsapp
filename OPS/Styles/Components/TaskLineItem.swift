@@ -84,7 +84,7 @@ struct TaskLineItem: View {
                     .frame(width: 4)
 
                 // Main content area
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     // Title
                     Text(title.uppercased())
                         .font(OPSStyle.Typography.bodyBold)
@@ -93,9 +93,9 @@ struct TaskLineItem: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     // Metadata row with icons
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         // Calendar icon + date
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: OPSStyle.Icons.calendar)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -113,7 +113,7 @@ struct TaskLineItem: View {
                         }
 
                         // Team icon + count
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: OPSStyle.Icons.personTwo)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -128,8 +128,8 @@ struct TaskLineItem: View {
                     }
                 }
                 .frame(maxHeight: .infinity, alignment: .bottom)
-                .padding(.vertical, 8)
-                .padding(.horizontal, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                 Spacer()
 
@@ -145,7 +145,7 @@ struct TaskLineItem: View {
                         Image(systemName: "trash")
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                            .padding(.trailing, 16)
+                            .padding(.trailing, OPSStyle.Layout.spacing3)
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -158,8 +158,8 @@ struct TaskLineItem: View {
                     Text(status.displayName.uppercased())
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(status.color)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                                 .fill(status.color.opacity(0.1))
@@ -172,7 +172,7 @@ struct TaskLineItem: View {
                 }
                 Spacer()
             }
-            .padding(.top, 8)
+            .padding(.top, OPSStyle.Layout.spacing2)
             .allowsHitTesting(false)
         }
         .contentShape(Rectangle())
@@ -226,7 +226,7 @@ extension View {
 // MARK: - Preview
 
 #Preview {
-    VStack(spacing: 12) {
+    VStack(spacing: OPSStyle.Layout.spacing2_5) {
         TaskLineItem(
             title: "Electrical",
             color: .blue,

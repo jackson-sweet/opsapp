@@ -162,8 +162,8 @@ struct ConvertToProjectSheet: View {
                             provenanceFooter
                         }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 4)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.top, OPSStyle.Layout.spacing1)
                     .padding(.bottom, 160)
                 }
                 .scrollIndicators(.hidden)
@@ -192,16 +192,16 @@ struct ConvertToProjectSheet: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             SheetTitleLabel(title: "CONVERT → PROJECT", size: .full)
             SheetCloseButton {
                 Task { await commitNoProjectAndDismiss() }
             }
         }
-        .padding(.leading, 20)
+        .padding(.leading, OPSStyle.Layout.spacing3_5)
         .padding(.trailing, 6)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
+        .padding(.top, OPSStyle.Layout.spacing2)
+        .padding(.bottom, OPSStyle.Layout.spacing1)
     }
 
     // MARK: - Lead summary card
@@ -251,7 +251,7 @@ struct ConvertToProjectSheet: View {
     // MARK: - Duplicate state
 
     private func duplicateCard(existing: DuplicateProjectDisplay) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             HStack(spacing: 0) {
                 Text("// ")
                     .foregroundColor(OPSStyle.Colors.textMute)
@@ -273,7 +273,7 @@ struct ConvertToProjectSheet: View {
                 .foregroundColor(OPSStyle.Colors.text)
                 .lineLimit(2)
 
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 if let status = existing.status {
                     StatusBadge(
                         status: status.displayName.uppercased(),
@@ -335,7 +335,7 @@ struct ConvertToProjectSheet: View {
                 }
             }
         }
-        .padding(12)
+        .padding(OPSStyle.Layout.spacing2_5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
@@ -478,7 +478,7 @@ struct ConvertToProjectSheet: View {
                 nameFieldFocused = false
             }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(systemName: titleIsAuto ? OPSStyle.Icons.edit : OPSStyle.Icons.locationFill)
                     .font(.system(size: 10))
                 Text(titleIsAuto ? "RENAME" : "USE ADDRESS")
@@ -486,7 +486,7 @@ struct ConvertToProjectSheet: View {
                     .kerning(1.2)
             }
             .foregroundColor(OPSStyle.Colors.text2)
-            .padding(.horizontal, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
             .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
@@ -508,7 +508,7 @@ struct ConvertToProjectSheet: View {
             .font(.custom("JetBrainsMono-Medium", size: 11))
             .kerning(1.0)
             .lineLimit(1)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .frame(height: 48)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
@@ -531,7 +531,7 @@ struct ConvertToProjectSheet: View {
     // MARK: - Attached estimates
 
     private var attachedEstimatesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             PanelSectionHeader(
                 label: "ATTACHED ESTIMATES",
                 count: estimateBundles.count
@@ -547,7 +547,7 @@ struct ConvertToProjectSheet: View {
 
     private func estimateRow(bundle: LeadConversionService.EstimateBundle) -> some View {
         HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(bundle.estimate.estimateNumber.isEmpty
                      ? bundle.estimate.title?.uppercased() ?? "—"
                      : bundle.estimate.estimateNumber.uppercased())
@@ -574,7 +574,7 @@ struct ConvertToProjectSheet: View {
                 .foregroundColor(OPSStyle.Colors.text)
         }
         .padding(.vertical, 10)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
         .frame(maxWidth: .infinity)
         .nestedCard()
     }
@@ -609,7 +609,7 @@ struct ConvertToProjectSheet: View {
             .font(.custom("JetBrainsMono-Regular", size: 10))
             .kerning(1.4)
             .textCase(.uppercase)
-            .padding(.top, 4)
+            .padding(.top, OPSStyle.Layout.spacing1)
         }
     }
 
@@ -619,7 +619,7 @@ struct ConvertToProjectSheet: View {
 
     private func taskPreviewRow(_ item: EstimateLineItem) -> some View {
         HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(item.name.isEmpty ? "—" : item.name)
                     .font(.custom("Mohave-Medium", size: 14))
                     .foregroundColor(OPSStyle.Colors.text)
@@ -643,8 +643,8 @@ struct ConvertToProjectSheet: View {
 
             Spacer()
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
         .frame(maxWidth: .infinity)
         .nestedCard()
     }
@@ -668,7 +668,7 @@ struct ConvertToProjectSheet: View {
         .font(.custom("JetBrainsMono-Regular", size: 10))
         .kerning(0.4)
         .lineSpacing(2)
-        .padding(.vertical, 12)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .padding(.horizontal, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
@@ -688,10 +688,10 @@ struct ConvertToProjectSheet: View {
             Spacer()
             if let errorMessage {
                 SheetStatusLine(mode: .error(errorMessage))
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             } else if isSaving {
                 SheetStatusLine(mode: .syncing)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             }
 
             SheetFooterButtonRow {
@@ -723,7 +723,7 @@ struct ConvertToProjectSheet: View {
                     .opacity(canCreate ? 1 : 0.5)
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.bottom, 28)
         }
         .background(

@@ -162,7 +162,7 @@ struct ProjectsWithoutTasksReviewView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
 
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Text(project.status.displayName.uppercased())
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(project.status.color)

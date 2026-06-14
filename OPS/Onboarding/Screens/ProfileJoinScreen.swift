@@ -66,7 +66,7 @@ struct ProfileJoinScreen: View {
             showBackButton: true,
             onBack: { manager.goBack() }
         ) {
-            VStack(spacing: 32) {
+            VStack(spacing: OPSStyle.Layout.spacing5) {
                 // Profile section
                 profileSection
 
@@ -110,7 +110,7 @@ struct ProfileJoinScreen: View {
     // MARK: - Profile Section
 
     private var profileSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             // Section header
             Text("YOUR INFO")
                 .font(OPSStyle.Typography.captionBold)
@@ -136,7 +136,7 @@ struct ProfileJoinScreen: View {
                     }
                 )
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("Profile Photo")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -149,7 +149,7 @@ struct ProfileJoinScreen: View {
             }
 
             // Name fields
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 FormField(
                     title: "First Name",
                     placeholder: "First",
@@ -176,7 +176,7 @@ struct ProfileJoinScreen: View {
     // MARK: - Company Section
 
     private var companySection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             // Section header
             Text("CREW CODE")
                 .font(OPSStyle.Typography.captionBold)
@@ -215,7 +215,7 @@ struct ProfileJoinScreen: View {
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text("Already joined")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -236,7 +236,7 @@ struct ProfileJoinScreen: View {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundColor(OPSStyle.Colors.successStatus)
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
@@ -251,7 +251,7 @@ struct ProfileJoinScreen: View {
         VStack {
             Spacer()
 
-            VStack(spacing: 24) {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
                 ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                     .scaleEffect(1.5)

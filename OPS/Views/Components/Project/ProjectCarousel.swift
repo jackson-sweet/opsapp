@@ -184,7 +184,7 @@ struct ProjectCardView: View {
                         Spacer()
 
                         // Page indicators
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             ForEach(0..<totalCount, id: \.self) { index in
                                 Circle()
                                     .fill(index == currentIndex ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.pageIndicatorInactive)
@@ -215,7 +215,7 @@ struct ProjectCardView: View {
                         Spacer()
                     }
                 }
-                .padding(12)
+                .padding(OPSStyle.Layout.spacing2_5)
                 .frame(width: 362, height: 85, alignment: .topLeading)
             }
             .frame(width: 362, height: 85)
@@ -255,7 +255,7 @@ struct ProjectCardView: View {
             if isLongPressing {
                 Text("Long press to view details")
                     .font(OPSStyle.Typography.cardBody)
-                    .padding(8)
+                    .padding(OPSStyle.Layout.spacing2)
                     .background(OPSStyle.Colors.imageOverlay)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)

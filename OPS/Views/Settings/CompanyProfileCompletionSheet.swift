@@ -64,14 +64,14 @@ struct CompanyProfileCompletionSheet: View {
                 )
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                         Text("We need a few details about your company before you can request beta access.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .padding(.horizontal, 20)
-                            .padding(.top, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.top, OPSStyle.Layout.spacing3)
 
-                        VStack(spacing: 12) {
+                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
                             if missingName {
                                 fieldRow(label: "Company Name", text: $name, placeholder: "Enter company name")
                             }
@@ -89,12 +89,12 @@ struct CompanyProfileCompletionSheet: View {
                             }
 
                             if missingSize {
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     Text("COMPANY SIZE")
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 80))], spacing: 8) {
+                                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 80))], spacing: OPSStyle.Layout.spacing2) {
                                         ForEach(sizeOptions, id: \.self) { size in
                                             Button {
                                                 companySize = size
@@ -102,8 +102,8 @@ struct CompanyProfileCompletionSheet: View {
                                                 Text(size)
                                                     .font(OPSStyle.Typography.caption)
                                                     .foregroundColor(companySize == size ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
-                                                    .padding(.horizontal, 12)
-                                                    .padding(.vertical, 8)
+                                                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                                                    .padding(.vertical, OPSStyle.Layout.spacing2)
                                                     .frame(maxWidth: .infinity)
                                                     .background(companySize == size ? OPSStyle.Colors.primaryAccent.opacity(0.2) : OPSStyle.Colors.cardBackgroundDark)
                                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -115,16 +115,16 @@ struct CompanyProfileCompletionSheet: View {
                                         }
                                     }
                                 }
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             }
 
                             if missingIndustry {
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     Text("INDUSTRY (SELECT ALL THAT APPLY)")
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 8) {
+                                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: OPSStyle.Layout.spacing2) {
                                         ForEach(industryOptions, id: \.self) { industry in
                                             Button {
                                                 if selectedIndustries.contains(industry) {
@@ -136,8 +136,8 @@ struct CompanyProfileCompletionSheet: View {
                                                 Text(industry)
                                                     .font(OPSStyle.Typography.caption)
                                                     .foregroundColor(selectedIndustries.contains(industry) ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
-                                                    .padding(.horizontal, 12)
-                                                    .padding(.vertical, 8)
+                                                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                                                    .padding(.vertical, OPSStyle.Layout.spacing2)
                                                     .frame(maxWidth: .infinity)
                                                     .background(selectedIndustries.contains(industry) ? OPSStyle.Colors.primaryAccent.opacity(0.2) : OPSStyle.Colors.cardBackgroundDark)
                                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -149,7 +149,7 @@ struct CompanyProfileCompletionSheet: View {
                                         }
                                     }
                                 }
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             }
                         }
 
@@ -173,8 +173,8 @@ struct CompanyProfileCompletionSheet: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
                         .disabled(!isFormValid || isSaving)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 8)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.top, OPSStyle.Layout.spacing2)
                         .padding(.bottom, 40)
                     }
                 }
@@ -185,7 +185,7 @@ struct CompanyProfileCompletionSheet: View {
 
     @ViewBuilder
     private func fieldRow(label: String, text: Binding<String>, placeholder: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text(label.uppercased())
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -193,7 +193,7 @@ struct CompanyProfileCompletionSheet: View {
             TextField(placeholder, text: text)
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)
-                .padding(12)
+                .padding(OPSStyle.Layout.spacing2_5)
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
@@ -201,7 +201,7 @@ struct CompanyProfileCompletionSheet: View {
                         .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     private func saveAndComplete() {

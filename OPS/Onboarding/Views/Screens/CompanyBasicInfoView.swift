@@ -43,7 +43,7 @@ struct CompanyBasicInfoView: View {
                             }
                         }
                     }) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "chevron.left")
                                 .font(OPSStyle.Typography.button)
                             Text("Back")
@@ -62,19 +62,19 @@ struct CompanyBasicInfoView: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                 }
-                .padding(.top, 8)
-                .padding(.bottom, 8)
+                .padding(.top, OPSStyle.Layout.spacing2)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                 // Step indicator bars
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     ForEach(0..<totalSteps) { step in
                         Rectangle()
                             .fill(step < currentStepNumber ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText.opacity(0.3))
                             .frame(height: 2)
                     }
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Main content area - top-justified
@@ -129,9 +129,9 @@ struct CompanyNamePhaseView: View {
     }
     
     var body: some View {
-        VStack(spacing: 32) {
+        VStack(spacing: OPSStyle.Layout.spacing5) {
             // Header
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("WHAT'S YOUR")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -139,7 +139,7 @@ struct CompanyNamePhaseView: View {
                 Text("COMPANY NAME?")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                 Text("Your crew will see this.")
                     .font(OPSStyle.Typography.body)
@@ -178,9 +178,9 @@ struct CompanyLogoPhaseView: View {
     @State private var logoData: Data?
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: OPSStyle.Layout.spacing4) {
             // Header
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("ADD YOUR")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -188,7 +188,7 @@ struct CompanyLogoPhaseView: View {
                 Text("COMPANY LOGO")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                 Text("Appears on projects. You can change this later.")
                     .font(OPSStyle.Typography.body)
@@ -197,7 +197,7 @@ struct CompanyLogoPhaseView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, 20)
+            .padding(.bottom, OPSStyle.Layout.spacing3_5)
 
             // Use ProfileImageUploader
             ProfileImageUploader(
@@ -206,7 +206,7 @@ struct CompanyLogoPhaseView: View {
                     currentImageData: logoData,
                     placeholderText: "", // Empty - let camera icon show clearly during upload
                     size: 120,
-                    shape: .roundedSquare(cornerRadius: 12),
+                    shape: .roundedSquare(cornerRadius: OPSStyle.Layout.modalRadius),
                     allowDelete: false,
                     backgroundColor: OPSStyle.Colors.primaryAccent,
                     uploadButtonText: "UPLOAD LOGO"
@@ -226,7 +226,7 @@ struct CompanyLogoPhaseView: View {
         Spacer()
 
         // Continue/Skip buttons
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             StandardContinueButton(
                 isDisabled: companyLogo == nil,
                 onTap: onContinue

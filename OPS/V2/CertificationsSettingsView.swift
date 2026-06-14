@@ -148,7 +148,7 @@ struct CertificationsSettingsView: View {
                     Image(systemName: "certificate")
                         .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                         .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
-                        .padding(.bottom, 8)
+                        .padding(.bottom, OPSStyle.Layout.spacing2)
                     
                     Text("No certifications added")
                         .font(OPSStyle.Typography.body)
@@ -201,7 +201,7 @@ struct CertificationsSettingsView: View {
                     Image(systemName: "book.fill")
                         .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                         .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
-                        .padding(.bottom, 8)
+                        .padding(.bottom, OPSStyle.Layout.spacing2)
                     
                     Text("No training records")
                         .font(OPSStyle.Typography.body)
@@ -241,8 +241,8 @@ struct CertificationsSettingsView: View {
                 Text(cert.status.rawValue)
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
                     .background(cert.statusColor)
                     .cornerRadius(OPSStyle.Layout.largeCornerRadius)
             }
@@ -297,7 +297,7 @@ struct CertificationsSettingsView: View {
                             .font(OPSStyle.Typography.captionBold)
                     }
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .padding(.top, 4)
+                    .padding(.top, OPSStyle.Layout.spacing1)
                 }
             }
         }
@@ -360,7 +360,7 @@ struct CertificationsSettingsView: View {
                             .font(OPSStyle.Typography.captionBold)
                     }
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .padding(.top, 4)
+                    .padding(.top, OPSStyle.Layout.spacing1)
                 }
             }
         }

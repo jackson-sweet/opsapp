@@ -34,7 +34,7 @@ struct InventoryInsightsView: View {
 
                 if viewModel.isLoading {
                     // Loading state
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                             .scaleEffect(1.2)
@@ -45,13 +45,13 @@ struct InventoryInsightsView: View {
                 } else {
                     ScrollViewReader { proxy in
                         ScrollView {
-                            VStack(alignment: .leading, spacing: 24) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                                 // 1. Health Summary
                                 healthSummaryRow(proxy: proxy)
 
                                 // 2. Consumption Trends
                                 ConsumptionChart(viewModel: viewModel)
-                                    .padding(.horizontal, 20)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                                 // 3. Depletion Forecast
                                 DepletionForecastChart(
@@ -60,7 +60,7 @@ struct InventoryInsightsView: View {
                                         dismiss()
                                     }
                                 )
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                                 // 4. Top Movers
                                 TopMoversSection(
@@ -69,13 +69,13 @@ struct InventoryInsightsView: View {
                                         dismiss()
                                     }
                                 )
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                                 // 5. Stock Alerts (or setup CTA if no thresholds)
                                 if noThresholdsConfigured && !activeItems.isEmpty {
                                     thresholdSetupCTA
                                         .id("stockAlerts")
-                                        .padding(.horizontal, 20)
+                                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                                 } else {
                                     StockAlertsSection(
                                         criticalAlerts: viewModel.criticalAlerts,
@@ -94,12 +94,12 @@ struct InventoryInsightsView: View {
                                         }
                                     )
                                     .id("stockAlerts")
-                                    .padding(.horizontal, 20)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                                 }
 
                                 Spacer().frame(height: 40)
                             }
-                            .padding(.vertical, 16)
+                            .padding(.vertical, OPSStyle.Layout.spacing3)
                         }
                         .refreshable {
                             await viewModel.loadData(items: activeItems)
@@ -146,7 +146,7 @@ struct InventoryInsightsView: View {
     // MARK: - Threshold Setup CTA
 
     private var thresholdSetupCTA: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -156,7 +156,7 @@ struct InventoryInsightsView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
 
-            VStack(spacing: 16) {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
                 Image(systemName: "bell.badge")
                     .font(.system(size: 28))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -192,7 +192,7 @@ struct InventoryInsightsView: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .padding(20)
+            .padding(OPSStyle.Layout.spacing3_5)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
@@ -236,7 +236,7 @@ struct InventoryInsightsView: View {
                 withAnimation { proxy.scrollTo("stockAlerts", anchor: .top) }
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.top, 60) // Clear the header
     }
 }

@@ -339,7 +339,7 @@ struct OrdersSheet: View {
             navigateToOrderId = order.id
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing3) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text((order.title ?? defaultTitle(for: order)).uppercased())
                         .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)

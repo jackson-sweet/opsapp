@@ -184,7 +184,7 @@ private struct BlueprintFamilyCard: View {
                         .font(OPSStyle.Typography.panelTitle)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Spacer()
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing1) {
                         Text(axes.joined(separator: " × "))
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)

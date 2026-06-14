@@ -131,7 +131,7 @@ struct DimensionInputView: View {
 
                 Spacer()
             }
-            .padding(20)
+            .padding(OPSStyle.Layout.spacing3_5)
             .background(OPSStyle.Colors.background)
             .navigationTitle("Dimension")
             .navigationBarTitleDisplayMode(.inline)

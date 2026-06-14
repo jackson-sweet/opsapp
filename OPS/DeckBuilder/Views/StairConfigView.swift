@@ -100,7 +100,7 @@ struct StairConfigView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: OPSStyle.Layout.spacing3_5) {
                     // Total rise — ALWAYS editable so a stair already
                     // configured can be edited on subsequent passes through
                     // this sheet. Bug bfbc4068.
@@ -132,7 +132,7 @@ struct StairConfigView: View {
 
                     Spacer()
                 }
-                .padding(20)
+                .padding(OPSStyle.Layout.spacing3_5)
             }
             .background(OPSStyle.Colors.background)
             .navigationTitle("Stair Configuration")

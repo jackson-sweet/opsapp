@@ -47,7 +47,7 @@ struct SubscriptionLockoutView: View {
                 if showSeatManagement && permissionStore.can("settings.billing") {
                     // Seat management state
                     inlineSeatManagementView
-                        .padding(.top, 32)
+                        .padding(.top, OPSStyle.Layout.spacing5)
                     
                     Spacer()
                 } else {
@@ -98,7 +98,7 @@ struct SubscriptionLockoutView: View {
                 .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, OPSStyle.Layout.spacing4)
     }
     
     private var headerSubtitle: String {
@@ -124,7 +124,7 @@ struct SubscriptionLockoutView: View {
     // MARK: - Admin Content
     
     private var adminContent: some View {
-        VStack(spacing: 32) {  // More spacing
+        VStack(spacing: OPSStyle.Layout.spacing5) {  // More spacing
             // Lockout reason
             Text(adminLockoutMessage)
                 .font(OPSStyle.Typography.body)  // Changed to body size
@@ -135,14 +135,14 @@ struct SubscriptionLockoutView: View {
             
             // Primary CTA - different for unseated admins
             if !subscriptionManager.userHasSeat && subscriptionManager.subscriptionStatus == .active {
-                VStack(spacing: 24) {  // More spacing
+                VStack(spacing: OPSStyle.Layout.spacing4) {  // More spacing
                     // Button to show seat management
                     Button(action: {
                         withAnimation(OPSStyle.Animation.standard) {
                             showSeatManagement = true
                         }
                     }) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             Image(systemName: "person.2.badge.gearshape")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text("MANAGE TEAM SEATS")
@@ -154,7 +154,7 @@ struct SubscriptionLockoutView: View {
                         .background(OPSStyle.Colors.primaryText)  // White background for primary button
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
                     
                     // Show current seat usage
                     if subscriptionManager.maxSeats > 0 {
@@ -179,11 +179,11 @@ struct SubscriptionLockoutView: View {
                 }
             } else {
                 // Regular admin lockout - show plan selection
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Button(action: {
                         showPlanSelection = true
                     }) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             Image(systemName: "creditcard")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text(primaryButtonText.uppercased())
@@ -202,14 +202,14 @@ struct SubscriptionLockoutView: View {
                             await refreshSubscription()
                         }
                     }) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             if isRefreshing {
                                 TacticalLoadingBar(
                                     progress: refreshProgress,
                                     barCount: 8,
                                     barWidth: 2,
                                     barHeight: 6,
-                                    spacing: 4,
+                                    spacing: OPSStyle.Layout.spacing1,
                                     emptyColor: OPSStyle.Colors.inputFieldBorder,
                                     fillColor: refreshError || refreshResultNegative ? OPSStyle.Colors.errorStatus : (refreshComplete ? OPSStyle.Colors.successStatus : OPSStyle.Colors.tertiaryText)
                                 )
@@ -253,7 +253,7 @@ struct SubscriptionLockoutView: View {
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
                 .animation(OPSStyle.Animation.standard, value: refreshFailureReason)
             }
         }
@@ -279,7 +279,7 @@ struct SubscriptionLockoutView: View {
     // MARK: - Non-Admin Content
     
     private var nonAdminContent: some View {
-        VStack(spacing: 32) {  // More spacing
+        VStack(spacing: OPSStyle.Layout.spacing5) {  // More spacing
             // Simple message
             Text(nonAdminLockoutMessage)
                 .font(OPSStyle.Typography.body)  // Changed to body size
@@ -293,7 +293,7 @@ struct SubscriptionLockoutView: View {
                let adminIds = company.getAdminIds().first,
                let admin = dataController.getUser(id: adminIds) {
                 
-                VStack(spacing: 24) {  // More spacing
+                VStack(spacing: OPSStyle.Layout.spacing4) {  // More spacing
                     // Admin info - floating, no background, no avatar
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(admin.firstName) \(admin.lastName)")
@@ -308,7 +308,7 @@ struct SubscriptionLockoutView: View {
                     .padding(.horizontal, 40)  // Align with message text
                     
                     // Contact buttons
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         if let phone = admin.phone {
                             Button(action: {
                                 if let url = URL(string: "tel://\(phone)") {
@@ -323,7 +323,7 @@ struct SubscriptionLockoutView: View {
                                 }
                                 .foregroundColor(OPSStyle.Colors.invertedText)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
+                                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                                 .background(OPSStyle.Colors.primaryText)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
@@ -343,7 +343,7 @@ struct SubscriptionLockoutView: View {
                                 }
                                 .foregroundColor(OPSStyle.Colors.invertedText)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
+                                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                                 .background(OPSStyle.Colors.primaryText)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
@@ -359,14 +359,14 @@ struct SubscriptionLockoutView: View {
                     await refreshSubscription()
                 }
             }) {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     if isRefreshing {
                         TacticalLoadingBar(
                             progress: refreshProgress,
                             barCount: 8,
                             barWidth: 2,
                             barHeight: 6,
-                            spacing: 4,
+                            spacing: OPSStyle.Layout.spacing1,
                             emptyColor: OPSStyle.Colors.inputFieldBorder,
                             fillColor: nonAdminRefreshButtonColor
                         )
@@ -501,11 +501,11 @@ struct SubscriptionLockoutView: View {
     
     @ViewBuilder
     private func seatedUsersSection(users: [User], company: Company) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             Text("SEATED USERS (\(users.count))")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
             
             VStack(spacing: 0) {
                 ForEach(Array(users.enumerated()), id: \.element.id) { index, employee in
@@ -516,7 +516,7 @@ struct SubscriptionLockoutView: View {
                             Rectangle()
                                 .fill(OPSStyle.Colors.tertiaryText.opacity(0.2))
                                 .frame(height: 1)
-                                .padding(.horizontal, 24)
+                                .padding(.horizontal, OPSStyle.Layout.spacing4)
                         }
                     }
                 }
@@ -526,11 +526,11 @@ struct SubscriptionLockoutView: View {
     
     @ViewBuilder
     private func unseatedUsersSection(users: [User], company: Company, shouldLimitToAdmin: Bool, availableSeats: Int) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             Text("UNSEATED USERS (\(users.count))")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
             
             VStack(spacing: 0) {
                 ForEach(Array(users.enumerated()), id: \.element.id) { index, employee in
@@ -544,7 +544,7 @@ struct SubscriptionLockoutView: View {
                             Rectangle()
                                 .fill(OPSStyle.Colors.tertiaryText.opacity(0.2))
                                 .frame(height: 1)
-                                .padding(.horizontal, 24)
+                                .padding(.horizontal, OPSStyle.Layout.spacing4)
                         }
                     }
                 }
@@ -554,7 +554,7 @@ struct SubscriptionLockoutView: View {
     
     @ViewBuilder
     private var inlineSeatManagementView: some View {
-        VStack(spacing: 32) {  // More spacing
+        VStack(spacing: OPSStyle.Layout.spacing5) {  // More spacing
             // Header with back button
             HStack {
                 Button(action: {
@@ -563,7 +563,7 @@ struct SubscriptionLockoutView: View {
                         seatActionError = nil
                     }
                 }) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         Text("BACK")
@@ -578,7 +578,7 @@ struct SubscriptionLockoutView: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing4)
                 
                 // Minimalist progress indicator - just a thin line
                 GeometryReader { geometry in
@@ -598,7 +598,7 @@ struct SubscriptionLockoutView: View {
                     }
                 }
                 .frame(height: 2)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
             
             // Error message if any
             if let error = seatActionError {
@@ -610,21 +610,21 @@ struct SubscriptionLockoutView: View {
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
             }
             
             // Two separate lists for seated and unseated users
             ScrollView {
-                VStack(spacing: 32) {
+                VStack(spacing: OPSStyle.Layout.spacing5) {
                     employeeListsContent
                     
                     // Show "ENTER OPS" button if admin just seated themselves
                     if hasJustSeatedSelf && subscriptionManager.userHasSeat {
-                        VStack(spacing: 16) {
+                        VStack(spacing: OPSStyle.Layout.spacing3) {
                             Rectangle()
                                 .fill(OPSStyle.Colors.tertiaryText.opacity(0.2))
                                 .frame(height: 1)
-                                .padding(.horizontal, 24)
+                                .padding(.horizontal, OPSStyle.Layout.spacing4)
                             
                             Text("ACCESS GRANTED")
                                 .font(OPSStyle.Typography.captionBold)
@@ -642,13 +642,13 @@ struct SubscriptionLockoutView: View {
                                     .background(OPSStyle.Colors.primaryText)
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
-                            .padding(.horizontal, 24)
+                            .padding(.horizontal, OPSStyle.Layout.spacing4)
                             
                             Text("OR CONTINUE MANAGING SEATS")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
-                        .padding(.bottom, 20)
+                        .padding(.bottom, OPSStyle.Layout.spacing3_5)
                     }
                 }
             }
@@ -687,7 +687,7 @@ struct SubscriptionLockoutView: View {
         let isCurrentUser = employee.id == dataController.currentUser?.id
         let isAdmin = employee.role == .admin || employee.role == .owner
         
-        return HStack(spacing: 12) {
+        return HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // User info - no avatars
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -722,7 +722,7 @@ struct SubscriptionLockoutView: View {
                 selectedEmployeeToRemove = employee
                 showRemoveConfirmation = true
             }) {
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Image(systemName: "person.fill.xmark")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     Text("REVOKE")
@@ -733,8 +733,8 @@ struct SubscriptionLockoutView: View {
             }
             .disabled(isProcessingSeat || (isCurrentUser && !isAdmin))
         }
-        .padding(.vertical, 16)
-        .padding(.horizontal, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing3)
+        .padding(.horizontal, OPSStyle.Layout.spacing4)
     }
     
     private func unseatedUserRow(for employee: User, in company: Company, canAssignSeat: Bool) -> some View {
@@ -742,7 +742,7 @@ struct SubscriptionLockoutView: View {
         let isAdmin = employee.role == .admin || employee.role == .owner
         let availableSeats = subscriptionManager.maxSeats - subscriptionManager.seatedEmployees.count
         
-        return HStack(spacing: 12) {
+        return HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // User info - no avatars
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -785,7 +785,7 @@ struct SubscriptionLockoutView: View {
                     }
                 }
             }) {
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Image(systemName: "arrow.up.circle")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     Text("GRANT")
@@ -796,8 +796,8 @@ struct SubscriptionLockoutView: View {
             }
             .disabled(!canAssignSeat || availableSeats == 0 || isProcessingSeat)
         }
-        .padding(.vertical, 16)
-        .padding(.horizontal, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing3)
+        .padding(.horizontal, OPSStyle.Layout.spacing4)
     }
     
     private var seatUsageColor: Color {
@@ -865,7 +865,7 @@ struct SubscriptionLockoutView: View {
     // MARK: - Footer Buttons
     
     private var footerButtons: some View {
-        VStack(spacing: 20) {  // More spacing
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {  // More spacing
             // Contact support (only show if not showing seat management)
             if !showSeatManagement {
                 Button(action: {

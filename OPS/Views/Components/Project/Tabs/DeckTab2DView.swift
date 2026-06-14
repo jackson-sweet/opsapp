@@ -828,7 +828,7 @@ struct DeckTab2DView: View {
             width: textSize.width + padH * 2,
             height: textSize.height + padV * 2
         )
-        context.fill(Path(roundedRect: bgRect, cornerRadius: 4), with: .color(lineColor))
+        context.fill(Path(roundedRect: bgRect, cornerRadius: OPSStyle.Layout.chipRadius), with: .color(lineColor))
         context.draw(resolved, at: CGPoint(x: midX, y: midY), anchor: .center)
     }
 
@@ -837,7 +837,7 @@ struct DeckTab2DView: View {
     /// switches to the warning accent so it reads as "active mode" at a glance.
     @ViewBuilder
     private func measurementToolOverlay(viewportSize: CGSize) -> some View {
-        VStack(alignment: .trailing, spacing: 8) {
+        VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing2) {
             Button {
                 measurementMode.toggle()
                 if !measurementMode {
@@ -868,14 +868,14 @@ struct DeckTab2DView: View {
                 Text(hint)
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
                     .background(Color.black.opacity(0.6))
-                    .cornerRadius(4)
+                    .cornerRadius(OPSStyle.Layout.chipRadius)
             }
         }
-        .padding(.top, 16)
-        .padding(.trailing, 16)
+        .padding(.top, OPSStyle.Layout.spacing3)
+        .padding(.trailing, OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
     }
 

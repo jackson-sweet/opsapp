@@ -56,7 +56,7 @@ struct TaskTypesDebugView: View {
                     Spacer()
                 } else if taskTypes.isEmpty {
                     Spacer()
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         Image(systemName: "square.grid.2x2")
                             .font(.system(size: 50))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -70,7 +70,7 @@ struct TaskTypesDebugView: View {
                     Spacer()
                 } else {
                     ScrollView {
-                        VStack(spacing: 12) {
+                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
                             ForEach(taskTypes.sorted { $0.displayOrder < $1.displayOrder }) { taskType in
                                 TaskTypeCard(taskType: taskType)
                             }
@@ -87,7 +87,7 @@ struct TaskTypesDebugView: View {
                     
                     Spacer()
                     
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Button("Sync from API") {
                             syncTaskTypesFromAPI()
                         }
@@ -200,7 +200,7 @@ struct TaskTypeCard: View {
     let taskType: TaskType
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Icon and color
             ZStack {
                 Circle()
@@ -214,12 +214,12 @@ struct TaskTypeCard: View {
                 }
             }
             
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(taskType.display)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(.white)
                 
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Text("ID: \(taskType.id)")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -287,9 +287,9 @@ struct AddTaskTypeSheet: View {
                 OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
                 
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         // Display name
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Label("NAME", systemImage: "textformat")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -299,12 +299,12 @@ struct AddTaskTypeSheet: View {
                         }
                         
                         // Color selection
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Label("COLOR", systemImage: "paintpalette")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                             
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 12) {
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: OPSStyle.Layout.spacing2_5) {
                                 ForEach(availableColors, id: \.self) { hexColor in
                                     Button {
                                         color = hexColor
@@ -322,12 +322,12 @@ struct AddTaskTypeSheet: View {
                         }
                         
                         // Icon selection
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Label("ICON", systemImage: "star.square")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                             
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 12) {
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: OPSStyle.Layout.spacing2_5) {
                                 ForEach(availableIcons, id: \.self) { iconName in
                                     Button {
                                         icon = iconName
@@ -346,12 +346,12 @@ struct AddTaskTypeSheet: View {
                         }
                         
                         // Preview
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("PREVIEW")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                             
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 ZStack {
                                     Circle()
                                         .fill(Color(hex: color) ?? OPSStyle.Colors.primaryAccent)

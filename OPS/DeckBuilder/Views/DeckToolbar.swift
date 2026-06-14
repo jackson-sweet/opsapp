@@ -104,10 +104,10 @@ struct DeckToolbar: View {
             .padding(.vertical, OPSStyle.Layout.spacing1)
             .background(OPSStyle.Colors.primaryAccent.opacity(total > 0 ? 0.12 : 0.06))
             .overlay(
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                     .stroke(OPSStyle.Colors.primaryAccent.opacity(total > 0 ? 0.4 : 0.2), lineWidth: OPSStyle.Layout.Border.standard)
             )
-            .cornerRadius(4)
+            .cornerRadius(OPSStyle.Layout.chipRadius)
             .accessibilityLabel(total == 1 ? "1 element selected" : "\(total) elements selected")
 
             // Marquee / Lasso shape toggle — DECK-NEW-4. Picks the drag
@@ -258,10 +258,10 @@ struct DeckToolbar: View {
         }
         .background(OPSStyle.Colors.cardBackground.opacity(0.6))
         .overlay(
-            RoundedRectangle(cornerRadius: 4)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                 .stroke(OPSStyle.Colors.cardBorder.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
         )
-        .cornerRadius(4)
+        .cornerRadius(OPSStyle.Layout.chipRadius)
     }
 
     /// Move-to-level menu — sends the current selection (surfaces and/or
@@ -329,7 +329,7 @@ struct DeckToolbar: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(OPSStyle.Colors.secondaryText.opacity(0.12))
-                        .cornerRadius(4)
+                        .cornerRadius(OPSStyle.Layout.chipRadius)
                 } else if canEdit {
                     // DECK-NEW-4 — collapsed Select + Lasso + Multi into a
                     // single Select tool. Tap = toggle individual; drag from
@@ -611,10 +611,10 @@ struct DeckToolbar: View {
         Text(text.uppercased())
             .font(OPSStyle.Typography.miniLabel)
             .foregroundColor(OPSStyle.Colors.primaryAccent)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
+            .padding(.vertical, OPSStyle.Layout.spacing1)
             .background(OPSStyle.Colors.primaryAccent.opacity(0.12))
-            .cornerRadius(4)
+            .cornerRadius(OPSStyle.Layout.chipRadius)
     }
 
     // MARK: - Clear Selection Button

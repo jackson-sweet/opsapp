@@ -223,7 +223,7 @@ struct CalendarEventCard: View {
         // (16pt total gap) for breathing room. The DayCanvas spacer height
         // (72pt) already accounts for 64pt card + 8pt vertical padding, so the
         // unified-task-list cross-day alignment stays correct.
-        .padding(.vertical, 8)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
         .padding(.leading, bleedsLeft ? 0 : 20)
         .padding(.trailing, bleedsRight ? 0 : 20)
         // Task type badge — top-right, shown on ALL days of the task
@@ -235,11 +235,11 @@ struct CalendarEventCard: View {
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .fill(badgeColor.opacity(0.12))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .stroke(badgeColor.opacity(0.35), lineWidth: 0.5)
                     )
                     .padding(.top, 4 + 14) // 4pt vertical padding + 14pt card inset
@@ -262,11 +262,11 @@ struct CalendarEventCard: View {
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .fill(statusColor.opacity(0.12))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .stroke(statusColor.opacity(0.45), lineWidth: 0.5)
                     )
                     .padding(.bottom, 4 + 8) // 4pt vertical padding + 8pt card inset

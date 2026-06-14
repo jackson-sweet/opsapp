@@ -101,11 +101,11 @@ struct UserTypeSelectionContent: View {
                     Spacer()
                 }
                 .padding(.horizontal, 28)
-                .padding(.top, 16)
+                .padding(.top, OPSStyle.Layout.spacing3)
             }
 
             // Header
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 Text(config.title)
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -118,7 +118,7 @@ struct UserTypeSelectionContent: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 40)
             .padding(.top, config.showBackButton ? 8 : 60)
-            .padding(.bottom, 32)
+            .padding(.bottom, OPSStyle.Layout.spacing5)
 
             // Segmented Picker
             segmentedPicker
@@ -158,7 +158,7 @@ struct UserTypeSelectionContent: View {
                 Button {
                     selectType(choice)
                 } label: {
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         Image(systemName: choice.icon)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
 
@@ -207,14 +207,14 @@ struct UserTypeSelectionContent: View {
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .lineSpacing(4)
-                .padding(.top, 12)
+                .padding(.top, OPSStyle.Layout.spacing2_5)
                 .padding(.horizontal, 40)
                 .modifier(SlideInModifier(delay: 0.05))
 
             // Features
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(choice.features.enumerated()), id: \.offset) { index, feature in
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Text("→")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -223,7 +223,7 @@ struct UserTypeSelectionContent: View {
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .modifier(SlideInModifier(delay: 0.1 + Double(index) * 0.05))
 
                     if index < choice.features.count - 1 {
@@ -241,7 +241,7 @@ struct UserTypeSelectionContent: View {
     // MARK: - Placeholder Content
 
     private var placeholderContent: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
 
             Text("[ SELECT YOUR ROLE ]")
@@ -297,7 +297,7 @@ struct UserTypeSelectionContent: View {
                         .opacity(showButtonArrow ? 1 : 0)
                         .offset(x: showButtonArrow ? 0 : -10)
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             }
             .frame(height: 56)
         }

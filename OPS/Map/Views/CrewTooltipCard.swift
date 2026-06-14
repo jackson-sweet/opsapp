@@ -61,23 +61,23 @@ struct CrewTooltipCard: View {
                 Text("No tasks assigned")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .padding(.top, 4)
+                    .padding(.top, OPSStyle.Layout.spacing1)
             }
 
             // ── Staleness ──
             Text(timeAgo(from: update.timestamp))
                 .font(OPSStyle.Typography.smallBody)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .padding(.top, 4)
+                .padding(.top, OPSStyle.Layout.spacing1)
 
             // ── Divider ──
             Rectangle()
                 .fill(Color.white.opacity(0.10))
                 .frame(height: 1)
-                .padding(.vertical, 12)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
             // ── Action buttons ──
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // CALL button
                 Button(action: onCall) {
                     HStack(spacing: 6) {
@@ -117,14 +117,14 @@ struct CrewTooltipCard: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, 14)
         .frame(maxWidth: 280)
         .background(
-            RoundedRectangle(cornerRadius: 4)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                 .fill(.ultraThinMaterial)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
         )

@@ -45,7 +45,7 @@ struct CalendarFilterView: View {
                     .ignoresSafeArea()
 
                 ScrollView {
-                    VStack(spacing: 12) {
+                    VStack(spacing: OPSStyle.Layout.spacing2_5) {
                         teamSection
                         taskTypeSection
                         statusSection
@@ -53,11 +53,11 @@ struct CalendarFilterView: View {
 
                         if hasActiveFilters {
                             activeFiltersSummary
-                                .padding(.top, 8)
+                                .padding(.top, OPSStyle.Layout.spacing2)
                         }
                     }
-                    .padding(.vertical, 16)
-                    .padding(.horizontal, 20)
+                    .padding(.vertical, OPSStyle.Layout.spacing3)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 }
             }
             .navigationTitle("FILTER CALENDAR")
@@ -131,7 +131,7 @@ struct CalendarFilterView: View {
                     if index < sortedTeamMembers.count - 1 {
                         Divider()
                             .background(OPSStyle.Colors.separator)
-                            .padding(.leading, 16)
+                            .padding(.leading, OPSStyle.Layout.spacing3)
                     }
                 }
 
@@ -162,7 +162,7 @@ struct CalendarFilterView: View {
                 }
 
                 ForEach(Array(availableTaskTypes.enumerated()), id: \.element.id) { index, type in
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Image(systemName: type.icon ?? "checkmark.circle.fill")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(Color(hex: type.color) ?? OPSStyle.Colors.primaryAccent)
@@ -180,15 +180,15 @@ struct CalendarFilterView: View {
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                     }
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .contentShape(Rectangle())
                     .onTapGesture { toggleId(&selectedTaskTypeIds, type.id) }
 
                     if index < availableTaskTypes.count - 1 {
                         Divider()
                             .background(OPSStyle.Colors.separator)
-                            .padding(.leading, 16)
+                            .padding(.leading, OPSStyle.Layout.spacing3)
                     }
                 }
 
@@ -217,7 +217,7 @@ struct CalendarFilterView: View {
                 Divider().background(OPSStyle.Colors.separator)
 
                 ForEach(Array(Status.allCases.enumerated()), id: \.offset) { index, status in
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Circle()
                             .fill(status.color)
                             .frame(width: 10, height: 10)
@@ -234,8 +234,8 @@ struct CalendarFilterView: View {
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                     }
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .contentShape(Rectangle())
                     .onTapGesture {
                         if selectedStatuses.contains(status) {
@@ -248,7 +248,7 @@ struct CalendarFilterView: View {
                     if index < Status.allCases.count - 1 {
                         Divider()
                             .background(OPSStyle.Colors.separator)
-                            .padding(.leading, 16)
+                            .padding(.leading, OPSStyle.Layout.spacing3)
                     }
                 }
             }
@@ -274,7 +274,7 @@ struct CalendarFilterView: View {
                     Divider().background(OPSStyle.Colors.separator)
 
                     // Search field
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         Image(systemName: OPSStyle.Icons.search)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -294,7 +294,7 @@ struct CalendarFilterView: View {
                         }
                     }
                     .padding(.vertical, 10)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .background(OPSStyle.Colors.surfaceInput)
 
                     Divider().background(OPSStyle.Colors.separator)
@@ -312,7 +312,7 @@ struct CalendarFilterView: View {
                     if index < visible.count - 1 {
                         Divider()
                             .background(OPSStyle.Colors.separator)
-                            .padding(.leading, 16)
+                            .padding(.leading, OPSStyle.Layout.spacing3)
                     }
                 }
 
@@ -347,12 +347,12 @@ struct CalendarFilterView: View {
     // MARK: - Active filters summary
 
     private var activeFiltersSummary: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("ACTIVE")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
-            CalendarFilterFlowLayout(spacing: 8) {
+            CalendarFilterFlowLayout(spacing: OPSStyle.Layout.spacing2) {
                 if !selectedTeamMemberIds.isEmpty {
                     summaryChip(icon: OPSStyle.Icons.crew, count: selectedTeamMemberIds.count, label: "team")
                 }
@@ -405,14 +405,14 @@ struct CalendarFilterView: View {
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .contentShape(Rectangle())
         .onTapGesture(perform: action)
     }
 
     private func selectRow(title: String, subtitle: String?, isSelected: Bool, action: @escaping () -> Void) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(OPSStyle.Typography.body)
@@ -435,8 +435,8 @@ struct CalendarFilterView: View {
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .contentShape(Rectangle())
         .onTapGesture(perform: action)
     }
@@ -446,7 +446,7 @@ struct CalendarFilterView: View {
             .font(OPSStyle.Typography.smallCaption)
             .foregroundColor(OPSStyle.Colors.tertiaryText)
             .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.vertical, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing3)
     }
 
     // MARK: - Computed summaries (shown in collapsed header)
@@ -581,7 +581,7 @@ private struct DropdownSection<Content: View>: View {
         VStack(spacing: 0) {
             // Header row — always visible, tappable to expand/collapse
             Button(action: onToggle) {
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: icon)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -604,7 +604,7 @@ private struct DropdownSection<Content: View>: View {
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
                 }
                 .padding(.vertical, 14)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())

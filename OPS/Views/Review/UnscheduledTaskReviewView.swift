@@ -182,7 +182,7 @@ struct UnscheduledTaskReviewView: View {
             // UI overlay
             VStack(spacing: 0) {
                 header
-                    .padding(.top, 8)
+                    .padding(.top, OPSStyle.Layout.spacing2)
 
                 if tasks.isEmpty {
                     emptyStateView
@@ -195,18 +195,18 @@ struct UnscheduledTaskReviewView: View {
                     Text("\(reviewedCount) OF \(tasks.count) REVIEWED")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(.white.opacity(0.7))
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                         .padding(.vertical, 6)
                         .background(Color.black.opacity(0.4))
                         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-                        .padding(.bottom, 8)
+                        .padding(.bottom, OPSStyle.Layout.spacing2)
 
                     // Respect the bottom safe area so the hint pills sit
                     // above the home indicator on notched devices instead
                     // of overlapping it. The card stack underneath still
                     // bleeds full-screen via its own ignoresSafeArea.
                     directionHints
-                        .padding(.bottom, 8)
+                        .padding(.bottom, OPSStyle.Layout.spacing2)
                 }
             }
 
@@ -385,13 +385,13 @@ struct UnscheduledTaskReviewView: View {
 
             Color.clear.frame(width: 44, height: 44)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
     // MARK: - Direction Hints (context-dependent)
 
     private var directionHints: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             hintPill(icon: "arrow.left", label: "SKIP", color: OPSStyle.Colors.tertiaryText)
 
             // Right hint changes based on current card
@@ -410,7 +410,7 @@ struct UnscheduledTaskReviewView: View {
 
             hintPill(icon: "arrow.down", label: "CANCEL", color: OPSStyle.Colors.errorStatus)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .animation(.easeInOut(duration: 0.2), value: currentTopIndex)
     }
 
@@ -459,8 +459,8 @@ struct UnscheduledTaskReviewView: View {
                         .accessibilityLabel("Dismiss")
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .background(OPSStyle.Colors.cardBackground.opacity(0.96))
                 .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
                 .contentShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
@@ -469,7 +469,7 @@ struct UnscheduledTaskReviewView: View {
                         .strokeBorder((toastKind == .success ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus).opacity(0.35), lineWidth: 1)
                 )
                 .shadow(color: Color.black.opacity(0.35), radius: 10, y: 4)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.top, 68)
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -587,15 +587,15 @@ struct UnscheduledTaskReviewView: View {
     }
 
     private func hintPill(icon: String, label: String, color: Color) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             Image(systemName: icon)
                 .font(.system(size: 10, weight: .bold))
             Text(label)
                 .font(OPSStyle.Typography.smallCaption)
         }
         .foregroundColor(color)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
         .background(color.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
     }
@@ -603,7 +603,7 @@ struct UnscheduledTaskReviewView: View {
     // MARK: - Empty State
 
     private var emptyStateView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
 
             Text("NO TASKS TO REVIEW")
@@ -627,7 +627,7 @@ struct UnscheduledTaskReviewView: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 }
                 .foregroundColor(OPSStyle.Colors.invertedText)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .frame(maxWidth: .infinity)
                 .frame(height: OPSStyle.Layout.touchTargetStandard)
                 .background(OPSStyle.Colors.primaryText)
@@ -641,7 +641,7 @@ struct UnscheduledTaskReviewView: View {
     // MARK: - All Done
 
     private var allDoneView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
 
             ZStack {
@@ -679,7 +679,7 @@ struct UnscheduledTaskReviewView: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 }
                 .foregroundColor(OPSStyle.Colors.invertedText)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .frame(maxWidth: .infinity)
                 .frame(height: OPSStyle.Layout.touchTargetStandard)
                 .background(OPSStyle.Colors.primaryText)

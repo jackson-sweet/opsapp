@@ -10,7 +10,7 @@ struct LevelTabBar: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 // Level tabs
                 ForEach(Array(viewModel.drawingData.levels.enumerated()), id: \.element.id) { index, level in
                     levelTab(level: level, index: index)
@@ -21,15 +21,15 @@ struct LevelTabBar: View {
                     Button {
                         viewModel.showingLevelConnectionSheet = true
                     } label: {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "arrow.up.arrow.down")
                                 .font(OPSStyle.Typography.smallCaption)
                             Text("Connect")
                                 .font(OPSStyle.Typography.caption)
                         }
                         .foregroundColor(LevelColor.amber.swiftUIColor)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
                         .background(LevelColor.amber.swiftUIColor.opacity(0.1))
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
@@ -38,7 +38,7 @@ struct LevelTabBar: View {
 
                 Spacer()
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
         }
         .frame(height: OPSStyle.Layout.touchTargetMin)
         // No solid background — the bar lives inside the title overlay's
@@ -95,8 +95,8 @@ struct LevelTabBar: View {
                         .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .background(isActive ? OPSStyle.Colors.primaryAccent.opacity(0.15) : Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(

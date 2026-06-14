@@ -207,7 +207,7 @@ struct HeroCarousel: View {
     )
     .environmentObject(PermissionStore.previewOwner())
     .environmentObject(DataController())
-    .padding(.vertical, 24)
+    .padding(.vertical, OPSStyle.Layout.spacing4)
     .background(OPSStyle.Colors.background)
     .preferredColorScheme(.dark)
 }
@@ -219,7 +219,7 @@ struct HeroCarousel: View {
     )
     .environmentObject(PermissionStore.previewOwner())
     .environmentObject(DataController())
-    .padding(.vertical, 24)
+    .padding(.vertical, OPSStyle.Layout.spacing4)
     .background(OPSStyle.Colors.background)
     .preferredColorScheme(.dark)
 }

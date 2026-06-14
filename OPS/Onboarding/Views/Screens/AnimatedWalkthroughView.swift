@@ -46,8 +46,8 @@ struct AnimatedWalkthroughView: View {
                             .frame(minWidth: 44, minHeight: 44)
                     }
                 }
-                .padding(.top, 16)
-                .padding(.trailing, 24)
+                .padding(.top, OPSStyle.Layout.spacing3)
+                .padding(.trailing, OPSStyle.Layout.spacing4)
 
                 // Paged content
                 TabView(selection: $currentPage) {
@@ -66,13 +66,13 @@ struct AnimatedWalkthroughView: View {
                 // Custom page indicator — animated bars instead of dots
                 HStack(spacing: 6) {
                     ForEach(0..<screens.count, id: \.self) { index in
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .fill(index == currentPage ? Color.white : OPSStyle.Colors.tertiaryText.opacity(0.4))
                             .frame(width: index == currentPage ? 24 : 8, height: 4)
                             .animation(.easeOut(duration: 0.25), value: currentPage)
                     }
                 }
-                .padding(.bottom, 24)
+                .padding(.bottom, OPSStyle.Layout.spacing4)
 
                 // GET STARTED button on last screen
                 Button(action: { onComplete() }) {
@@ -87,14 +87,14 @@ struct AnimatedWalkthroughView: View {
                             .foregroundColor(OPSStyle.Colors.invertedText)
                             .font(OPSStyle.Typography.caption.weight(.semibold))
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .frame(maxWidth: .infinity)
                     .frame(height: OPSStyle.Layout.touchTargetStandard)
                     .background(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
                 .padding(.horizontal, 40)
-                .padding(.bottom, 32)
+                .padding(.bottom, OPSStyle.Layout.spacing5)
                 .opacity(buttonVisible ? 1 : 0)
                 .offset(y: buttonVisible ? 0 : 12)
                 .animation(.easeOut(duration: 0.3), value: buttonVisible)
@@ -155,7 +155,7 @@ private struct WalkthroughPageView: View {
                 .multilineTextAlignment(.center)
                 .offset(y: headlineOffset)
                 .opacity(headlineOpacity)
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
 
             // Body
             Text(bodyText)

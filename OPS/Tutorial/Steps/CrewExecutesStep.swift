@@ -35,10 +35,10 @@ struct CrewExecutesStep: View {
             if showProject {
                 projectCard
                     .transition(.scale(scale: 0.95).combined(with: .opacity))
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
             } else {
                 taskList
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -48,9 +48,9 @@ struct CrewExecutesStep: View {
     // MARK: - Task List
 
     private var taskList: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
             ForEach(Array(TutorialData.taskCards.enumerated()), id: \.element.id) { index, task in
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     RoundedRectangle(cornerRadius: 1)
                         .fill(task.color)
                         .frame(width: 3)
@@ -77,7 +77,7 @@ struct CrewExecutesStep: View {
                     }
                 }
                 .frame(height: 48)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -95,7 +95,7 @@ struct CrewExecutesStep: View {
     // MARK: - Project Card
 
     private var projectCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("COMPLETE")
                 .font(.status)
                 .foregroundStyle(OPSStyle.Colors.successStatus)
@@ -110,7 +110,7 @@ struct CrewExecutesStep: View {
                 .font(.caption)
                 .foregroundStyle(OPSStyle.Colors.secondaryText)
         }
-        .padding(20)
+        .padding(OPSStyle.Layout.spacing3_5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)

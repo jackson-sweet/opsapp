@@ -43,7 +43,7 @@ struct AppSetupScreen: View {
 
                 if syncFailed {
                     // Error state
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         Text("SYNC FAILED")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -57,7 +57,7 @@ struct AppSetupScreen: View {
                                 .font(OPSStyle.Typography.button)
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
+                                .padding(.vertical, OPSStyle.Layout.spacing3)
                                 .background(OPSStyle.Colors.primaryAccent)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }

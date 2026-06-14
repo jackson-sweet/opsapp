@@ -168,8 +168,8 @@ struct DeckBuilderView: View {
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
                     .animation(.easeInOut(duration: 0.25), value: viewModel.showMeasurementToast)
                     .animation(.easeInOut(duration: 0.25), value: viewModel.showLaserErrorToast)
                     .animation(.easeInOut(duration: 0.25), value: viewModel.showDisconnectToast)
@@ -496,7 +496,7 @@ struct DeckBuilderView: View {
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .padding(.vertical, 14)
                     .background(OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -510,15 +510,15 @@ struct DeckBuilderView: View {
         // Save error toast
         .overlay(alignment: .top) {
             if let error = viewModel.saveError {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(OPSStyle.Colors.warningStatus)
                     Text(error)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .background(OPSStyle.Colors.cardBackground)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
@@ -538,7 +538,7 @@ struct DeckBuilderView: View {
                 Text("Undo affects all levels.")
                     .font(.system(size: 13, weight: .semibold, design: .monospaced))
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.vertical, 10)
                     .background(OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)

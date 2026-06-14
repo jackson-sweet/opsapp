@@ -13,7 +13,7 @@ struct MapFilterChips: View {
     @Binding var filterMode: MapFilterMode
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             chipButton(label: "TODAY [TASKS]", mode: .today)
             chipButton(label: "ACTIVE", mode: .active)
             chipButton(label: "ALL", mode: .all)
@@ -41,8 +41,8 @@ struct MapFilterChips: View {
                         ? OPSStyle.Colors.primaryText
                         : OPSStyle.Colors.secondaryText
                 )
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
                 .background(
                     RoundedRectangle(cornerRadius: 3)
                         .fill(OPSStyle.Colors.cardBackgroundDark)

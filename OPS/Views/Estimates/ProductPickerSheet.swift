@@ -122,7 +122,7 @@ struct ProductPickerSheet: View {
                 Text(product.name)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Text("\(product.type.rawValue.uppercased()) · \(product.basePrice, format: .currency(code: "USD"))/\(product.pricingUnit.rawValue)")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)

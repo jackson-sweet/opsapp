@@ -92,7 +92,7 @@ struct ColumnMappingView: View {
         let isNameField = mapping.wrappedValue.field == .name
         let isSkipped = mapping.wrappedValue.field == .skip
 
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             // Header and sample
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -146,7 +146,7 @@ struct ColumnMappingView: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                 .padding(.vertical, 10)
                 .background(OPSStyle.Colors.background)
                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
@@ -157,7 +157,7 @@ struct ColumnMappingView: View {
             }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, 12)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .overlay(
             Rectangle()
@@ -200,7 +200,7 @@ struct ColumnMappingView: View {
             }
 
             // New-tag input
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 TextField("New tag…", text: $newTagDraft)
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -208,7 +208,7 @@ struct ColumnMappingView: View {
                     .textInputAutocapitalization(.never)
                     .focused($newTagFocused)
                     .onSubmit { addDraftTag() }
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     .padding(.vertical, 10)
                     .background(OPSStyle.Colors.background)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
@@ -240,7 +240,7 @@ struct ColumnMappingView: View {
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .tracking(1.0)
-                    .padding(.top, 4)
+                    .padding(.top, OPSStyle.Layout.spacing1)
 
                 FlowLayout(spacing: 6) {
                     ForEach(unpickedAvailableTags) { tag in
@@ -296,7 +296,7 @@ struct ColumnMappingView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(OPSStyle.Colors.primaryAccent)
-            .cornerRadius(12)
+            .cornerRadius(OPSStyle.Layout.modalRadius)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Remove \(name) from bulk tags")
@@ -317,9 +317,9 @@ struct ColumnMappingView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(OPSStyle.Colors.background)
-            .cornerRadius(12)
+            .cornerRadius(OPSStyle.Layout.modalRadius)
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.modalRadius)
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }

@@ -113,7 +113,7 @@ struct PushInMessage: View {
     // MARK: - Full Banner
 
     private func fullBannerContent(geometry: GeometryProxy) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Status icon
             Image(systemName: type.icon)
                 .font(.system(size: 20, weight: .semibold))
@@ -163,8 +163,8 @@ struct PushInMessage: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.vertical, OPSStyle.Layout.spacing3)
         .padding(.top, max(geometry.safeAreaInsets.top + 8, 60))
         .background(
             Rectangle()
@@ -322,7 +322,7 @@ struct PushInMessage: View {
     ZStack {
         OPSStyle.Colors.background
 
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             Button("Show Success") {
                 // Preview button
             }

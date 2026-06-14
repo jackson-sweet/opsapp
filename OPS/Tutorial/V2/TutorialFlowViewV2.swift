@@ -160,13 +160,13 @@ struct TutorialFlowViewV2: View {
 
             VStack(spacing: 0) {
                 chrome
-                    .padding(.top, 8)
+                    .padding(.top, OPSStyle.Layout.spacing2)
 
                 contextHeader
                     .id("\(state.currentPhase.rawValue)_\(showCalendarHeader)") // Forces view replacement on phase change AND calendar header toggle
                     .frame(height: 56)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 8)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
+                    .padding(.top, OPSStyle.Layout.spacing2)
                     .opacity(headerOpacity)
                     .transition(.opacity)
                     .animation(.easeOut(duration: 0.3), value: state.currentPhase)
@@ -174,7 +174,7 @@ struct TutorialFlowViewV2: View {
 
                 contentArea
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.top, 16) // Breathing room between header and content
+                    .padding(.top, OPSStyle.Layout.spacing3) // Breathing room between header and content
             }
 
             // Left-swipe popup overlay — FULL BLEED, covers entire screen including header
@@ -183,7 +183,7 @@ struct TutorialFlowViewV2: View {
                     .ignoresSafeArea()
 
                 inlineSwipeResultCard(for: idx, wasRight: swipeResults[idx])
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
                     .offset(x: completionSlideX)
                     .opacity(completionOpacity)
             }
@@ -201,7 +201,7 @@ struct TutorialFlowViewV2: View {
                 Color.black.opacity(0.7)
                     .ignoresSafeArea()
 
-                VStack(spacing: 20) {
+                VStack(spacing: OPSStyle.Layout.spacing3_5) {
                     Spacer()
 
                     // Ghost card — matches actual review card proportions and content
@@ -270,7 +270,7 @@ struct TutorialFlowViewV2: View {
                             }
                             .foregroundStyle(Color.white.opacity(0.15))
                         }
-                        .padding(24)
+                        .padding(OPSStyle.Layout.spacing4)
                         .padding(.bottom, 40)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -280,8 +280,8 @@ struct TutorialFlowViewV2: View {
                                 .font(.headingBold)
                                 .foregroundStyle(OPSStyle.Colors.successStatus)
                                 .tracking(3)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                                .padding(.vertical, OPSStyle.Layout.spacing2)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                         .stroke(OPSStyle.Colors.successStatus, lineWidth: 2)
@@ -297,8 +297,8 @@ struct TutorialFlowViewV2: View {
                                 .font(.headingBold)
                                 .foregroundStyle(OPSStyle.Colors.inactiveStatus)
                                 .tracking(3)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                                .padding(.vertical, OPSStyle.Layout.spacing2)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                         .stroke(OPSStyle.Colors.inactiveStatus, lineWidth: 2)
@@ -317,7 +317,7 @@ struct TutorialFlowViewV2: View {
                     )
                     .offset(x: ghostOffset)
                     .rotationEffect(.degrees(ghostOffset / 25))
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
 
                     // Instruction text
                     Text(swipeOnboardingPhase >= 4
@@ -373,7 +373,7 @@ struct TutorialFlowViewV2: View {
                 }
             }
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, OPSStyle.Layout.spacing4)
     }
 
     private func dotColor(for index: Int) -> Color {
@@ -386,7 +386,7 @@ struct TutorialFlowViewV2: View {
     // MARK: - Context Header
 
     private var contextHeader: some View {
-        VStack(alignment: .center, spacing: 4) {
+        VStack(alignment: .center, spacing: OPSStyle.Layout.spacing1) {
             Text(stepHeadline)
                 .font(.heading)
                 .foregroundStyle(stepHeadlineColor)
@@ -457,9 +457,9 @@ struct TutorialFlowViewV2: View {
             // ── PHASES 0-2: Evolving card + approval + peeling task cards ──
 
             if showCard {
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     evolvingCard
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, OPSStyle.Layout.spacing4)
 
                     // Tap hint — appears when lead card is interactive, hides on tap
                     if leadInteractive && !isEstimateMode {
@@ -473,27 +473,27 @@ struct TutorialFlowViewV2: View {
 
             if showApproval {
                 approvalBanner
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
                     .frame(maxHeight: .infinity, alignment: .top)
-                    .padding(.top, 20)
+                    .padding(.top, OPSStyle.Layout.spacing3_5)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
             if peeledCount > 0 && state.currentPhase == .estimateApproved {
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach(0..<peeledCount, id: \.self) { i in
                         taskCardRow(TutorialData.taskCards[i], index: i, showCrew: showCrewOnTasks)
                             .matchedGeometryEffect(id: "laborTask_\(i)", in: ns, isSource: true)
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
             }
 
             // ── PHASE 3: Task assembly ──
 
             if state.currentPhase == .crewExecutes && !hideProjectCard {
                 assemblingProjectView
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
                     .clipped()
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -501,7 +501,7 @@ struct TutorialFlowViewV2: View {
             // ── PHASE 4: Calendar Gantt view ──
 
             if showCalendar {
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     FlowCalendarWeekV2(
                         visibleTasks: calendarVisibleTasks,
                         completedTasks: calendarCompletedTasks,
@@ -511,7 +511,7 @@ struct TutorialFlowViewV2: View {
                         calendarNS: ns
                     )
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                 .frame(maxHeight: .infinity, alignment: .center)
             }
 
@@ -519,7 +519,7 @@ struct TutorialFlowViewV2: View {
 
             if showReviewStack {
                 reviewStackView
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .transition(.opacity)
             }
 
@@ -529,7 +529,7 @@ struct TutorialFlowViewV2: View {
             if completedCardIndices.count > 0 && showCompletedStack {
                 completedStackView
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                    .padding(.trailing, 16)
+                    .padding(.trailing, OPSStyle.Layout.spacing3)
                     .padding(.bottom, 72)
                     .background(
                         // Capture stack center in content area coordinate space
@@ -563,7 +563,7 @@ struct TutorialFlowViewV2: View {
             if showCloseoutCard, closeoutCurrentProject < closeoutProjectOrder.count {
                 let closedColor = OPSStyle.Colors.statusColor(for: .closed)
 
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Swipe hint — above the card, left-to-right shimmer
                 if showSwipeHint && closeoutStep >= 5 {
                     CloseoutSwipeHint()
@@ -587,7 +587,7 @@ struct TutorialFlowViewV2: View {
                                 Text("CLOSED")
                                     .font(OPSStyle.Typography.bodyBold)
                                     .foregroundColor(closedColor)
-                                    .padding(.leading, 20)
+                                    .padding(.leading, OPSStyle.Layout.spacing3_5)
                                 Spacer()
                             }
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -611,7 +611,7 @@ struct TutorialFlowViewV2: View {
                                 Text("CLOSED")
                                     .font(OPSStyle.Typography.bodyBold)
                                     .foregroundColor(closedColor)
-                                    .padding(.leading, 20)
+                                    .padding(.leading, OPSStyle.Layout.spacing3_5)
                                 Spacer()
                             }
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -654,7 +654,7 @@ struct TutorialFlowViewV2: View {
                         }
                     : nil
                 )
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
                 } // end VStack
                 .scaleEffect(closeoutCardScale, anchor: .bottomTrailing)
                 .offset(closeoutCardOffset)
@@ -663,7 +663,7 @@ struct TutorialFlowViewV2: View {
 
             // ── PHASES 6-7: Stack mode — remaining PAID projects as swipeable vertical stack ──
             if closeoutStackMode {
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach(closeoutStackCards, id: \.self) { cardIdx in
                         if !closeoutStackClosed.contains(cardIdx) {
                             let isFirst = cardIdx == closeoutStackCards.first(where: { !closeoutStackClosed.contains($0) })
@@ -691,7 +691,7 @@ struct TutorialFlowViewV2: View {
                         }
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .animation(.easeOut(duration: 0.3), value: closeoutStackVisible)
                 .animation(.easeInOut(duration: 0.35), value: closeoutStackClosed)
@@ -711,7 +711,7 @@ struct TutorialFlowViewV2: View {
             if showContinue {
                 continueButton { handleContinue() }
                     .frame(maxHeight: .infinity, alignment: .bottom)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
                     .padding(.bottom, 40)
                     .transition(.opacity)
             }
@@ -731,7 +731,7 @@ struct TutorialFlowViewV2: View {
                 estimateContent
             }
         }
-        .padding(24)
+        .padding(OPSStyle.Layout.spacing4)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -767,16 +767,16 @@ struct TutorialFlowViewV2: View {
     private var leadContent: some View {
         ZStack(alignment: .topLeading) {
             // Invisible spacer at final content size
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 leadBadge
                 Text(clientText).font(.headingLarge).tracking(0.8)
                 Text(projectText).font(.body)
-                leadSourceRow.padding(.top, 4)
+                leadSourceRow.padding(.top, OPSStyle.Layout.spacing1)
             }
             .opacity(0)
 
             // Visible content — types in
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 leadBadge
                     .opacity(showCard ? 1 : 0)
 
@@ -792,7 +792,7 @@ struct TutorialFlowViewV2: View {
                     .opacity(projectChars > 0 ? 1 : 0)
 
                 leadSourceRow
-                    .padding(.top, 4)
+                    .padding(.top, OPSStyle.Layout.spacing1)
                     .opacity(showLeadSource ? 1 : 0)
             }
         }
@@ -825,7 +825,7 @@ struct TutorialFlowViewV2: View {
 
     @ViewBuilder
     private var estimateContent: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             Text("ESTIMATE")
                 .font(.status)
                 .foregroundStyle(OPSStyle.Colors.primaryAccent)
@@ -840,7 +840,7 @@ struct TutorialFlowViewV2: View {
                 .font(.caption)
                 .foregroundStyle(OPSStyle.Colors.secondaryText)
         }
-        .padding(.bottom, 16)
+        .padding(.bottom, OPSStyle.Layout.spacing3)
 
         VStack(spacing: 0) {
             ForEach(0..<TutorialData.laborItems.count, id: \.self) { i in
@@ -869,7 +869,7 @@ struct TutorialFlowViewV2: View {
             Rectangle()
                 .fill(OPSStyle.Colors.cardBorder)
                 .frame(height: 1)
-                .padding(.vertical, 12)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
         }
 
         if showTotal && peeledCount == 0 {
@@ -898,7 +898,7 @@ struct TutorialFlowViewV2: View {
                             .fill(OPSStyle.Colors.primaryAccent)
                     )
             }
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
         }
     }
 
@@ -932,7 +932,7 @@ struct TutorialFlowViewV2: View {
                 .font(.bodyBold)
                 .foregroundStyle(OPSStyle.Colors.primaryText)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
     }
 
     // MARK: ─────────────────────────────────────────────────────────────────
@@ -940,7 +940,7 @@ struct TutorialFlowViewV2: View {
     // MARK: ─────────────────────────────────────────────────────────────────
 
     private var approvalBanner: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 22))
                 .foregroundStyle(OPSStyle.Colors.successStatus)
@@ -955,7 +955,7 @@ struct TutorialFlowViewV2: View {
                     .foregroundStyle(OPSStyle.Colors.primaryText)
             }
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -968,7 +968,7 @@ struct TutorialFlowViewV2: View {
     }
 
     private func taskCardRow(_ task: TutorialData.TaskCard, index: Int, showCrew: Bool) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             RoundedRectangle(cornerRadius: 1)
                 .fill(task.color)
                 .frame(width: 3)
@@ -993,8 +993,8 @@ struct TutorialFlowViewV2: View {
             }
         }
         .frame(height: 48)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .fill(OPSStyle.Colors.cardBackground)
@@ -1030,7 +1030,7 @@ struct TutorialFlowViewV2: View {
         VStack(alignment: .leading, spacing: 0) {
             if projectAssembling {
                 let title = TutorialData.projectTitle.uppercased()
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(projectTitleChars > 0 ? String(title.prefix(projectTitleChars)) : " ")
                         .font(.headingLarge)
                         .foregroundStyle(OPSStyle.Colors.primaryText)
@@ -1042,7 +1042,7 @@ struct TutorialFlowViewV2: View {
                             .foregroundStyle(OPSStyle.Colors.secondaryText)
                     }
                 }
-                .padding(.bottom, 12)
+                .padding(.bottom, OPSStyle.Layout.spacing2_5)
                 .opacity(projectChromeFading ? 0 : 1)
             }
 
@@ -1054,7 +1054,7 @@ struct TutorialFlowViewV2: View {
             }
 
             if projectAssembling && progressBarValue > 0 {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             Capsule()
@@ -1193,8 +1193,8 @@ struct TutorialFlowViewV2: View {
                     .font(.microLabel)
                     .foregroundStyle(OPSStyle.Colors.tertiaryText)
                     .tracking(2)
-                    .padding(.top, 12)
-                    .padding(.bottom, 12)
+                    .padding(.top, OPSStyle.Layout.spacing2_5)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
                     .transition(.opacity)
             }
 
@@ -1257,8 +1257,8 @@ struct TutorialFlowViewV2: View {
                     }
                     .foregroundStyle(OPSStyle.Colors.successStatus.opacity(0.7))
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 32)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
+                .padding(.bottom, OPSStyle.Layout.spacing5)
             }
         }
     }
@@ -1285,7 +1285,7 @@ struct TutorialFlowViewV2: View {
                                 .foregroundStyle(OPSStyle.Colors.secondaryText)
                                 .tracking(0.3)
                                 .lineLimit(1)
-                                .padding(.horizontal, 4)
+                                .padding(.horizontal, OPSStyle.Layout.spacing1)
                                 .padding(.bottom, 3)
                         }
                     )
@@ -1331,10 +1331,10 @@ struct TutorialFlowViewV2: View {
                         .foregroundStyle(OPSStyle.Colors.secondaryText)
                 }
             }
-            .padding(.bottom, 12)
+            .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
             // Skipped task
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Circle()
                     .stroke(OPSStyle.Colors.warningStatus, lineWidth: 1)
                     .frame(width: 12, height: 12)
@@ -1352,12 +1352,12 @@ struct TutorialFlowViewV2: View {
                     .foregroundStyle(OPSStyle.Colors.warningStatus)
                     .tracking(1)
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, OPSStyle.Layout.spacing1)
 
             Rectangle()
                 .fill(OPSStyle.Colors.separator)
                 .frame(height: 0.5)
-                .padding(.vertical, 12)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
             if leftSwipeAction == nil {
                 // Action buttons — user picks how to reschedule
@@ -1365,9 +1365,9 @@ struct TutorialFlowViewV2: View {
                     .font(.microLabel)
                     .foregroundStyle(OPSStyle.Colors.tertiaryText)
                     .tracking(1.5)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     Button { handleLeftSwipeAction("push") } label: {
                         HStack(spacing: 10) {
                             Image(systemName: "arrow.right.circle")
@@ -1380,7 +1380,7 @@ struct TutorialFlowViewV2: View {
                         .foregroundStyle(OPSStyle.Colors.primaryText)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .frame(height: 48)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                                 .fill(Color.white.opacity(0.05))
@@ -1403,7 +1403,7 @@ struct TutorialFlowViewV2: View {
                         .foregroundStyle(OPSStyle.Colors.primaryText)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .frame(height: 48)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                                 .fill(Color.white.opacity(0.05))
@@ -1436,7 +1436,7 @@ struct TutorialFlowViewV2: View {
                 .transition(.opacity)
             }
         }
-        .padding(24)
+        .padding(OPSStyle.Layout.spacing4)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -1451,7 +1451,7 @@ struct TutorialFlowViewV2: View {
     /// ALL CAUGHT UP — centered behind the last swipe card.
     /// Revealed when the final card flies away, already in position.
     private var allCaughtUpView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Circle()
                 .stroke(OPSStyle.Colors.successStatus.opacity(0.2), lineWidth: 1.5)
                 .frame(width: 64, height: 64)
@@ -1551,12 +1551,12 @@ struct TutorialFlowViewV2: View {
                 Rectangle()
                     .fill(OPSStyle.Colors.separator)
                     .frame(height: 0.5)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
                 if closeoutStep == 0 && showCloseoutTasks {
                     ForEach(Array(project.tasks.enumerated()), id: \.offset) { _, task in
                         let isSwipedTask = task.name == project.swipedTaskName
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 10, weight: .medium))
                                 .foregroundStyle(OPSStyle.Colors.successStatus)
@@ -1596,7 +1596,7 @@ struct TutorialFlowViewV2: View {
                     Rectangle()
                         .fill(OPSStyle.Colors.cardBorder)
                         .frame(height: 1)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
 
                     HStack {
                         Text("TOTAL")
@@ -1613,7 +1613,7 @@ struct TutorialFlowViewV2: View {
                 if closeoutStep >= 5 {
                     ForEach(0..<min(closeoutTasksReturned, project.tasks.count), id: \.self) { i in
                         let task = project.tasks[i]
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 10, weight: .medium))
                                 .foregroundStyle(OPSStyle.Colors.successStatus)
@@ -1629,7 +1629,7 @@ struct TutorialFlowViewV2: View {
                     }
                 }
             }
-            .padding(24)
+            .padding(OPSStyle.Layout.spacing4)
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -1690,14 +1690,14 @@ struct TutorialFlowViewV2: View {
                             .offset(y: isVisible ? 0 : 8)
                     }
                 }
-                .padding(.horizontal, 32)
+                .padding(.horizontal, OPSStyle.Layout.spacing5)
                 .transition(.opacity)
             }
 
             // ── Phase C: Two-column morph — OPS left, YOU right ──
             // Collapse: lists shrink to 0 height, then fade out one at a time
             if showClosingLists && closingTaglineProgress == 0 {
-                HStack(alignment: .top, spacing: 12) {
+                HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
                     // OPS column — fades out first
                     VStack(alignment: .leading, spacing: 0) {
                         HStack(spacing: 6) {
@@ -1725,7 +1725,7 @@ struct TutorialFlowViewV2: View {
                                         .strikethrough(true, color: OPSStyle.Colors.primaryAccent.opacity(0.35))
                                 }
                             }
-                            .padding(.top, 8)
+                            .padding(.top, OPSStyle.Layout.spacing2)
                             .transition(.opacity)
                         }
                     }
@@ -1760,7 +1760,7 @@ struct TutorialFlowViewV2: View {
                             .frame(height: 0.5)
 
                         if !closingListsCollapsing {
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                 ForEach(userSteps, id: \.id) { step in
                                     Text(step.text)
                                         .font(.bodyBold)
@@ -1768,7 +1768,7 @@ struct TutorialFlowViewV2: View {
                                         .tracking(1)
                                 }
                             }
-                            .padding(.top, 8)
+                            .padding(.top, OPSStyle.Layout.spacing2)
                             .transition(.opacity)
                         }
                     }
@@ -1785,7 +1785,7 @@ struct TutorialFlowViewV2: View {
                     .opacity(closingYouListFaded ? 0 : 1)
                     .scaleEffect(closingYouListFaded ? 0.95 : 1, anchor: .center)
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
                 .transition(.opacity)
             }
 
@@ -1795,7 +1795,7 @@ struct TutorialFlowViewV2: View {
                 let fonts: [Font] = [.smallCaption, .headingLarge, .headingLarge]
                 let colors: [Color] = [OPSStyle.Colors.tertiaryText, OPSStyle.Colors.primaryText, OPSStyle.Colors.primaryAccent]
 
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     ForEach(0..<3, id: \.self) { i in
                         if closingTaglineProgress > i {
                             let fullText = lines[i]
@@ -1811,8 +1811,8 @@ struct TutorialFlowViewV2: View {
                         }
                     }
                 }
-                .padding(.top, 32)
-                .padding(.horizontal, 24)
+                .padding(.top, OPSStyle.Layout.spacing5)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
                 .transition(.opacity)
             }
 
@@ -1820,7 +1820,7 @@ struct TutorialFlowViewV2: View {
 
             // ── Phase F: CTA ──
             if showCTA {
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     Button {
                         state.ctaTapped(action: "getStarted")
                         onComplete()
@@ -1837,7 +1837,7 @@ struct TutorialFlowViewV2: View {
                             )
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
                 .padding(.bottom, 40)
                 .transition(.opacity)
             }
@@ -3010,7 +3010,7 @@ private struct TapToBeginHint: View {
     @State private var glowActive = false
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             Image(systemName: "hand.tap")
                 .font(.system(size: 12, weight: .medium))
 
@@ -3085,7 +3085,7 @@ private struct CloseoutStackCard: View {
                 .foregroundStyle(OPSStyle.Colors.successStatus)
             }
         }
-        .padding(20)
+        .padding(OPSStyle.Layout.spacing3_5)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .fill(committed
@@ -3142,7 +3142,7 @@ private struct CloseoutSwipeHint: View {
     @State private var glowActive = false
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             Text("SWIPE TO CLOSE")
                 .font(.custom("Mohave-Medium", size: 12))
                 .tracking(2)
@@ -3358,8 +3358,8 @@ private struct FlowCalendarWeekV2: View {
                     .foregroundStyle(OPSStyle.Colors.tertiaryText)
                     .lineLimit(1)
             }
-            .padding(.leading, 8)
-            .padding(.trailing, 4)
+            .padding(.leading, OPSStyle.Layout.spacing2)
+            .padding(.trailing, OPSStyle.Layout.spacing1)
             .padding(.top, 5)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             // Color stripe as overlay on the left edge — no layout impact
@@ -3372,7 +3372,7 @@ private struct FlowCalendarWeekV2: View {
             // Completed overlay — crew name with avatar
             if isComplete {
                 let crew = crewForTask(task)
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Circle()
                         .fill(crew.color.opacity(0.3))
                         .frame(width: 16, height: 16)
@@ -3489,7 +3489,7 @@ private struct FlowCalendarWeekV2: View {
                 }
                 .foregroundStyle(.white.opacity(0.5))
             }
-            .padding(24)
+            .padding(OPSStyle.Layout.spacing4)
             .padding(.bottom, 40)
             .opacity(showText ? 1 : 0)
         }
@@ -3589,7 +3589,7 @@ private struct FlowReviewCardV2: View {
                 }
                 .foregroundStyle(.white.opacity(0.5))
             }
-            .padding(24)
+            .padding(OPSStyle.Layout.spacing4)
             .padding(.bottom, 40)
 
             // Stamp overlays
@@ -3639,8 +3639,8 @@ private struct FlowReviewCardV2: View {
             .font(.headingBold)
             .foregroundStyle(color)
             .tracking(3)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(color, lineWidth: 2)

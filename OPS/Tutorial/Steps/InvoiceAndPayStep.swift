@@ -35,17 +35,17 @@ struct InvoiceAndPayStep: View {
             switch phase {
             case .projectCard:
                 projectCardView
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
                     .transition(.opacity)
 
             case .invoice, .sent:
                 invoiceView
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
 
             case .paid:
                 ZStack {
                     invoiceView
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, OPSStyle.Layout.spacing4)
 
                     // PAID stamp
                     Text("PAID")
@@ -68,7 +68,7 @@ struct InvoiceAndPayStep: View {
     // MARK: - Project Card
 
     private var projectCardView: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("COMPLETE")
                 .font(.status)
                 .foregroundStyle(OPSStyle.Colors.successStatus)
@@ -83,7 +83,7 @@ struct InvoiceAndPayStep: View {
                 .font(.caption)
                 .foregroundStyle(OPSStyle.Colors.secondaryText)
         }
-        .padding(20)
+        .padding(OPSStyle.Layout.spacing3_5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -116,7 +116,7 @@ struct InvoiceAndPayStep: View {
                     .font(.smallCaption)
                     .foregroundStyle(OPSStyle.Colors.tertiaryText)
             }
-            .padding(.bottom, 12)
+            .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
             // Line items
             if showItems {
@@ -137,7 +137,7 @@ struct InvoiceAndPayStep: View {
                     Rectangle()
                         .fill(OPSStyle.Colors.cardBorder)
                         .frame(height: 1)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
 
                     HStack {
                         Text("TOTAL")
@@ -166,10 +166,10 @@ struct InvoiceAndPayStep: View {
                                 .fill(OPSStyle.Colors.primaryAccent)
                         )
                 }
-                .padding(.top, 16)
+                .padding(.top, OPSStyle.Layout.spacing3)
             }
         }
-        .padding(20)
+        .padding(OPSStyle.Layout.spacing3_5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -187,7 +187,7 @@ struct InvoiceAndPayStep: View {
         VStack(spacing: 0) {
             Spacer()
 
-            VStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
                 ForEach(Array(closingWords.prefix(visibleWords).enumerated()), id: \.offset) { index, word in
                     let isRevenue = word == "REVENUE."
                     let isNoPaperwork = word == "NO PAPERWORK."
@@ -207,7 +207,7 @@ struct InvoiceAndPayStep: View {
 
             // CTA
             if showCTA {
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     Button(action: onGetStarted) {
                         Text("GET STARTED")
                             .font(.button)
@@ -228,7 +228,7 @@ struct InvoiceAndPayStep: View {
                             .tracking(1)
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
                 .padding(.bottom, 40)
             }
         }

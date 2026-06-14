@@ -180,7 +180,7 @@ struct LeadFormView: View {
 
             if isEdit {
                 dangerZone
-                    .padding(.top, 12)
+                    .padding(.top, OPSStyle.Layout.spacing2_5)
             }
         }
     }
@@ -244,7 +244,7 @@ struct LeadFormView: View {
             .kerning(1.6)
             .textCase(.uppercase)
 
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 SheetCTAButton(
                     label: "ARCHIVE",
                     icon: "archivebox",
@@ -313,7 +313,7 @@ struct LeadTextInput: View {
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             if let leading {
                 Text(leading)
                     .font(.custom("JetBrainsMono-Regular", size: 13))
@@ -333,7 +333,7 @@ struct LeadTextInput: View {
             .autocorrectionDisabled(textContentType == .emailAddress)
             .focused($isFocused)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
         .frame(height: 48)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
@@ -374,16 +374,16 @@ struct LeadTextArea: View {
                 .tint(OPSStyle.Colors.text)
                 .focused($isFocused)
                 .scrollContentBackground(.hidden)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                .padding(.vertical, OPSStyle.Layout.spacing1)
                 .frame(minHeight: minHeight, alignment: .topLeading)
 
             if text.isEmpty {
                 Text(placeholder)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.textMute)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .allowsHitTesting(false)
             }
         }
@@ -431,7 +431,7 @@ struct LeadChipPicker: View {
                         .kerning(1.4)
                         .foregroundColor(isActive ? OPSStyle.Colors.text : OPSStyle.Colors.text2)
                         .textCase(.uppercase)
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                         .frame(minHeight: 36)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
@@ -542,7 +542,7 @@ struct SheetCTAButton: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             action()
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 if isLoading {
                     ProgressView()
                         .controlSize(.small)
@@ -558,7 +558,7 @@ struct SheetCTAButton: View {
             }
             .frame(minHeight: 48)
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .foregroundColor(foreground)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
@@ -620,7 +620,7 @@ struct SheetFooterButtonRow<Cancel: View, Primary: View>: View {
         GeometryReader { geo in
             // 1 : 2 split — total width = unit + 8pt gap + 2·unit.
             let unit = (geo.size.width - 8) / 3
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 cancel()
                     .frame(width: unit, height: 48)
                 primary()

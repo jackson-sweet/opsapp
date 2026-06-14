@@ -35,14 +35,14 @@ struct ComingSoonView: View {
                 
                 // Coming soon content
                 ScrollView {
-                    VStack(spacing: 32) {
+                    VStack(spacing: OPSStyle.Layout.spacing5) {
                         Spacer(minLength: 40)
                         
                         Image(systemName: featureIcon)
                             .font(.system(size: OPSStyle.Layout.IconSize.xxl, weight: .light))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         
-                        VStack(spacing: 16) {
+                        VStack(spacing: OPSStyle.Layout.spacing3) {
                             Text("COMING SOON")
                                 .font(OPSStyle.Typography.title)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -55,39 +55,39 @@ struct ComingSoonView: View {
                         }
                         
                         // Feature preview
-                        VStack(alignment: .leading, spacing: 20) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                             Text("PLANNED FEATURES")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .padding(.bottom, 4)
+                                .padding(.bottom, OPSStyle.Layout.spacing1)
                             
                             ForEach(Array(features.enumerated()), id: \.offset) { _, feature in
                                 featureRow(feature: feature)
                             }
                         }
-                        .padding(20)
+                        .padding(OPSStyle.Layout.spacing3_5)
                         .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
-                        .padding(.horizontal, 32)
+                        .padding(.horizontal, OPSStyle.Layout.spacing5)
 
                         // Update timeline
-                        VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             Text("TIMELINE")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .padding(.bottom, 4)
+                                .padding(.bottom, OPSStyle.Layout.spacing1)
                             
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 Image(systemName: OPSStyle.Icons.clock)
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                     .frame(width: 24)
                                 
-                                VStack(alignment: .leading, spacing: 4) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                     Text("Next Update")
                                         .font(OPSStyle.Typography.bodyBold)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -100,18 +100,18 @@ struct ComingSoonView: View {
                                 Spacer()
                             }
                         }
-                        .padding(20)
+                        .padding(OPSStyle.Layout.spacing3_5)
                         .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
-                        .padding(.horizontal, 32)
+                        .padding(.horizontal, OPSStyle.Layout.spacing5)
 
                         Spacer(minLength: 40)
                     }
-                    .padding(.vertical, 20)
+                    .padding(.vertical, OPSStyle.Layout.spacing3_5)
                 }
             }
         }
@@ -119,13 +119,13 @@ struct ComingSoonView: View {
     }
     
     private func featureRow(feature: FeatureItem) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: feature.icon)
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .frame(width: 24)
             
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(feature.title)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)

@@ -54,7 +54,7 @@ struct TaskStatusChangeSheet: View {
                 )
 
                 ScrollView {
-                    VStack(spacing: 20) {
+                    VStack(spacing: OPSStyle.Layout.spacing3_5) {
                         QuickActionContextHeader(
                             clientName: project?.effectiveClientName,
                             projectAddress: project?.address,
@@ -64,17 +64,17 @@ struct TaskStatusChangeSheet: View {
                         )
                         .environmentObject(dataController)
 
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                             Text("CURRENT STATUS")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 Rectangle()
                                     .fill(task.status.color)
                                     .frame(width: 3, height: 40)
 
-                                VStack(alignment: .leading, spacing: 4) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                     Text(task.status.displayName.uppercased())
                                         .font(OPSStyle.Typography.bodyBold)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -86,7 +86,7 @@ struct TaskStatusChangeSheet: View {
 
                                 Spacer()
                             }
-                            .padding(16)
+                            .padding(OPSStyle.Layout.spacing3)
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
@@ -95,7 +95,7 @@ struct TaskStatusChangeSheet: View {
                             )
                         }
 
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                             Text("SELECT NEW STATUS")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -124,7 +124,7 @@ struct TaskStatusChangeSheet: View {
                             )
                         }
                     }
-                    .padding(20)
+                    .padding(OPSStyle.Layout.spacing3_5)
                 }
             }
         }
@@ -173,7 +173,7 @@ struct TaskStatusSelectionRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Rectangle()
                     .fill(status.color)
                     .frame(width: 3, height: 30)
@@ -195,13 +195,13 @@ struct TaskStatusSelectionRow: View {
                     Text("CURRENT")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 14)
             .contentShape(Rectangle())
         }
@@ -274,7 +274,7 @@ struct TaskTeamChangeSheet: View {
 
     private var contentView: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: OPSStyle.Layout.spacing3_5) {
                 QuickActionContextHeader(
                     clientName: project?.effectiveClientName,
                     projectAddress: project?.address,
@@ -287,12 +287,12 @@ struct TaskTeamChangeSheet: View {
                 currentTeamSection
                 teamSelectionSection
             }
-            .padding(20)
+            .padding(OPSStyle.Layout.spacing3_5)
         }
     }
 
     private var currentTeamSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("CURRENT TEAM")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -312,7 +312,7 @@ struct TaskTeamChangeSheet: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Spacer()
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
@@ -324,7 +324,7 @@ struct TaskTeamChangeSheet: View {
     private var currentTeamList: some View {
         VStack(spacing: 0) {
             ForEach(Array(task.teamMembers.enumerated()), id: \.element.id) { index, member in
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: OPSStyle.Icons.crew)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -342,8 +342,8 @@ struct TaskTeamChangeSheet: View {
 
                     Spacer()
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
                 if index < task.teamMembers.count - 1 {
                     Divider()
@@ -360,7 +360,7 @@ struct TaskTeamChangeSheet: View {
     }
 
     private var teamSelectionSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("SELECT TEAM MEMBERS")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -372,7 +372,7 @@ struct TaskTeamChangeSheet: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Spacer()
                 }
-                .padding(16)
+                .padding(OPSStyle.Layout.spacing3)
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
@@ -470,7 +470,7 @@ struct TaskTeamMemberOption: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: isSelected ? OPSStyle.Icons.checkmarkSquareFill : OPSStyle.Icons.square)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
@@ -487,7 +487,7 @@ struct TaskTeamMemberOption: View {
 
                 Spacer()
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 14)
             .contentShape(Rectangle())
         }

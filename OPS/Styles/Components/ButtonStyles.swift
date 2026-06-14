@@ -142,11 +142,11 @@ extension View {
 
 struct ButtonStyles_Previews: PreviewProvider {
     static var previews: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             Text("BUTTON STYLES")
                 .font(OPSStyle.Typography.pageTitle)
                 .foregroundColor(OPSStyle.Colors.text)
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
 
             Button { } label: {
                 HStack {
@@ -181,7 +181,7 @@ struct ButtonStyles_Previews: PreviewProvider {
             }
             .opsDestructiveButtonStyle()
 
-            HStack(spacing: 16) {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
                 Button { } label: { Image(systemName: "plus") }
                     .opsIconButtonStyle()
 

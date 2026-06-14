@@ -101,9 +101,9 @@ struct CustomTabBar: View {
                 }
                 .id("tabbar_\(tabs.count)") // Force recreation when tab count changes
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
             }
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
 
             // Black overlay during tutorial drag step
             if isDisabledForTutorial {
@@ -176,7 +176,7 @@ struct TabBarItem: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 4) {
+            VStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(tab.iconName)
                     .renderingMode(.template)
                     .resizable()

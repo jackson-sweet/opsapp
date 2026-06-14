@@ -65,9 +65,9 @@ struct QuickAddSuggestionsRail: View {
                 Text("QUICK ADD")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.top, OPSStyle.Layout.spacing2_5)
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: OPSStyle.Layout.spacing2) {
@@ -78,8 +78,8 @@ struct QuickAddSuggestionsRail: View {
                                 )
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
                 }
             }
             .sheet(item: $prefilledSuggestion) { suggestion in
@@ -120,7 +120,7 @@ struct QuickAddSuggestionsRail: View {
                     metaRow(members: members)
                 }
                 .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
             }
             .frame(width: 168, height: 56, alignment: .leading)
             .background(OPSStyle.Colors.cardBackground)

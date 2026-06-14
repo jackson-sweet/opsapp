@@ -199,7 +199,7 @@ struct InventoryView: View {
 
             VStack(spacing: 0) {
                 AppHeader(headerType: .inventory, onInsightsTapped: { showInsights = true })
-                    .padding(.bottom, 8)
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
 
                 // Search, view mode, sort
                 HStack(spacing: OPSStyle.Layout.spacing2) {
@@ -461,7 +461,7 @@ struct InventoryView: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(sortIconColor)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .padding(.vertical, 10)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -488,7 +488,7 @@ struct InventoryView: View {
             Image(systemName: viewMode.icon)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                 .padding(.vertical, 10)
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -554,7 +554,7 @@ struct InventoryView: View {
 
     private var tagFilterSection: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 // Clear all chip (only shown when tags are selected)
                 if !selectedTags.isEmpty {
                     tagChip(title: "Clear", isSelected: false, showClearIcon: true) {
@@ -582,7 +582,7 @@ struct InventoryView: View {
 
     private func tagChip(title: String, isSelected: Bool, showClearIcon: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 if showClearIcon {
                     Image(systemName: "xmark")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
@@ -591,8 +591,8 @@ struct InventoryView: View {
                     .font(OPSStyle.Typography.captionBold)
             }
             .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
@@ -636,7 +636,7 @@ struct InventoryView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1021,7 +1021,7 @@ struct InventoryView: View {
                 // Active filter pill
                 if let filter = activeSelectionFilter {
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             filterPill(filter)
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -1048,7 +1048,7 @@ struct InventoryView: View {
                         }
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, OPSStyle.Layout.spacing2_5)
                         .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
@@ -1160,7 +1160,7 @@ struct InventoryView: View {
 
     private func filterPill(_ filter: SelectionFilter) -> some View {
         Button(action: { clearSelectionFilter() }) {
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(systemName: filter.icon)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 Text(filter.displayText)
@@ -1379,7 +1379,7 @@ struct InventoryView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, 12)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
         }
         .buttonStyle(PlainButtonStyle())
     }

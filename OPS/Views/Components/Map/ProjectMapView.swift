@@ -138,7 +138,7 @@ struct ProjectMapView: View {
                                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                             }
                         }
-                        .padding(.trailing, 16)
+                        .padding(.trailing, OPSStyle.Layout.spacing3)
                         .padding(.bottom, isInProjectMode ? 220 : 120)
                     }
                 }

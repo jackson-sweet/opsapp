@@ -3229,7 +3229,7 @@ private struct FlowCalendarWeekV2: View {
 
                         if day == 4 {
                             Text("TODAY")
-                                .font(.custom("Kosugi-Regular", size: 8))
+                                .font(.custom("JetBrainsMono-Regular", size: 8))
                                 .minimumScaleFactor(0.5)
                                 .foregroundStyle(OPSStyle.Colors.primaryAccent)
                                 .tracking(0.5)

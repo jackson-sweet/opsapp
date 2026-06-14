@@ -22,10 +22,10 @@ struct TaskBadge: View {
 
         var font: Font {
             switch self {
-            case .small: return Font.custom("Kosugi-Regular", size: 8)
-            case .medium: return Font.custom("Kosugi-Regular", size: 9)
-            case .large: return Font.custom("Kosugi-Regular", size: 11)
-            case .navBar: return Font.custom("Kosugi-Regular", size: 13)
+            case .small: return Font.custom("JetBrainsMono-Regular", size: 8)
+            case .medium: return Font.custom("JetBrainsMono-Regular", size: 9)
+            case .large: return Font.custom("JetBrainsMono-Regular", size: 11)
+            case .navBar: return Font.custom("JetBrainsMono-Regular", size: 13)
             }
         }
 

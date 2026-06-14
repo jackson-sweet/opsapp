@@ -101,11 +101,11 @@ struct InventoryItemCard: View {
     }
 
     private var captionFont: Font {
-        Font.custom("Kosugi-Regular", size: 14 * scale)
+        Font.custom("JetBrainsMono-Regular", size: 14 * scale)
     }
 
     private var smallCaptionFont: Font {
-        Font.custom("Kosugi-Regular", size: 12 * scale)
+        Font.custom("JetBrainsMono-Regular", size: 12 * scale)
     }
 
     private var quantityFont: Font {

@@ -146,7 +146,7 @@ struct ConsumptionChart: View {
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                     .foregroundStyle(Color.white.opacity(0.06))
                 AxisValueLabel()
-                    .font(.custom("Kosugi-Regular", size: 10))
+                    .font(.custom("JetBrainsMono-Regular", size: 10))
                     .foregroundStyle(OPSStyle.Colors.tertiaryText)
             }
         }
@@ -155,7 +155,7 @@ struct ConsumptionChart: View {
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                     .foregroundStyle(Color.white.opacity(0.06))
                 AxisValueLabel()
-                    .font(.custom("Kosugi-Regular", size: 10))
+                    .font(.custom("JetBrainsMono-Regular", size: 10))
                     .foregroundStyle(OPSStyle.Colors.tertiaryText)
             }
         }

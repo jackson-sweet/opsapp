@@ -1039,7 +1039,7 @@ struct TutorialFlowView: View {
                     .lineLimit(1)
 
                 Text(calTask.projectName)
-                    .font(.custom("Kosugi-Regular", size: 8))
+                    .font(.custom("JetBrainsMono-Regular", size: 8))
                     .minimumScaleFactor(0.5)
                     .foregroundStyle(OPSStyle.Colors.tertiaryText)
                     .lineLimit(1)
@@ -2505,7 +2505,7 @@ private struct FlowCalendarWeek: View {
 
                         if day == 4 {
                             Text("TODAY")
-                                .font(.custom("Kosugi-Regular", size: 8))
+                                .font(.custom("JetBrainsMono-Regular", size: 8))
                                 .minimumScaleFactor(0.5)
                                 .foregroundStyle(OPSStyle.Colors.primaryAccent)
                                 .tracking(0.5)
@@ -2615,7 +2615,7 @@ private struct FlowCalendarWeek: View {
                     .lineLimit(1)
 
                 Text(task.projectName)
-                    .font(.custom("Kosugi-Regular", size: 8))
+                    .font(.custom("JetBrainsMono-Regular", size: 8))
                     .minimumScaleFactor(0.5)
                     .foregroundStyle(OPSStyle.Colors.tertiaryText)
                     .lineLimit(1)

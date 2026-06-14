@@ -8,6 +8,7 @@
 
 // OPSStyle.swift
 import SwiftUI
+import UIKit  // UIAccessibility.isReduceMotionEnabled (reduce-motion-aware Animation tokens)
 
 /// The main styling system for the OPS app — spec v2 (2026-04-17).
 ///
@@ -577,24 +578,40 @@ enum OPSStyle {
         static let durationFlip:     Double = 0.350  // 350ms — card flip
         static let durationCountUp:  Double = 0.800  // 800ms — hero number count-up
 
-        // MARK: Pre-built Animation values
-        static let hover = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: durationHover)
-        static let panel = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: durationPanel)
-        static let page  = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: durationPage)
-        static let flip  = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: durationFlip)
+        // MARK: Reduce-motion (spec v2 §8/§14 — "always honor prefers-reduced-motion")
+        // Every pre-built token below is a COMPUTED value that reads the system
+        // setting at animation-creation time and softens to a 150ms crossfade when
+        // Reduce Motion is on. This makes ~all token-based animations app-wide honor
+        // the setting with zero call-site changes — fix lives in one place.
+        /// True when the user has enabled Reduce Motion in iOS Accessibility settings.
+        static var reduceMotion: Bool { UIAccessibility.isReduceMotionEnabled }
+        /// Reduce-motion fallback — gentle 150ms crossfade (no slide/scale character).
+        static let reducedFallback = SwiftUI.Animation.easeInOut(duration: 0.150)
+        /// The single OPS curve at `duration`, or the reduce-motion fallback.
+        static func curve(_ duration: Double) -> SwiftUI.Animation {
+            reduceMotion ? reducedFallback : .timingCurve(0.22, 1, 0.36, 1, duration: duration)
+        }
 
-        // MARK: Legacy aliases (retained for backwards compatibility)
+        // MARK: Pre-built Animation values (reduce-motion aware)
+        static var hover: SwiftUI.Animation { curve(durationHover) }
+        static var panel: SwiftUI.Animation { curve(durationPanel) }
+        static var page:  SwiftUI.Animation { curve(durationPage) }
+        static var flip:  SwiftUI.Animation { curve(durationFlip) }
+
+        // MARK: Legacy aliases (reduce-motion aware; retained for backwards compatibility)
         /// Deprecated — prefer `.page` (250ms). Kept for existing call sites.
-        static let standard = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.250)
+        static var standard: SwiftUI.Animation { curve(0.250) }
         /// Deprecated — prefer `.hover` (150ms). Kept for existing call sites.
-        static let quick    = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.150)
+        static var quick:    SwiftUI.Animation { curve(0.150) }
         /// Deprecated — prefer `.hover` (150ms).
-        static let fast     = SwiftUI.Animation.easeInOut(duration: 0.2)
-        static let faster   = SwiftUI.Animation.easeOut(duration: 0.15)
-        // Spring — DEPRECATED (spec v2: no spring physics, no bounce. Exception: drag-and-drop reorder only.)
-        // Kept for backward compat — migrate call sites to .hover / .panel / .page.
-        static let spring     = SwiftUI.Animation.spring(response: 0.3, dampingFraction: 0.7)
-        static let springFast = SwiftUI.Animation.spring(response: 0.2, dampingFraction: 0.7)
+        static var fast:     SwiftUI.Animation { reduceMotion ? reducedFallback : .easeInOut(duration: 0.2) }
+        static var faster:   SwiftUI.Animation { reduceMotion ? reducedFallback : .easeOut(duration: 0.15) }
+        // Spring tokens — DEPRECATED. Spec v2 bans spring physics (no bounce); these
+        // now resolve to the single OPS curve so every legacy call site conforms.
+        // The genuine drag-and-drop reorder exception uses raw `.spring(...)` at its
+        // call site (PriorityQueueView), not these tokens.
+        static var spring:     SwiftUI.Animation { curve(0.300) }
+        static var springFast: SwiftUI.Animation { curve(0.200) }
     }
 
     // MARK: - Icons

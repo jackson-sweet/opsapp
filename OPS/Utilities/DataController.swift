@@ -1469,8 +1469,13 @@ class DataController: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "last_onboarding_step_v2")
 
         // Clear onboarding state to prevent auto-triggering onboarding after logout
+        // and to stop a prior account's onboarding-resume blob from leaking into
+        // the next account on this device. v4 is the rebuilt flow's resume blob
+        // (HIGH-4); v2/v3 are legacy. Clear all three on every auth teardown.
         UserDefaults.standard.removeObject(forKey: "onboarding_state_v2")
-        
+        UserDefaults.standard.removeObject(forKey: "onboarding_state_v3")
+        UserDefaults.standard.removeObject(forKey: "onboarding_state_v4")
+
         // Clear all user data
         UserDefaults.standard.removeObject(forKey: "user_id")
         UserDefaults.standard.removeObject(forKey: "currentUserId")

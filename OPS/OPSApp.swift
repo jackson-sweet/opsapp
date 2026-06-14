@@ -135,6 +135,12 @@ struct OPSApp: App {
                         UserDefaults.standard.set(true, forKey: "has_launched_before")
                     }
 
+                    // HIGH-5 (spec §6.3 R10): one-time sweep of legacy onboarding
+                    // state — most importantly any plaintext `user_password` left by
+                    // pre-rebuild installs, which fresh-install/logout never cleared
+                    // for an already-logged-in user.
+                    sweepLegacyOnboardingKeysOnce()
+
                     // Track app launch count (for features gated on 2nd+ launch)
                     let currentCount = UserDefaults.standard.integer(forKey: "appLaunchCount")
                     UserDefaults.standard.set(currentCount + 1, forKey: "appLaunchCount")
@@ -548,8 +554,11 @@ private func clearAllAuthenticationData() {
     // Clear all authentication-related UserDefaults
     let authKeys = [
         "is_authenticated",
-        "onboarding_completed", 
+        "onboarding_completed",
         "resume_onboarding",
+        "onboarding_state_v2",
+        "onboarding_state_v3",
+        "onboarding_state_v4",
         "last_onboarding_step_v2",
         "user_id",
         "currentUserId",
@@ -590,6 +599,42 @@ private func clearAllAuthenticationData() {
     Task { @MainActor in
         DeepLinkCoordinator.shared.clear()
     }
+}
+
+// HIGH-5 (onboarding rebuild spec §6.3 R10): one-time launch sweep of legacy
+// onboarding state. Runs once per device (gated by `did_sweep_legacy_onboarding_keys`)
+// and, unlike `clearAllAuthenticationData`, does NOT require a fresh install or a
+// logout — it reaches an already-logged-in user whose device still carries:
+//   • `user_password` — a PLAINTEXT credential persisted by pre-rebuild installs.
+//     It was only ever removed on logout / first-launch, so existing logged-in
+//     installs kept it indefinitely. This sweep is the missing eviction.
+//   • stale legacy-flow keys that the rebuilt flow (now the shipping default) no
+//     longer uses.
+// `onboarding_state_v4` is intentionally excluded: it is the CURRENT rebuilt-flow
+// resume blob and is cleared on logout / fresh install only (HIGH-4). Blanket-
+// sweeping it here would wipe an in-progress onboarding on the next launch.
+// NOTE: if `FeatureFlags.useRebuiltOnboarding` is ever reverted to the legacy flow,
+// this sweep will have discarded the legacy resume state (`onboarding_state_v3`,
+// `resume_onboarding`, `ab_test_flow_step`). That is acceptable — the legacy flow
+// simply restarts from its entry point.
+private func sweepLegacyOnboardingKeysOnce() {
+    let defaults = UserDefaults.standard
+    guard !defaults.bool(forKey: "did_sweep_legacy_onboarding_keys") else { return }
+
+    let legacyKeys = [
+        "user_password",                 // plaintext credential — must never persist
+        "ab_test_flow_step",
+        "onboarding_state_v3",
+        "resume_onboarding",
+        "pre_signup_tutorial_completed",
+        "onboarding_variant"
+    ]
+    for key in legacyKeys {
+        defaults.removeObject(forKey: key)
+    }
+
+    defaults.set(true, forKey: "did_sweep_legacy_onboarding_keys")
+    defaults.synchronize()
 }
 
 extension String: @retroactive Identifiable {

@@ -1,6 +1,10 @@
 -- ============================================================================
 -- MIGRATION (CRIT-3 Phase D / MED-3) — sub-resolving company-setup RPC
--- Authored 2026-06-14. *** NOT YET APPLIED — apply together with / after Phase C. ***
+-- Authored 2026-06-14. *** RPC APPLIED to prod 2026-06-14 (Phase C is live):
+-- migrations 20260614xxxxxx_crit3_phase_d_med3_update_company_setup_rpc +
+-- crit3_med3_rpc_revoke_anon. The WEB changes below are committed behind env
+-- CRIT3_SUB_IDENTITY (default off) and take effect only when that flag is flipped
+-- and feat/inbox-dark-launch is deployed. ***
 --
 -- WHAT: /api/setup/progress, in the "company already exists" branch, performs a
 -- privileged service_role write — users.is_company_admin = true + company_id
@@ -101,6 +105,10 @@ END;
 $fn$;
 
 REVOKE ALL ON FUNCTION public.update_company_setup_for_member(text, text[], text, text, boolean) FROM public;
+-- NOTE: this DB's default privileges auto-grant EXECUTE to anon on new public
+-- functions, and REVOKE FROM public does not remove that direct grant — revoke
+-- anon explicitly (matches create_company_for_owner / server-only hardening).
+REVOKE EXECUTE ON FUNCTION public.update_company_setup_for_member(text, text[], text, text, boolean) FROM anon;
 GRANT EXECUTE ON FUNCTION public.update_company_setup_for_member(text, text[], text, text, boolean) TO authenticated, service_role;
 
 -- ─────────────────────────────── ROLLBACK ──────────────────────────────────

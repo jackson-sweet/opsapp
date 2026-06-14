@@ -8,17 +8,11 @@
 //  screen for the current step, and performs the host-level side effects
 //  (completion → enter the app, sign-out → real auth signout).
 //
-//  This file is DEAD until `FeatureFlags.useRebuiltOnboarding` is flipped true
-//  AND ContentView routes to it. The default-false flag keeps the legacy flow
-//  shipping until cutover.
-//
-//  SCOPE: as of P3, `.welcome` (S1) and `.rolePick` (S2) render their real,
-//  design-system-final screens (`WelcomeStepView` / `RolePickStepView`); every
-//  OTHER step still renders the `OnboardingPlaceholderStep` stub — labeled,
-//  walkable scaffolding so a debug build can drive the flow end-to-end. The
-//  remaining real screens replace those stubs in P3–P5; the §12 design gate
-//  applies to the real screens, not to the scaffolding. Do not treat the stub
-//  styling as canonical.
+//  This is now the LIVE onboarding shell: the cutover landed
+//  (`FeatureFlags.useRebuiltOnboarding` defaults true and ContentView routes
+//  here), so every step renders its real, design-system-final screen — there
+//  are no remaining placeholder stubs. The feature flag is retained only as a
+//  revert switch back to the legacy flow.
 //
 
 import SwiftUI

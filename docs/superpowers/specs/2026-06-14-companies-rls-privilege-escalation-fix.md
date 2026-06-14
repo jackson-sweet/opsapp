@@ -100,19 +100,18 @@ write `admin_ids` and `subscription_status` (`rows_updated=1`). After apply:
 
 `get_advisors(security)` after apply: 0 new lints touching `companies` or the new objects.
 
-## Residual / optional follow-ups (not blockers)
+## Follow-ups
 
-1. **iOS dead self-heal write.** `SubscriptionManager.checkSubscriptionStatus()` still attempts
-   the now-blocked `subscription_status='expired'` write. It is harmless (non-admins get 0 rows;
-   admins get a swallowed 42501) but will log `❌ Failed to update Supabase status` for admins of
-   lapsed-trial companies. Worth removing the dead write.
-2. **Server-side trial expiry.** Never-subscribed lapsed trials keep `subscription_status='trial'`
-   stored (already the case for web-only trials; iOS used to opportunistically correct it). This
-   is cosmetic (lockout is computed from `trial_end_date`), but a tiny `service_role` cron
-   (`UPDATE companies SET subscription_status='expired' WHERE subscription_status='trial' AND
-   trial_end_date < now() AND deleted_at IS NULL`) would keep the stored value honest. Exempt from
-   the trigger (service_role).
-3. **Custom-role invariant.** The admin-only write policy assumes every seat/settings manager is
+1. **iOS dead self-heal write — DONE** (ops-ios `7087264f`). Removed the now-blocked
+   `subscription_status='expired'` write from `SubscriptionManager.checkSubscriptionStatus()`
+   (left a breadcrumb so it isn't re-added). Lockout is unaffected — `shouldLockoutUser()`
+   LAYER 5 derives it from `trialEndDate`.
+2. **Server-side trial expiry — DONE** (OPS-Web `9a24df26`). `TrialExpiryService.sweepExpiredTrialStatuses()`
+   (service_role, run from the existing daily `/api/cron/trial-expiry` cron) flips
+   `subscription_status 'trial'→'expired'` for trials ended **>35 days** ago. The 35-day buffer
+   sits past the last re-engagement notification mark (day 30, whose scan keys on
+   `status='trial'`) so notifications still fire, then the status is made honest. Unit-tested.
+3. **Custom-role invariant (standing note).** The admin-only write policy assumes every seat/settings manager is
    an admin (`current_user_is_admin()`). If a future **custom** role grants `team.manage` /
    `settings.billing` to a non-admin, their seat writes will start failing server-side. Today 0
    such users exist.

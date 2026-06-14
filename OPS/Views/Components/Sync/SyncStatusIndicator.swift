@@ -121,7 +121,7 @@ struct SyncRestoredAlert: View {
 
                     // Dismiss button
                     Button(action: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        withAnimation(OPSStyle.Animation.standard) {
                             isPresented = false
                         }
                         autoDismissTimer?.invalidate()
@@ -165,7 +165,7 @@ struct SyncRestoredAlert: View {
                 .onAppear {
                     // Auto-dismiss after 4 seconds
                     autoDismissTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: false) { _ in
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        withAnimation(OPSStyle.Animation.standard) {
                             isPresented = false
                         }
                     }
@@ -179,7 +179,7 @@ struct SyncRestoredAlert: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea(edges: .top)
-        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isPresented)
+        .animation(OPSStyle.Animation.standard, value: isPresented)
     }
 }
 

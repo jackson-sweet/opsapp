@@ -425,7 +425,7 @@ struct MainTabView: View {
             // Pushed detail screens read this to fade the tab bar while on screen.
             .environment(\.tabBarVisibility, tabBarVisibility)
             .transition(slideTransition)
-            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: selectedTab)
+            .animation(OPSStyle.Animation.standard, value: selectedTab)
 
             // Persistent search button overlay — rendered OUTSIDE the sliding
             // .transition above so it stays visually still while tab content

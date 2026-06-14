@@ -211,11 +211,20 @@ race (`OnboardingManager` NO_USER_ROW → re-run sync-user → retry). The plain
 The chicken-and-egg could only bite a user who is *authenticatable AND unlinked* — the bulk write
 drove that set to zero. No app update is required; existing users are unaffected.
 
-### Remaining work (follow-up — not blocking; the core fix is live)
-1. **Phase D deploy:** apply the MED-3 RPC (staged) + set `CRIT3_SUB_IDENTITY=true` in OPS-Web env +
-   deploy `feat/inbox-dark-launch`, in lockstep, after Phase C has baked. This drops the web email
-   fallbacks and routes the setup/progress elevation through the sub-resolving RPC.
-2. **join-company:** consolidate the duplicate `findUserByFirebaseUid` onto the shared resolver.
-3. **Optional iOS hardening:** switch `loadUserFromSupabase` to resolve by firebase_uid first
+### Done since core fix (2026-06-14)
+- **MED-3 RPC `public.update_company_setup_for_member` APPLIED to prod** (migrations
+  `..._crit3_phase_d_med3_update_company_setup_rpc` + `crit3_med3_rpc_revoke_anon`): sub-resolving,
+  owner/admin-gated, anon-revoked. Additive — does nothing until the flag-on web code deploys.
+- **join-company consolidated** onto the shared `findUserByAuth` (route-local duplicate deleted), so
+  it inherits the opportunistic backfill + the `CRIT3_SUB_IDENTITY` email-fallback gate.
+
+### Remaining (the ONLY step left — a coordinated deploy, owner's call)
+1. **Flip `CRIT3_SUB_IDENTITY=true` in OPS-Web prod env + deploy `feat/inbox-dark-launch`**, in
+   lockstep. This activates the already-committed + tested web code: `findUserByAuth` drops its email
+   fallback (cryptographic-only resolution) and `setup/progress` routes its privileged elevation
+   through the MED-3 RPC. NOT done here because the branch carries a sibling session's unmerged WIP
+   and deploys/pushes need explicit owner sign-off. The DB re-key (Phase C) is already live and safe
+   without this; flipping the flag is pure server-route hardening, not a correctness dependency.
+2. **Optional iOS hardening:** switch `loadUserFromSupabase` to resolve by firebase_uid first
    (defense-in-depth; not required given the backfill).
-4. Watch auth error rates over the next hours; rollback block is ready if any lockout surfaces.
+3. Watch auth error rates over the next hours; rollback block is ready if any lockout surfaces.

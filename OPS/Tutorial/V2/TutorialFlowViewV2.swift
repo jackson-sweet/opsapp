@@ -2043,7 +2043,7 @@ struct TutorialFlowViewV2: View {
         // same transaction. matchedGeometryEffect morphs them into the assembling task rows.
         state.advancePhase() // → crewExecutes
 
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+        withAnimation(OPSStyle.Animation.standard) {
             showApproval = false
             showCrewOnTasks = false
             // peeledCount stays > 0 — the phase gate handles hiding phase 2 cards.
@@ -2280,7 +2280,7 @@ struct TutorialFlowViewV2: View {
             state.advancePhase() // → weeklyReview
             transitionHeader()
 
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 showCalendar = false
                 showCalendarHeader = false
                 showReviewStack = true
@@ -2319,7 +2319,7 @@ struct TutorialFlowViewV2: View {
         // Phase 3: Return to center
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
             // dampingFraction 0.8 = controlled return, no bounce
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { swipeOnboardingPhase = 3 }
+            withAnimation(OPSStyle.Animation.standard) { swipeOnboardingPhase = 3 }
         }
         t += 0.5
 
@@ -2338,7 +2338,7 @@ struct TutorialFlowViewV2: View {
 
         // Phase 6: Return to center
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { swipeOnboardingPhase = 6 }
+            withAnimation(OPSStyle.Animation.standard) { swipeOnboardingPhase = 6 }
         }
         t += 0.5
 
@@ -2564,7 +2564,7 @@ struct TutorialFlowViewV2: View {
             showCloseoutCard = true
             closeoutCardOpacity = 1
             // dampingFraction 0.8 = controlled expansion, no bounce
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 closeoutCardScale = 1.0
                 closeoutCardOffset = .zero
             }
@@ -2757,7 +2757,7 @@ struct TutorialFlowViewV2: View {
                 self.showCloseoutCard = true
                 self.closeoutCardOpacity = 1
                 // dampingFraction 0.85 = fast controlled expansion, no bounce
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     self.closeoutCardScale = 1.0
                     self.closeoutCardOffset = .zero
                 }

@@ -1718,8 +1718,8 @@ struct EventDetailCard: View {
         cardContent
         .contentShape(Rectangle())
         .scaleEffect(isLongPressing ? 0.95 : (isPressed ? 0.98 : 1.0))
-        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)
-        .animation(.spring(response: 0.1, dampingFraction: 0.8), value: isPressed)
+        .animation(OPSStyle.Animation.quick, value: isLongPressing)
+        .animation(OPSStyle.Animation.quick, value: isPressed)
         .onTapGesture {
             withAnimation(.easeInOut(duration: 0.1)) {
                 isPressed = true

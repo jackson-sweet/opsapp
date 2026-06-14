@@ -115,7 +115,7 @@ struct ProjectMapAnnotation: View {
                     .allowsHitTesting(true) // CRITICAL: Make sure hit testing is allowed!
                     .zIndex(9999) // Super high zIndex to make sure it's on top
                     .transition(.scale(scale: 0.9).combined(with: .opacity))
-                    .animation(.spring(response: 0.35, dampingFraction: 0.7), value: showPopup)
+                    .animation(OPSStyle.Animation.standard, value: showPopup)
             }
         }
     }

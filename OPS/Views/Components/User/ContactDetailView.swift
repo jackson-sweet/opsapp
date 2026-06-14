@@ -1211,7 +1211,7 @@ struct ContactDetailView: View {
                     // Show more/less button if there are more than 5 projects
                     if projects.count > 5 {
                         Button(action: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            withAnimation(OPSStyle.Animation.standard) {
                                 isProjectListExpanded.toggle()
                             }
                         }) {

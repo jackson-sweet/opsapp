@@ -112,7 +112,7 @@ struct ImageSyncProgressView: View {
                 }
             }
             .transition(.move(edge: .top).combined(with: .opacity))
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: syncManager.isVisible)
+            .animation(OPSStyle.Animation.standard, value: syncManager.isVisible)
         }
     }
 }

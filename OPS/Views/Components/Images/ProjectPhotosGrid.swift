@@ -618,7 +618,7 @@ struct SinglePhotoView: View {
                             }
                             .onEnded { _ in
                                 if scale < 1 {
-                                    withAnimation(.spring()) {
+                                    withAnimation(OPSStyle.Animation.standard) {
                                         scale = 1
                                     }
                                 }
@@ -626,7 +626,7 @@ struct SinglePhotoView: View {
                     )
                     // Double tap to toggle zoom
                     .onTapGesture(count: 2) {
-                        withAnimation(.spring()) {
+                        withAnimation(OPSStyle.Animation.standard) {
                             scale = scale > 1 ? 1 : 2
                         }
                     }

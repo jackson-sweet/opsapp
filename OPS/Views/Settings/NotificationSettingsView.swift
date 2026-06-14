@@ -232,7 +232,7 @@ struct NotificationSettingsView: View {
         guard let anchor else { return }
 
         UISelectionFeedbackGenerator().selectionChanged()
-        withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+        withAnimation(OPSStyle.Animation.standard) {
             proxy.scrollTo(anchor, anchor: .top)
         }
         withAnimation(.easeIn(duration: 0.2).delay(0.15)) {

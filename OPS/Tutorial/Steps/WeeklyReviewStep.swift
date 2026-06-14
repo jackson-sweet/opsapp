@@ -232,7 +232,7 @@ private struct TutorialReviewSwipeCard: View {
                         commitSwipe()
                     } else {
                         // dampingFraction 0.8 = controlled settle, no bounce
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        withAnimation(OPSStyle.Animation.quick) {
                             dragOffset = .zero
                         }
                     }

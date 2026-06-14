@@ -527,7 +527,7 @@ struct ProjectDetailsView: View {
             if showingTaskPicker {
                 // When picker is open, badge becomes CANCEL button
                 Button(action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         showingTaskPicker = false
                     }
                 }) {
@@ -543,7 +543,7 @@ struct ProjectDetailsView: View {
                 let isComplete = task.status == .completed
                 let isCancelled = task.status == .cancelled
                 Button(action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         showingTaskPicker = true
                     }
                 }) {
@@ -585,7 +585,7 @@ struct ProjectDetailsView: View {
             } else {
                 // Has tasks but none selected — tappable
                 Button(action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         showingTaskPicker = true
                     }
                 }) {
@@ -882,7 +882,7 @@ struct ProjectDetailsView: View {
             .ignoresSafeArea()
             .transition(.opacity)
             .onTapGesture {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     showingTaskPicker = false
                 }
             }
@@ -904,7 +904,7 @@ struct ProjectDetailsView: View {
                                 withAnimation(OPSStyle.Animation.fast) {
                                     viewModel.selectedTask = task
                                 }
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                withAnimation(OPSStyle.Animation.standard) {
                                     showingTaskPicker = false
                                 }
                             }) {
@@ -969,7 +969,7 @@ struct ProjectDetailsView: View {
                                 withAnimation(OPSStyle.Animation.fast) {
                                     viewModel.selectedTask = nil
                                 }
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                withAnimation(OPSStyle.Animation.standard) {
                                     showingTaskPicker = false
                                 }
                             }) {

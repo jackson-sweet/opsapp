@@ -250,7 +250,7 @@ struct ExpensesListView: View {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                         .fill(OPSStyle.Colors.successStatus)
                         .frame(width: geometry.size.width * approvedFraction, height: 6)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: approvedFraction)
+                        .animation(OPSStyle.Animation.standard, value: approvedFraction)
                 }
             }
             .frame(height: 6)

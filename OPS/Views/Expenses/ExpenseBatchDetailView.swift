@@ -210,7 +210,7 @@ struct ExpenseBatchDetailView: View {
                             .fill(OPSStyle.Colors.cardBorder)
                     }
                 }
-                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: flaggedCount)
+                .animation(OPSStyle.Animation.standard, value: flaggedCount)
             }
             .frame(height: 4)
 

@@ -76,7 +76,7 @@ struct PostTutorialCTAScreen: View {
                             typingSpeed: 40
                         ) {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                withAnimation(OPSStyle.Animation.standard) {
                                     showButton = true
                                 }
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {

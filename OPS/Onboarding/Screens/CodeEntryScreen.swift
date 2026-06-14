@@ -293,8 +293,8 @@ struct ExpandingBracketInput: View {
                 .frame(width: currentSpacing, height: 2)
                 .offset(y: -8)
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: isFocused)
-        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: text)
+        .animation(OPSStyle.Animation.standard, value: isFocused)
+        .animation(OPSStyle.Animation.standard, value: text)
         .contentShape(Rectangle())
         .onTapGesture {
             isFocused = true

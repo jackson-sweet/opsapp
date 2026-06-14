@@ -60,7 +60,7 @@ struct RefreshIndicator: View {
                 )
                 .scaleEffect(isPresented ? 1 : 0.8)
                 .opacity(isPresented ? 1 : 0)
-                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isPresented)
+                .animation(OPSStyle.Animation.standard, value: isPresented)
             }
             .transition(.opacity)
             .onAppear {

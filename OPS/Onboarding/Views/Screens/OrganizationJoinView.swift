@@ -105,7 +105,7 @@ struct OrganizationJoinView: View {
             }
             
             // Animate icon with spring effect
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.7, blendDuration: 0.3)) {
+            withAnimation(OPSStyle.Animation.curve(0.5)) {
                 iconScale = 1.0
             }
             

@@ -62,7 +62,7 @@ struct SplashScreen: View {
             }
             
             // Then animate logo
-            withAnimation(Animation.spring(response: 0.8, dampingFraction: 0.6).delay(0.3)) {
+            withAnimation(OPSStyle.Animation.curve(0.5).delay(0.3)) {
                 logoScale = 1.0
                 logoOpacity = 1.0
             }

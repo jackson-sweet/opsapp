@@ -217,7 +217,7 @@ struct InventoryItemCard: View {
         )
         .contentShape(Rectangle())
         .scaleEffect(isLongPressing ? 0.95 : 1.0)
-        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)
+        .animation(OPSStyle.Animation.quick, value: isLongPressing)
         .onTapGesture {
             onTap()
         }

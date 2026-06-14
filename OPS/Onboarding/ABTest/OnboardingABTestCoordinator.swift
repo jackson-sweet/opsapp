@@ -835,7 +835,7 @@ private struct ABTestSplashView: View {
         textOpacity = 0
         buttonOpacity = 0
 
-        withAnimation(Animation.spring(response: 0.8, dampingFraction: 0.6).delay(0.3)) {
+        withAnimation(OPSStyle.Animation.curve(0.5).delay(0.3)) {
             logoOpacity = 1.0
         }
 

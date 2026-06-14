@@ -491,7 +491,7 @@ struct PhasedPrimaryButton: View {
         .disabled(!isEnabled || isLoading || !containerVisible)
         .onChange(of: coordinator.phase) { _, newPhase in
             if newPhase >= .buttonContainerFadeIn && !containerVisible {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     containerVisible = true
                 }
                 // Start text typing after container appears

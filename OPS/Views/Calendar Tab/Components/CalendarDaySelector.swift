@@ -36,7 +36,7 @@ struct CalendarDaySelector: View {
                     .matchedGeometryEffect(id: "calendarContainer", in: calendarNamespace)
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.isMonthExpanded)
+        .animation(OPSStyle.Animation.standard, value: viewModel.isMonthExpanded)
     }
 
     private var weekView: some View {
@@ -102,7 +102,7 @@ struct CalendarDaySelector: View {
                                 navigateToWeek(offset: 1, screenWidth: geometry.size.width)
                             } else {
                                 // Not enough to trigger week change, snap back
-                                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                withAnimation(OPSStyle.Animation.quick) {
                                     dragOffset = 0
                                     isDragging = false
                                 }
@@ -388,7 +388,7 @@ struct CalendarDaySelector: View {
         // Stagger each column in with snappy spring
         for i in 0..<7 {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.02) {
-                withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                withAnimation(OPSStyle.Animation.quick) {
                     cellsVisible[i] = true
                 }
             }
@@ -438,7 +438,7 @@ struct CalendarDaySelector: View {
             transitionOffset = -slideDirection * screenWidth * 0.2
 
             // Phase 2: Slide new week in (spring settle)
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 transitionOffset = 0
             }
 

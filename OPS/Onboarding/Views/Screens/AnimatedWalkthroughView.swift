@@ -192,7 +192,7 @@ private struct WalkthroughPageView: View {
             ringOpacity = 1.0
         }
 
-        withAnimation(.spring(response: 0.45, dampingFraction: 0.75).delay(0.1)) {
+        withAnimation(OPSStyle.Animation.standard.delay(0.1)) {
             iconScale = 1.0
             iconOpacity = 1.0
         }

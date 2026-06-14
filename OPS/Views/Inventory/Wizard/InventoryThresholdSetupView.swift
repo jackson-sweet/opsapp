@@ -138,7 +138,7 @@ struct InventoryThresholdSetupView: View {
         return Button {
             guard activeTab != tab else { return }
             TutorialHaptics.lightTap()
-            withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.3, dampingFraction: 0.85)) {
+            withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : OPSStyle.Animation.standard) {
                 activeTab = tab
             }
         } label: {
@@ -525,7 +525,7 @@ private struct ThresholdStepperRow: View {
             // Spring lands without bounce — controlled feel, matches OPS
             // tactical-minimalist motion language (no playful overshoot).
             .animation(
-                reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.25, dampingFraction: 0.85),
+                reduceMotion ? .easeInOut(duration: 0.2) : OPSStyle.Animation.quick,
                 value: isDragging
             )
             .contentShape(Rectangle())

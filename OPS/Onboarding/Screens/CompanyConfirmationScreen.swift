@@ -228,7 +228,7 @@ struct CompanyConfirmationScreen: View {
         }
         .background(OPSStyle.Colors.background)
         .onAppear {
-            withAnimation(Animation.spring(response: 0.8, dampingFraction: 0.6).delay(0.2)) {
+            withAnimation(OPSStyle.Animation.curve(0.5).delay(0.2)) {
                 logoOpacity = 1.0
             }
             withAnimation(Animation.easeIn(duration: 0.6).delay(0.5)) {

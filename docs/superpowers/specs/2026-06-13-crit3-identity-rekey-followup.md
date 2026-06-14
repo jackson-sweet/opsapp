@@ -1,6 +1,8 @@
 # CRIT-3 follow-up — re-key identity off the token `sub`, not the email claim
 
-**Status:** OPEN — needs owner decision. Created 2026-06-13 during the onboarding-rebuild security pass.
+**Status:** IN PROGRESS — Phases A & B shipped (OPS-Web `feat/inbox-dark-launch`),
+Phases C & D built + rolled-back-probe-tested + staged (gated). Created 2026-06-13;
+executed 2026-06-14. See **Execution log (2026-06-14)** at the bottom.
 **Severity:** CRITICAL (account takeover), but the full fix is a coordinated platform change — do NOT rush it.
 
 ## TL;DR for the owner
@@ -122,3 +124,78 @@ Do these in order; each is independently shippable and reversible.
 Phases A/B are additive. Phase C is the risky one — ship it behind a tested migration with a
 verified rollback (restore the email-based helper bodies) and a rolled-back probe matrix for
 every dependent policy. Do NOT ship Phase C until Phase A shows ~0 unlinked active users.
+
+---
+
+## Execution log (2026-06-14)
+
+### Measured blast radius (live, re-confirmed)
+- 202 active users; 152 both-null; **141 unlinked-with-email** + **11 unlinked-no-email**;
+  50 linked; 0 duplicate active emails; `email` still non-unique.
+- Phase C dependency closure (two independent catalog derivations, cross-checked):
+  **296 objects** = 228 RLS policies + 58 functions + 1 view (`project_table_rows`) + 9
+  triggers — ALL reaching the email check *only through the 5 helper bodies*. So the re-key
+  is a `CREATE OR REPLACE` of 5 functions; zero policy DDL.
+- Supabase Auth (`auth.users`) holds 5 rows — identity is ~100% Firebase; `sub` == Firebase UID.
+
+### Key finding that redefines the Phase C gate
+The production Firebase project (`ops-ios-app`, verified: 49/50 linked uids present) has only
+**53 accounts**. The active, currently-authenticating user base is **already ~100% sub-linked**
+(login backfills did their job). The 140 "unlinked-with-email" rows are **dormant legacy/Bubble +
+test accounts with no Firebase account at all** — they cannot authenticate today, so the re-key
+cannot lock them out of a live session; they self-heal via the sync-user legacy-link path
+(service_role, pre-RLS) on first login. Therefore:
+
+> **The achievable Phase C gate is "zero unlinked rows that HAVE a Firebase account",
+> not `unlinked_with_email = 0`** (which never reaches 0 due to dormant rows). Operationally:
+> the Phase-A backfill script reports `B (matched) = 0 AND collisions = 0`.
+
+### Phase A — SHIPPED (OPS-Web)
+- **A1** `fix(auth)` `e94e3c68`: opportunistic sub-backfill in `findUserByAuth` — on a
+  cryptographic (firebase_uid) match with NULL auth_id, stamp auth_id = sub (NULL-guarded,
+  idempotent). Never on the email branch. TDD, 5 tests.
+- **A2** observability migration applied to prod (`crit3_phase_a_identity_linkage_observability`):
+  `private.identity_linkage_metrics` table + `private.capture_identity_linkage_metrics()`
+  (SECURITY DEFINER, search_path pinned, anon/auth/public revoked) + daily `pg_cron` job
+  `crit3-identity-linkage-daily` (08:07 UTC) + seeded baseline. Advisors: 0 new warnings
+  (1 intended `rls_enabled_no_policy` INFO). Gate metric tracked: `unlinked_with_email`.
+- **A3** `feat(auth)` `036524d5`: bulk Firebase→Supabase backfill script
+  (`scripts/crit3-backfill-identity.ts`, dry-run default, NULL-guarded + collision-safe +
+  rollback emit). Dry-run: A=30 (firebase_uid→auth_id copies), B=1, collisions=0, 140 unmatched
+  (no Firebase account), 11 no-email. **Live write GATED on owner** (links only 31 rows; barely
+  moves the headline metric because the 140 are dormant).
+
+### Phase B — SHIPPED (OPS-Web) — `feat(auth)` `95315478`
+Wired the dormant verification stack: `POST /api/auth/send-verification` generates a Firebase
+verification link (Admin SDK), rebuilds it through the existing `/auth/action?mode=verifyEmail`
+handler from the oobCode, and sends via the OPS-branded SendGrid template. Invoked best-effort +
+non-blocking from both signup sites (soft UX). `email_verified` is now meaningful. 4 route tests.
+
+### Phase C — BUILT + ROLLED-BACK-PROBE-TESTED + STAGED (NOT applied)
+`docs/superpowers/migrations/2026-06-14-crit3-phase-c-rekey-rls-helpers.sql` (forward + rollback +
+smoke test). Rolled-back probe matrix (prod untouched, verified still email-based after):
+linked admin & non-admin resolve **identically** before/after (id, company, is_admin); RLS
+`projects` count for the linked user **310→310 preserved**; the unlinked user **222→0 (locked
+out)** and helper resolution → NULL. **APPLY GATED** per the redefined gate above; coordinate
+iOS GAP 1 (below).
+
+### Phase D — BUILT + TESTED + STAGED, behind flag `CRIT3_SUB_IDENTITY` (default off)
+- MED-3 RPC `public.update_company_setup_for_member` staged in
+  `docs/superpowers/migrations/2026-06-14-crit3-phase-d-med3-rpc.sql`; rolled-back probe (post-C
+  sim): admin→ok, non-owner→`NOT_AUTHORIZED` (self-elevation blocked), email-only→`NO_USER_ROW`,
+  no-sub→`NO_JWT`.
+- Web `feat(auth)` `2d8578bf`: behind `CRIT3_SUB_IDENTITY`, `findUserByAuth` drops the email
+  fallback and `/api/setup/progress` routes the privileged company writes through the RPC. Flip
+  the flag in lockstep with applying Phase C. Follow-up: consolidate join-company's duplicate
+  `findUserByFirebaseUid` onto the shared resolver.
+
+### iOS GAP 1 (must verify before applying Phase C)
+`AuthManager.loadUserFromSupabase` bootstraps identity via an RLS-subject `fetchByEmail`, and the
+client backfill needs the `users.id` from that lookup. Once RLS resolves by sub, a legacy iOS
+user whose `firebase_uid` is NULL server-side cannot self-heal (chicken-and-egg). The fix is the
+server-side backfill (A3) + ensuring first-login links the row (sync-user) BEFORE the first RLS
+read. Confirm iOS login order, or switch iOS to resolve by firebase_uid first, before Phase C.
+
+### Remaining owner decisions
+1. Run the A3 live bulk write now (links 31 rows; safe/additive/reversible)?
+2. Apply Phase C after the gate (B=0) + iOS GAP-1 verification — proceed soon vs hold?

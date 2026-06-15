@@ -683,9 +683,21 @@ struct CalendarSchedulerSheet: View {
 
     // MARK: - Calendar Grid
     private var calendarGridView: some View {
-        LazyVGrid(columns: columns, spacing: 2) {
+        // Precompute once per render: day → events spanning that day, plus the
+        // set of conflict days. This replaces the per-cell helpers that each
+        // re-filtered the full task pool and re-allocated `spannedDates`, turning
+        // the grid from O(cells × tasks × spannedDates) into O(tasks) per render.
+        // That blowup, re-run on every DataController sync republish, was the
+        // "app glitches and slows down when scheduling" freeze. Built fresh each
+        // render from the current filteredScheduledTasks/viewMode, so it can
+        // never go stale.
+        let dayIndex = dayEventIndex(filteredScheduledTasks)
+        let conflictKeys = conflictDayKeys()
+        let calendar = Calendar.current
+        return LazyVGrid(columns: columns, spacing: 2) {
             ForEach(daysInMonth(), id: \.self) { date in
-                let visibleEvents = getEventsForDate(date)
+                let dayKey = calendar.startOfDay(for: date)
+                let visibleEvents = dayIndex[dayKey] ?? []
                 SchedulerDayCell(
                     date: date,
                     isInCurrentMonth: isInCurrentMonth(date),
@@ -696,12 +708,64 @@ struct CalendarSchedulerSheet: View {
                     isInRange: isDateInRange(date),
                     isStartDate: isStartDate(date),
                     isEndDate: isEndDate(date),
-                    hasConflicts: hasConflicts(on: date),
-                    hasTeamConflicts: hasTeamConflicts(on: date),
+                    hasConflicts: conflictKeys.contains(dayKey),
+                    hasTeamConflicts: dayHasTeamConflict(visibleEvents),
                     isToday: isToday(date),
                     onTap: { handleDateSelection(date) }
                 )
             }
+        }
+    }
+
+    /// Day → events spanning that day, bucketed by `startOfDay`. Reproduces
+    /// `getEventsForDate` exactly (a task lands on day D iff one of its
+    /// `spannedDates` is the same day as D) and preserves
+    /// `filteredScheduledTasks` order, but computes each task's `spannedDates`
+    /// once instead of once per (cell × task).
+    private func dayEventIndex(_ tasks: [ProjectTask]) -> [Date: [ProjectTask]] {
+        let calendar = Calendar.current
+        var index: [Date: [ProjectTask]] = [:]
+        for task in tasks {
+            var seenDays = Set<Date>()
+            for spanned in task.spannedDates {
+                let key = calendar.startOfDay(for: spanned)
+                if seenDays.insert(key).inserted {
+                    index[key, default: []].append(task)
+                }
+            }
+        }
+        return index
+    }
+
+    /// Day-keys carrying a scheduling conflict — only in reviewing mode, matching
+    /// `hasConflicts(on:)`. Empty otherwise.
+    private func conflictDayKeys() -> Set<Date> {
+        guard viewMode == .reviewing else { return [] }
+        let calendar = Calendar.current
+        var keys = Set<Date>()
+        for task in conflictingEvents {
+            for spanned in task.spannedDates {
+                keys.insert(calendar.startOfDay(for: spanned))
+            }
+        }
+        return keys
+    }
+
+    /// Team-conflict test for a day, computed from that day's already-resolved
+    /// events — matches `hasTeamConflicts(on:)`: exclude the current item, require
+    /// crew overlap with the item being scheduled.
+    private func dayHasTeamConflict(_ events: [ProjectTask]) -> Bool {
+        let myCrew = currentItemTeamMemberIds
+        guard !myCrew.isEmpty else { return false }
+        return events.contains { scheduledTask in
+            let isSameItem: Bool
+            switch itemType {
+            case .project: isSameItem = false
+            case .task(let task): isSameItem = scheduledTask.id == task.id
+            case .draftTask: isSameItem = false
+            }
+            guard !isSameItem else { return false }
+            return !Set(scheduledTask.getTeamMemberIds()).isDisjoint(with: myCrew)
         }
     }
 
@@ -941,12 +1005,6 @@ struct CalendarSchedulerSheet: View {
         date >= selectedStartDate && date <= selectedEndDate
     }
 
-    private func getEventsForDate(_ date: Date) -> [ProjectTask] {
-        filteredScheduledTasks.filter { task in
-            task.spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
-        }
-    }
-
     /// True when at least one of the visible events on `date` belongs to the
     /// current item's project. Powers the left-edge "this project" stripe on
     /// the day cell.
@@ -1001,30 +1059,6 @@ struct CalendarSchedulerSheet: View {
         case .project(let project): return Set(project.getTeamMemberIds())
         case .task(let task): return Set(task.getTeamMemberIds())
         case .draftTask(_, let teamMemberIds, _): return Set(teamMemberIds)
-        }
-    }
-
-    private func hasConflicts(on date: Date) -> Bool {
-        guard viewMode == .reviewing else { return false }
-        return conflictingEvents.contains { task in
-            task.spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
-        }
-    }
-
-    private func hasTeamConflicts(on date: Date) -> Bool {
-        let myCrew = currentItemTeamMemberIds
-        guard !myCrew.isEmpty else { return false }
-
-        return filteredScheduledTasks.contains { scheduledTask in
-            let isSameItem: Bool
-            switch itemType {
-            case .project: isSameItem = false
-            case .task(let task): isSameItem = scheduledTask.id == task.id
-            case .draftTask: isSameItem = false
-            }
-            guard !isSameItem else { return false }
-            guard scheduledTask.spannedDates.contains(where: { Calendar.current.isDate($0, inSameDayAs: date) }) else { return false }
-            return !Set(scheduledTask.getTeamMemberIds()).isDisjoint(with: myCrew)
         }
     }
 

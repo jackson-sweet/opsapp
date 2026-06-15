@@ -407,6 +407,10 @@ final class OutboundProcessor {
         "title", "title_is_auto", "status", "address", "latitude", "longitude",
         "start_date", "end_date", "duration", "notes", "description",
         "all_day", "project_images", "completed_at",
+        // Deck Builder vinyl-order marker columns - see DataActor.validProjectColumns
+        // for the full rationale. MUST stay in sync across both outbound paths or
+        // "MARK ORDERED" is stripped before push and reverts on the next sync.
+        "vinyl_order_status", "vinyl_ordered_at", "vinyl_ordered_by",
         "deleted_at", "created_at", "updated_at", "priority_rank"
     ]
 

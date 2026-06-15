@@ -4031,7 +4031,7 @@ actor DataActor {
 
     private func handleProject(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
         let repo = ProjectRepository(companyId: companyId)
-        let sanitizedPayload = payload.filter { Self.validProjectColumns.contains($0.key) }
+        let sanitizedPayload = Self.sanitizedProjectPayloadForSync(payload)
 
         switch operationType {
         case "create":
@@ -4425,8 +4425,22 @@ actor DataActor {
         "title", "status", "address", "latitude", "longitude",
         "start_date", "end_date", "duration", "notes", "description",
         "all_day", "project_images", "completed_at",
+        // Deck Builder vinyl-order marker columns. These live on `projects` but
+        // are projected locally into ProjectVinylOrderMarker; they MUST stay in
+        // this allowlist or the Vinyl Order sheet's "MARK ORDERED" write is
+        // silently stripped before push and the optimistic marker reverts on the
+        // next sync. Keep in sync with ProjectVinylOrderFields + the inbound DTO.
+        "vinyl_order_status", "vinyl_ordered_at", "vinyl_ordered_by",
         "deleted_at", "created_at", "updated_at"
     ]
+
+    /// Filters an outbound project payload to columns that exist on the server
+    /// `projects` table. Exposed as a testable seam (mirrors
+    /// `OutboundProcessor.sanitizedProjectPayloadForSync`) so both outbound paths
+    /// are covered by the same regression assertions and cannot drift unnoticed.
+    nonisolated static func sanitizedProjectPayloadForSync(_ payload: [String: Any]) -> [String: Any] {
+        payload.filter { validProjectColumns.contains($0.key) }
+    }
 
     private static let validProjectTaskColumns: Set<String> = [
         "id", "bubble_id", "company_id", "project_id", "task_type_id",

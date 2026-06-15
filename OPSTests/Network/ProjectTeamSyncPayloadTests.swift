@@ -23,6 +23,29 @@ final class ProjectTeamSyncPayloadTests: XCTestCase {
         XCTAssertNil(sanitized["team_member_ids"])
     }
 
+    /// Regression: the Deck Builder "MARK ORDERED" write sends only the
+    /// `vinyl_order_*` columns. They live on `projects` (projected locally into
+    /// ProjectVinylOrderMarker), so if the outbound allowlist drops them the
+    /// server never persists the status and the optimistic marker reverts on the
+    /// next sync. Both outbound paths must keep them.
+    func testProjectSyncPayloadKeepsVinylOrderFields() throws {
+        let payload: [String: Any] = [
+            "vinyl_order_status": "ordered",
+            "vinyl_ordered_at": "2026-06-15T00:00:00Z",
+            "vinyl_ordered_by": "user-1"
+        ]
+
+        let legacy = OutboundProcessor.sanitizedProjectPayloadForSync(payload)
+        XCTAssertEqual(legacy["vinyl_order_status"] as? String, "ordered")
+        XCTAssertEqual(legacy["vinyl_ordered_at"] as? String, "2026-06-15T00:00:00Z")
+        XCTAssertEqual(legacy["vinyl_ordered_by"] as? String, "user-1")
+
+        let active = DataActor.sanitizedProjectPayloadForSync(payload)
+        XCTAssertEqual(active["vinyl_order_status"] as? String, "ordered")
+        XCTAssertEqual(active["vinyl_ordered_at"] as? String, "2026-06-15T00:00:00Z")
+        XCTAssertEqual(active["vinyl_ordered_by"] as? String, "user-1")
+    }
+
     func testProjectTaskSyncPayloadKeepsTaskTeamMemberIds() throws {
         let sanitized = OutboundProcessor.sanitizedProjectTaskPayloadForSync([
             "project_id": "project-a",

@@ -50,7 +50,7 @@ struct PersonalEventSheet: View {
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                                    .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                                    .stroke(OPSStyle.Colors.line, lineWidth: 0.5)
                             )
                             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             .padding(.bottom, OPSStyle.Layout.spacing3_5)
@@ -101,7 +101,7 @@ struct PersonalEventSheet: View {
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                                    .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                                    .stroke(OPSStyle.Colors.line, lineWidth: 0.5)
                             )
                             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             .padding(.bottom, OPSStyle.Layout.spacing3_5)
@@ -128,7 +128,7 @@ struct PersonalEventSheet: View {
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                                    .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                                    .stroke(OPSStyle.Colors.line, lineWidth: 0.5)
                             )
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -145,7 +145,7 @@ struct PersonalEventSheet: View {
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                                    .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                                    .stroke(OPSStyle.Colors.line, lineWidth: 0.5)
                             )
                             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             .padding(.bottom, OPSStyle.Layout.spacing5)

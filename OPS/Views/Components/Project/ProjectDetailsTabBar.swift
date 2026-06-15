@@ -19,7 +19,7 @@ struct ProjectDetailsTabBar: View {
             ZStack(alignment: .bottomLeading) {
                 // Background line
                 Rectangle()
-                    .fill(Color.white.opacity(0.1))
+                    .fill(OPSStyle.Colors.line)
                     .frame(height: 1)
                     .frame(maxWidth: .infinity)
                     .offset(y: 0)

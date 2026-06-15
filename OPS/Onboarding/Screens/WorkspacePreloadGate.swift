@@ -194,7 +194,7 @@ private struct WorkspaceSweepBar: View {
         ZStack(alignment: .leading) {
             // Base track — barely-there hairline.
             RoundedRectangle(cornerRadius: 1)
-                .fill(Color.white.opacity(0.08))
+                .fill(OPSStyle.Colors.surfaceActive)
                 .frame(width: trackWidth, height: trackHeight)
 
             // Accent segment.

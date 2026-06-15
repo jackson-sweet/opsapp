@@ -208,7 +208,7 @@ private struct SyncSweepBar: View {
         ZStack(alignment: .leading) {
             // Base track — ultra-thin, barely visible
             RoundedRectangle(cornerRadius: 1)
-                .fill(Color.white.opacity(0.08))
+                .fill(OPSStyle.Colors.surfaceActive)
                 .frame(width: trackWidth, height: trackHeight)
 
             // Sweep segment — accent color

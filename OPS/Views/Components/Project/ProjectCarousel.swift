@@ -145,7 +145,7 @@ struct ProjectCardView: View {
 
                     // Hairline stroke for edge definition over the blur.
                     Rectangle()
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.surfaceActive, lineWidth: 1)
 
                     // Subtle background color for completed projects
                     if project.status.isCompleted {

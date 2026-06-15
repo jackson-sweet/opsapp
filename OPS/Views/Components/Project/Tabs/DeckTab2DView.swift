@@ -235,7 +235,7 @@ struct DeckTab2DView: View {
         let startY = floor(visMinY / gridSpacing) * gridSpacing
 
         let dotSize: CGFloat = 1.5
-        let dotColor = Color.white.opacity(0.08)
+        let dotColor = OPSStyle.Colors.surfaceActive
 
         var x = startX
         while x <= visMaxX {
@@ -274,8 +274,8 @@ struct DeckTab2DView: View {
             context.fill(path, with: .color(tint.opacity(0.10)))
             context.stroke(path, with: .color(tint.opacity(0.30)), lineWidth: 1)
         } else {
-            context.fill(path, with: .color(Color.white.opacity(0.04)))
-            context.stroke(path, with: .color(Color.white.opacity(0.08)), lineWidth: 1)
+            context.fill(path, with: .color(OPSStyle.Colors.surfaceInput))
+            context.stroke(path, with: .color(OPSStyle.Colors.surfaceActive), lineWidth: 1)
         }
 
         let resolvedLabel: String? = {

@@ -154,7 +154,7 @@ struct CalendarEventCard: View {
                 )
                 .overlay(
                     OPSCardBorder(radius: 2, bleedsRight: bleedsRight, bleedsLeft: bleedsLeft)
-                        .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                        .stroke(OPSStyle.Colors.line, lineWidth: 0.5)
                 )
                 // Right-edge gradient fade for bleed
                 .overlay(

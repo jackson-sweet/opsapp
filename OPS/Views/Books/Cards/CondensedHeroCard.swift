@@ -115,11 +115,11 @@ struct CondensedHeroCard<Viz: View, SubStat: View>: View {
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius)
-                .fill(Color.white.opacity(0.04))
+                .fill(OPSStyle.Colors.surfaceInput)
         )
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius)
-                .strokeBorder(Color.white.opacity(0.08), lineWidth: OPSStyle.Layout.Border.standard)
+                .strokeBorder(OPSStyle.Colors.surfaceActive, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .accessibilityHidden(true)
@@ -140,11 +140,11 @@ private struct CondensedCardButtonStyle: ButtonStyle {
             .frame(height: BooksCondensedMetrics.cardHeight, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius)
-                    .fill(pressed ? Color.white.opacity(0.08) : Color.white.opacity(0.04))
+                    .fill(pressed ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius)
-                    .strokeBorder(pressed ? Color.white.opacity(0.18) : Color.white.opacity(0.08),
+                    .strokeBorder(pressed ? Color.white.opacity(0.18) : OPSStyle.Colors.surfaceActive,
                                   lineWidth: OPSStyle.Layout.Border.standard)
             )
             .animation(reduceMotion ? nil : OPSStyle.Animation.hover, value: pressed)

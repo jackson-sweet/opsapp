@@ -102,7 +102,7 @@ struct ProjectPinCard: View {
                             .frame(minHeight: 44)
                             .background(
                                 RoundedRectangle(cornerRadius: 3)
-                                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.line, lineWidth: 1)
                             )
                     }
                     .buttonStyle(.plain)
@@ -149,7 +149,7 @@ struct ProjectPinCard: View {
                     bottomTrailingRadius: 0,
                     topTrailingRadius: 4
                 )
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .stroke(OPSStyle.Colors.surfaceActive, lineWidth: 1)
             )
         )
         .offset(y: dragOffset)
@@ -312,7 +312,7 @@ struct ProjectPinCard: View {
                     )
                     .overlay(
                         Circle()
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.surfaceActive, lineWidth: 1)
                     )
             }
         }
@@ -413,7 +413,7 @@ struct ProjectPinCard: View {
 
     private var photoPlaceholder: some View {
         RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-            .fill(Color.white.opacity(0.05))
+            .fill(OPSStyle.Colors.surfaceHover)
             .frame(width: 80, height: 80)
             .overlay(
                 Image(systemName: "photo")
@@ -433,7 +433,7 @@ struct ProjectPinCard: View {
 
     private var divider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.10))
+            .fill(OPSStyle.Colors.line)
             .frame(height: 1)
     }
 }

@@ -50,7 +50,7 @@ private struct SkeletonBlock: View {
     var body: some View {
         RoundedRectangle(cornerRadius: radius)
             .fill(reduceMotion
-                  ? Color.white.opacity(0.08)
+                  ? OPSStyle.Colors.surfaceActive
                   : Color.white.opacity(pulse ? 0.08 : 0.03))
             .frame(width: width, height: height)
             .frame(maxWidth: width == nil ? .infinity : nil)
@@ -80,11 +80,11 @@ private struct SkeletonTile: View {
         .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius)
-                .fill(Color.white.opacity(0.04))
+                .fill(OPSStyle.Colors.surfaceInput)
         )
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius)
-                .strokeBorder(Color.white.opacity(0.08), lineWidth: OPSStyle.Layout.Border.standard)
+                .strokeBorder(OPSStyle.Colors.surfaceActive, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .accessibilityHidden(true)
     }

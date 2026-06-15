@@ -92,11 +92,11 @@ struct BooksSyncBanner: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                .fill(Color.white.opacity(0.04))
+                .fill(OPSStyle.Colors.surfaceInput)
         )
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                .strokeBorder(Color.white.opacity(0.10), lineWidth: OPSStyle.Layout.Border.standard)
+                .strokeBorder(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .onAppear {
             guard !reduceMotion else { return }

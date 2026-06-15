@@ -54,7 +54,7 @@ struct SyncStatusSection: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.line, lineWidth: 1)
             )
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.top, OPSStyle.Layout.spacing2)
@@ -110,7 +110,7 @@ struct SyncStatusSection: View {
     private var expandedContent: some View {
         VStack(spacing: 0) {
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(OPSStyle.Colors.line)
                 .padding(.vertical, OPSStyle.Layout.spacing2)
 
             // Individual operation rows (show up to 15)

@@ -72,7 +72,7 @@ struct CrewTooltipCard: View {
 
             // ── Divider ──
             Rectangle()
-                .fill(Color.white.opacity(0.10))
+                .fill(OPSStyle.Colors.line)
                 .frame(height: 1)
                 .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
@@ -92,7 +92,7 @@ struct CrewTooltipCard: View {
                     .frame(minHeight: 44)
                     .background(
                         RoundedRectangle(cornerRadius: 3)
-                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.line, lineWidth: 1)
                     )
                 }
                 .buttonStyle(.plain)
@@ -111,7 +111,7 @@ struct CrewTooltipCard: View {
                     .frame(minHeight: 44)
                     .background(
                         RoundedRectangle(cornerRadius: 3)
-                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.line, lineWidth: 1)
                     )
                 }
                 .buttonStyle(.plain)
@@ -125,7 +125,7 @@ struct CrewTooltipCard: View {
                 .fill(.ultraThinMaterial)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.surfaceActive, lineWidth: 1)
                 )
         )
     }

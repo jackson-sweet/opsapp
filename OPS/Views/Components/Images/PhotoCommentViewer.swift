@@ -537,7 +537,7 @@ struct PhotoCommentViewer: View {
         .buttonStyle(PlainButtonStyle())
         .overlay(
             Rectangle()
-                .fill(Color.white.opacity(0.1))
+                .fill(OPSStyle.Colors.line)
                 .frame(height: 1),
             alignment: .top
         )
@@ -566,7 +566,7 @@ struct PhotoCommentViewer: View {
 
                         if comment.id != viewModel.comments.last?.id {
                             Rectangle()
-                                .fill(Color.white.opacity(0.1))
+                                .fill(OPSStyle.Colors.line)
                                 .frame(height: 1)
                         }
                     }
@@ -613,7 +613,7 @@ struct PhotoCommentViewer: View {
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .background(Color.white.opacity(0.1))
+                        .background(OPSStyle.Colors.line)
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -629,7 +629,7 @@ struct PhotoCommentViewer: View {
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .background(Color.white.opacity(0.1))
+                        .background(OPSStyle.Colors.line)
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -687,7 +687,7 @@ struct PhotoCommentViewer: View {
         .padding(.vertical, OPSStyle.Layout.spacing2)
         .overlay(
             Rectangle()
-                .fill(Color.white.opacity(0.1))
+                .fill(OPSStyle.Colors.line)
                 .frame(height: 1),
             alignment: .top
         )
@@ -988,7 +988,7 @@ struct PhotoCommentRow: View {
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(OPSStyle.Layout.spacing2)
-                        .background(Color.white.opacity(0.1))
+                        .background(OPSStyle.Colors.line)
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
 
                     Button(action: onSaveEdit) {

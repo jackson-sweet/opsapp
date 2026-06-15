@@ -1058,7 +1058,7 @@ struct TutorialFlowViewV2: View {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             Capsule()
-                                .fill(Color.white.opacity(0.08))
+                                .fill(OPSStyle.Colors.surfaceActive)
                             Capsule()
                                 .fill(OPSStyle.Colors.primaryAccent)
                                 .frame(width: geo.size.width * progressBarValue)
@@ -1383,7 +1383,7 @@ struct TutorialFlowViewV2: View {
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                .fill(Color.white.opacity(0.05))
+                                .fill(OPSStyle.Colors.surfaceHover)
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
@@ -1406,7 +1406,7 @@ struct TutorialFlowViewV2: View {
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                .fill(Color.white.opacity(0.05))
+                                .fill(OPSStyle.Colors.surfaceHover)
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)

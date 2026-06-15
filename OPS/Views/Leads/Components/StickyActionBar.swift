@@ -160,7 +160,7 @@ struct StickyActionBar: View {
             VStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(0..<20) { _ in
                     Rectangle()
-                        .fill(Color.white.opacity(0.04))
+                        .fill(OPSStyle.Colors.surfaceInput)
                         .frame(height: 60)
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 }

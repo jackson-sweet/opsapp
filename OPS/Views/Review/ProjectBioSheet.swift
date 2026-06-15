@@ -71,7 +71,7 @@ struct ProjectBioSheet: View {
 
     private var divider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.1))
+            .fill(OPSStyle.Colors.line)
             .frame(height: 1)
     }
 

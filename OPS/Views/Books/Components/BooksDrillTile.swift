@@ -110,13 +110,13 @@ private struct BooksDrillTileChrome: ViewModifier {
     let reduceMotion: Bool
 
     private var bg: Color {
-        if isPressed { return Color.white.opacity(0.08) }
-        return accent ? OPSStyle.Colors.primaryAccent.opacity(0.15) : Color.white.opacity(0.04)
+        if isPressed { return OPSStyle.Colors.surfaceActive }
+        return accent ? OPSStyle.Colors.primaryAccent.opacity(0.15) : OPSStyle.Colors.surfaceInput
     }
 
     private var border: Color {
         if isPressed { return Color.white.opacity(0.18) }
-        return accent ? Color.white.opacity(0.25) : Color.white.opacity(0.08)
+        return accent ? Color.white.opacity(0.25) : OPSStyle.Colors.surfaceActive
     }
 
     func body(content: Content) -> some View {

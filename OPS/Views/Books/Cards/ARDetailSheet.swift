@@ -112,7 +112,7 @@ struct ARDetailSheet: View {
                         }
                     }
                 }
-                .background(Color.white.opacity(0.04))
+                .background(OPSStyle.Colors.surfaceInput)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
                         .stroke(OPSStyle.Colors.glassBorder, lineWidth: OPSStyle.Layout.Border.standard)

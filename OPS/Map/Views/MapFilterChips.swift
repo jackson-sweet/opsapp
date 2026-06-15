@@ -52,7 +52,7 @@ struct MapFilterChips: View {
                         .stroke(
                             isActive
                                 ? OPSStyle.Colors.primaryAccent
-                                : Color.white.opacity(0.10),
+                                : OPSStyle.Colors.line,
                             lineWidth: 1
                         )
                 )

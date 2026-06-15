@@ -330,7 +330,7 @@ struct BooksTabView: View {
         if isActive {
             ZStack(alignment: .top) {
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(Color.white.opacity(0.10))
+                    .fill(OPSStyle.Colors.line)
                 // 1pt inset top-light — recessed/embossed effect (spec § 7.3)
                 Rectangle()
                     .fill(Color.white.opacity(0.18))

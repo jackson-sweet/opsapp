@@ -75,7 +75,7 @@ struct TaskBioSheet: View {
 
     private var divider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.1))
+            .fill(OPSStyle.Colors.line)
             .frame(height: 1)
     }
 
@@ -165,7 +165,7 @@ struct TaskBioSheet: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.line, lineWidth: 1)
             )
         }
     }
@@ -195,7 +195,7 @@ struct TaskBioSheet: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.line, lineWidth: 1)
             )
         }
     }

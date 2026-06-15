@@ -385,8 +385,8 @@ private struct TopChaseButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed
-        let bg: Color = pressed ? Color.white.opacity(0.08) : Color.white.opacity(0.04)
-        let border: Color = pressed ? Color.white.opacity(0.18) : Color.white.opacity(0.08)
+        let bg: Color = pressed ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput
+        let border: Color = pressed ? Color.white.opacity(0.18) : OPSStyle.Colors.surfaceActive
         return configuration.label
             .padding(OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)

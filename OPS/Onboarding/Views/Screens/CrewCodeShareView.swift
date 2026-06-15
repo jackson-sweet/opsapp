@@ -90,7 +90,7 @@ struct CrewCodeShareView: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.line, lineWidth: 1)
                             )
                         }
 

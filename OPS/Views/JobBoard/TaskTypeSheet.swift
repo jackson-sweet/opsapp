@@ -1320,7 +1320,7 @@ struct TaskTypeSheet: View {
                             .padding(.vertical, OPSStyle.Layout.spacing2)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
-                                    .fill(isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.25) : Color.white.opacity(0.04))
+                                    .fill(isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.25) : OPSStyle.Colors.surfaceInput)
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
@@ -1500,7 +1500,7 @@ struct TaskTypeSheet: View {
                 ZStack {
                     // Track background
                     Capsule()
-                        .fill(Color.white.opacity(0.08))
+                        .fill(OPSStyle.Colors.surfaceActive)
                         .frame(height: 3)
                         .padding(.horizontal, thumbR)
 

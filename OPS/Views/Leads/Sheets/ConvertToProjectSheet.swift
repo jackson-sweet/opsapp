@@ -371,7 +371,7 @@ struct ConvertToProjectSheet: View {
         .frame(minHeight: 32)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
-                .fill(Color.white.opacity(0.05))
+                .fill(OPSStyle.Colors.surfaceHover)
         )
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)

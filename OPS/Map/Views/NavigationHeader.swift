@@ -222,7 +222,7 @@ struct NavigationManeuverCard: View {
 
     private var thinHorizontalDivider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.10))
+            .fill(OPSStyle.Colors.line)
             .frame(height: 1)
     }
 
@@ -231,7 +231,7 @@ struct NavigationManeuverCard: View {
             .fill(.ultraThinMaterial)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    .stroke(OPSStyle.Colors.surfaceActive, lineWidth: 1)
             )
     }
 
@@ -339,7 +339,7 @@ struct NavigationTripStrip: View {
 
     private var thinDivider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.14))
+            .fill(OPSStyle.Colors.fillNeutral)
             .frame(width: 1, height: 36)
     }
 

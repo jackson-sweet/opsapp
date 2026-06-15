@@ -1091,7 +1091,7 @@ struct DeckCanvasView: View {
             : OPSStyle.Colors.cardBackground.opacity(0.95)
         context.fill(Path(roundedRect: pillRect, cornerRadius: cr), with: .color(pillColor))
         context.stroke(Path(roundedRect: pillRect, cornerRadius: cr),
-                       with: .color(Color.white.opacity(0.08)), lineWidth: 0.5)
+                       with: .color(OPSStyle.Colors.surfaceActive), lineWidth: 0.5)
 
         let fontSize = scaledSize(11, min: 8, max: 18)
         let labelColor: Color = (isStale || hasAccuracy) ? OPSStyle.Colors.warningStatus : Color.white

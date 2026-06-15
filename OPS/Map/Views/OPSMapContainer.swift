@@ -308,7 +308,7 @@ struct OPSMapContainer: View {
 
                         // ── Divider ──
                         Rectangle()
-                            .fill(Color.white.opacity(0.08))
+                            .fill(OPSStyle.Colors.surfaceActive)
                             .frame(height: 1)
                             .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
@@ -368,7 +368,7 @@ struct OPSMapContainer: View {
 
                             if project.id != coordinator.stackedGroupProjects.last?.id {
                                 Rectangle()
-                                    .fill(Color.white.opacity(0.08))
+                                    .fill(OPSStyle.Colors.surfaceActive)
                                     .frame(height: 1)
                                     .padding(.leading, 34)
                             }
@@ -391,7 +391,7 @@ struct OPSMapContainer: View {
                                 bottomTrailingRadius: 0,
                                 topTrailingRadius: 4
                             )
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.surfaceActive, lineWidth: 1)
                         )
                     )
                     .offset(y: stackedGroupDragOffset)
@@ -779,7 +779,7 @@ struct OPSMapContainer: View {
                         .fill(.ultraThinMaterial)
                         .overlay(
                             Circle()
-                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                .stroke(OPSStyle.Colors.surfaceActive, lineWidth: 1)
                         )
                 )
                 .clipShape(Circle())

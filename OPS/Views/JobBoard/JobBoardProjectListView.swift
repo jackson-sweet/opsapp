@@ -736,7 +736,7 @@ struct FilterBadge: View {
                 .fill(OPSStyle.Colors.cardBackgroundDark)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         )
     }

@@ -786,7 +786,7 @@ struct TutorialFlowView: View {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             Capsule()
-                                .fill(Color.white.opacity(0.08))
+                                .fill(OPSStyle.Colors.surfaceActive)
                             Capsule()
                                 .fill(OPSStyle.Colors.primaryAccent)
                                 .frame(width: geo.size.width * progressBarValue)

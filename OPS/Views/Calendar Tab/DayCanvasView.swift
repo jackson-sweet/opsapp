@@ -602,7 +602,7 @@ struct DayPageView: View {
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                            .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                            .stroke(OPSStyle.Colors.line, lineWidth: 0.5)
                     )
             }
         }

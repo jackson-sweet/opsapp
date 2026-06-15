@@ -40,7 +40,7 @@ struct GlassSurfaceModifier: ViewModifier {
                         .fill(OPSStyle.Colors.glassApprox)
                     // Top-edge gradient — the only "lit from above" cue
                     LinearGradient(
-                        colors: [Color.white.opacity(0.04), .clear],
+                        colors: [OPSStyle.Colors.surfaceInput, .clear],
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -100,11 +100,11 @@ struct NestedCardModifier: ViewModifier {
         content
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color.white.opacity(0.04))
+                    .fill(OPSStyle.Colors.surfaceInput)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                    .strokeBorder(OPSStyle.Colors.surfaceActive, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }

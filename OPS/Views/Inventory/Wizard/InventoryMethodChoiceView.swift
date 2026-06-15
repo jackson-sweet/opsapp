@@ -119,7 +119,7 @@ struct InventoryMethodChoiceView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.08), lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.surfaceActive, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .padding(.horizontal, OPSStyle.Layout.spacing4)
         }

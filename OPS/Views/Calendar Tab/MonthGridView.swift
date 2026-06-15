@@ -558,7 +558,7 @@ struct MonthGridView: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                                    .stroke(OPSStyle.Colors.line, lineWidth: 0.5)
                             )
                         }
                     }

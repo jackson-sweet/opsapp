@@ -53,8 +53,9 @@ struct DetailHero: View {
             // Hero name — falls back to title if contactName is missing,
             // then to "Unnamed lead". The detail view never renders blank.
             Text(displayName)
-                .font(OPSStyle.Typography.display)
+                .font(OPSStyle.Typography.screenTitle(for: displayName))
                 .foregroundColor(OPSStyle.Colors.text)
+                .textCase(.uppercase)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)

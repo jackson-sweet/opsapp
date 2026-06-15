@@ -109,7 +109,7 @@ struct PipelineStageListView: View {
     private var titleRow: some View {
         HStack(alignment: .lastTextBaseline) {
             Text(stage.displayName)
-                .font(OPSStyle.Typography.display)
+                .font(OPSStyle.Typography.screenTitle(for: stage.displayName))
                 .foregroundColor(OPSStyle.Colors.text)
                 .textCase(.uppercase)
 

@@ -249,8 +249,9 @@ struct EstimateDetailView: View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             HStack {
                 Text(estimate.estimateNumber.isEmpty ? "NEW ESTIMATE" : estimate.estimateNumber)
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .font(OPSStyle.Typography.screenTitle(for: estimate.estimateNumber.isEmpty ? "NEW ESTIMATE" : estimate.estimateNumber))
+                    .textCase(.uppercase)
+                    .foregroundColor(OPSStyle.Colors.text)
                 Spacer()
             }
 

@@ -81,8 +81,9 @@ struct OnboardingScaffold<Content: View, Footer: View>: View {
 
             // Title
             Text(title)
-                .font(OPSStyle.Typography.title)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+                .font(OPSStyle.Typography.screenTitle(for: title))
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.text)
 
             // Subtitle (optional)
             if let subtitle = subtitle {

@@ -47,8 +47,9 @@ struct CreateDefaultInventoryUnitsView: View {
                         .foregroundColor(Color.teal)
 
                     Text("Create Default Inventory Units")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .font(OPSStyle.Typography.screenTitle(for: "Create Default Inventory Units"))
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
 
                     Text("Company: \(companyName)")
                         .font(OPSStyle.Typography.body)

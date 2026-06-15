@@ -267,7 +267,7 @@ struct LeadsTabView: View {
     private var titleRow: some View {
         HStack(alignment: .lastTextBaseline) {
             Text("LEADS")
-                .font(OPSStyle.Typography.display)
+                .font(OPSStyle.Typography.screenTitle(for: "LEADS"))
                 .foregroundColor(OPSStyle.Colors.text)
                 .textCase(.uppercase)
             Spacer()

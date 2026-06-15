@@ -115,8 +115,9 @@ struct InvoiceDetailView: View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             HStack {
                 Text(invoice.invoiceNumber.isEmpty ? "NEW INVOICE" : invoice.invoiceNumber)
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .font(OPSStyle.Typography.screenTitle(for: invoice.invoiceNumber.isEmpty ? "NEW INVOICE" : invoice.invoiceNumber))
+                    .textCase(.uppercase)
+                    .foregroundColor(OPSStyle.Colors.text)
                 Spacer()
             }
 

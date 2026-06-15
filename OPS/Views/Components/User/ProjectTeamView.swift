@@ -476,8 +476,9 @@ struct FullTeamListView: View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("PROJECT TEAM")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .font(OPSStyle.Typography.screenTitle(for: "PROJECT TEAM"))
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {

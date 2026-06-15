@@ -94,8 +94,9 @@ struct ProjectTitleOverlay: View {
                 // Editable title field
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     TextField("", text: $editedTitle)
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .font(OPSStyle.Typography.screenTitle(for: editedTitle))
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
                         .textInputAutocapitalization(.characters)
                         .focused($titleFieldFocused)
                         .onAppear { titleFieldFocused = true }
@@ -118,8 +119,9 @@ struct ProjectTitleOverlay: View {
             } else {
                 // Static title — long press to edit
                 Text(project.title.uppercased())
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .font(OPSStyle.Typography.screenTitle(for: project.title))
+                    .textCase(.uppercase)
+                    .foregroundColor(OPSStyle.Colors.text)
                     .lineLimit(2)
                     .onLongPressGesture {
                         if canEdit {

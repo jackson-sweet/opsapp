@@ -237,11 +237,20 @@ class PermissionStore: ObservableObject {
             print("[PERMISSIONS] Failed to fetch permissions from Supabase: \(error)")
 
             await MainActor.run {
-                // Fail closed on feature flags even if permissions fetch fails
-                let failClosed = FeatureFlagService.failClosedResult()
-                self.blockedByFlags = failClosed.blockedPermissions
-                self.disabledFlags = failClosed.disabledFlags
-
+                // A transient RBAC-permissions fetch failure must NOT strip
+                // already-granted feature flags. The flag fetch
+                // (FeatureFlagService.fetchFlags) swallows its own errors, so
+                // reaching here means the *permissions* call threw — which says
+                // nothing about flag entitlements. Once we have a good in-memory
+                // state (initialized), keep the existing blockedByFlags/
+                // disabledFlags untouched; only when we have no prior state do we
+                // fall back to the cache, which itself fails closed when empty or
+                // legacy (see loadCachedPermissions). Previously this branch
+                // unconditionally overwrote the flag state with
+                // failClosedResult(), so any foreground RBAC blip hid DECK /
+                // pipeline / estimates / accounting for entitled users until the
+                // next successful fetch — surfacing as "the tab disappears as if
+                // it's trying to live-sync my permissions."
                 if !self.initialized {
                     self.loadCachedPermissions()
                 }

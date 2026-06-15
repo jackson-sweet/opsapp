@@ -34,9 +34,16 @@ struct VinylOrderSheet: View {
     @AppStorage(VinylCutListTextTemplate.cutStorageKey) private var cutTemplate = VinylCutListTextTemplate.defaultCutTemplate
     @AppStorage(VinylCutListTextTemplate.separatorStorageKey) private var cutSeparatorRawValue = VinylCutListSeparator.lines.rawValue
 
-    private var plan: VinylCutPlan {
-        VinylCutListEngine.makePlan(surfaces: surfaceInputs, settings: settings)
-    }
+    /// Memoized vinyl cut plan. Recomputed only when `settings` or `surfaceInputs`
+    /// actually change — never per body pass. "MARK ORDERED" fans a single tap out
+    /// into a burst of context saves + push/realtime echoes, each of which
+    /// invalidates this sheet's @Query-driven body; recomputing the full cut-list
+    /// geometry on every one of those passes is what made the sheet lag on tap.
+    @State private var plan: VinylCutPlan = VinylCutListEngine.makePlan(surfaces: [], settings: .default)
+
+    /// Memoized catalog product/variant tree. Same rationale as `plan`: rebuilt
+    /// only when the underlying catalog @Query results change, not per body pass.
+    @State private var catalogProductChoices: [VinylCatalogProductChoice] = []
 
     private var cutSeparator: VinylCutListSeparator {
         VinylCutListSeparator(rawValue: cutSeparatorRawValue) ?? .lines
@@ -99,7 +106,7 @@ struct VinylOrderSheet: View {
             && !isUpdatingProjectMarker
     }
 
-    private var catalogProductChoices: [VinylCatalogProductChoice] {
+    private func computeCatalogProductChoices() -> [VinylCatalogProductChoice] {
         let activeVariantsByItem = Dictionary(grouping: catalogVariants.filter { variant in
             variant.companyId == companyId
                 && variant.isActive
@@ -129,10 +136,6 @@ struct VinylOrderSheet: View {
     private var selectedProductChoice: VinylCatalogProductChoice? {
         guard let itemId = settings.catalogItemId else { return nil }
         return catalogProductChoices.first { $0.id == itemId }
-    }
-
-    private var catalogProductChoicesSignature: String {
-        catalogProductChoices.map(\.id).joined(separator: "|")
     }
 
     private var selectedVariant: CatalogVariant? {
@@ -204,9 +207,18 @@ struct VinylOrderSheet: View {
             .task {
                 await loadSurfaceInputsIfNeeded()
             }
-            .onChange(of: catalogProductChoicesSignature) { _, _ in
-                applyConfiguredCatalogProduct()
-            }
+            // Memoization hooks live in a ViewModifier so the (already large) body
+            // expression stays inside the Swift type-checker's budget. They keep
+            // `plan` / `catalogProductChoices` fresh without recomputing per pass.
+            .modifier(VinylOrderMemoHooks(
+                settings: settings,
+                catalogItems: catalogItems,
+                catalogVariants: catalogVariants,
+                catalogOptionValues: catalogOptionValues,
+                catalogVariantOptionValues: catalogVariantOptionValues,
+                onPlanInputChange: { recomputePlan() },
+                onCatalogChange: { rebuildCatalogChoices() }
+            ))
         }
     }
 
@@ -884,15 +896,30 @@ struct VinylOrderSheet: View {
         didLoadSurfaceInputs = true
         // This reconciles @Published deck state; keep it out of SwiftUI's body pass.
         await Task.yield()
-        applyConfiguredCatalogProduct()
+        rebuildCatalogChoices()
         surfaceInputs = viewModel.vinylOrderSurfaceInputs(scope: viewModel.vinylOrderSurfaceScope)
+        recomputePlan()
     }
 
-    private func applyConfiguredCatalogProduct() {
+    /// Rebuild the memoized catalog tree from the current @Query results, then
+    /// re-apply the deck's configured product (which can only resolve once the
+    /// choices exist). Driven by the catalog `.onChange` hooks and initial load —
+    /// never the per-body-pass path.
+    private func rebuildCatalogChoices() {
+        let choices = computeCatalogProductChoices()
+        catalogProductChoices = choices
+        applyConfiguredCatalogProduct(in: choices)
+    }
+
+    private func recomputePlan() {
+        plan = VinylCutListEngine.makePlan(surfaces: surfaceInputs, settings: settings)
+    }
+
+    private func applyConfiguredCatalogProduct(in choices: [VinylCatalogProductChoice]) {
         guard settings.catalogItemId == nil,
               let configuredItemId = viewModel.drawingData.config.vinylCatalogItemId?.trimmingCharacters(in: .whitespacesAndNewlines),
               !configuredItemId.isEmpty,
-              catalogProductChoices.contains(where: { $0.id == configuredItemId }) else {
+              choices.contains(where: { $0.id == configuredItemId }) else {
             return
         }
         settings.catalogItemId = configuredItemId
@@ -1036,6 +1063,31 @@ struct VinylOrderSheet: View {
 
     private func formatSqFtForSheet(_ value: Double) -> String {
         String(format: "%.1f", value)
+    }
+}
+
+/// Lifecycle hooks for VinylOrderSheet's memoized derivations. Kept in a
+/// ViewModifier so the main `body` expression stays within the Swift
+/// type-checker's budget. `onChange(of:)` on the catalog @Query arrays fires only
+/// when their contents actually change (by persistent id), so the catalog tree is
+/// rebuilt on real catalog edits — not on the burst of body passes a "MARK
+/// ORDERED" write triggers.
+private struct VinylOrderMemoHooks: ViewModifier {
+    let settings: VinylOrderSettings
+    let catalogItems: [CatalogItem]
+    let catalogVariants: [CatalogVariant]
+    let catalogOptionValues: [CatalogOptionValue]
+    let catalogVariantOptionValues: [CatalogVariantOptionValue]
+    let onPlanInputChange: () -> Void
+    let onCatalogChange: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: settings) { _, _ in onPlanInputChange() }
+            .onChange(of: catalogItems) { _, _ in onCatalogChange() }
+            .onChange(of: catalogVariants) { _, _ in onCatalogChange() }
+            .onChange(of: catalogOptionValues) { _, _ in onCatalogChange() }
+            .onChange(of: catalogVariantOptionValues) { _, _ in onCatalogChange() }
     }
 }
 

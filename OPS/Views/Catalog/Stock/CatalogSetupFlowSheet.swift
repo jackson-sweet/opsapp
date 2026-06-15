@@ -518,7 +518,7 @@ struct CatalogSetupFlowSheet: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.text, lineWidth: OPSStyle.Layout.Border.standard)
                 )
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Setup step")
@@ -566,7 +566,7 @@ struct CatalogSetupFlowSheet: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(
-                            isActive ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
+                            isActive ? OPSStyle.Colors.text : OPSStyle.Colors.cardBorder,
                             lineWidth: OPSStyle.Layout.Border.standard
                         )
                 )

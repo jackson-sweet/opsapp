@@ -296,7 +296,7 @@ private struct RoleRow: View {
                     .font(.system(size: 18, weight: .regular))
                     .foregroundColor(
                         isSelected
-                            ? OPSStyle.Colors.primaryAccent
+                            ? OPSStyle.Colors.text
                             : OPSStyle.Colors.secondaryText
                     )
 

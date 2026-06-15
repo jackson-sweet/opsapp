@@ -202,7 +202,7 @@ struct OrdersSheet: View {
                         Rectangle()
                             .fill(
                                 subSegment == segment
-                                    ? OPSStyle.Colors.primaryAccent
+                                    ? OPSStyle.Colors.text
                                     : Color.clear
                             )
                             .frame(height: 2)

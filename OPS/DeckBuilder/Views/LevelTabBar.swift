@@ -97,7 +97,7 @@ struct LevelTabBar: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .padding(.vertical, OPSStyle.Layout.spacing2)
-            .background(isActive ? OPSStyle.Colors.primaryAccent.opacity(0.15) : Color.clear)
+            .background(isActive ? OPSStyle.Colors.surfaceActive : Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 Rectangle()

@@ -151,7 +151,7 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
                         if selectedSort.wrappedValue == option {
                             Image(systemName: OPSStyle.Icons.checkmark)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                         }
                     }
                     .padding(.vertical, 14)
@@ -501,7 +501,7 @@ private struct MultiSelectFilterSection<T: Hashable>: View {
                         if selection.contains(option) {
                             Image(systemName: OPSStyle.Icons.checkmark)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                         }
                     }
                     .padding(.vertical, 14)
@@ -588,7 +588,7 @@ private struct IdBasedMultiSelectSection<T: Identifiable>: View {
                         if selection.contains(getId(option)) {
                             Image(systemName: OPSStyle.Icons.checkmark)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                         }
                     }
                     .padding(.vertical, 14)
@@ -846,11 +846,11 @@ private struct FilterRow: View {
             if isSelected && !isSpecial {
                 Image(systemName: OPSStyle.Icons.checkmark)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
             } else if isSpecial && isSelected {
                 Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
             }
         }
         .padding(.vertical, 14)

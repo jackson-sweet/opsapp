@@ -205,7 +205,7 @@ struct StockItemPicker: View {
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.text)
                 }
             }
             .padding(OPSStyle.Layout.spacing2)
@@ -215,7 +215,7 @@ struct StockItemPicker: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
+                    .stroke(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.cardBorder,
                             lineWidth: OPSStyle.Layout.Border.standard)
             )
         }

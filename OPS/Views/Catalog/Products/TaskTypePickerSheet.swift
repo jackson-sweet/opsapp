@@ -180,7 +180,7 @@ struct TaskTypePickerSheet: View {
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.text)
                 }
             }
             .padding(OPSStyle.Layout.spacing2)
@@ -191,7 +191,7 @@ struct TaskTypePickerSheet: View {
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(
-                        isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
+                        isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.cardBorder,
                         lineWidth: OPSStyle.Layout.Border.standard
                     )
             )

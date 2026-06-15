@@ -262,11 +262,11 @@ struct PhotoFilterSheet: View {
                 .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
                 .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                 .padding(.vertical, OPSStyle.Layout.spacing2)
-                .background(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackgroundDark)
+                .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(isSelected ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
         .buttonStyle(PlainButtonStyle())
@@ -289,8 +289,12 @@ struct PhotoFilterSheet: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(OPSStyle.Colors.primaryAccent)
+        .background(OPSStyle.Colors.surfaceActive)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.text, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
 
     // MARK: - Project Suggestion Row

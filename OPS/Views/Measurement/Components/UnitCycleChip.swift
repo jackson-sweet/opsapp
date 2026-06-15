@@ -144,7 +144,7 @@ public struct UnitCycleChip: View {
                 Spacer()
                 Text(tag)
                     .font(.custom("JetBrainsMono-Regular", size: 10))
-                    .foregroundColor(isOn ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.text3)
+                    .foregroundColor(isOn ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .padding(.vertical, 10)

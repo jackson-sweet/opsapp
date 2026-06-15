@@ -376,7 +376,7 @@ private struct IndustryRow: View {
 
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.text)
                 }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)

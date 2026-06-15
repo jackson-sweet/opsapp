@@ -378,7 +378,7 @@ struct TutorialFlowViewV2: View {
 
     private func dotColor(for index: Int) -> Color {
         let current = state.currentPhase.rawValue
-        if index == current { return OPSStyle.Colors.primaryAccent }
+        if index == current { return OPSStyle.Colors.text }
         if index < current { return Color.white.opacity(0.4) }
         return Color.white.opacity(0.12)
     }

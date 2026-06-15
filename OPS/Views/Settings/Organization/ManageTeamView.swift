@@ -1531,7 +1531,7 @@ struct EditTeamMemberSheet: View {
             HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: selectedRole == role ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
-                    .foregroundColor(selectedRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .foregroundColor(selectedRole == role ? OPSStyle.Colors.text : OPSStyle.Colors.tertiaryText)
 
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(title.uppercased())

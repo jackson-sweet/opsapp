@@ -236,10 +236,10 @@ struct DeckToolbar: View {
             } label: {
                 Image(systemName: "rectangle.dashed")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
-                    .foregroundColor(viewModel.marqueeShape == .rect ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                    .foregroundColor(viewModel.marqueeShape == .rect ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
                     .padding(.horizontal, OPSStyle.Layout.spacing2)
                     .frame(height: 28)
-                    .background(viewModel.marqueeShape == .rect ? OPSStyle.Colors.primaryAccent.opacity(0.18) : Color.clear)
+                    .background(viewModel.marqueeShape == .rect ? OPSStyle.Colors.surfaceActive : Color.clear)
             }
             .accessibilityLabel("Marquee select")
 
@@ -249,10 +249,10 @@ struct DeckToolbar: View {
             } label: {
                 Image(systemName: "lasso")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
-                    .foregroundColor(viewModel.marqueeShape == .lasso ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                    .foregroundColor(viewModel.marqueeShape == .lasso ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
                     .padding(.horizontal, OPSStyle.Layout.spacing2)
                     .frame(height: 28)
-                    .background(viewModel.marqueeShape == .lasso ? OPSStyle.Colors.primaryAccent.opacity(0.18) : Color.clear)
+                    .background(viewModel.marqueeShape == .lasso ? OPSStyle.Colors.surfaceActive : Color.clear)
             }
             .accessibilityLabel("Lasso select")
         }
@@ -644,16 +644,16 @@ struct DeckToolbar: View {
             VStack(spacing: 3) {
                 Image(systemName: icon)
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: isActive ? .bold : .medium))
-                    .foregroundColor(isActive ? OPSStyle.Colors.primaryAccent : Color.white)
+                    .foregroundColor(isActive ? OPSStyle.Colors.text : Color.white)
                 Text(label)
                     .font(OPSStyle.Typography.miniLabel)
-                    .foregroundColor(isActive ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                    .foregroundColor(isActive ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing1)
             .frame(minWidth: OPSStyle.Layout.touchTargetStandard, minHeight: OPSStyle.Layout.touchTargetStandard)
-            .background(isActive ? OPSStyle.Colors.primaryAccent.opacity(0.12) : Color.clear)
+            .background(isActive ? OPSStyle.Colors.surfaceActive : Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
     }
@@ -679,16 +679,16 @@ struct DeckToolbar: View {
             VStack(spacing: 3) {
                 Image(systemName: icon)
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: isActive ? .bold : .medium))
-                    .foregroundColor(isActive ? OPSStyle.Colors.primaryAccent : tint)
+                    .foregroundColor(isActive ? OPSStyle.Colors.text : tint)
                 Text(label)
                     .font(OPSStyle.Typography.miniLabel)
-                    .foregroundColor(isActive ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                    .foregroundColor(isActive ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing1)
             .frame(minWidth: OPSStyle.Layout.touchTargetStandard, minHeight: OPSStyle.Layout.touchTargetStandard)
-            .background(isActive ? OPSStyle.Colors.primaryAccent.opacity(0.12) : Color.clear)
+            .background(isActive ? OPSStyle.Colors.surfaceActive : Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
     }

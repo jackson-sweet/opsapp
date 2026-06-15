@@ -521,7 +521,7 @@ struct UserEventSheet: View {
             .datePickerStyle(.compact)
             .labelsHidden()
             .colorScheme(.dark)
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
         }
         .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -676,7 +676,7 @@ struct UserEventSheet: View {
                         .datePickerStyle(.compact)
                         .labelsHidden()
                         .colorScheme(.dark)
-                        .tint(OPSStyle.Colors.primaryAccent)
+                        .tint(OPSStyle.Colors.text)
                     }
                     .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)

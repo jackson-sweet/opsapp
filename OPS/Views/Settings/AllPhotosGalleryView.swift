@@ -387,7 +387,7 @@ struct AllPhotosGalleryView: View {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: OPSStyle.Icons.filter)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                        .foregroundColor(hasActiveFilters ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                         .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -637,12 +637,12 @@ struct AllPhotosGalleryView: View {
                 ZStack {
                     if isSelected {
                         Circle()
-                            .fill(OPSStyle.Colors.primaryAccent)
+                            .fill(OPSStyle.Colors.text)
                             .frame(width: 22, height: 22)
 
                         Image(systemName: "checkmark")
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .foregroundColor(OPSStyle.Colors.background)
                     } else {
                         Circle()
                             .stroke(OPSStyle.Colors.primaryText.opacity(0.6), lineWidth: 1.5)

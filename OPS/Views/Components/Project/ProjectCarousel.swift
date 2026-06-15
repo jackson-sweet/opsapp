@@ -187,7 +187,7 @@ struct ProjectCardView: View {
                         HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             ForEach(0..<totalCount, id: \.self) { index in
                                 Circle()
-                                    .fill(index == currentIndex ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.pageIndicatorInactive)
+                                    .fill(index == currentIndex ? OPSStyle.Colors.text : OPSStyle.Colors.pageIndicatorInactive)
                                     .frame(width: 13, height: 13)
                             }
                         }

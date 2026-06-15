@@ -566,7 +566,7 @@ struct JobBoardProjectListView: View {
                     if let member = availableTeamMembers.first(where: { $0.id == memberId }) {
                         FilterBadge(
                             text: "\(member.firstName) \(member.lastName)",
-                            color: OPSStyle.Colors.primaryAccent,
+                            color: OPSStyle.Colors.text,
                             onRemove: {
                                 withAnimation(OPSStyle.Animation.standard) {
                                     _ = selectedTeamMemberIds.remove(memberId)
@@ -763,7 +763,7 @@ struct ProjectFilterBar: View {
                     JBFilterChip(
                         title: status?.displayName ?? "All",
                         isSelected: selectedStatus == status,
-                        color: status?.color ?? OPSStyle.Colors.primaryAccent
+                        color: status?.color ?? OPSStyle.Colors.text
                     ) {
                         withAnimation {
                             selectedStatus = status

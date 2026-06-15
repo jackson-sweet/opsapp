@@ -227,7 +227,7 @@ struct EventCardView: View {
                             HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 ForEach(0..<totalCount, id: \.self) { index in
                                     Circle()
-                                        .fill(index == currentIndex ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder)
+                                        .fill(index == currentIndex ? OPSStyle.Colors.text : OPSStyle.Colors.inputFieldBorder)
                                         .frame(width: 13, height: 13)
                                 }
                             }
@@ -242,7 +242,7 @@ struct EventCardView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(isActiveProject ? OPSStyle.Colors.primaryAccent : Color.clear, lineWidth: OPSStyle.Layout.Border.thick)
+                    .stroke(isActiveProject ? OPSStyle.Colors.text : Color.clear, lineWidth: OPSStyle.Layout.Border.thick)
             )
             .tutorialHighlight(for: .tapProject, cornerRadius: OPSStyle.Layout.cornerRadius)
 

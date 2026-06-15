@@ -235,7 +235,7 @@ struct ImportConfigView: View {
                 // Selection indicator
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
-                    .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.tertiaryText)
 
                 // Text
                 VStack(alignment: .leading, spacing: 2) {
@@ -252,7 +252,7 @@ struct ImportConfigView: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
-            .background(isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.1) : Color.clear)
+            .background(isSelected ? OPSStyle.Colors.surfaceActive : Color.clear)
         }
         .buttonStyle(PlainButtonStyle())
     }

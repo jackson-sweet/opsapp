@@ -683,10 +683,10 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
             guard let button = view as? UIButton else { continue }
             let selected = button.tag == selectedIndex
             button.backgroundColor = selected
-                ? UIColor(OPSStyle.Colors.opsAccent)
+                ? UIColor(OPSStyle.Colors.surfaceActive)
                 : UIColor.clear
             button.setTitleColor(
-                selected ? UIColor.black : UIColor(OPSStyle.Colors.text),
+                selected ? UIColor(OPSStyle.Colors.text) : UIColor(OPSStyle.Colors.text3),
                 for: .normal
             )
         }

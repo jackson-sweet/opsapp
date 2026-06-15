@@ -559,14 +559,14 @@ struct BundleCompositionEditSheet: View {
         } label: {
             Text(mode.displayLabel)
                 .font(OPSStyle.Typography.buttonLabel)
-                .foregroundColor(isSelected ? OPSStyle.Colors.buttonText : OPSStyle.Colors.primaryText)
+                .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.primaryText)
                 .frame(maxWidth: .infinity)
                 .frame(height: OPSStyle.Layout.touchTargetStandard)
-                .background(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackgroundDark)
+                .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
+                        .stroke(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.cardBorder,
                                 lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }

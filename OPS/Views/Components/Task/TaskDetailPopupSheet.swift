@@ -356,7 +356,7 @@ struct TaskDetailPopupSheet: View {
                 }) {
                     HStack(spacing: 10) {
                         Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                            .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                            .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.tertiaryText)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
                         Circle()

@@ -221,16 +221,16 @@ struct AssignmentWheelView: View {
                         if let initials = slot.initials {
                             Text(initials)
                                 .font(.system(size: isHighlighted ? 13 : 11, weight: .bold, design: .monospaced))
-                                .foregroundColor(isHighlighted ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
+                                .foregroundColor(isHighlighted ? OPSStyle.Colors.text : OPSStyle.Colors.primaryText)
                         } else {
                             Image(systemName: slot.icon)
                                 .font(.system(size: isHighlighted ? OPSStyle.Layout.IconSize.lg : OPSStyle.Layout.IconSize.md, weight: .medium))
-                                .foregroundColor(isHighlighted ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
+                                .foregroundColor(isHighlighted ? OPSStyle.Colors.text : OPSStyle.Colors.primaryText)
                         }
 
                         Text(slot.name)
                             .font(OPSStyle.Typography.miniLabel)
-                            .foregroundColor(isHighlighted ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                            .foregroundColor(isHighlighted ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .frame(maxWidth: 56)
@@ -239,7 +239,7 @@ struct AssignmentWheelView: View {
                     .background(
                         Circle()
                             .fill(isHighlighted
-                                  ? OPSStyle.Colors.primaryAccent.opacity(0.2)
+                                  ? OPSStyle.Colors.surfaceActive
                                   : OPSStyle.Colors.cardBackground)
                     )
                     .overlay(alignment: .topTrailing) {

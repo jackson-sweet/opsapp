@@ -1373,7 +1373,7 @@ private struct ExpenseCategoryPickerSheet: View {
                                 if selectedId == nil {
                                     Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                                         .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                        .foregroundColor(OPSStyle.Colors.text)
                                 }
                             }
                             .padding(.vertical, 14)
@@ -1404,7 +1404,7 @@ private struct ExpenseCategoryPickerSheet: View {
                                     if selectedId == cat.id {
                                         Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                                             .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                            .foregroundColor(OPSStyle.Colors.text)
                                     }
                                 }
                                 .padding(.vertical, 14)
@@ -1471,7 +1471,7 @@ private struct ExpensePaymentPickerSheet: View {
                                     if selected == method {
                                         Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                                             .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                            .foregroundColor(OPSStyle.Colors.text)
                                     }
                                 }
                                 .padding(.vertical, 14)
@@ -1663,7 +1663,7 @@ private struct ExpenseCurrencyPickerSheet: View {
                                         if selected.uppercased() == code {
                                             Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                                                 .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                                .foregroundColor(OPSStyle.Colors.text)
                                         }
                                     }
                                     .padding(.vertical, 14)

@@ -48,9 +48,9 @@ struct ProjectDetailsTabBar: View {
                     }
                 }
 
-                // Sliding accent underline
+                // Sliding active-tab underline
                 Rectangle()
-                    .fill(OPSStyle.Colors.primaryAccent)
+                    .fill(OPSStyle.Colors.text)
                     .frame(width: tabWidth, height: 2)
                     .offset(x: tabWidth * CGFloat(visibleTabs.firstIndex(of: selectedTab) ?? 0))
                     .animation(OPSStyle.Animation.fast, value: selectedTab)

@@ -154,7 +154,7 @@ struct UnassignedRolesOverlay: View {
 
                         Image(systemName: "checkmark")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .foregroundColor(OPSStyle.Colors.text)
                     }
                 } else {
                     Text("UNASSIGNED")

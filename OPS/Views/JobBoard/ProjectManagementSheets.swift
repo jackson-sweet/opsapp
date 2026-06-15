@@ -190,7 +190,7 @@ struct StatusOption: View {
                 if isSelected && !isDisabled {
                     Image(systemName: OPSStyle.Icons.checkmark)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.text)
                 }
 
                 if isDisabled {
@@ -783,7 +783,7 @@ struct TeamMemberOption: View {
             HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: isSelected ? OPSStyle.Icons.checkmarkSquareFill : OPSStyle.Icons.square)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
-                    .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.tertiaryText)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(member.fullName)

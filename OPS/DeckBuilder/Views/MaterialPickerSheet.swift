@@ -241,11 +241,11 @@ struct MaterialPickerSheet: View {
                         if defaultProductId == product.id {
                             Text("// DEFAULT")
                                 .font(OPSStyle.Typography.smallCaption.monospaced())
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .foregroundColor(OPSStyle.Colors.text)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(
-                                    OPSStyle.Colors.primaryAccent.opacity(0.12)
+                                    OPSStyle.Colors.line
                                         .clipShape(Capsule())
                                 )
                         }

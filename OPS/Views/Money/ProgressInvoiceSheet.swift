@@ -156,7 +156,7 @@ struct ProgressInvoiceSheet: View {
                           : OPSStyle.Icons.square)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(isSelected
-                                         ? OPSStyle.Colors.primaryAccent
+                                         ? OPSStyle.Colors.text
                                          : OPSStyle.Colors.tertiaryText)
 
                     // Name + description
@@ -199,7 +199,7 @@ struct ProgressInvoiceSheet: View {
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .stroke(
-                    isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.4) : OPSStyle.Colors.inputFieldBorder,
+                    isSelected ? OPSStyle.Colors.text.opacity(0.4) : OPSStyle.Colors.inputFieldBorder,
                     lineWidth: OPSStyle.Layout.Border.standard
                 )
         )

@@ -193,7 +193,7 @@ struct ImportPreviewView: View {
                 // Selection indicator
                 Image(systemName: isSelected ? "checkmark.square.fill" : "square")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                    .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.tertiaryText)
                     .frame(width: 20)
 
                 // Quantity
@@ -341,14 +341,14 @@ struct ImportPreviewView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
             }
-            .foregroundColor(OPSStyle.Colors.primaryAccent)
+            .foregroundColor(OPSStyle.Colors.text)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(OPSStyle.Colors.primaryAccent.opacity(0.15))
+            .background(OPSStyle.Colors.surfaceActive)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.text.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(PlainButtonStyle())

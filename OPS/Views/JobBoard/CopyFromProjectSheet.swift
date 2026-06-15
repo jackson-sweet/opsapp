@@ -362,7 +362,7 @@ struct CopyFromProjectSheet: View {
         }) {
             HStack {
                 Image(systemName: selectedFields.contains(field.id) ? OPSStyle.Icons.checkmarkSquareFill : OPSStyle.Icons.square)
-                    .foregroundColor(selectedFields.contains(field.id) ? OPSStyle.Colors.primaryAccent : (field.hasData ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.tertiaryText.opacity(0.3)))
+                    .foregroundColor(selectedFields.contains(field.id) ? OPSStyle.Colors.text : (field.hasData ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.tertiaryText.opacity(0.3)))
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
 
                 VStack(alignment: .leading, spacing: 2) {

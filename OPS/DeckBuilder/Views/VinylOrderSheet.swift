@@ -495,15 +495,15 @@ struct VinylOrderSheet: View {
                                 } label: {
                                     Text(separator.label)
                                         .font(OPSStyle.Typography.buttonLabel)
-                                        .foregroundColor(cutSeparator == separator ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
+                                        .foregroundColor(cutSeparator == separator ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, OPSStyle.Layout.spacing2)
-                                        .background(cutSeparator == separator ? OPSStyle.Colors.primaryAccent.opacity(0.18) : OPSStyle.Colors.subtleBackground)
+                                        .background(cutSeparator == separator ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.subtleBackground)
                                         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                                 .stroke(
-                                                    cutSeparator == separator ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
+                                                    cutSeparator == separator ? OPSStyle.Colors.text : OPSStyle.Colors.cardBorder,
                                                     lineWidth: OPSStyle.Layout.Border.standard
                                                 )
                                         )

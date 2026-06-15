@@ -590,14 +590,14 @@ struct InventoryView: View {
                 Text(title)
                     .font(OPSStyle.Typography.captionBold)
             }
-            .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+            .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
             .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .padding(.vertical, OPSStyle.Layout.spacing2)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.separator, lineWidth: isSelected ? 2 : 1)
+                    .stroke(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.separator, lineWidth: isSelected ? 2 : 1)
             )
         }
         .buttonStyle(PlainButtonStyle())

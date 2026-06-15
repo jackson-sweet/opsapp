@@ -377,7 +377,7 @@ struct MyExpensesView: View {
                                 .frame(minHeight: OPSStyle.Layout.touchTargetMin)
                                 .background(
                                     viewModel.selectedFilter == filter
-                                    ? OPSStyle.Colors.primaryAccent.opacity(0.2)
+                                    ? OPSStyle.Colors.surfaceActive
                                     : OPSStyle.Colors.cardBackgroundDark
                                 )
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -385,7 +385,7 @@ struct MyExpensesView: View {
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                         .stroke(
                                             viewModel.selectedFilter == filter
-                                            ? OPSStyle.Colors.primaryAccent
+                                            ? OPSStyle.Colors.text
                                             : OPSStyle.Colors.cardBorder,
                                             lineWidth: OPSStyle.Layout.Border.standard
                                         )

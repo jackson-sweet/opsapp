@@ -367,7 +367,7 @@ struct AppHeader: View {
                             ZStack {
                                 Image(systemName: hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                                     .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
+                                    .foregroundColor(hasActiveFilters ? OPSStyle.Colors.text : OPSStyle.Colors.primaryText)
                                     .frame(width: 44, height: 44)
                                     .background(OPSStyle.Colors.cardBackground)
                                     .clipShape(Circle())
@@ -394,7 +394,7 @@ struct AppHeader: View {
                             ZStack {
                                 Image(systemName: isScopeAll ? "person.2" : "person")
                                     .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(isScopeAll ? OPSStyle.Colors.primaryText : OPSStyle.Colors.primaryAccent)
+                                    .foregroundColor(isScopeAll ? OPSStyle.Colors.primaryText : OPSStyle.Colors.text)
                                     .frame(width: 44, height: 44)
                                     .background(OPSStyle.Colors.cardBackground)
                                     .clipShape(Circle())
@@ -402,7 +402,7 @@ struct AppHeader: View {
                                 // Indicator dot when MINE is selected
                                 if !isScopeAll {
                                     Circle()
-                                        .fill(OPSStyle.Colors.primaryAccent)
+                                        .fill(OPSStyle.Colors.text)
                                         .frame(width: 8, height: 8)
                                         .offset(x: 14, y: -14)
                                 }

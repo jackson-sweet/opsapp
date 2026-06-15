@@ -383,7 +383,7 @@ struct PropertySheetView: View {
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                         .stroke(
                                             railing.wallMaterial == material
-                                                ? OPSStyle.Colors.primaryAccent
+                                                ? OPSStyle.Colors.text
                                                 : Color.white.opacity(0.15),
                                             lineWidth: railing.wallMaterial == material ? 2 : 1
                                         )
@@ -434,7 +434,7 @@ struct PropertySheetView: View {
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                         .stroke(
                                             edge.houseEdgeMaterial == material
-                                                ? OPSStyle.Colors.primaryAccent
+                                                ? OPSStyle.Colors.text
                                                 : Color.white.opacity(0.15),
                                             lineWidth: edge.houseEdgeMaterial == material ? 2 : 1
                                         )
@@ -733,7 +733,7 @@ struct PropertySheetView: View {
                     }
                 }
                 .pickerStyle(.menu)
-                .tint(OPSStyle.Colors.primaryAccent)
+                .tint(OPSStyle.Colors.text)
             } else {
                 TextField(label, text: Binding(
                     get: { value },

@@ -177,7 +177,7 @@ struct CalendarFilterView: View {
                         if selectedTaskTypeIds.contains(type.id) {
                             Image(systemName: OPSStyle.Icons.checkmark)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .foregroundColor(OPSStyle.Colors.text)
                         }
                     }
                     .padding(.vertical, OPSStyle.Layout.spacing2_5)
@@ -231,7 +231,7 @@ struct CalendarFilterView: View {
                         if selectedStatuses.contains(status) {
                             Image(systemName: OPSStyle.Icons.checkmark)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .foregroundColor(OPSStyle.Colors.text)
                         }
                     }
                     .padding(.vertical, OPSStyle.Layout.spacing2_5)
@@ -374,7 +374,7 @@ struct CalendarFilterView: View {
         HStack(spacing: 6) {
             Image(systemName: icon)
                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .foregroundColor(OPSStyle.Colors.text)
             Text("\(count) \(label)\(count == 1 ? "" : "s")")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -383,11 +383,11 @@ struct CalendarFilterView: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                .fill(OPSStyle.Colors.primaryAccent.opacity(0.12))
+                .fill(OPSStyle.Colors.surfaceActive)
         )
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.35), lineWidth: 0.5)
+                .stroke(OPSStyle.Colors.text.opacity(0.35), lineWidth: 0.5)
         )
     }
 
@@ -397,12 +397,12 @@ struct CalendarFilterView: View {
         HStack {
             Text(label)
                 .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.text2)
+                .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.text2)
             Spacer()
             if isSelected {
                 Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(OPSStyle.Colors.text)
             }
         }
         .padding(.vertical, OPSStyle.Layout.spacing2_5)
@@ -432,7 +432,7 @@ struct CalendarFilterView: View {
             if isSelected {
                 Image(systemName: OPSStyle.Icons.checkmark)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(OPSStyle.Colors.text)
             }
         }
         .padding(.vertical, OPSStyle.Layout.spacing2_5)
@@ -595,7 +595,7 @@ private struct DropdownSection<Content: View>: View {
 
                     Text(summary.uppercased())
                         .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(summary == "All" ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(summary == "All" ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.text)
                         .lineLimit(1)
 
                     Image(systemName: "chevron.down")

@@ -710,7 +710,7 @@ struct ChipLabel: View {
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                 .stroke(
-                    isActive ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
+                    isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder,
                     lineWidth: OPSStyle.Layout.Border.standard
                 )
         )

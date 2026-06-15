@@ -1958,7 +1958,7 @@ struct TeamMemberPickerSheet: View {
             Button(action: { toggle(member.id) }) {
                 HStack(spacing: CGFloat(OPSStyle.Layout.spacing2_5)) {
                     Image(systemName: activeSelectionIds.contains(member.id) ? "checkmark.circle.fill" : "circle")
-                        .foregroundColor(activeSelectionIds.contains(member.id) ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.text3)
+                        .foregroundColor(activeSelectionIds.contains(member.id) ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
 
                     UserAvatar(user: member, size: 40)

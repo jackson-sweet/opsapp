@@ -277,12 +277,12 @@ struct ProjectSearchSheet: View {
                 HStack(spacing: 6) {
                     Text("FILTERS")
                         .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
-                    
+                        .foregroundColor(hasActiveFilters ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
+
                     ZStack {
                         Image(systemName: OPSStyle.Icons.filter)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                            .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                            .foregroundColor(hasActiveFilters ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
                         
                         if activeFilterCount > 0 {
                             Text("\(activeFilterCount)")
@@ -302,7 +302,7 @@ struct ProjectSearchSheet: View {
                         .fill(showFilters ? OPSStyle.Colors.cardBackground : Color.clear)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(hasActiveFilters ? OPSStyle.Colors.primaryAccent.opacity(0.3) : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
+                                .stroke(hasActiveFilters ? OPSStyle.Colors.text.opacity(0.3) : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 )
             }

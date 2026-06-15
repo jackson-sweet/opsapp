@@ -201,12 +201,12 @@ struct TaskSelectorBar: View {
                             if selectedTask == nil {
                                 Image(systemName: "checkmark")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .foregroundColor(OPSStyle.Colors.text)
                             }
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.vertical, 14)
-                        .background(selectedTask == nil ? OPSStyle.Colors.primaryAccent.opacity(0.1) : Color.clear)
+                        .background(selectedTask == nil ? OPSStyle.Colors.surfaceActive : Color.clear)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -244,12 +244,12 @@ struct TaskSelectorBar: View {
                                 if selectedTask?.id == task.id {
                                     Image(systemName: "checkmark")
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                        .foregroundColor(OPSStyle.Colors.text)
                                 }
                             }
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.vertical, 14)
-                            .background(selectedTask?.id == task.id ? OPSStyle.Colors.primaryAccent.opacity(0.1) : Color.clear)
+                            .background(selectedTask?.id == task.id ? OPSStyle.Colors.surfaceActive : Color.clear)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
                         .buttonStyle(PlainButtonStyle())

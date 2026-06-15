@@ -166,7 +166,7 @@ struct InvoicesListView: View {
                 .padding(.vertical, OPSStyle.Layout.spacing1 + 2)
                 .background(
                     viewModel.selectedFilter == filter
-                    ? OPSStyle.Colors.primaryAccent.opacity(0.2)
+                    ? OPSStyle.Colors.line
                     : OPSStyle.Colors.cardBackgroundDark.opacity(0.6)
                 )
                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
@@ -174,7 +174,7 @@ struct InvoicesListView: View {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                         .stroke(
                             viewModel.selectedFilter == filter
-                            ? OPSStyle.Colors.primaryAccent
+                            ? Color.white.opacity(0.20)
                             : OPSStyle.Colors.cardBorder,
                             lineWidth: OPSStyle.Layout.Border.standard
                         )

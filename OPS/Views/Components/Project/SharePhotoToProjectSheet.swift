@@ -278,7 +278,7 @@ struct SharePhotoToProjectSheet: View {
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.text)
                 } else {
                     Image(systemName: "circle")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))

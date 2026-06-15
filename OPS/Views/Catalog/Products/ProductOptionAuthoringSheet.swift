@@ -708,7 +708,7 @@ private struct ProductOptionEditorSheet: View {
                 }
             }
             .pickerStyle(.segmented)
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
             .accessibilityLabel("Option kind")
             .accessibilityValue(labelForKind(kind))
             .onChange(of: kind) { _, next in
@@ -1179,7 +1179,7 @@ private struct ProductPricingModifierEditorSheet: View {
                 }
             }
             .pickerStyle(.segmented)
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
             .accessibilityLabel("Modifier kind")
             .accessibilityValue(labelForModifierKind(modifierKind))
 

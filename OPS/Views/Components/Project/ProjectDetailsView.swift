@@ -935,7 +935,7 @@ struct ProjectDetailsView: View {
                                     if isSelected {
                                         Image(systemName: "checkmark")
                                             .font(.system(size: 10, weight: .bold))
-                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                            .foregroundColor(OPSStyle.Colors.text)
                                     }
                                 }
                             }

@@ -117,7 +117,7 @@ struct InventoryItemCard: View {
             // Selection stripe (replaces checkbox)
             if isSelectionMode && isSelected {
                 Rectangle()
-                    .fill(OPSStyle.Colors.primaryAccent)
+                    .fill(OPSStyle.Colors.text)
                     .frame(width: 4 * scale)
             }
 
@@ -209,11 +209,11 @@ struct InventoryItemCard: View {
             .padding(.vertical, 8 * scale)
         }
         .frame(height: cardHeight)
-        .background(isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.15) : OPSStyle.Colors.cardBackgroundDark)
+        .background(isSelected ? OPSStyle.Colors.text.opacity(0.15) : OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: isSelected ? 2 : 1)
+                .stroke(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.cardBorder, lineWidth: isSelected ? 2 : 1)
         )
         .contentShape(Rectangle())
         .scaleEffect(isLongPressing ? 0.95 : 1.0)

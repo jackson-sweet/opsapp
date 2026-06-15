@@ -1320,11 +1320,11 @@ struct TaskTypeSheet: View {
                             .padding(.vertical, OPSStyle.Layout.spacing2)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
-                                    .fill(isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.25) : OPSStyle.Colors.surfaceInput)
+                                    .fill(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
-                                    .stroke(isSelected ? OPSStyle.Colors.primaryAccent : Color.clear, lineWidth: 1)
+                                    .stroke(isSelected ? OPSStyle.Colors.text : Color.clear, lineWidth: 1)
                             )
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -1466,7 +1466,7 @@ struct TaskTypeSheet: View {
             GeometryReader { geo in
                 let segW = geo.size.width / CGFloat(modes.count)
                 Rectangle()
-                    .fill(OPSStyle.Colors.primaryAccent)
+                    .fill(OPSStyle.Colors.text)
                     .frame(width: segW, height: 2)
                     .offset(x: segW * CGFloat(selectedIndex))
             }
@@ -1847,7 +1847,7 @@ struct ColorOption: View {
                         )
                         .overlay(
                             Circle()
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: isSelected ? 1.5 : 0)
+                                .stroke(OPSStyle.Colors.text, lineWidth: isSelected ? 1.5 : 0)
                                 .padding(-5)
                         )
                         .scaleEffect(isSelected ? 1.1 : 1.0)

@@ -284,22 +284,22 @@ struct TeamMemberRoleRow: View {
             VStack(spacing: 6) {
                 Image(systemName: iconForRole(role))
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
-                    .foregroundColor(selectedRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .foregroundColor(selectedRole == role ? OPSStyle.Colors.text : OPSStyle.Colors.tertiaryText)
 
                 Text(role.displayName)
                     .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(selectedRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                    .foregroundColor(selectedRole == role ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .fill(selectedRole == role ? OPSStyle.Colors.primaryAccent.opacity(0.1) : Color.clear)
+                    .fill(selectedRole == role ? OPSStyle.Colors.surfaceActive : Color.clear)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(selectedRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(selectedRole == role ? OPSStyle.Colors.text : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(PlainButtonStyle())

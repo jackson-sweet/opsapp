@@ -357,15 +357,15 @@ struct SecurityPINOption: View {
                 
                 ZStack {
                     Circle()
-                        .stroke(isSelected ? 
-                                OPSStyle.Colors.primaryAccent : 
+                        .stroke(isSelected ?
+                                OPSStyle.Colors.text :
                                 OPSStyle.Colors.secondaryText.opacity(0.5),
                                 lineWidth: OPSStyle.Layout.Border.thick)
                         .frame(width: 24, height: 24)
-                    
+
                     if isSelected {
                         Circle()
-                            .fill(OPSStyle.Colors.primaryAccent)
+                            .fill(OPSStyle.Colors.text)
                             .frame(width: 16, height: 16)
                     }
                 }

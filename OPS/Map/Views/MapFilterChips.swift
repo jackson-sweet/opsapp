@@ -51,7 +51,7 @@ struct MapFilterChips: View {
                     RoundedRectangle(cornerRadius: 3)
                         .stroke(
                             isActive
-                                ? OPSStyle.Colors.primaryAccent
+                                ? OPSStyle.Colors.text
                                 : OPSStyle.Colors.line,
                             lineWidth: 1
                         )

@@ -848,7 +848,7 @@ struct NotificationSettingsView: View {
                         .labelsHidden()
                         .datePickerStyle(.compact)
                         .colorScheme(.dark)
-                        .accentColor(OPSStyle.Colors.primaryAccent)
+                        .accentColor(OPSStyle.Colors.text)
                         .scaleEffect(0.9)
                         .frame(height: 36)
                     }

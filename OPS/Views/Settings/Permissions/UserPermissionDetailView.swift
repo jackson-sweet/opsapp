@@ -256,7 +256,7 @@ struct UserPermissionDetailView: View {
             HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: selectedRole == role ? OPSStyle.Icons.checkmarkCircleFill : OPSStyle.Icons.circle)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
-                    .foregroundColor(selectedRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .foregroundColor(selectedRole == role ? OPSStyle.Colors.text : OPSStyle.Colors.tertiaryText)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title.uppercased())

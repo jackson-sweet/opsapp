@@ -96,7 +96,7 @@ struct TutorialExperienceView: View {
     private func dotColor(for index: Int) -> Color {
         let current = state.currentPhase.rawValue
         if index == current {
-            return OPSStyle.Colors.primaryAccent
+            return OPSStyle.Colors.text
         } else if index < current {
             return Color.white.opacity(0.4)
         } else {

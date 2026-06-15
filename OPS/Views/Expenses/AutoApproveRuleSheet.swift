@@ -106,7 +106,7 @@ struct AutoApproveRuleSheet: View {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(
                         selectedType == type
-                        ? OPSStyle.Colors.primaryAccent
+                        ? OPSStyle.Colors.text
                         : OPSStyle.Colors.cardBorder,
                         lineWidth: OPSStyle.Layout.Border.standard
                     )

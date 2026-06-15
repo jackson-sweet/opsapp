@@ -295,8 +295,12 @@ struct ColumnMappingView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(OPSStyle.Colors.primaryAccent)
+            .background(OPSStyle.Colors.line)
             .cornerRadius(OPSStyle.Layout.modalRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.modalRadius)
+                    .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.standard)
+            )
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Remove \(name) from bulk tags")

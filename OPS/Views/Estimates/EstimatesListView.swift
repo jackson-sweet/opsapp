@@ -155,7 +155,7 @@ struct EstimatesListView: View {
                                 .padding(.vertical, OPSStyle.Layout.spacing1 + 2)
                                 .background(
                                     viewModel.selectedFilter == filter
-                                    ? OPSStyle.Colors.primaryAccent.opacity(0.2)
+                                    ? OPSStyle.Colors.surfaceActive
                                     : OPSStyle.Colors.cardBackgroundDark.opacity(0.6)
                                 )
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
@@ -163,7 +163,7 @@ struct EstimatesListView: View {
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                         .stroke(
                                             viewModel.selectedFilter == filter
-                                            ? OPSStyle.Colors.primaryAccent
+                                            ? OPSStyle.Colors.text
                                             : OPSStyle.Colors.cardBorder,
                                             lineWidth: OPSStyle.Layout.Border.standard
                                         )

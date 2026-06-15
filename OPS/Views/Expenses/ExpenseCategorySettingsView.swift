@@ -227,7 +227,7 @@ struct ExpenseCategorySettingsView: View {
                                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                                         .background(
                                             newCategoryIcon == icon
-                                            ? OPSStyle.Colors.primaryAccent.opacity(0.2)
+                                            ? OPSStyle.Colors.surfaceActive
                                             : OPSStyle.Colors.cardBackgroundDark.opacity(0.6)
                                         )
                                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
@@ -235,7 +235,7 @@ struct ExpenseCategorySettingsView: View {
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                                 .stroke(
                                                     newCategoryIcon == icon
-                                                    ? OPSStyle.Colors.primaryAccent
+                                                    ? OPSStyle.Colors.primaryText
                                                     : OPSStyle.Colors.cardBorder,
                                                     lineWidth: OPSStyle.Layout.Border.standard
                                                 )

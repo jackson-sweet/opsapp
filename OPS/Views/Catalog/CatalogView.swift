@@ -174,7 +174,7 @@ struct CatalogView: View {
                                 Color.clear
                                 if selectedSegment == segment {
                                     Rectangle()
-                                        .fill(OPSStyle.Colors.primaryAccent)
+                                        .fill(OPSStyle.Colors.text)
                                         .frame(height: 2)
                                 }
                             }

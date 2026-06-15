@@ -179,7 +179,7 @@ struct DataStorageSettingsView: View {
                         }
                     }
                 ), in: 0...sliderSteps, step: 1)
-                .accentColor(OPSStyle.Colors.primaryAccent)
+                .accentColor(OPSStyle.Colors.text)
 
                 HStack(alignment: .center, spacing: 0) {
                     ForEach(0..<monthOptions.count, id: \.self) { index in

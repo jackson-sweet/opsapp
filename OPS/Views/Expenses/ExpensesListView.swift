@@ -204,12 +204,12 @@ struct ExpensesListView: View {
                 .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
                 .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                 .padding(.vertical, OPSStyle.Layout.spacing1)
-                .background(isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.25) : OPSStyle.Colors.cardBackgroundDark)
+                .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(
-                            isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
+                            isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder,
                             lineWidth: OPSStyle.Layout.Border.standard
                         )
                 )
@@ -319,7 +319,7 @@ struct ExpensesListView: View {
                         Rectangle()
                             .fill(
                                 selectedTab == tab
-                                    ? OPSStyle.Colors.primaryAccent
+                                    ? OPSStyle.Colors.primaryText
                                     : Color.clear
                             )
                             .frame(height: 2)

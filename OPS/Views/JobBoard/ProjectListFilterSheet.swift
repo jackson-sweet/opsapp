@@ -103,16 +103,20 @@ struct ProjectListFilterSheet: View {
                                 .foregroundColor(OPSStyle.Colors.background)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(segment == .filter ? OPSStyle.Colors.background : OPSStyle.Colors.primaryAccent)
+                                .background(OPSStyle.Colors.text)
                                 .clipShape(Capsule())
                         }
                     }
-                    .foregroundColor(segment == option ? OPSStyle.Colors.background : OPSStyle.Colors.primaryText)
+                    .foregroundColor(segment == option ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(segment == option ? OPSStyle.Colors.primaryAccent : Color.clear)
+                            .fill(segment == option ? OPSStyle.Colors.surfaceActive : Color.clear)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .strokeBorder(segment == option ? OPSStyle.Colors.text : Color.clear, lineWidth: 1)
                     )
                 }
                 .buttonStyle(.plain)
@@ -206,7 +210,7 @@ struct ProjectListFilterSheet: View {
                     if sortOption == option {
                         Image(systemName: OPSStyle.Icons.checkmark)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .foregroundColor(OPSStyle.Colors.text)
                     }
                 }
                 .padding(.vertical, 14)
@@ -332,7 +336,7 @@ struct ProjectListFilterSheet: View {
 
             Image(systemName: isSelected ? "checkmark.square.fill" : "square")
                 .font(.system(size: OPSStyle.Layout.IconSize.md))
-                .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.tertiaryText)
         }
         .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .padding(.horizontal, OPSStyle.Layout.spacing3)

@@ -171,7 +171,7 @@ struct AddFamilySheet: View {
                         Image(systemName: selectedTagIds.contains(tag.id) ? "checkmark.square.fill" : "square")
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(selectedTagIds.contains(tag.id)
-                                             ? OPSStyle.Colors.primaryAccent
+                                             ? OPSStyle.Colors.text
                                              : OPSStyle.Colors.tertiaryText)
                         Text(tag.name.uppercased())
                             .font(OPSStyle.Typography.metadata)

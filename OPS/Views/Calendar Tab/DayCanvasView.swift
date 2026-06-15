@@ -470,7 +470,7 @@ struct DayPageView: View {
             if isSelectMode {
                 Image(systemName: selectedTaskIds.contains(task.id) ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 20))
-                    .foregroundColor(selectedTaskIds.contains(task.id) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .foregroundColor(selectedTaskIds.contains(task.id) ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
                     .padding(OPSStyle.Layout.spacing2)
             }
         }

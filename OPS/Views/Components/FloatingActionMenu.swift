@@ -1562,7 +1562,7 @@ fileprivate struct FABCustomizeSheet: View {
 
                                             Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
                                                 .font(.system(size: 20))
-                                                .foregroundColor(isEnabled ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                                                .foregroundColor(isEnabled ? OPSStyle.Colors.text : OPSStyle.Colors.tertiaryText)
                                         }
                                         .padding(.horizontal, OPSStyle.Layout.spacing3)
                                         .padding(.vertical, 14)

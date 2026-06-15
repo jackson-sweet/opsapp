@@ -110,14 +110,14 @@ struct LineItemEditSheet: View {
                                     .padding(.vertical, OPSStyle.Layout.spacing1 + 2)
                                     .background(
                                         type == t
-                                        ? OPSStyle.Colors.primaryAccent.opacity(0.2)
+                                        ? OPSStyle.Colors.surfaceActive
                                         : OPSStyle.Colors.cardBackgroundDark.opacity(0.6)
                                     )
                                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                             .stroke(
-                                                type == t ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
+                                                type == t ? OPSStyle.Colors.text : OPSStyle.Colors.cardBorder,
                                                 lineWidth: OPSStyle.Layout.Border.standard
                                             )
                                     )

@@ -329,7 +329,7 @@ struct TaskTypeReminderEditorSheet: View {
                             .foregroundColor(leadTimeDays == days ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
                             .padding(.horizontal, 10)
                             .padding(.vertical, OPSStyle.Layout.spacing2)
-                            .background(leadTimeDays == days ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackgroundDark)
+                            .background(leadTimeDays == days ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.cardBackgroundDark)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                 }

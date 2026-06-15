@@ -157,9 +157,10 @@ struct AppHeader: View {
             HStack {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     Text(title)
-                        .font(OPSStyle.Typography.subtitle)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                    
+                        .font(OPSStyle.Typography.screenTitle(for: title))
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
+
                     HStack(spacing: OPSStyle.Layout.spacing2) {
                         if let company = dataController.getCurrentUserCompany() {
                             Text(company.name.uppercased())
@@ -321,8 +322,9 @@ struct AppHeader: View {
             HStack {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(title)
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .font(OPSStyle.Typography.screenTitle(for: title))
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
 
                     // Show date subtitle for schedule view
                     if headerType == .schedule {

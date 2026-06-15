@@ -305,6 +305,21 @@ enum OPSStyle {
         /// Display heading — Cake Mono Light 30pt (auth h1s, wizard step titles)
         static let display = Font.display
 
+        /// Screen title — Cake Mono Light 28pt. The canonical screen / nav-bar
+        /// header per MOBILE.md §2.1: uppercase, left-aligned, `Colors.text`.
+        /// For dynamic titles, prefer `screenTitle(for:)` so long strings drop
+        /// to 22pt automatically.
+        static let screenTitle = Font.screenTitle
+
+        /// Long-title variant of `screenTitle` — Cake Mono Light 22pt (>14 chars).
+        static let screenTitleLong = Font.screenTitleLong
+
+        /// Picks the screen-title font by length: 28pt normally, 22pt once the
+        /// title exceeds 14 characters (MOBILE.md §2.1 long-title rule).
+        static func screenTitle(for title: String) -> Font {
+            title.count > 14 ? Font.screenTitleLong : Font.screenTitle
+        }
+
         /// Section heading — Cake Mono Light 18pt (settings subheads)
         static let section = Font.section
 
@@ -1037,3 +1052,80 @@ struct BlurView: UIViewRepresentable {
 // The failable `init?(hex:)` lives in OPS/Views/Components/UserAvatar.swift and
 // handles both 6- and 8-char hex (with or without `#`). All call sites use the
 // failable form with `?? fallback` or `if let c = Color(hex:)`.
+
+// MARK: - Global Navigation Bar Appearance (MOBILE.md §2.1 / §13)
+
+extension OPSStyle {
+    /// Installs the global UIKit navigation-bar appearance so every native
+    /// SwiftUI `.navigationTitle` renders in the OPS screen-title voice instead
+    /// of the system font: Cake Mono Light in `Colors.text`. Per MOBILE.md §2.1
+    /// the bar is transparent at the scroll-top and becomes glass
+    /// (`rgba(10,10,10,0.80)` + blur + bottom hairline) once content scrolls
+    /// under it; §13 bans the iOS large-title collapse, so titles read inline.
+    ///
+    /// Call once at launch (AppDelegate.didFinishLaunching), before any nav bar
+    /// renders. This single config conforms every native-title screen at once;
+    /// screens that need the canonical left-aligned 28pt header adopt
+    /// `OPSScreenHeader` / `AppHeader` instead of the native bar.
+    static func configureNavigationBarAppearance() {
+        let textColor = UIColor(named: "TextPrimary") ?? .white
+        let secondaryColor = UIColor(named: "TextSecondary") ?? textColor
+
+        // Inline title — Cake Mono Light. Native inline titles are centered and
+        // height-capped, so 18pt; the left-aligned 28pt canonical header is the
+        // OPSScreenHeader / AppHeader, not the native bar.
+        let inlineTitleFont = UIFont(name: "CakeMono-Light", size: 18)
+            ?? .systemFont(ofSize: 18, weight: .light)
+        // Large title — Cake Mono Light 28pt, only rendered if a screen opts
+        // into a large title; kept on-brand for that case.
+        let largeTitleFont = UIFont(name: "CakeMono-Light", size: 28)
+            ?? .systemFont(ofSize: 28, weight: .light)
+        // Back-button label — JetBrains Mono tactical voice.
+        let backFont = UIFont(name: "JetBrainsMono-Regular", size: 13)
+            ?? .systemFont(ofSize: 13)
+
+        let titleAttrs: [NSAttributedString.Key: Any] = [
+            .font: inlineTitleFont,
+            .foregroundColor: textColor,
+        ]
+        let largeTitleAttrs: [NSAttributedString.Key: Any] = [
+            .font: largeTitleFont,
+            .foregroundColor: textColor,
+        ]
+        let backAttrs: [NSAttributedString.Key: Any] = [
+            .font: backFont,
+            .foregroundColor: secondaryColor,
+            .kern: 0.6,
+        ]
+        let backButtonAppearance = UIBarButtonItemAppearance()
+        backButtonAppearance.normal.titleTextAttributes = backAttrs
+        backButtonAppearance.highlighted.titleTextAttributes = backAttrs
+        backButtonAppearance.focused.titleTextAttributes = backAttrs
+
+        // Scrolled state (standardAppearance) — glass + bottom hairline (§2.1).
+        let scrolled = UINavigationBarAppearance()
+        scrolled.configureWithDefaultBackground()
+        scrolled.backgroundColor = UIColor(white: 10.0 / 255.0, alpha: 0.80)
+        scrolled.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
+        scrolled.shadowColor = UIColor(white: 1.0, alpha: 0.10) // --line hairline
+        scrolled.titleTextAttributes = titleAttrs
+        scrolled.largeTitleTextAttributes = largeTitleAttrs
+        scrolled.backButtonAppearance = backButtonAppearance
+
+        // Scroll-top state (scrollEdgeAppearance) — transparent, no hairline (§2.1).
+        let atTop = UINavigationBarAppearance()
+        atTop.configureWithTransparentBackground()
+        atTop.backgroundColor = .clear
+        atTop.shadowColor = .clear
+        atTop.titleTextAttributes = titleAttrs
+        atTop.largeTitleTextAttributes = largeTitleAttrs
+        atTop.backButtonAppearance = backButtonAppearance
+
+        let navBar = UINavigationBar.appearance()
+        navBar.standardAppearance = scrolled
+        navBar.compactAppearance = scrolled
+        navBar.scrollEdgeAppearance = atTop
+        navBar.compactScrollEdgeAppearance = atTop
+        navBar.tintColor = textColor // chevron + bar-button glyph tint
+    }
+}

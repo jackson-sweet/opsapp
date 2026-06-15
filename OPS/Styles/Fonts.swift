@@ -33,6 +33,20 @@ extension Font {
         return Font.custom("CakeMono-Light", size: 30)
     }
 
+    /// Screen title — Cake Mono Light 28pt. The canonical screen / nav-bar
+    /// header voice (MOBILE.md §2.1): uppercase, left-aligned, `Colors.text`.
+    /// Drops to `screenTitleLong` (22pt) for long strings — prefer the
+    /// `OPSStyle.Typography.screenTitle(for:)` helper which picks by length.
+    public static var screenTitle: Font {
+        return Font.custom("CakeMono-Light", size: 28)
+    }
+
+    /// Long-title variant of `screenTitle` — Cake Mono Light 22pt. Used when
+    /// the title string exceeds 14 characters (MOBILE.md §2.1).
+    public static var screenTitleLong: Font {
+        return Font.custom("CakeMono-Light", size: 22)
+    }
+
     /// Section heading — Cake Mono Light 18pt (settings subheads, admin section headers)
     public static var section: Font {
         return Font.custom("CakeMono-Light", size: 18)

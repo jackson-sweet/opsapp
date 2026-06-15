@@ -23,22 +23,16 @@ struct OnboardingPreviewView: View {
 
             VStack(spacing: 0) {
                 // Header
-                ZStack {
-                    HStack {
+                OPSScreenHeader(
+                    "Onboarding Preview",
+                    leading: {
                         Button(action: { dismiss() }) {
                             Image(systemName: OPSStyle.Icons.close)
                                 .font(.system(size: 20))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
-
-                        Spacer()
                     }
-
-                    Text("Onboarding Preview")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(.white)
-                }
-                .padding()
+                )
                 .background(OPSStyle.Colors.cardBackgroundDark)
 
                 ScrollView {

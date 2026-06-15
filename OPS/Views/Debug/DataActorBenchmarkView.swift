@@ -45,20 +45,10 @@ struct DataActorBenchmarkView: View {
     // MARK: - Header
 
     private var header: some View {
-        ZStack {
-            HStack {
-                Button(action: { dismiss() }) {
-                    Image(systemName: OPSStyle.Icons.close)
-                        .font(.system(size: 20))
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-                Spacer()
-            }
-            Text("DataActor Benchmark")
-                .font(OPSStyle.Typography.title)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-        }
-        .padding()
+        OPSScreenHeader(
+            "DataActor Benchmark",
+            leading: { OPSHeaderCloseButton(action: { dismiss() }) }
+        )
         .background(OPSStyle.Colors.cardBackgroundDark)
     }
 

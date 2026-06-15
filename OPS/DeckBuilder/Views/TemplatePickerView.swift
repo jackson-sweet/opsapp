@@ -71,29 +71,14 @@ struct TemplatePickerView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+        OPSScreenHeader(
+            "Choose a Starting Point",
+            leading: {
+                OPSHeaderCloseButton {
+                    dismiss()
+                }
             }
-
-            Spacer()
-
-            Text("Choose a Starting Point")
-                .font(OPSStyle.Typography.heading)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-
-            Spacer()
-
-            // Spacer to balance the X button
-            Color.clear
-                .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-        }
-        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        )
         .background(OPSStyle.Colors.cardBackground)
     }
 

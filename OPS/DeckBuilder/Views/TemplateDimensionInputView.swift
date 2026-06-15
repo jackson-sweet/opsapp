@@ -135,46 +135,41 @@ struct TemplateDimensionInputView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-            }
-
-            Spacer()
-
-            Text(templateType.displayName)
-                .font(OPSStyle.Typography.heading)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-
-            Spacer()
-
-            // Mic button
-            Button {
-                // Dismiss keyboard before activating mic
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                withAnimation(OPSStyle.Animation.spring) {
-                    if voiceInput.isListening {
-                        voiceInput.stopListening()
-                        showingVoiceOverlay = false
-                    } else {
-                        showingVoiceOverlay = true
-                        voiceInput.startListening()
-                    }
+        OPSScreenHeader(
+            templateType.displayName,
+            leading: {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                 }
-            } label: {
-                Image(systemName: voiceInput.isListening ? "mic.fill" : "mic")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(voiceInput.isListening ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent)
-                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            },
+            trailing: {
+                // Mic button
+                Button {
+                    // Dismiss keyboard before activating mic
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    withAnimation(OPSStyle.Animation.spring) {
+                        if voiceInput.isListening {
+                            voiceInput.stopListening()
+                            showingVoiceOverlay = false
+                        } else {
+                            showingVoiceOverlay = true
+                            voiceInput.startListening()
+                        }
+                    }
+                } label: {
+                    Image(systemName: voiceInput.isListening ? "mic.fill" : "mic")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(voiceInput.isListening ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                }
+                .disabled(!voiceInput.isAuthorized && voiceInput.authorizationStatus != .notDetermined)
             }
-            .disabled(!voiceInput.isAuthorized && voiceInput.authorizationStatus != .notDetermined)
-        }
-        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        )
         .background(OPSStyle.Colors.cardBackground)
     }
 

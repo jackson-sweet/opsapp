@@ -61,22 +61,18 @@ struct CertificationsSettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                     // Header
-                    HStack {
-                        Button(action: {
-                            dismiss()
-                        }) {
-                            Image(systemName: "arrow.left")
-                                .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    OPSScreenHeader(
+                        "Certifications & Training",
+                        leading: {
+                            Button(action: {
+                                dismiss()
+                            }) {
+                                Image(systemName: "arrow.left")
+                                    .font(.system(size: OPSStyle.Layout.IconSize.md))
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            }
                         }
-                        
-                        Text("Certifications & Training")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                        
-                        Spacer()
-                    }
-                    .padding()
+                    )
                     
                     if isLoading {
                         loadingView

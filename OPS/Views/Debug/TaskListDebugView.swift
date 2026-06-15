@@ -25,28 +25,23 @@ struct TaskListDebugView: View {
             
             VStack(spacing: 0) {
                 // Header
-                HStack {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: OPSStyle.Icons.close)
-                            .font(.system(size: 20))
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                OPSScreenHeader(
+                    "Task List Debug",
+                    leading: {
+                        Button(action: { dismiss() }) {
+                            Image(systemName: OPSStyle.Icons.close)
+                                .font(.system(size: 20))
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        }
+                    },
+                    trailing: {
+                        Button(action: fetchTasks) {
+                            Image(systemName: OPSStyle.Icons.sync)
+                                .font(.system(size: 20))
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
                     }
-                    
-                    Spacer()
-                    
-                    Text("Task List Debug")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(.white)
-                    
-                    Spacer()
-                    
-                    Button(action: fetchTasks) {
-                        Image(systemName: OPSStyle.Icons.sync)
-                            .font(.system(size: 20))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                }
-                .padding()
+                )
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 
                 if isLoading {

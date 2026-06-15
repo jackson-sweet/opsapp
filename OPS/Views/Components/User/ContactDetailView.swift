@@ -481,33 +481,22 @@ struct ContactDetailView: View {
     // MARK: - Custom Navigation Bar
     
     private var customNavigationBar: some View {
-        HStack {
-            // Back button
-            Button(action: {
-                dismiss()
-            }) {
-                Image(systemName: "chevron.left")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-            }
-            .frame(width: 44, height: 44)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            
-            Spacer()
-            
-            // Title
-            Text(isClient ? "CLIENT" : "TEAM MEMBER")
-                .font(OPSStyle.Typography.title)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-            
-            Spacer()
-
-            // Empty space to balance the layout
-            Color.clear
+        OPSScreenHeader(
+            isClient ? "CLIENT" : "TEAM MEMBER",
+            leading: {
+                // Back button
+                Button(action: {
+                    dismiss()
+                }) {
+                    Image(systemName: "chevron.left")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
                 .frame(width: 44, height: 44)
-        }
-        .padding(.horizontal)
+                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+            }
+        )
     }
     
     // MARK: - Contact Preview Card

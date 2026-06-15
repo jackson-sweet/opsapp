@@ -67,26 +67,19 @@ struct PerspectiveCorrectionView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Header
-            HStack {
-                Button {
-                    lightImpact.impactOccurred()
-                    onCancel()
-                } label: {
-                    Text("Cancel")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+            OPSScreenHeader(
+                "Adjust Corners",
+                leading: {
+                    Button {
+                        lightImpact.impactOccurred()
+                        onCancel()
+                    } label: {
+                        Text("Cancel")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
                 }
-                Spacer()
-                Text("Adjust Corners")
-                    .font(OPSStyle.Typography.heading)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                Spacer()
-                // Symmetry spacer so the title is visually centred
-                Text("Cancel")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(.clear)
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing4)
+            )
             .padding(.top, OPSStyle.Layout.spacing4)
             .padding(.bottom, OPSStyle.Layout.spacing3)
 

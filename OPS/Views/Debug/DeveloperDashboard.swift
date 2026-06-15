@@ -80,16 +80,16 @@ struct DeveloperDashboard: View {
             
             VStack(spacing: 0) {
                 // Header
-                ZStack {
-                    HStack {
+                OPSScreenHeader(
+                    "Developer Tools",
+                    leading: {
                         Button(action: { dismiss() }) {
                             Image(systemName: OPSStyle.Icons.close)
                                 .font(.system(size: 20))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
-                        
-                        Spacer()
-                        
+                    },
+                    trailing: {
                         // Exit Developer Mode button
                         Button {
                             exitDeveloperMode()
@@ -109,12 +109,7 @@ struct DeveloperDashboard: View {
                             )
                         }
                     }
-                    
-                    Text("Developer Tools")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-                .padding()
+                )
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 
                 // Tools Grid

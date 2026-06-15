@@ -151,37 +151,32 @@ struct SketchCleanupView: View {
     // MARK: - Top Bar
 
     private var topBar: some View {
-        HStack {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+        OPSScreenHeader(
+            "Review Scan",
+            leading: {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                }
+            },
+            trailing: {
+                // Import as-is (skip cleanup)
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    importToCanvas()
+                } label: {
+                    Text("Import")
+                        .font(OPSStyle.Typography.button)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .frame(height: OPSStyle.Layout.touchTargetMin)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                }
             }
-
-            Spacer()
-
-            Text("Review Scan")
-                .font(OPSStyle.Typography.heading)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-
-            Spacer()
-
-            // Import as-is (skip cleanup)
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                importToCanvas()
-            } label: {
-                Text("Import")
-                    .font(OPSStyle.Typography.button)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .frame(height: OPSStyle.Layout.touchTargetMin)
-                    .padding(.horizontal, OPSStyle.Layout.spacing2)
-            }
-        }
-        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        )
         .background(OPSStyle.Colors.cardBackground)
     }
 

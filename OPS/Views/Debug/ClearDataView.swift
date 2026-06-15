@@ -49,26 +49,10 @@ struct ClearDataView: View {
             
             VStack(spacing: 0) {
                 // Header
-                HStack {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: OPSStyle.Icons.close)
-                            .font(.system(size: 20))
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-                    
-                    Spacer()
-                    
-                    Text("Clear Local Data")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(.white)
-                    
-                    Spacer()
-                    
-                    // Placeholder for symmetry
-                    Color.clear
-                        .frame(width: 20, height: 20)
-                }
-                .padding()
+                OPSScreenHeader(
+                    "Clear Local Data",
+                    leading: { OPSHeaderCloseButton(action: { dismiss() }) }
+                )
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 
                 ScrollView {

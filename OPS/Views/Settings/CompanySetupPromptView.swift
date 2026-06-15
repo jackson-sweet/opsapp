@@ -120,8 +120,9 @@ struct CompanySetupPromptView: View {
                 // Header
                 HStack {
                     Text(headerTitle)
-                        .font(OPSStyle.Typography.headingBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .font(OPSStyle.Typography.pageTitle)
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
 
                     Spacer()
 

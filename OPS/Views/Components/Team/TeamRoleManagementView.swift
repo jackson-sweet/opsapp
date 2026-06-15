@@ -417,8 +417,9 @@ struct RolePickerSheet: View {
                     // Header
                     VStack(spacing: OPSStyle.Layout.spacing2) {
                         Text("Select Role")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .font(OPSStyle.Typography.pageTitle)
+                            .textCase(.uppercase)
+                            .foregroundColor(OPSStyle.Colors.text)
 
                         Text(memberName)
                             .font(OPSStyle.Typography.body)

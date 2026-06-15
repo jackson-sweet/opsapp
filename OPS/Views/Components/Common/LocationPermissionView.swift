@@ -28,8 +28,9 @@ struct LocationPermissionView: View {
                 
                 // Title
                 Text("Location Access Required")
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .font(OPSStyle.Typography.pageTitle)
+                    .textCase(.uppercase)
+                    .foregroundColor(OPSStyle.Colors.text)
                     .multilineTextAlignment(.center)
                 
                 // Description

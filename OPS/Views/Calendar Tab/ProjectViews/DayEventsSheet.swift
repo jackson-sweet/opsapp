@@ -53,8 +53,9 @@ struct DayEventsSheet: View {
             HStack {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(dayOfWeek)
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .font(OPSStyle.Typography.pageTitle)
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
                     
                     Text(monthDayText)
                         .font(OPSStyle.Typography.caption)

@@ -49,8 +49,9 @@ struct ScaleConflictSheet: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("Dimension Mismatch")
-                .font(OPSStyle.Typography.heading)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+                .font(OPSStyle.Typography.pageTitle)
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.text)
 
             Text("Some handwritten dimensions don't match the drawn proportions.")
                 .font(OPSStyle.Typography.body)

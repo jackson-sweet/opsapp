@@ -113,8 +113,9 @@ struct ProjectBioSheet: View {
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             Text(project.title.uppercased())
-                .font(OPSStyle.Typography.title)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+                .font(OPSStyle.Typography.pageTitle)
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.text)
 
             Text(project.effectiveClientName.uppercased())
                 .font(OPSStyle.Typography.caption)

@@ -319,8 +319,9 @@ struct ProfileSettingsView: View {
 
             VStack(spacing: OPSStyle.Layout.spacing4) {
                 Text("Reset Password")
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .font(OPSStyle.Typography.pageTitle)
+                    .textCase(.uppercase)
+                    .foregroundColor(OPSStyle.Colors.text)
                     .padding(.top, OPSStyle.Layout.spacing4)
 
                 if !passwordResetSuccess {
@@ -412,8 +413,9 @@ struct ProfileSettingsView: View {
                             .padding(.top, OPSStyle.Layout.spacing3_5)
 
                         Text("Reset link sent")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .font(OPSStyle.Typography.pageTitle)
+                            .textCase(.uppercase)
+                            .foregroundColor(OPSStyle.Colors.text)
 
                         Text("We've sent a password reset link to your email. Please check your inbox and follow the instructions to reset your password.")
                             .font(OPSStyle.Typography.body)
@@ -476,8 +478,9 @@ struct ProfileSettingsView: View {
                 VStack(spacing: OPSStyle.Layout.spacing1){
                     // Title
                     Text("DELETE ACCOUNT")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .font(OPSStyle.Typography.pageTitle)
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
 
                     // Warning message
                     VStack(spacing: OPSStyle.Layout.spacing3) {

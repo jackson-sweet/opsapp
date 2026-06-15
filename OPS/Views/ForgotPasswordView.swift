@@ -63,8 +63,9 @@ struct ForgotPasswordView: View {
             // Header
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("RESET PASSWORD")
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .font(OPSStyle.Typography.pageTitle)
+                    .textCase(.uppercase)
+                    .foregroundColor(OPSStyle.Colors.text)
 
                 Text("Enter your email and we'll send instructions to reset your password.")
                     .font(OPSStyle.Typography.body)

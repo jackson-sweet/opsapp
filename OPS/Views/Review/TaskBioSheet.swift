@@ -125,8 +125,9 @@ struct TaskBioSheet: View {
 
             // Task title
             Text(task.displayTitle.uppercased())
-                .font(OPSStyle.Typography.title)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+                .font(OPSStyle.Typography.pageTitle)
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.text)
 
             // Status badge
             Text(task.status.displayName.uppercased())

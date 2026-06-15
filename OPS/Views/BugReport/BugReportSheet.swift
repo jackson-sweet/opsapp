@@ -57,8 +57,9 @@ struct BugReportSheet: View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("Report a Bug")
-                        .font(OPSStyle.Typography.heading)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .font(OPSStyle.Typography.pageTitle)
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {

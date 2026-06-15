@@ -17,8 +17,9 @@ struct ImagePickerView: View {
     var body: some View {
         VStack(spacing: OPSStyle.Layout.spacing3_5) {
             Text("Select Profile Image")
-                .font(OPSStyle.Typography.heading)
-                .bold()
+                .font(OPSStyle.Typography.pageTitle)
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.text)
                 .padding(.top)
             
             if let selectedImage = selectedImage {

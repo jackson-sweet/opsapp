@@ -197,8 +197,9 @@ struct SecuritySettingsView: View {
 
             VStack(spacing: OPSStyle.Layout.spacing4) {
                 Text("Reset Password")
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .font(OPSStyle.Typography.pageTitle)
+                    .textCase(.uppercase)
+                    .foregroundColor(OPSStyle.Colors.text)
                     .padding(.top, OPSStyle.Layout.spacing4)
 
                 if !passwordResetSuccess {
@@ -442,8 +443,9 @@ struct PINSetupSheet: View {
                     if !showConfirmation {
                         // Enter new PIN
                         Text("ENTER NEW 4-DIGIT PIN")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .font(OPSStyle.Typography.pageTitle)
+                            .textCase(.uppercase)
+                            .foregroundColor(OPSStyle.Colors.text)
 
                         SecureField("", text: $enteredPIN)
                             .keyboardType(.numberPad)
@@ -478,8 +480,9 @@ struct PINSetupSheet: View {
                     } else {
                         // Confirm PIN
                         Text("CONFIRM PIN")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .font(OPSStyle.Typography.pageTitle)
+                            .textCase(.uppercase)
+                            .foregroundColor(OPSStyle.Colors.text)
 
                         SecureField("", text: $confirmedPIN)
                             .keyboardType(.numberPad)

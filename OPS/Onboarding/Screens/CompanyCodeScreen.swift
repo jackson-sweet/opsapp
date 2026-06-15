@@ -298,8 +298,9 @@ struct InviteTeamSheet: View {
                 // Header
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     Text("GET YOUR CREW ON OPS")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .font(OPSStyle.Typography.pageTitle)
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
 
                     Text("Share this code. They'll download the app and enter it to join \(companyName).")
                         .font(OPSStyle.Typography.body)

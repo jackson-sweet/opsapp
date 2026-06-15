@@ -18,8 +18,9 @@ struct EstimatePreviewSheet: View {
                     // Header
                     VStack(spacing: OPSStyle.Layout.spacing1) {
                         Text("GENERATE ESTIMATE")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .font(OPSStyle.Typography.pageTitle)
+                            .textCase(.uppercase)
+                            .foregroundColor(OPSStyle.Colors.text)
 
                         Text("\(lineItems.count) line items from deck design")
                             .font(OPSStyle.Typography.caption)

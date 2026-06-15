@@ -22,8 +22,9 @@ struct AccessDeniedSheet: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             Text("ACCESS RESTRICTED")
-                .font(OPSStyle.Typography.largeTitle)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+                .font(OPSStyle.Typography.pageTitle)
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.text)
 
             Text(message)
                 .font(OPSStyle.Typography.body)

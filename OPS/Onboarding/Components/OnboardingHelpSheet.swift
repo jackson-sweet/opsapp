@@ -43,8 +43,9 @@ struct OnboardingHelpSheet: View {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                 // Title
                 Text(title)
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .font(OPSStyle.Typography.pageTitle)
+                    .textCase(.uppercase)
+                    .foregroundColor(OPSStyle.Colors.text)
 
                 // Description
                 Text(description)

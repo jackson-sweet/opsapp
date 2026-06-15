@@ -43,8 +43,9 @@ struct ContactDetailSheet: View {
                 // Name and role
                 VStack(spacing: OPSStyle.Layout.spacing1) {
                     Text(name)
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .font(OPSStyle.Typography.pageTitle)
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
                     
                     Text(role)
                         .font(OPSStyle.Typography.subtitle)

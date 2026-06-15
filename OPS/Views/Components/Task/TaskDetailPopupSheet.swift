@@ -116,8 +116,9 @@ struct TaskDetailPopupSheet: View {
 
             // Title
             Text(task.displayTitle)
-                .font(OPSStyle.Typography.headingBold)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+                .font(OPSStyle.Typography.pageTitle)
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.text)
                 .opacity(task.status == .completed ? 0.5 : 1.0)
 
             // Notes (if present)

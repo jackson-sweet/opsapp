@@ -114,8 +114,8 @@ struct ActivityTabView: View {
                             isOwnNote: notesViewModel.isOwnNote(note),
                             mentionNames: notesViewModel.mentionNames,
                             allTeamMembers: notesViewModel.allTeamMembers,
-                            onDelete: {
-                                Task { await notesViewModel.deleteNote(note) }
+                            onDelete: { deletePhoto in
+                                Task { await notesViewModel.deleteNote(note, deletePhoto: deletePhoto) }
                             },
                             onEdit: { newContent in
                                 Task { await notesViewModel.updateNoteContent(note, newContent: newContent) }

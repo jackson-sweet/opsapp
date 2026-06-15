@@ -168,7 +168,7 @@ struct JobBoardView: View {
                             }
                             .onChange(of: tutorialPhase) { oldPhase, newPhase in
                                 if tutorialMode && newPhase == .projectListStatusDemo {
-                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                    withAnimation(OPSStyle.Animation.panel) {
                                         selectedSection = .projects
                                     }
                                 }
@@ -205,7 +205,7 @@ struct JobBoardView: View {
                             .wizardTarget("open_filters")
 
                             Button(action: {
-                                withAnimation(.easeInOut(duration: 0.2)) { activeOnly.toggle() }
+                                withAnimation(OPSStyle.Animation.panel) { activeOnly.toggle() }
                             }) {
                                 Text("ACTIVE ONLY")
                                     .font(OPSStyle.Typography.smallCaption)
@@ -223,7 +223,7 @@ struct JobBoardView: View {
                             }
 
                             Button(action: {
-                                withAnimation(.easeInOut(duration: 0.2)) { assignedToMe.toggle() }
+                                withAnimation(OPSStyle.Animation.panel) { assignedToMe.toggle() }
                             }) {
                                 Text("ASSIGNED TO ME")
                                     .font(OPSStyle.Typography.smallCaption)
@@ -242,7 +242,7 @@ struct JobBoardView: View {
 
                             if selectedSection == .projects && permissionStore.can("projects.edit") {
                                 Button(action: {
-                                    withAnimation(.easeInOut(duration: 0.2)) { prioritizeMode.toggle() }
+                                    withAnimation(OPSStyle.Animation.panel) { prioritizeMode.toggle() }
                                 }) {
                                     Text("PRIORITIZE")
                                         .font(OPSStyle.Typography.smallCaption)

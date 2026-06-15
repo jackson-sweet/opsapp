@@ -474,7 +474,7 @@ struct AllPhotosGalleryView: View {
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.easeInOut(duration: 0.25)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     if isExpanded {
                         expandedMonths.remove(group.id)
                     } else {
@@ -541,7 +541,7 @@ struct AllPhotosGalleryView: View {
             .padding(.horizontal, 14)
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.easeInOut(duration: 0.25)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     if isExpanded {
                         expandedProjects.remove(projectId)
                     } else {

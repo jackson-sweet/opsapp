@@ -188,7 +188,7 @@ struct LeadArrivesStep: View {
 
         // 0.6s — Card drops in. Sharp ease-out. Lands and stops.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            withAnimation(.easeOut(duration: 0.35)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 // dampingFraction not needed — ease-out lands without bounce
                 phase = .entering
             }
@@ -235,7 +235,7 @@ struct LeadArrivesStep: View {
 
     private func finishTypewriter() {
         // Source badge fades in
-        withAnimation(.easeOut(duration: 0.25)) {
+        withAnimation(OPSStyle.Animation.standard) {
             showSource = true
         }
 
@@ -258,7 +258,7 @@ struct LeadArrivesStep: View {
         phase = .exiting
 
         // Card exits right — decisive, 250ms
-        withAnimation(.easeIn(duration: 0.25)) {
+        withAnimation(OPSStyle.Animation.standard) {
             exitProgress = 1.0
         }
 

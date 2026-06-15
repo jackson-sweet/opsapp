@@ -26,7 +26,7 @@ struct OnboardingContainer: View {
     private var screenTransition: AnyTransition {
         let isForward = manager.navigationDirection == .forward
         return .asymmetric(
-            insertion: .opacity.animation(.easeIn(duration: 0.25).delay(0.15)),
+            insertion: .opacity.animation(OPSStyle.Animation.standard.delay(0.15)),
             removal: .move(edge: isForward ? .leading : .trailing)
                 .combined(with: .opacity)
                 .animation(OPSStyle.Animation.fast)

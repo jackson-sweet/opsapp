@@ -1044,7 +1044,7 @@ struct AddressSection: View {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                     .stroke(isEditing ? OPSStyle.Colors.primaryAccent.opacity(0.5) : OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
-            .animation(.easeInOut(duration: 0.2), value: isEditing)
+            .animation(OPSStyle.Animation.panel, value: isEditing)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }

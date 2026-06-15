@@ -46,7 +46,7 @@ struct ActivityTabView: View {
                 if newValue {
                     // Scroll compose bar into view above keyboard
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        withAnimation(.easeOut(duration: 0.25)) {
+                        withAnimation(OPSStyle.Animation.standard) {
                             proxy.scrollTo("composeBar", anchor: .bottom)
                         }
                     }
@@ -277,7 +277,7 @@ struct ActivityTabView: View {
                     lineWidth: isTextFieldFocused ? 1.5 : 1
                 )
         )
-        .animation(.easeInOut(duration: 0.2), value: isTextFieldFocused)
+        .animation(OPSStyle.Animation.panel, value: isTextFieldFocused)
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.top, OPSStyle.Layout.spacing3)
         .wizardTarget("write_note")

@@ -182,7 +182,7 @@ struct SendEstimateStep: View {
         }
 
         // Card fades in with header
-        withAnimation(.easeOut(duration: 0.3)) {
+        withAnimation(OPSStyle.Animation.standard) {
             showHeader = true
         }
 
@@ -190,7 +190,7 @@ struct SendEstimateStep: View {
         let itemDelay = 0.4
         for i in 0..<TutorialData.lineItems.count {
             DispatchQueue.main.asyncAfter(deadline: .now() + itemDelay + (Double(i) * 0.12)) {
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.panel) {
                     visibleItems = i + 1
                 }
                 TutorialHaptics.arrival()
@@ -200,19 +200,19 @@ struct SendEstimateStep: View {
         // Divider + Total
         let afterItems = itemDelay + (Double(TutorialData.lineItems.count) * 0.12) + 0.15
         DispatchQueue.main.asyncAfter(deadline: .now() + afterItems) {
-            withAnimation(.easeOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.panel) {
                 showDivider = true
             }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + afterItems + 0.15) {
-            withAnimation(.easeOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.panel) {
                 showTotal = true
             }
         }
 
         // Button
         DispatchQueue.main.asyncAfter(deadline: .now() + afterItems + 0.4) {
-            withAnimation(.easeOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.panel) {
                 showButton = true
             }
         }
@@ -224,7 +224,7 @@ struct SendEstimateStep: View {
         TutorialHaptics.commit()
         sent = true
 
-        withAnimation(.easeIn(duration: 0.25)) {
+        withAnimation(OPSStyle.Animation.standard) {
             exitProgress = 1.0
         }
 

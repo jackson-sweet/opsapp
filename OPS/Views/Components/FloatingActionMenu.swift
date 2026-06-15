@@ -774,7 +774,7 @@ struct FloatingActionMenu: View {
                 )
                 .ignoresSafeArea()
                 .transition(.opacity)
-                .animation(.easeIn(duration: 0.2), value: showCreateMenu)
+                .animation(OPSStyle.Animation.panel, value: showCreateMenu)
                 .onTapGesture {
                     guard !tutorialMode, !isEditMode else { return }
                     closeMenu()
@@ -1035,7 +1035,7 @@ struct FloatingActionMenu: View {
                 closeMenu()
             } else {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                withAnimation(.easeOut(duration: 0.1)) {
+                withAnimation(OPSStyle.Animation.hover) {
                     showCreateMenu = true
                 }
             }
@@ -1129,7 +1129,7 @@ struct FloatingActionMenu: View {
                                 .zIndex(isDragging ? 10 : 0)
                                 .scaleEffect(isDragging ? 1.05 : 1.0)
                                 .opacity(isDragging ? 0.85 : 1.0)
-                                .animation(isDragging ? nil : .easeInOut(duration: 0.15), value: itemVisualOffset(for: item.id, in: section.items))
+                                .animation(isDragging ? nil : OPSStyle.Animation.hover, value: itemVisualOffset(for: item.id, in: section.items))
                                 .gesture(
                                     DragGesture(minimumDistance: 8)
                                         .onChanged { value in
@@ -1141,7 +1141,7 @@ struct FloatingActionMenu: View {
                                         }
                                         .onEnded { _ in
                                             commitItemReorder(item.id, within: section.items, groupId: section.groupId)
-                                            withAnimation(.easeOut(duration: 0.2)) {
+                                            withAnimation(OPSStyle.Animation.panel) {
                                                 dragOffset = 0
                                                 draggingItemId = nil
                                             }
@@ -1192,13 +1192,13 @@ struct FloatingActionMenu: View {
     // MARK: - Menu Actions
 
     private func closeMenu() {
-        withAnimation(.easeIn(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.panel) {
             itemsRevealed = false
             isEditMode = false
             draggingItemId = nil
             dragOffset = 0
         }
-        withAnimation(.easeIn(duration: 0.25)) {
+        withAnimation(OPSStyle.Animation.standard) {
             showCreateMenu = false
         }
     }
@@ -1206,14 +1206,14 @@ struct FloatingActionMenu: View {
     private func enterEditMode() {
         editInitialHidden = hiddenItemsData
         editInitialOrder = itemOrderData
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.panel) {
             isEditMode = true
         }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
     private func saveEditMode() {
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.panel) {
             isEditMode = false
             draggingItemId = nil
             dragOffset = 0
@@ -1224,7 +1224,7 @@ struct FloatingActionMenu: View {
     private func cancelEditMode() {
         hiddenItemsData = editInitialHidden
         itemOrderData = editInitialOrder
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.panel) {
             isEditMode = false
             draggingItemId = nil
             dragOffset = 0
@@ -1371,7 +1371,7 @@ struct FloatingActionMenu: View {
         .opacity(itemsRevealed ? 1 : 0)
         .offset(x: itemsRevealed ? 0 : 60)
         .animation(
-            .easeOut(duration: 0.08).delay(revealDelay(for: row)),
+            OPSStyle.Animation.hover.delay(revealDelay(for: row)),
             value: itemsRevealed
         )
     }

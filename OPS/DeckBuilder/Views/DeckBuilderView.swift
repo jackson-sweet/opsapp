@@ -170,10 +170,10 @@ struct DeckBuilderView: View {
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.bottom, OPSStyle.Layout.spacing2)
-                    .animation(.easeInOut(duration: 0.25), value: viewModel.showMeasurementToast)
-                    .animation(.easeInOut(duration: 0.25), value: viewModel.showLaserErrorToast)
-                    .animation(.easeInOut(duration: 0.25), value: viewModel.showDisconnectToast)
-                    .animation(.easeInOut(duration: 0.25), value: viewModel.showAssignmentToast)
+                    .animation(OPSStyle.Animation.standard, value: viewModel.showMeasurementToast)
+                    .animation(OPSStyle.Animation.standard, value: viewModel.showLaserErrorToast)
+                    .animation(OPSStyle.Animation.standard, value: viewModel.showDisconnectToast)
+                    .animation(OPSStyle.Animation.standard, value: viewModel.showAssignmentToast)
                     } // end canvas ZStack (bottomTrailing)
 
                     // Floating header — compact stack. The title bar and the
@@ -504,7 +504,7 @@ struct DeckBuilderView: View {
                 }
                 .padding(.bottom, 80)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
-                .animation(.easeInOut(duration: 0.3), value: viewModel.estimateCreated)
+                .animation(OPSStyle.Animation.standard, value: viewModel.estimateCreated)
             }
         }
         // Save error toast
@@ -531,7 +531,7 @@ struct DeckBuilderView: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: viewModel.saveError)
+        .animation(OPSStyle.Animation.standard, value: viewModel.saveError)
         // Undo-affects-all-levels toast
         .overlay(alignment: .top) {
             if viewModel.showUndoLevelToast {
@@ -552,7 +552,7 @@ struct DeckBuilderView: View {
                     }
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: viewModel.showUndoLevelToast)
+        .animation(OPSStyle.Animation.standard, value: viewModel.showUndoLevelToast)
         .alert("Clear this design?", isPresented: $viewModel.showingClearConfirm) {
             Button("Clear", role: .destructive) {
                 viewModel.clearDesign()

@@ -825,7 +825,7 @@ struct ExpenseFormSheet: View {
                 } else if isViewMode {
                     // Viewing draft/submitted/rejected — EDIT + the one finalize action.
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) { isViewMode = false }
+                        withAnimation(OPSStyle.Animation.panel) { isViewMode = false }
                     } label: {
                         Text("EDIT")
                             .font(OPSStyle.Typography.button)

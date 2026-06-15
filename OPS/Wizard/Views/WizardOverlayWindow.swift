@@ -182,7 +182,7 @@ struct WizardOverlayModifier: ViewModifier {
             .animation(OPSStyle.Animation.standard, value: stateManager.currentStepIndex)
             .animation(OPSStyle.Animation.standard, value: showExitPrompt)
             .animation(OPSStyle.Animation.standard, value: stateManager.completedWizardId != nil)
-            .animation(.easeInOut(duration: 0.2), value: stateManager.isStepTransitioning)
+            .animation(OPSStyle.Animation.panel, value: stateManager.isStepTransitioning)
             .onChange(of: stateManager.isActive) { _, active in
                 if !active {
                     showExitPrompt = false

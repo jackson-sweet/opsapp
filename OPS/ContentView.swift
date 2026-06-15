@@ -242,7 +242,7 @@ struct ContentView: View {
                         onboardingManagerInstance = nil
                     },
                     onShowLogin: {
-                        withAnimation(.easeInOut(duration: 0.35)) {
+                        withAnimation(OPSStyle.Animation.standard) {
                             showABTestOnboarding = false
                             showExistingLogin = true
                         }

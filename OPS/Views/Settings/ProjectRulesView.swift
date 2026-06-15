@@ -182,7 +182,7 @@ struct ProjectRulesView: View {
         withAnimation(OPSStyle.Animation.standard) {
             proxy.scrollTo(anchor, anchor: .top)
         }
-        withAnimation(.easeIn(duration: 0.2).delay(0.15)) {
+        withAnimation(OPSStyle.Animation.panel.delay(0.15)) {
             highlightedSection = anchor
         }
         Task {

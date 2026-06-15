@@ -472,7 +472,7 @@ struct ProjectDetailsView: View {
                 .onEnded { value in
                     guard value.startLocation.y < 120 else { return }
                     if value.translation.height > 150 {
-                        withAnimation(.easeOut(duration: 0.25)) {
+                        withAnimation(OPSStyle.Animation.standard) {
                             dismissDragOffset = UIScreen.main.bounds.height
                         }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {

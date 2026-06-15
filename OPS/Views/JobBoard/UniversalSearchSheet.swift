@@ -815,7 +815,7 @@ struct UniversalSearchSheet: View {
         if count > 0 {
             Button(action: {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(.easeInOut(duration: 0.18)) {
+                withAnimation(OPSStyle.Animation.panel) {
                     isOpen.wrappedValue.toggle()
                 }
             }) {
@@ -1049,7 +1049,7 @@ struct UniversalSearchSheet: View {
             do {
                 try await dataController.updateTaskStatus(task: task, to: .completed)
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.panel) {
                     undoTask = task
                     undoPreviousStatus = previous
                     undoExpiresAt = Date().addingTimeInterval(3.0)
@@ -1060,7 +1060,7 @@ struct UniversalSearchSheet: View {
                 let myExpiry = undoExpiresAt
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 if undoExpiresAt == myExpiry {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(OPSStyle.Animation.panel) {
                         undoTask = nil
                         undoPreviousStatus = nil
                         undoExpiresAt = nil
@@ -1078,7 +1078,7 @@ struct UniversalSearchSheet: View {
         Task { @MainActor in
             do {
                 try await dataController.updateTaskStatus(task: task, to: previous)
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.panel) {
                     undoTask = nil
                     undoPreviousStatus = nil
                     undoExpiresAt = nil

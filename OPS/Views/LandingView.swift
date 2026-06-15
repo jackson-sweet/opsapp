@@ -363,7 +363,7 @@ struct LandingView: View {
             }
 
         }
-        .animation(hasAppeared ? .easeInOut(duration: 0.35) : nil, value: showLoginMode)
+        .animation(hasAppeared ? OPSStyle.Animation.standard : nil, value: showLoginMode)
         .animation(.easeInOut, value: showOnboarding)
         .sheet(isPresented: $showForgotPassword) {
             ForgotPasswordView(prefilledEmail: username)

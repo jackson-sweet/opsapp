@@ -228,7 +228,7 @@ struct TutorialFlowView: View {
                 .foregroundStyle(OPSStyle.Colors.secondaryText)
         }
         .multilineTextAlignment(.center)
-        .animation(.easeOut(duration: 0.2), value: state.currentPhase)
+        .animation(OPSStyle.Animation.panel, value: state.currentPhase)
     }
 
     private var stepHeadline: String {
@@ -1715,7 +1715,7 @@ struct TutorialFlowView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             showCard = true
-            withAnimation(.easeOut(duration: 0.35)) { cardOffset = 0 }
+            withAnimation(OPSStyle.Animation.standard) { cardOffset = 0 }
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                 TutorialHaptics.arrival()
@@ -1728,7 +1728,7 @@ struct TutorialFlowView: View {
 
     private func showHeader() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            withAnimation(.easeOut(duration: 0.3)) { headerOpacity = 1 }
+            withAnimation(OPSStyle.Animation.standard) { headerOpacity = 1 }
         }
     }
 
@@ -1758,7 +1758,7 @@ struct TutorialFlowView: View {
     }
 
     private func finishTypewriter() {
-        withAnimation(.easeOut(duration: 0.25)) { showLeadSource = true }
+        withAnimation(OPSStyle.Animation.standard) { showLeadSource = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             withAnimation(.easeOut(duration: 0.5)) { leadGlow = 1 }
             leadInteractive = true
@@ -1773,33 +1773,33 @@ struct TutorialFlowView: View {
         TutorialHaptics.commit()
         state.advancePhase()
 
-        withAnimation(.easeOut(duration: 0.25)) {
+        withAnimation(OPSStyle.Animation.standard) {
             isEstimateMode = true
             leadGlow = 0
         }
 
-        withAnimation(.easeOut(duration: 0.2)) { headerOpacity = 0 }
+        withAnimation(OPSStyle.Animation.panel) { headerOpacity = 0 }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            withAnimation(.easeOut(duration: 0.3)) { headerOpacity = 1 }
+            withAnimation(OPSStyle.Animation.standard) { headerOpacity = 1 }
         }
 
         let baseDelay = 0.4
         for i in 0..<TutorialData.lineItems.count {
             DispatchQueue.main.asyncAfter(deadline: .now() + baseDelay + (Double(i) * 0.12)) {
-                withAnimation(.easeOut(duration: 0.2)) { visibleLineItems = i + 1 }
+                withAnimation(OPSStyle.Animation.panel) { visibleLineItems = i + 1 }
                 TutorialHaptics.arrival()
             }
         }
 
         let afterItems = baseDelay + (Double(TutorialData.lineItems.count) * 0.12) + 0.15
         DispatchQueue.main.asyncAfter(deadline: .now() + afterItems) {
-            withAnimation(.easeOut(duration: 0.2)) { showDivider = true }
+            withAnimation(OPSStyle.Animation.panel) { showDivider = true }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + afterItems + 0.15) {
-            withAnimation(.easeOut(duration: 0.2)) { showTotal = true }
+            withAnimation(OPSStyle.Animation.panel) { showTotal = true }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + afterItems + 0.4) {
-            withAnimation(.easeOut(duration: 0.2)) { showSendEstimate = true }
+            withAnimation(OPSStyle.Animation.panel) { showSendEstimate = true }
         }
     }
 
@@ -1809,20 +1809,20 @@ struct TutorialFlowView: View {
         TutorialHaptics.commit()
         state.advancePhase()
 
-        withAnimation(.easeOut(duration: 0.15)) { showSendEstimate = false }
+        withAnimation(OPSStyle.Animation.hover) { showSendEstimate = false }
 
-        withAnimation(.easeOut(duration: 0.2)) { headerOpacity = 0 }
+        withAnimation(OPSStyle.Animation.panel) { headerOpacity = 0 }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            withAnimation(.easeOut(duration: 0.3)) { headerOpacity = 1 }
+            withAnimation(OPSStyle.Animation.standard) { headerOpacity = 1 }
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            withAnimation(.easeOut(duration: 0.3)) { showApproval = true }
+            withAnimation(OPSStyle.Animation.standard) { showApproval = true }
             TutorialHaptics.milestone()
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 showDivider = false
                 showTotal = false
                 estimateShellOpacity = 0.0
@@ -1830,7 +1830,7 @@ struct TutorialFlowView: View {
 
             for i in 0..<TutorialData.laborItems.count {
                 DispatchQueue.main.asyncAfter(deadline: .now() + (Double(i) * 0.15)) {
-                    withAnimation(.easeOut(duration: 0.3)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         peeledCount = i + 1
                     }
                     TutorialHaptics.arrival()
@@ -1840,11 +1840,11 @@ struct TutorialFlowView: View {
 
         let crewDelay = 1.8 + (Double(TutorialData.laborItems.count) * 0.15) + 0.3
         DispatchQueue.main.asyncAfter(deadline: .now() + crewDelay) {
-            withAnimation(.easeOut(duration: 0.3)) { showCrewOnTasks = true }
+            withAnimation(OPSStyle.Animation.standard) { showCrewOnTasks = true }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + crewDelay + 0.1) { showCard = false }
         DispatchQueue.main.asyncAfter(deadline: .now() + crewDelay + 0.5) {
-            withAnimation(.easeOut(duration: 0.3)) { showContinue = true }
+            withAnimation(OPSStyle.Animation.standard) { showContinue = true }
         }
     }
 
@@ -1852,7 +1852,7 @@ struct TutorialFlowView: View {
 
     private func handleContinue() {
         TutorialHaptics.commit()
-        withAnimation(.easeOut(duration: 0.15)) { showContinue = false }
+        withAnimation(OPSStyle.Animation.hover) { showContinue = false }
 
         switch state.currentPhase {
         case .estimateApproved: transitionToCrewExecution()
@@ -1866,19 +1866,19 @@ struct TutorialFlowView: View {
     private func transitionToCrewExecution() {
         state.advancePhase()
 
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.panel) {
             showApproval = false
             peeledCount = 0
             showCrewOnTasks = false
         }
 
-        withAnimation(.easeOut(duration: 0.2)) { headerOpacity = 0 }
+        withAnimation(OPSStyle.Animation.panel) { headerOpacity = 0 }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            withAnimation(.easeOut(duration: 0.3)) { headerOpacity = 1 }
+            withAnimation(OPSStyle.Animation.standard) { headerOpacity = 1 }
         }
 
         guard !reduceMotion else {
-            withAnimation(.easeOut(duration: 0.3)) { headerOpacity = 1 }
+            withAnimation(OPSStyle.Animation.standard) { headerOpacity = 1 }
             taskStatuses = [2, 2, 1]
             projectAssembling = true
             borderDrawProgress = 1
@@ -1894,11 +1894,11 @@ struct TutorialFlowView: View {
         for i in 0..<2 {
             let base = 0.3 + (Double(i) * 1.6)
             DispatchQueue.main.asyncAfter(deadline: .now() + base) {
-                withAnimation(.easeOut(duration: 0.2)) { taskStatuses[i] = 1 }
+                withAnimation(OPSStyle.Animation.panel) { taskStatuses[i] = 1 }
                 TutorialHaptics.arrival()
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + base + 1.0) {
-                withAnimation(.easeOut(duration: 0.2)) { taskStatuses[i] = 2 }
+                withAnimation(OPSStyle.Animation.panel) { taskStatuses[i] = 2 }
                 TutorialHaptics.arrival()
             }
         }
@@ -1906,7 +1906,7 @@ struct TutorialFlowView: View {
         // Task 2 (Railing Touch-Up) goes to IN PROGRESS and stays
         let task2Base = 0.3 + 2 * 1.6
         DispatchQueue.main.asyncAfter(deadline: .now() + task2Base) {
-            withAnimation(.easeOut(duration: 0.2)) { taskStatuses[2] = 1 }
+            withAnimation(OPSStyle.Animation.panel) { taskStatuses[2] = 1 }
             TutorialHaptics.arrival()
         }
 
@@ -1946,7 +1946,7 @@ struct TutorialFlowView: View {
 
         // Step 6: CONTINUE
         DispatchQueue.main.asyncAfter(deadline: .now() + titleDone + 0.8) {
-            withAnimation(.easeOut(duration: 0.3)) { showContinue = true }
+            withAnimation(OPSStyle.Animation.standard) { showContinue = true }
         }
     }
 
@@ -2011,7 +2011,7 @@ struct TutorialFlowView: View {
         for i in 0..<3 {
             let drawTime = t + Double(i) * 0.3
             DispatchQueue.main.asyncAfter(deadline: .now() + drawTime) {
-                withAnimation(.easeOut(duration: 0.3)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     taskDetachBorders[i] = 1
                 }
                 TutorialHaptics.arrival()
@@ -2024,7 +2024,7 @@ struct TutorialFlowView: View {
         // ═══════════════════════════════════════════════════════════
 
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
-            withAnimation(.easeOut(duration: 0.35)) { showCalendar = true }
+            withAnimation(OPSStyle.Animation.standard) { showCalendar = true }
         }
         t += 0.2 // Brief overlap — calendar grid draws behind task rows
 
@@ -2039,9 +2039,9 @@ struct TutorialFlowView: View {
             state.advancePhase()
 
             // Header transition
-            withAnimation(.easeOut(duration: 0.2)) { headerOpacity = 0 }
+            withAnimation(OPSStyle.Animation.panel) { headerOpacity = 0 }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                withAnimation(.easeOut(duration: 0.3)) { headerOpacity = 1 }
+                withAnimation(OPSStyle.Animation.standard) { headerOpacity = 1 }
             }
 
             // Hide project card, start floating tasks flying to calendar positions
@@ -2058,7 +2058,7 @@ struct TutorialFlowView: View {
         for (idx, task) in deckTasks.enumerated() {
             let landTime = landingStart + Double(idx) * 0.15
             DispatchQueue.main.asyncAfter(deadline: .now() + landTime) {
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.panel) {
                     deckTasksArrivedCount = idx + 1
                     _ = calendarVisibleTasks.insert(task.id)
                 }
@@ -2080,7 +2080,7 @@ struct TutorialFlowView: View {
         for (idx, task) in otherTasks.enumerated() {
             let addTime = t + Double(idx) * 0.12
             DispatchQueue.main.asyncAfter(deadline: .now() + addTime) {
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.panel) {
                     _ = calendarVisibleTasks.insert(task.id)
                 }
             }
@@ -2096,7 +2096,7 @@ struct TutorialFlowView: View {
             let dayStart = t
 
             DispatchQueue.main.asyncAfter(deadline: .now() + dayStart) {
-                withAnimation(.easeOut(duration: 0.3)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     calendarFocusDay = day
                 }
                 TutorialHaptics.arrival()
@@ -2107,7 +2107,7 @@ struct TutorialFlowView: View {
             for task in dayCompletions {
                 let completeTime = t
                 DispatchQueue.main.asyncAfter(deadline: .now() + completeTime) {
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withAnimation(OPSStyle.Animation.panel) {
                         _ = calendarCompletedTasks.insert(task.id)
                     }
                     TutorialHaptics.arrival()
@@ -2124,7 +2124,7 @@ struct TutorialFlowView: View {
 
         let zoomOutTime = t
         DispatchQueue.main.asyncAfter(deadline: .now() + zoomOutTime) {
-            withAnimation(.easeOut(duration: 0.35)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 calendarFocusDay = -1
             }
         }
@@ -2146,7 +2146,7 @@ struct TutorialFlowView: View {
         // ═══════════════════════════════════════════════════════════
 
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 showCalendarHeader = true
             }
         }
@@ -2172,7 +2172,7 @@ struct TutorialFlowView: View {
         // ═══════════════════════════════════════════════════════════
 
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 calendarExtractPhase = 2
             }
         }
@@ -2183,7 +2183,7 @@ struct TutorialFlowView: View {
         // ═══════════════════════════════════════════════════════════
 
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 calendarExtractPhase = 3
             }
         }
@@ -2194,7 +2194,7 @@ struct TutorialFlowView: View {
         // ═══════════════════════════════════════════════════════════
 
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
-            withAnimation(.easeOut(duration: 0.25)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 showCalendar = false
                 showCalendarHeader = false
                 showReviewStack = true
@@ -2211,7 +2211,7 @@ struct TutorialFlowView: View {
         swipeResults.append(wasRight)
         state.recordSwipe(cardIndex: reviewCurrentIndex, direction: direction)
 
-        withAnimation(.easeOut(duration: 0.15)) {
+        withAnimation(OPSStyle.Animation.hover) {
             reviewCurrentIndex += 1
         }
 
@@ -2219,7 +2219,7 @@ struct TutorialFlowView: View {
         // Right = project complete + invoice sent. Left = task still open.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             showingCompletion = justSwipedIndex
-            withAnimation(.easeOut(duration: 0.3)) { completionOpacity = 1 }
+            withAnimation(OPSStyle.Animation.standard) { completionOpacity = 1 }
             if wasRight { TutorialHaptics.milestone() }
             // No haptic on left-swipe result — skip is deliberate non-action
         }
@@ -2227,7 +2227,7 @@ struct TutorialFlowView: View {
         // Hold result card, then dismiss with delay before next card
         let holdTime: Double = wasRight ? 2.0 : 1.4 // right holds longer (more to read)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4 + holdTime) {
-            withAnimation(.easeOut(duration: 0.25)) { completionOpacity = 0 }
+            withAnimation(OPSStyle.Animation.standard) { completionOpacity = 0 }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 showingCompletion = nil
                 // Extra delay after last card before advancing
@@ -2246,7 +2246,7 @@ struct TutorialFlowView: View {
     }
 
     private func showAllCaughtUp() {
-        withAnimation(.easeOut(duration: 0.2)) { showReviewStack = false }
+        withAnimation(OPSStyle.Animation.panel) { showReviewStack = false }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             TutorialHaptics.milestone()
@@ -2269,15 +2269,15 @@ struct TutorialFlowView: View {
     private func transitionToAccounting() {
         state.advancePhase() // → .invoiceAndPay
 
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.panel) {
             showReviewDone = false
             reviewDoneOpacity = 0
         }
 
         // Header transition
-        withAnimation(.easeOut(duration: 0.2)) { headerOpacity = 0 }
+        withAnimation(OPSStyle.Animation.panel) { headerOpacity = 0 }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            withAnimation(.easeOut(duration: 0.3)) { headerOpacity = 1 }
+            withAnimation(OPSStyle.Animation.standard) { headerOpacity = 1 }
         }
 
         guard !reduceMotion else {
@@ -2310,7 +2310,7 @@ struct TutorialFlowView: View {
         // ═══════════════════════════════════════════════════════════
 
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
-            withAnimation(.easeOut(duration: 0.3)) { showAccounting = true }
+            withAnimation(OPSStyle.Animation.standard) { showAccounting = true }
         }
         t += 0.4
 
@@ -2318,7 +2318,7 @@ struct TutorialFlowView: View {
         for i in 0..<swipeResults.count {
             let cardTime = t + Double(i) * 0.2
             DispatchQueue.main.asyncAfter(deadline: .now() + cardTime) {
-                withAnimation(.easeOut(duration: 0.25)) { visibleInvoices = i + 1 }
+                withAnimation(OPSStyle.Animation.standard) { visibleInvoices = i + 1 }
                 TutorialHaptics.arrival()
             }
         }
@@ -2335,7 +2335,7 @@ struct TutorialFlowView: View {
         // ═══════════════════════════════════════════════════════════
 
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
-            withAnimation(.easeOut(duration: 0.25)) { showExpenses = true }
+            withAnimation(OPSStyle.Animation.standard) { showExpenses = true }
         }
         t += 0.3
 
@@ -2343,7 +2343,7 @@ struct TutorialFlowView: View {
         for i in 0..<allExpenses.count {
             let expTime = t + Double(i) * 0.15
             DispatchQueue.main.asyncAfter(deadline: .now() + expTime) {
-                withAnimation(.easeOut(duration: 0.2)) { visibleExpenses = i + 1 }
+                withAnimation(OPSStyle.Animation.panel) { visibleExpenses = i + 1 }
             }
         }
         t += Double(allExpenses.count) * 0.15 + 0.2
@@ -2359,7 +2359,7 @@ struct TutorialFlowView: View {
         // ═══════════════════════════════════════════════════════════
 
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
-            withAnimation(.easeOut(duration: 0.25)) { showProfit = true }
+            withAnimation(OPSStyle.Animation.standard) { showProfit = true }
         }
         t += 0.3
 
@@ -2374,12 +2374,12 @@ struct TutorialFlowView: View {
         // ═══════════════════════════════════════════════════════════
 
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
-            withAnimation(.easeIn(duration: 0.3)) { showAccounting = false }
+            withAnimation(OPSStyle.Animation.standard) { showAccounting = false }
         }
         t += 0.5
 
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
-            withAnimation(.easeOut(duration: 0.25)) { showClosing = true }
+            withAnimation(OPSStyle.Animation.standard) { showClosing = true }
             startClosingSequence()
         }
     }
@@ -2394,7 +2394,7 @@ struct TutorialFlowView: View {
         for i in 0..<steps.count {
             let writeTime = t + Double(i) * 0.2
             DispatchQueue.main.asyncAfter(deadline: .now() + writeTime) {
-                withAnimation(.easeOut(duration: 0.15)) { closingStepsVisible = i + 1 }
+                withAnimation(OPSStyle.Animation.hover) { closingStepsVisible = i + 1 }
                 TutorialHaptics.arrival()
             }
         }
@@ -2405,7 +2405,7 @@ struct TutorialFlowView: View {
         for i in 0..<opsStepCount {
             let strikeTime = t + Double(i) * 0.12
             DispatchQueue.main.asyncAfter(deadline: .now() + strikeTime) {
-                withAnimation(.easeOut(duration: 0.15)) { closingStrikeCount = i + 1 }
+                withAnimation(OPSStyle.Animation.hover) { closingStrikeCount = i + 1 }
             }
         }
         t += Double(opsStepCount) * 0.12 + 0.8 // Hold — all struck
@@ -2419,13 +2419,13 @@ struct TutorialFlowView: View {
 
         // ── Phase D: Tagline appears ──
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
-            withAnimation(.easeOut(duration: 0.3)) { showClosingMessage = true }
+            withAnimation(OPSStyle.Animation.standard) { showClosingMessage = true }
         }
         t += 0.8
 
         // ── Phase E: CTA ──
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
-            withAnimation(.easeOut(duration: 0.3)) { showCTA = true }
+            withAnimation(OPSStyle.Animation.standard) { showCTA = true }
         }
     }
 }
@@ -2867,7 +2867,7 @@ private struct FlowReviewCard: View {
                         commitSwipe()
                     } else {
                         // dampingFraction 0.8 = controlled settle, no bounce
-                        withAnimation(.easeOut(duration: 0.2)) {
+                        withAnimation(OPSStyle.Animation.panel) {
                             dragOffset = .zero
                         }
                     }
@@ -2903,7 +2903,7 @@ private struct FlowReviewCard: View {
         }
         // No haptic on left-swipe (skip) — haptics are earned by meaningful actions
 
-        withAnimation(.easeIn(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.panel) {
             dragOffset = CGSize(width: flyX, height: dragOffset.height)
         }
 

@@ -69,7 +69,7 @@ struct AnimatedWalkthroughView: View {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .fill(index == currentPage ? Color.white : OPSStyle.Colors.tertiaryText.opacity(0.4))
                             .frame(width: index == currentPage ? 24 : 8, height: 4)
-                            .animation(.easeOut(duration: 0.25), value: currentPage)
+                            .animation(OPSStyle.Animation.standard, value: currentPage)
                     }
                 }
                 .padding(.bottom, OPSStyle.Layout.spacing4)
@@ -97,7 +97,7 @@ struct AnimatedWalkthroughView: View {
                 .padding(.bottom, OPSStyle.Layout.spacing5)
                 .opacity(buttonVisible ? 1 : 0)
                 .offset(y: buttonVisible ? 0 : 12)
-                .animation(.easeOut(duration: 0.3), value: buttonVisible)
+                .animation(OPSStyle.Animation.standard, value: buttonVisible)
             }
         }
         .onChange(of: currentPage) { _, newIndex in
@@ -197,12 +197,12 @@ private struct WalkthroughPageView: View {
             iconOpacity = 1.0
         }
 
-        withAnimation(.easeOut(duration: 0.35).delay(0.25)) {
+        withAnimation(OPSStyle.Animation.standard.delay(0.25)) {
             headlineOffset = 0
             headlineOpacity = 1.0
         }
 
-        withAnimation(.easeOut(duration: 0.35).delay(0.35)) {
+        withAnimation(OPSStyle.Animation.standard.delay(0.35)) {
             bodyOffset = 0
             bodyOpacity = 1.0
         }

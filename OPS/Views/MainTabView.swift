@@ -836,7 +836,7 @@ struct MainTabView: View {
 
         // Handle navigating to Clients tab in Job Board
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NavigateToClients"))) { _ in
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.panel) {
                 selectedTab = jobBoardTabIndex
             }
             // Post follow-up notification to switch to Clients section within Job Board

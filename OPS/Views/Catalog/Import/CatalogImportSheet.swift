@@ -978,7 +978,7 @@ private struct PrimaryStepButton: ButtonStyle {
             )
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(OPSStyle.Animation.hover, value: configuration.isPressed)
     }
 }
 
@@ -997,6 +997,6 @@ private struct SecondaryStepButton: ButtonStyle {
             )
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(OPSStyle.Animation.hover, value: configuration.isPressed)
     }
 }

@@ -91,7 +91,7 @@ struct CatalogView: View {
                         .transition(.opacity)
                     }
                 }
-                .animation(.easeInOut(duration: 0.18), value: selectedSegment)
+                .animation(OPSStyle.Animation.panel, value: selectedSegment)
             }
         }
         .sheet(isPresented: $showOrders) {

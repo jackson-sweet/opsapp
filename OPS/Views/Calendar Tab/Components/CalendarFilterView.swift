@@ -515,7 +515,7 @@ struct CalendarFilterView: View {
     private func toggle(_ section: Section) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         // Single easing curve per OPS motion spec — no spring.
-        withAnimation(.easeOut(duration: 0.22)) {
+        withAnimation(OPSStyle.Animation.panel) {
             expandedSection = (expandedSection == section) ? nil : section
         }
     }

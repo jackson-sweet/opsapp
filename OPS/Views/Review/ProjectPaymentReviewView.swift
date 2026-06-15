@@ -252,7 +252,7 @@ struct ProjectPaymentReviewView: View {
             VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Primary CTA
                 Button(action: {
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         activeProjects = completedProjects
                         reviewingCompleted = true
                     }
@@ -376,19 +376,19 @@ struct ProjectPaymentReviewView: View {
 
     private var celebrationScaleAnimation: Animation {
         reduceMotion
-            ? .easeOut(duration: 0.1)
+            ? OPSStyle.Animation.hover
             : OPSStyle.Animation.flip
     }
 
     private var celebrationOpacityAnimation: Animation {
         reduceMotion
-            ? .easeOut(duration: 0.1).delay(0.3)
+            ? OPSStyle.Animation.hover.delay(0.3)
             : .easeOut(duration: 0.4).delay(0.3)
     }
 
     private var allCaughtUpTransitionAnimation: Animation {
         reduceMotion
-            ? .easeOut(duration: 0.1).delay(0.3)
+            ? OPSStyle.Animation.hover.delay(0.3)
             : OPSStyle.Animation.page.delay(0.3)
     }
 

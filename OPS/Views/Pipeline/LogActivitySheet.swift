@@ -399,7 +399,7 @@ struct LogActivitySheet: View {
     private func metadataSection() -> some View {
         VStack(spacing: 0) {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.panel) {
                     viewModel.showMetadata.toggle()
                 }
             } label: {

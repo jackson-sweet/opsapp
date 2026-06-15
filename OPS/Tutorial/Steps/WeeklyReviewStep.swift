@@ -148,7 +148,7 @@ struct WeeklyReviewStep: View {
 
     private func startSequence() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            withAnimation(.easeOut(duration: 0.25)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 showIntro = false
             }
         }
@@ -157,7 +157,7 @@ struct WeeklyReviewStep: View {
     private func handleSwipe(direction: String) {
         onSwipe?(currentIndex, direction)
 
-        withAnimation(.easeOut(duration: 0.15)) {
+        withAnimation(OPSStyle.Animation.hover) {
             currentIndex += 1
         }
 
@@ -410,7 +410,7 @@ private struct TutorialReviewSwipeCard: View {
             TutorialHaptics.arrival()
         }
 
-        withAnimation(.easeIn(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.panel) {
             dragOffset = CGSize(width: flyX, height: dragOffset.height)
         }
 

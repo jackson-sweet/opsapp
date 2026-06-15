@@ -246,21 +246,21 @@ struct InvoiceAndPayStep: View {
 
         // 1.0s — Transform to invoice
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 phase = .invoice
             }
         }
 
         // 1.4s — Show line items
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-            withAnimation(.easeOut(duration: 0.25)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 showItems = true
             }
         }
 
         // 1.8s — Show send button
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
-            withAnimation(.easeOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.panel) {
                 showSendButton = true
             }
         }
@@ -269,18 +269,18 @@ struct InvoiceAndPayStep: View {
     private func handleSend() {
         TutorialHaptics.commit()
 
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.panel) {
             phase = .sent
             showSendButton = false
         }
 
         // 0.8s — Payment arrives, PAID stamp
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            withAnimation(.easeOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.panel) {
                 phase = .paid
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(.easeOut(duration: 0.25)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     showPaid = true
                 }
                 TutorialHaptics.milestone()
@@ -289,7 +289,7 @@ struct InvoiceAndPayStep: View {
 
         // 2.2s — Transition to final screen
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
-            withAnimation(.easeOut(duration: 0.25)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 phase = .finalScreen
             }
             startClosingSequence()
@@ -303,7 +303,7 @@ struct InvoiceAndPayStep: View {
             let delay = Double(i) * 0.45 + (isLast ? 0.3 : 0) // Extra beat before "NO PAPERWORK."
 
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.panel) {
                     visibleWords = i + 1
                 }
                 TutorialHaptics.arrival()
@@ -313,7 +313,7 @@ struct InvoiceAndPayStep: View {
         // CTA
         let ctaDelay = Double(closingWords.count) * 0.45 + 0.6
         DispatchQueue.main.asyncAfter(deadline: .now() + ctaDelay) {
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 showCTA = true
             }
         }

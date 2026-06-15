@@ -1621,7 +1621,7 @@ struct DayDetailsSheet: View {
         // Wizard: scroll to the active target when a new step activates
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
             if let stepId = notification.userInfo?["stepId"] as? String {
-                withAnimation(.easeInOut(duration: 0.3)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     proxy.scrollTo("wizard_active_\(stepId)", anchor: .top)
                 }
             }
@@ -1721,11 +1721,11 @@ struct EventDetailCard: View {
         .animation(OPSStyle.Animation.quick, value: isLongPressing)
         .animation(OPSStyle.Animation.quick, value: isPressed)
         .onTapGesture {
-            withAnimation(.easeInOut(duration: 0.1)) {
+            withAnimation(OPSStyle.Animation.hover) {
                 isPressed = true
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(.easeInOut(duration: 0.1)) {
+                withAnimation(OPSStyle.Animation.hover) {
                     isPressed = false
                 }
                 showingDetailView = true

@@ -211,7 +211,7 @@ struct BundleCompositionEditSheet: View {
     private var addChildButton: some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+            withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
                 drawerOpen.toggle()
             }
         } label: {

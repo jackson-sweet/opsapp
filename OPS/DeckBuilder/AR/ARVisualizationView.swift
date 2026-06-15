@@ -185,8 +185,8 @@ struct ARVisualizationView: View {
             }
         }
         .padding(.bottom, 40)
-        .animation(.easeInOut(duration: 0.3), value: viewModel.statusMessage)
-        .animation(.easeInOut(duration: 0.3), value: viewModel.showDragHint)
+        .animation(OPSStyle.Animation.standard, value: viewModel.statusMessage)
+        .animation(OPSStyle.Animation.standard, value: viewModel.showDragHint)
     }
 }
 

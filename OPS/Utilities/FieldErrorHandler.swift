@@ -35,7 +35,7 @@ enum FieldErrorHandler {
         }
 
         // Default for unknown errors
-        return "Something went wrong. The app will keep working offline."
+        return "Unexpected error. Your work is saved and the app keeps running offline."
     }
 
     /// Alert to show for an error

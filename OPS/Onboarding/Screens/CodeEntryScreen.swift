@@ -129,7 +129,7 @@ struct CodeEntryScreen: View {
         .alert("Couldn't Join Crew", isPresented: $showJoinFailedAlert) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text(errorMessage ?? "Something went wrong. Please check the code and try again.")
+            Text(errorMessage ?? "That code didn't work. Check it and try again.")
         }
     }
 

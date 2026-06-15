@@ -311,7 +311,7 @@ struct ProfileCompanyScreen: View {
 
     private var successView: some View {
         OnboardingScaffold(
-            title: "COMPANY CREATED!",
+            title: "COMPANY CREATED",
             subtitle: "Share this code with your team",
             showBackButton: false
         ) {

@@ -411,7 +411,7 @@ struct ProfileSettingsView: View {
                             .foregroundColor(OPSStyle.Colors.successStatus)
                             .padding(.top, OPSStyle.Layout.spacing3_5)
 
-                        Text("Reset Link Sent!")
+                        Text("Reset link sent")
                             .font(OPSStyle.Typography.title)
                             .foregroundColor(OPSStyle.Colors.primaryText)
 

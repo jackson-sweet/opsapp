@@ -43,7 +43,7 @@ struct LoginScreen: View {
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
-                Text("Welcome back.")
+                Text("Back to work.")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }

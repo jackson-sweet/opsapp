@@ -241,7 +241,7 @@ struct CompanyConfirmationScreen: View {
         .alert("Couldn't Join Crew", isPresented: $showJoinFailedAlert) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text(errorMessage ?? "Something went wrong. Please try again.")
+            Text(errorMessage ?? "That didn't go through. Try again.")
         }
     }
 

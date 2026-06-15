@@ -37,7 +37,7 @@ struct FeatureRequestView: View {
                 ScrollView {
                     VStack(spacing: OPSStyle.Layout.spacing4) {
                         // Explanation
-                        Text("Have an idea for improving OPS? Let us know what feature you'd like to see!")
+                        Text("Got an idea for OPS? Tell us what to build.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .multilineTextAlignment(.center)

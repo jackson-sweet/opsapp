@@ -160,7 +160,7 @@ struct EmployeeCodeEntryView: View {
                         errorMessage = error.localizedDescription
                     }
                 } else {
-                    errorMessage = "Something went wrong. Try again."
+                    errorMessage = "That didn't go through. Try again."
                 }
             }
         }

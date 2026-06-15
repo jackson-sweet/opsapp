@@ -531,7 +531,8 @@ struct DeckBuilderView: View {
         .overlay(alignment: .top) {
             if viewModel.showUndoLevelToast {
                 Text("Undo affects all levels.")
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .font(OPSStyle.Typography.caption)
+                    .fontWeight(.semibold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.vertical, 10)
@@ -594,7 +595,8 @@ struct DeckBuilderView: View {
                 .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
             Text(label)
-                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                .font(OPSStyle.Typography.dataValue)
+                .fontWeight(.bold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)

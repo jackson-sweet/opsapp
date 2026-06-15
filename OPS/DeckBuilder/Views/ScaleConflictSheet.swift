@@ -77,7 +77,8 @@ struct ScaleConflictSheet: View {
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Text(DimensionEngine.formatImperial(conflict.annotatedInches))
-                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                        .font(OPSStyle.Typography.dataValue)
+                        .fontWeight(.bold)
                         .foregroundColor(OPSStyle.Colors.warningStatus)
                 }
 
@@ -100,7 +101,8 @@ struct ScaleConflictSheet: View {
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Text(DimensionEngine.formatImperial(conflict.scaleDerivedInches))
-                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                        .font(OPSStyle.Typography.dataValue)
+                        .fontWeight(.bold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }

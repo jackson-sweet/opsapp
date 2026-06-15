@@ -234,7 +234,7 @@ struct AppHeader: View {
 
                             if appState.unreadNotificationCount > 0 {
                                 Text("\(min(appState.unreadNotificationCount, 99))")
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(OPSStyle.Typography.metadata)
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             } else {
                                 Image(systemName: "bell")
@@ -842,7 +842,7 @@ struct AvatarSyncOverlay: View {
             // Count in center
             if count > 0 {
                 Text("\(count)")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
         }

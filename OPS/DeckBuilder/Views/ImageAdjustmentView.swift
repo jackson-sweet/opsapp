@@ -160,7 +160,7 @@ struct ImageAdjustmentView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Spacer()
                 Text(formatted(value.wrappedValue))
-                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                    .font(OPSStyle.Typography.dataValue)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
             Slider(value: value, in: range)

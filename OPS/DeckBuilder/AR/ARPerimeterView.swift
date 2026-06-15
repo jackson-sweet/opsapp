@@ -241,7 +241,7 @@ struct ARPerimeterView: View {
                 // Dimension readout
                 if !viewModel.liveDimensionLabel.isEmpty {
                     Text(viewModel.liveDimensionLabel)
-                        .font(.system(size: 20, weight: .bold, design: .monospaced))
+                        .font(OPSStyle.Typography.dataValueLg)
                         .foregroundColor(.white)
                         .shadow(color: .black, radius: 3, y: 1)
                 }
@@ -267,12 +267,12 @@ struct ARPerimeterView: View {
                     HStack(spacing: 6) {
                         ProgressView().tint(OPSStyle.Colors.warningStatus).scaleEffect(0.7)
                         Text("SCANNING")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .font(OPSStyle.Typography.metadata)
                             .foregroundColor(OPSStyle.Colors.warningStatus)
                     }
                 } else {
                     Text("\(viewModel.arVertices.count) PTS")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .font(OPSStyle.Typography.metadata)
                         .foregroundColor(Color.white.opacity(0.5))
                 }
             }

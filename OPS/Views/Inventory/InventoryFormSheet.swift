@@ -543,7 +543,8 @@ struct InventoryFormSheet: View {
 
                 VStack(spacing: OPSStyle.Layout.spacing1) {
                     Text(displayValue)
-                        .font(.system(size: 32, weight: .semibold, design: .monospaced))
+                        .font(OPSStyle.Typography.dataValueLg)
+                        .fontWeight(.semibold)
                         .foregroundColor(valueBinding.wrappedValue.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
 
                     HStack(spacing: OPSStyle.Layout.spacing1) {

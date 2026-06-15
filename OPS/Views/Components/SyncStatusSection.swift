@@ -184,7 +184,7 @@ struct SyncStatusSection: View {
                 let fields = operation.getChangedFields()
                 if !fields.isEmpty {
                     Text(fields.joined(separator: ", "))
-                        .font(.system(size: 10))
+                        .font(OPSStyle.Typography.metadata)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .lineLimit(1)
                 }
@@ -192,7 +192,7 @@ struct SyncStatusSection: View {
                 // Error line
                 if let error = operation.lastError {
                     Text(error)
-                        .font(.system(size: 10))
+                        .font(OPSStyle.Typography.metadata)
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                         .lineLimit(1)
                 }
@@ -202,7 +202,7 @@ struct SyncStatusSection: View {
 
             // Time ago
             Text(timeAgo(from: operation.createdAt))
-                .font(.system(size: 10))
+                .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             // Action buttons

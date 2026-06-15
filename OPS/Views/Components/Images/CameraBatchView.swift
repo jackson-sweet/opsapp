@@ -273,7 +273,8 @@ private struct CapturedStackThumbnail: View {
                 // many photos they've actually got banked.
                 if count > 0 {
                     Text("\(count)")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(OPSStyle.Typography.metadata)
+                        .fontWeight(.bold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(minWidth: 18, minHeight: 18)
                         .padding(.horizontal, OPSStyle.Layout.spacing1)

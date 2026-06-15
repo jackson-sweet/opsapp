@@ -866,7 +866,7 @@ struct DeckTab2DView: View {
 
             if let hint = measurementHintText {
                 Text(hint)
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.warningStatus)
                     .padding(.horizontal, OPSStyle.Layout.spacing2)
                     .padding(.vertical, OPSStyle.Layout.spacing1)

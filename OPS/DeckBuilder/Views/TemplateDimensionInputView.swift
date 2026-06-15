@@ -412,7 +412,8 @@ struct TemplateDimensionInputView: View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             // Letter badge
             Text(label.letter)
-                .font(.system(size: 16, weight: .bold, design: .monospaced))
+                .font(OPSStyle.Typography.dataValue)
+                .fontWeight(.bold)
                 .foregroundColor(.white)
                 .frame(width: 32, height: 32)
                 .background(label.color.opacity(0.8))
@@ -558,7 +559,8 @@ struct TemplateDimensionInputView: View {
 
             if !voiceInput.recognizedText.isEmpty {
                 Text(voiceInput.recognizedText)
-                    .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                    .font(OPSStyle.Typography.dataValue)
+                    .fontWeight(.semibold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)

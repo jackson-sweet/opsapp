@@ -82,7 +82,7 @@ struct PropertySheetView: View {
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 Spacer()
                                 Text(DimensionEngine.format(dim, system: viewModel.drawingData.config.measurementSystem))
-                                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                                    .font(OPSStyle.Typography.dataValue)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                             }
                         }
@@ -206,7 +206,7 @@ struct PropertySheetView: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Spacer()
                         Text(DimensionEngine.formatImperial(railing.maxPostSpacing))
-                            .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                            .font(OPSStyle.Typography.dataValue)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
 
@@ -348,7 +348,7 @@ struct PropertySheetView: View {
                 get: { edge.label ?? "" },
                 set: { viewModel.setEdgeLabel(edgeId, label: $0) }
             ))
-            .font(.system(size: 14, weight: .medium, design: .monospaced))
+            .font(OPSStyle.Typography.caption)
             .foregroundColor(OPSStyle.Colors.primaryText)
             .textInputAutocapitalization(.words)
             .submitLabel(.done)
@@ -474,7 +474,7 @@ struct PropertySheetView: View {
                             Spacer()
                             if let elev = vertex.elevation {
                                 Text(String(format: "%.1f'", elev))
-                                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                                    .font(OPSStyle.Typography.dataValue)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                             } else {
                                 Text("Not set")
@@ -534,7 +534,7 @@ struct PropertySheetView: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Spacer()
                     Text(DimensionEngine.formatArea(area, system: viewModel.drawingData.config.measurementSystem))
-                        .font(.system(size: 20, weight: .bold, design: .monospaced))
+                        .font(OPSStyle.Typography.dataValueLg)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 .padding(OPSStyle.Layout.spacing3)
@@ -621,7 +621,7 @@ struct PropertySheetView: View {
                         }
                     }
                 ))
-                .font(.system(size: 15, weight: .medium, design: .monospaced))
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .textInputAutocapitalization(.words)
                 .submitLabel(.done)
@@ -690,7 +690,7 @@ struct PropertySheetView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             Spacer()
             Text(value)
-                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                .font(OPSStyle.Typography.dataValue)
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }
     }
@@ -740,7 +740,7 @@ struct PropertySheetView: View {
                     set: { onChange($0) }
                 ))
                 .multilineTextAlignment(.trailing)
-                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(maxWidth: 180)
                 .textFieldStyle(.roundedBorder)
@@ -764,12 +764,12 @@ struct PropertySheetView: View {
                 step: 2
             ) {
                 Text(DimensionEngine.formatImperial(current))
-                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                    .font(OPSStyle.Typography.dataValue)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
             .labelsHidden()
             Text(DimensionEngine.formatImperial(current))
-                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                .font(OPSStyle.Typography.dataValue)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(width: 60, alignment: .trailing)
         }

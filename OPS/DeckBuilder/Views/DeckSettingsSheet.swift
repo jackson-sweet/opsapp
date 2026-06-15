@@ -159,7 +159,7 @@ struct DeckSettingsSheet: View {
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                             Spacer()
                             Text("\(Int(viewModel.drawingData.config.endpointSnapRadius))pt")
-                                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                                .font(OPSStyle.Typography.dataValue)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                         Slider(

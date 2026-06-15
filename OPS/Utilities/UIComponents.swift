@@ -81,11 +81,11 @@ struct TacticalInitialLoadingView: View {
                     ForEach(Array(visibleLines.enumerated()), id: \.offset) { index, line in
                         HStack(spacing: OPSStyle.Layout.spacing2) {
                             Text(">")
-                                .font(.system(size: 12, design: .monospaced))
+                                .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
 
                             Text(line)
-                                .font(.system(size: 12, design: .monospaced))
+                                .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                         .opacity(index == visibleLines.count - 1 ? 1.0 : 0.5)

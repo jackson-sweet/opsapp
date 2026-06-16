@@ -119,14 +119,10 @@ struct InvoiceCard: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(
-                        invoice.isOverdue ? OPSStyle.Colors.errorStatus.opacity(0.4) : OPSStyle.Colors.cardBorder,
-                        lineWidth: OPSStyle.Layout.Border.standard
-                    )
+            .glassSurface(
+                borderColor: invoice.isOverdue
+                    ? OPSStyle.Colors.errorStatus.opacity(0.4)
+                    : OPSStyle.Colors.glassBorder
             )
         }
         .buttonStyle(PlainButtonStyle())

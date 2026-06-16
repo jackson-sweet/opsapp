@@ -156,12 +156,7 @@ struct ExpenseBatchDetailView: View {
             }
             .padding(.vertical, OPSStyle.Layout.spacing2)
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
@@ -343,14 +338,8 @@ struct ExpenseBatchDetailView: View {
                 expandedSection(expense, isFlagged: isFlagged)
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(
-                    isFlagged ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.cardBorder,
-                    lineWidth: OPSStyle.Layout.Border.standard
-                )
+        .glassSurface(
+            borderColor: isFlagged ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.glassBorder
         )
         .animation(OPSStyle.Animation.fast, value: isFlagged)
     }
@@ -469,7 +458,7 @@ struct ExpenseBatchDetailView: View {
             .buttonStyle(PlainButtonStyle())
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.background)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

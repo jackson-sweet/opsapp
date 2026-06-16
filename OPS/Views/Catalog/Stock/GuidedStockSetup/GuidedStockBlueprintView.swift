@@ -156,11 +156,7 @@ private struct BlueprintFamilyCard: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
-                .stroke(OPSStyle.Colors.glassBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Structure line

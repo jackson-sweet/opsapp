@@ -1929,7 +1929,7 @@ private struct StructureCTAButtonStyle: ButtonStyle {
             .background(
                 isEnabled
                     ? OPSStyle.Colors.primaryAccent.opacity(configuration.isPressed ? 0.80 : 1.0)
-                    : OPSStyle.Colors.cardBackground
+                    : OPSStyle.Colors.fillNeutralDim
             )
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(

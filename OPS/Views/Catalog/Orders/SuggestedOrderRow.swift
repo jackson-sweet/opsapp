@@ -89,7 +89,7 @@ struct SuggestedOrderRow: View {
                             .fill(
                                 isAdded
                                     ? OPSStyle.Colors.successStatus.opacity(0.12)
-                                    : OPSStyle.Colors.subtleBackground
+                                    : OPSStyle.Colors.fillNeutral
                             )
                     )
                         .overlay(
@@ -107,14 +107,7 @@ struct SuggestedOrderRow: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private func formatNumber(_ value: Double) -> String {

@@ -132,12 +132,7 @@ struct StockTableView: View {
                 }
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     @ViewBuilder
@@ -152,7 +147,7 @@ struct StockTableView: View {
             cell("SKU", isHeader: true, width: 120, align: .leading)
         }
         .frame(height: 36)
-        .background(OPSStyle.Colors.subtleBackground)
+        .background(OPSStyle.Colors.surfaceActive)
         .overlay(
             Rectangle()
                 .fill(OPSStyle.Colors.separator)

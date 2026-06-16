@@ -32,7 +32,7 @@ struct MyExpensesView: View {
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             if !embedded {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .edgesIgnoringSafeArea(.all)
             }
 
@@ -160,12 +160,7 @@ struct MyExpensesView: View {
                 Spacer()
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
     }
 
@@ -346,11 +341,11 @@ struct MyExpensesView: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -371,7 +366,7 @@ struct MyExpensesView: View {
                                 .background(
                                     viewModel.selectedFilter == filter
                                     ? OPSStyle.Colors.surfaceActive
-                                    : OPSStyle.Colors.cardBackgroundDark
+                                    : OPSStyle.Colors.surfaceInput
                                 )
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(

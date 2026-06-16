@@ -204,10 +204,10 @@ struct ExpensesListView: View {
                 .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
                 .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                 .padding(.vertical, OPSStyle.Layout.spacing1)
-                .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
+                .cornerRadius(OPSStyle.Layout.chipRadius)
                 .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .stroke(
                             isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder,
                             lineWidth: OPSStyle.Layout.Border.standard
@@ -274,12 +274,7 @@ struct ExpensesListView: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
@@ -489,12 +484,7 @@ struct ExpensesListView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - FAB

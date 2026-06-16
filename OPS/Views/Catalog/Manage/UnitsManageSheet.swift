@@ -40,7 +40,7 @@ struct UnitsManageSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
                 if companyUnits.isEmpty {
                     emptyState
                 } else {
@@ -121,12 +121,7 @@ private struct UnitRow: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 }
 
@@ -151,7 +146,7 @@ struct UnitFormSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         CatalogSectionHeader("DETAILS")
@@ -173,11 +168,11 @@ struct UnitFormSheet: View {
                         .tint(OPSStyle.Colors.primaryText)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(OPSStyle.Layout.spacing2)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .background(OPSStyle.Colors.surfaceInput)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
 
                         CatalogFieldLabel("Sort order")
@@ -196,7 +191,7 @@ struct UnitFormSheet: View {
                                     .foregroundColor(OPSStyle.Colors.errorText)
                                     .frame(maxWidth: .infinity)
                                     .frame(height: OPSStyle.Layout.touchTargetMin)
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .background(OPSStyle.Colors.surfaceInput)
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

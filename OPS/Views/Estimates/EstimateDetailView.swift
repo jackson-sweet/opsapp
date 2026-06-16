@@ -189,12 +189,7 @@ struct EstimateDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(OPSStyle.Layout.spacing2_5)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(color.opacity(0.35), lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface(borderColor: color.opacity(0.35))
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.top, OPSStyle.Layout.spacing2)
     }
@@ -329,16 +324,11 @@ struct EstimateDetailView: View {
                         }
 
                         if index < parentItems.count - 1 {
-                            Divider().background(OPSStyle.Colors.cardBorder)
+                            Divider().background(OPSStyle.Colors.line)
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
         }
@@ -409,7 +399,7 @@ struct EstimateDetailView: View {
         .padding(.leading, OPSStyle.Layout.spacing3 + 14)
         .padding(.trailing, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing1)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.3))
+        .background(OPSStyle.Colors.surfaceHover)
     }
 
     /// Child-row metadata: "qty unit · [chosen option] · unit price". The option
@@ -470,12 +460,7 @@ struct EstimateDetailView: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.top, OPSStyle.Layout.spacing3)
         }

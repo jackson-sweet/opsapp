@@ -48,7 +48,7 @@ struct TaskTypePickerSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
                 VStack(spacing: 0) {
                     searchField
                     ScrollView {
@@ -125,7 +125,7 @@ struct TaskTypePickerSheet: View {
             }
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .overlay(
             Rectangle()
                 .fill(OPSStyle.Colors.separator)
@@ -153,12 +153,7 @@ struct TaskTypePickerSheet: View {
             .padding(OPSStyle.Layout.spacing2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface(borderColor: OPSStyle.Colors.primaryAccent.opacity(0.4))
         }
         .buttonStyle(PlainButtonStyle())
         .accessibilityLabel("Create new task type")
@@ -194,15 +189,7 @@ struct TaskTypePickerSheet: View {
             .padding(OPSStyle.Layout.spacing2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(
-                        isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.cardBorder,
-                        lineWidth: OPSStyle.Layout.Border.standard
-                    )
-            )
+            .glassSurface(borderColor: isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.glassBorder)
         }
         .buttonStyle(PlainButtonStyle())
         .accessibilityLabel("Pick task type \(taskType.display)")

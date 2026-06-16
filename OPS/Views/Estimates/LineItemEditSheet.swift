@@ -88,11 +88,11 @@ struct LineItemEditSheet: View {
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(OPSStyle.Layout.spacing2)
-                        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .background(OPSStyle.Colors.surfaceInput)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
 
@@ -111,11 +111,11 @@ struct LineItemEditSheet: View {
                                     .background(
                                         type == t
                                         ? OPSStyle.Colors.surfaceActive
-                                        : OPSStyle.Colors.cardBackgroundDark.opacity(0.6)
+                                        : OPSStyle.Colors.surfaceInput
                                     )
-                                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                                    .cornerRadius(OPSStyle.Layout.chipRadius)
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                             .stroke(
                                                 type == t ? OPSStyle.Colors.text : OPSStyle.Colors.cardBorder,
                                                 lineWidth: OPSStyle.Layout.Border.standard
@@ -138,11 +138,11 @@ struct LineItemEditSheet: View {
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .keyboardType(.decimalPad)
                                 .padding(OPSStyle.Layout.spacing2)
-                                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                                .background(OPSStyle.Colors.surfaceInput)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         }
 
@@ -154,11 +154,11 @@ struct LineItemEditSheet: View {
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .padding(OPSStyle.Layout.spacing2)
-                                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                                .background(OPSStyle.Colors.surfaceInput)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         }
                         .frame(width: 80)
@@ -173,11 +173,11 @@ struct LineItemEditSheet: View {
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .keyboardType(.decimalPad)
                                     .padding(OPSStyle.Layout.spacing2)
-                                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                                    .background(OPSStyle.Colors.surfaceInput)
+                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             }
                         }
@@ -190,15 +190,10 @@ struct LineItemEditSheet: View {
 
                     VStack(spacing: 0) {
                         toggleRow("Optional?", isOn: $isOptional)
-                        Divider().background(OPSStyle.Colors.cardBorder)
+                        Divider().background(OPSStyle.Colors.separator)
                         toggleRow("Taxable?", isOn: $isTaxable)
                     }
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .glassSurface()
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                     HStack {
@@ -283,12 +278,7 @@ struct LineItemEditSheet: View {
             }
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
@@ -342,11 +332,11 @@ struct LineItemEditSheet: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing2)
             .padding(.vertical, OPSStyle.Layout.spacing1 + 2)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+            .background(OPSStyle.Colors.surfaceInput)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
@@ -366,12 +356,7 @@ struct LineItemEditSheet: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: 36, height: 36)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .nestedCard()
             }
             .buttonStyle(PlainButtonStyle())
 
@@ -388,12 +373,7 @@ struct LineItemEditSheet: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: 36, height: 36)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .nestedCard()
             }
             .buttonStyle(PlainButtonStyle())
         }

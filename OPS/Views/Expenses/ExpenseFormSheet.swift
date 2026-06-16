@@ -322,12 +322,7 @@ struct ExpenseFormSheet: View {
                     Spacer()
                 }
                 .frame(height: 160)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             } else if let image = receiptImage {
                 // Queue progress indicator
@@ -348,12 +343,7 @@ struct ExpenseFormSheet: View {
                         .scaledToFit()
                         .frame(maxWidth: .infinity)
                         .frame(maxHeight: 360)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .glassSurface()
                         .contentShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
 
                     if ocrUsed {
@@ -406,12 +396,7 @@ struct ExpenseFormSheet: View {
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 100)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             } else {
                 // Add receipt button
@@ -434,12 +419,7 @@ struct ExpenseFormSheet: View {
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 120)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .glassSurface()
                 }
                 .buttonStyle(PlainButtonStyle())
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -1326,10 +1306,10 @@ private struct ExpenseProjectPickerSheet: View {
                     }
                     .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .background(OPSStyle.Colors.surfaceInput)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -1686,10 +1666,10 @@ private struct ExpenseCurrencyPickerSheet: View {
                     }
                     .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .background(OPSStyle.Colors.surfaceInput)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)

@@ -124,7 +124,7 @@ struct CashflowForecastScreen: View {
         }
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
-                .stroke(OPSStyle.Colors.cardBackgroundDark, lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 

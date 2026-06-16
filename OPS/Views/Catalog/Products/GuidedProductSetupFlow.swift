@@ -248,7 +248,7 @@ struct GuidedProductSetupFlow: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             if canManageProducts {
                 setupContent
@@ -427,7 +427,7 @@ struct GuidedProductSetupFlow: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackground)
+        .background(OPSStyle.Colors.fillNeutral)
         .overlay(
             Rectangle()
                 .frame(height: OPSStyle.Layout.Border.standard)
@@ -867,11 +867,11 @@ struct GuidedProductSetupFlow: View {
                     }
                 }
                 .padding(OPSStyle.Layout.spacing2)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
 
                 VStack(spacing: OPSStyle.Layout.spacing1) {
@@ -892,7 +892,7 @@ struct GuidedProductSetupFlow: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .nestedCard()
+        .glassSurface()
     }
 
     private var bundlePricingCard: some View {
@@ -922,7 +922,7 @@ struct GuidedProductSetupFlow: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .nestedCard()
+        .glassSurface()
     }
 
     private func pricingModeButton(_ mode: BundlePricingMode) -> some View {
@@ -937,7 +937,7 @@ struct GuidedProductSetupFlow: View {
                 .foregroundColor(bundlePricingMode == mode ? OPSStyle.Colors.background : OPSStyle.Colors.secondaryText)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                .background(bundlePricingMode == mode ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
+                .background(bundlePricingMode == mode ? OPSStyle.Colors.primaryText : OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.buttonRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
@@ -978,7 +978,7 @@ struct GuidedProductSetupFlow: View {
             }
             .padding(OPSStyle.Layout.spacing2)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.cardBackgroundDark)
+            .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1009,7 +1009,7 @@ struct GuidedProductSetupFlow: View {
             quantityControl(for: draft)
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1094,7 +1094,7 @@ struct GuidedProductSetupFlow: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .nestedCard()
+        .glassSurface()
     }
 
     private func recipeTargetRow(_ target: GuidedRecipeProductTarget) -> some View {
@@ -1129,7 +1129,7 @@ struct GuidedProductSetupFlow: View {
             }
             .padding(OPSStyle.Layout.spacing2)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.cardBackgroundDark)
+            .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1182,7 +1182,7 @@ struct GuidedProductSetupFlow: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .nestedCard()
+        .glassSurface()
     }
 
     private var noStockForRecipeState: some View {
@@ -1194,7 +1194,7 @@ struct GuidedProductSetupFlow: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1218,7 +1218,7 @@ struct GuidedProductSetupFlow: View {
             .padding(OPSStyle.Layout.spacing2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
@@ -1251,11 +1251,11 @@ struct GuidedProductSetupFlow: View {
             }
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -1292,7 +1292,7 @@ struct GuidedProductSetupFlow: View {
             }
             .padding(OPSStyle.Layout.spacing2)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(alreadySelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.cardBackgroundDark)
+            .background(alreadySelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1347,7 +1347,7 @@ struct GuidedProductSetupFlow: View {
             }
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1389,7 +1389,7 @@ struct GuidedProductSetupFlow: View {
             }
             .padding(OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .nestedCard()
+            .glassSurface()
 
             recipeReviewCard
 
@@ -1438,7 +1438,7 @@ struct GuidedProductSetupFlow: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .nestedCard()
+        .glassSurface()
     }
 
     private func savedProductRow(_ product: GuidedProductSetupSavedProduct) -> some View {
@@ -1466,7 +1466,7 @@ struct GuidedProductSetupFlow: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1534,7 +1534,7 @@ struct GuidedProductSetupFlow: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .nestedCard()
+        .glassSurface()
     }
 
     private func existingCountCard(kind: ProductCategory, count: Int) -> some View {
@@ -1569,7 +1569,7 @@ struct GuidedProductSetupFlow: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .nestedCard()
+        .glassSurface()
     }
 
     private func validationLine(_ text: String) -> some View {
@@ -1659,14 +1659,14 @@ struct GuidedProductSetupFlow: View {
         .padding(OPSStyle.Layout.spacing2)
         .frame(maxWidth: .infinity, alignment: .leading)
         .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(
                     isRequired && selectedTaskType == nil
                         ? OPSStyle.Colors.errorText
-                        : OPSStyle.Colors.cardBorder,
+                        : OPSStyle.Colors.inputFieldBorder,
                     lineWidth: OPSStyle.Layout.Border.standard
                 )
         )
@@ -1684,7 +1684,7 @@ struct GuidedProductSetupFlow: View {
         }
         .padding(OPSStyle.Layout.spacing2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

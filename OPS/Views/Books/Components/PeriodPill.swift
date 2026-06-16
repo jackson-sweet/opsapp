@@ -39,12 +39,12 @@ struct PeriodPill: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .padding(.vertical, OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.cardBackground)
+            .background(OPSStyle.Colors.surfaceInput)
             .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
-            .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+            .cornerRadius(OPSStyle.Layout.chipRadius)
             .frame(minHeight: 44)  // Mission Deck — 44pt mobile touch-target floor
         }
         .accessibilityLabel("Period selector, currently \(selected.pillLabel)")

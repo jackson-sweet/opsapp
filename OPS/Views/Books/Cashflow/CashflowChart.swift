@@ -76,7 +76,7 @@ struct CashflowChart: View {
                     }
                 }
                 AxisGridLine()
-                    .foregroundStyle(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+                    .foregroundStyle(OPSStyle.Colors.lineSoft)
             }
         }
         .chartYAxis {
@@ -89,7 +89,7 @@ struct CashflowChart: View {
                     }
                 }
                 AxisGridLine()
-                    .foregroundStyle(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+                    .foregroundStyle(OPSStyle.Colors.lineSoft)
             }
         }
         .chartOverlay { proxy in

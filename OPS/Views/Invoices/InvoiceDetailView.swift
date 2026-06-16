@@ -182,16 +182,11 @@ struct InvoiceDetailView: View {
                     ForEach(lineItems) { item in
                         lineItemRow(item)
                         if item.id != lineItems.last?.id {
-                            Divider().background(OPSStyle.Colors.cardBorder)
+                            Divider().background(OPSStyle.Colors.separator)
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
         }
@@ -232,7 +227,7 @@ struct InvoiceDetailView: View {
 
     private var totalsSection: some View {
         VStack(spacing: 0) {
-            Divider().background(OPSStyle.Colors.cardBorder)
+            Divider().background(OPSStyle.Colors.separator)
 
             VStack(spacing: OPSStyle.Layout.spacing1) {
                 HStack {
@@ -294,12 +289,7 @@ struct InvoiceDetailView: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.top, OPSStyle.Layout.spacing3)
         }
@@ -318,16 +308,11 @@ struct InvoiceDetailView: View {
                 ForEach(payments) { payment in
                     paymentRow(payment)
                     if payment.id != payments.last?.id {
-                        Divider().background(OPSStyle.Colors.cardBorder)
+                        Divider().background(OPSStyle.Colors.separator)
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
         .padding(.top, OPSStyle.Layout.spacing3)

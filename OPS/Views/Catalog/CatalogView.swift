@@ -71,7 +71,7 @@ struct CatalogView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 header

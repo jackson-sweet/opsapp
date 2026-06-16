@@ -22,12 +22,7 @@ struct CashflowForecastCard: View {
             }
             .padding(OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(OPSStyle.Colors.cardBackground)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
-                    .stroke(borderColor, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius))
+            .glassSurface(cornerRadius: OPSStyle.Layout.smallCornerRadius, borderColor: borderColor)
         }
         .buttonStyle(.plain)
         .fullScreenCover(isPresented: $presentFull) {

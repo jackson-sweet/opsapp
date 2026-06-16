@@ -65,7 +65,7 @@ struct CategoryPicker: View {
                 .frame(height: OPSStyle.Layout.touchTargetStandard)
                 .background(isSelected
                             ? OPSStyle.Colors.surfaceActive
-                            : OPSStyle.Colors.cardBackgroundDark)
+                            : OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

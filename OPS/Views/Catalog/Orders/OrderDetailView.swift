@@ -70,7 +70,7 @@ struct OrderDetailView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             if let order = order {
                 ScrollView {
@@ -175,11 +175,11 @@ struct OrderDetailView: View {
                 .frame(height: OPSStyle.Layout.touchTargetMin)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .fill(OPSStyle.Colors.surfaceInput)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
     }
@@ -216,11 +216,11 @@ struct OrderDetailView: View {
             .frame(minHeight: OPSStyle.Layout.touchTargetMin)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
+                    .fill(OPSStyle.Colors.surfaceInput)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
@@ -240,11 +240,11 @@ struct OrderDetailView: View {
                 .frame(minHeight: 80)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .fill(OPSStyle.Colors.surfaceInput)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
     }
@@ -368,14 +368,7 @@ struct OrderDetailView: View {
             }
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     @ViewBuilder
@@ -392,11 +385,11 @@ struct OrderDetailView: View {
                 .frame(height: OPSStyle.Layout.touchTargetMin)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(OPSStyle.Colors.background.opacity(0.6))
+                        .fill(OPSStyle.Colors.surfaceInput)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
     }

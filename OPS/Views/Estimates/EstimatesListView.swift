@@ -123,11 +123,11 @@ struct EstimatesListView: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+            .background(OPSStyle.Colors.surfaceInput)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .padding(.horizontal, OPSStyle.Layout.spacing3)
 
@@ -149,11 +149,11 @@ struct EstimatesListView: View {
                                 .background(
                                     viewModel.selectedFilter == filter
                                     ? OPSStyle.Colors.surfaceActive
-                                    : OPSStyle.Colors.cardBackgroundDark.opacity(0.6)
+                                    : OPSStyle.Colors.surfaceInput
                                 )
-                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                                .cornerRadius(OPSStyle.Layout.chipRadius)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                         .stroke(
                                             viewModel.selectedFilter == filter
                                             ? OPSStyle.Colors.text

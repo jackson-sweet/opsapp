@@ -205,8 +205,9 @@ enum OPSStyle {
         static let surfaceActive  = Color.white.opacity(0.08)  // Active toggle, pressed state
 
         // Borders & neutral fills
-        static let line           = Color.white.opacity(0.10)  // Standard hairline — panels, inputs
-        static let glassBorder    = Color.white.opacity(0.09)  // Glass panel edge
+        static let line           = Color.white.opacity(0.10)  // Standard hairline — panels, inputs, L1 dividers
+        static let glassBorder    = Color.white.opacity(0.09)  // L1 glass panel edge (MOBILE.md §3)
+        static let nestedBorder   = Color.white.opacity(0.08)  // L2 nested-card edge (MOBILE.md §3)
         static let fillNeutral    = Color.white.opacity(0.14)  // Bar fills, progress tracks
         static let fillNeutralDim = Color.white.opacity(0.06)  // Track backgrounds, skeletons
 

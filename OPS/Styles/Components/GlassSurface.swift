@@ -26,9 +26,12 @@ import SwiftUI
 /// stroked with a 1pt hairline at 9% white, and lit from above by a 4% white
 /// top-edge gradient.
 ///
-/// Pass `cornerRadius` to override the default (`panelRadius` = 10pt).
+/// Pass `cornerRadius` to override the default (`panelRadius` = 10pt). Pass
+/// `borderColor` only for the rare singular-emphasis card that needs a hued
+/// edge (the `OPSCardStyle.Accent` lineage) — default is the 9% glass hairline.
 struct GlassSurfaceModifier: ViewModifier {
     var cornerRadius: CGFloat = OPSStyle.Layout.panelRadius
+    var borderColor: Color = OPSStyle.Colors.glassBorder
 
     func body(content: Content) -> some View {
         content
@@ -51,7 +54,7 @@ struct GlassSurfaceModifier: ViewModifier {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(OPSStyle.Colors.glassBorder, lineWidth: 1)
+                    .strokeBorder(borderColor, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
@@ -104,7 +107,7 @@ struct NestedCardModifier: ViewModifier {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(OPSStyle.Colors.surfaceActive, lineWidth: 1)
+                    .strokeBorder(OPSStyle.Colors.nestedBorder, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
@@ -113,9 +116,13 @@ struct NestedCardModifier: ViewModifier {
 // MARK: - View extension
 
 extension View {
-    /// L1 glass section card. Pass `cornerRadius` to override the default 10pt.
-    func glassSurface(cornerRadius: CGFloat = OPSStyle.Layout.panelRadius) -> some View {
-        modifier(GlassSurfaceModifier(cornerRadius: cornerRadius))
+    /// L1 glass section card. Pass `cornerRadius` to override the default 10pt;
+    /// pass `borderColor` only for singular-emphasis cards needing a hued edge.
+    func glassSurface(
+        cornerRadius: CGFloat = OPSStyle.Layout.panelRadius,
+        borderColor: Color = OPSStyle.Colors.glassBorder
+    ) -> some View {
+        modifier(GlassSurfaceModifier(cornerRadius: cornerRadius, borderColor: borderColor))
     }
 
     /// L1 dense glass surface for sheets, popovers, and dropdowns. Default 12pt.

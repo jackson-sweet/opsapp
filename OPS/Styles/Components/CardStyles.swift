@@ -1,18 +1,33 @@
 import SwiftUI
 
-/// Card modifiers — spec v2 (2026-04-17).
+/// # OPS Surface Elevation Ladder — single source of truth
 ///
-/// Depth strategy: **glass material + hairline only, no box-shadows on dark**.
-/// All cards use `.ultraThinMaterial` layered over the pure `#000000` canvas to approximate
-/// the web `.glass-surface` treatment. Border is `glassBorder` (rgba 255,255,255,0.09).
-/// Radius is `panelRadius` (10pt) for standard cards, `modalRadius` (12pt) for dense/stacked.
+/// One ladder, applied everywhere. Depth is carried by **glass + hairlines only —
+/// never a box-shadow on dark**. Mirrors `mobile/MOBILE.md` §3 and `DESIGN.md`
+/// §5. The canonical *implementation* of every glass level lives in
+/// `GlassSurface.swift`; the `OPSCardStyle` wrappers below delegate to it so a
+/// card renders identically no matter which call-site name a view reaches for.
 ///
-/// `Accent` cards expose a full-border hue for cases where a single card genuinely needs
-/// to stand apart. Avoid for decoration — per spec, colored-accent borders as ornament is
-/// an anti-pattern.
+/// | Level         | Modifier            | Treatment                                                        | Use |
+/// |---------------|---------------------|------------------------------------------------------------------|-----|
+/// | **L0 Canvas** | `Colors.background` | pure `#000000` (+ optional single `Atmosphere` glow)             | screen base |
+/// | **L1 Card**   | `.glassSurface()` / `.opsCardStyle()` | glass 0.58 + `glassBorder` 0.09 + `panelRadius` 10 + top-edge gradient | cards, panels, widgets, list-of-cards items |
+/// | **L2 Nested** | `.nestedCard()`     | flat `surfaceInput` 0.04 + `nestedBorder` 0.08 + `cardRadius` 6, **no blur** | KPI/metric tiles, quick-action buttons, inline strips inside L1 or on canvas |
+/// | **Dense**     | `.glassDense()` / `.opsElevatedCardStyle()` | glass 0.78 + `glassBorder` 0.09 + `modalRadius` 12 | sheets, popovers, dropdowns, toasts |
+/// | **L3 Inline** | `OPSTag`, dots, etc.| inherits the parent surface                                      | tags, badges, status dots, avatars |
+///
+/// **Lists are not a surface level.** A list container has **no background fill**.
+/// Two sanctioned idioms: (a) a `LazyVStack` of L1/L2 cards on transparent ground
+/// (the LEADS pattern), or (b) transparent rows inside one L1 card separated by
+/// `Colors.line` (0.10) hairlines (the settings pattern). A row never gets its own
+/// competing fill.
+///
+/// **Depth rules.** No box-shadows on dark. Maximum two glass layers
+/// (L0 → L1, or L1 → dense). Never nest L2 inside L2.
 struct OPSCardStyle {
 
-    /// Standard glass card — the default surface for cards, panels, widgets.
+    /// **L1** standard glass card — the default surface for cards, panels, widgets.
+    /// Delegates to `.glassSurface()` so it is pixel-identical to the canonical L1.
     struct Standard: ViewModifier {
         var cornerRadius: CGFloat = OPSStyle.Layout.panelRadius
         var padding: CGFloat = 16
@@ -20,16 +35,12 @@ struct OPSCardStyle {
         func body(content: Content) -> some View {
             content
                 .padding(padding)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
-                .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .stroke(OPSStyle.Colors.glassBorder, lineWidth: 1)
-                )
+                .glassSurface(cornerRadius: cornerRadius)
         }
     }
 
-    /// Dense glass — for stacked surfaces (modals-over-panels, popovers-over-cards).
-    /// Radius is `modalRadius` (12) to match sheets / dialogs.
+    /// **Dense glass** — for stacked surfaces (sheets / popovers / dropdowns over
+    /// an L1 card). Delegates to `.glassDense()` (`modalRadius` = 12).
     struct Elevated: ViewModifier {
         var cornerRadius: CGFloat = OPSStyle.Layout.modalRadius
         var padding: CGFloat = 16
@@ -37,15 +48,12 @@ struct OPSCardStyle {
         func body(content: Content) -> some View {
             content
                 .padding(padding)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
-                .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .stroke(OPSStyle.Colors.glassBorder, lineWidth: 1)
-                )
+                .glassDense(cornerRadius: cornerRadius)
         }
     }
 
-    /// Interactive card — glass with `surface-hover` tint on press.
+    /// **L1** interactive card — the canonical glass base plus a `surfaceHover`
+    /// press tint and a tap action. Behavior layered over `.glassSurface()`.
     struct Interactive: ViewModifier {
         @State private var isPressed: Bool = false
         var cornerRadius: CGFloat = OPSStyle.Layout.panelRadius
@@ -55,14 +63,11 @@ struct OPSCardStyle {
         func body(content: Content) -> some View {
             content
                 .padding(padding)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
+                .glassSurface(cornerRadius: cornerRadius)
                 .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius)
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .fill(isPressed ? OPSStyle.Colors.surfaceHover : Color.clear)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .stroke(OPSStyle.Colors.glassBorder, lineWidth: 1)
+                        .allowsHitTesting(false)
                 )
                 .animation(OPSStyle.Animation.hover, value: isPressed)
                 .gesture(
@@ -76,9 +81,9 @@ struct OPSCardStyle {
         }
     }
 
-    /// Accent card — full-border hue treatment for singular emphasis.
-    /// Per spec, use sparingly. Do not use `opsAccent` here unless this IS the screen's
-    /// single primary focal element — prefer status-colored borders for category emphasis.
+    /// **L1** accent card — the canonical glass base with a hued edge for singular
+    /// emphasis. Per spec, use sparingly; prefer status hues over `opsAccent`, and
+    /// only when this IS the screen's single primary focal element.
     struct Accent: ViewModifier {
         var accentColor: Color = OPSStyle.Colors.opsAccent
         var cornerRadius: CGFloat = OPSStyle.Layout.panelRadius
@@ -87,11 +92,7 @@ struct OPSCardStyle {
         func body(content: Content) -> some View {
             content
                 .padding(padding)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
-                .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .stroke(accentColor, lineWidth: 1)
-                )
+                .glassSurface(cornerRadius: cornerRadius, borderColor: accentColor)
         }
     }
 }
@@ -99,22 +100,22 @@ struct OPSCardStyle {
 // MARK: - View extensions
 
 extension View {
-    /// Glass card — the default surface.
+    /// **L1** glass card — the default surface. Alias of `.glassSurface()`.
     func opsCardStyle(cornerRadius: CGFloat = OPSStyle.Layout.panelRadius, padding: CGFloat = 16) -> some View {
         self.modifier(OPSCardStyle.Standard(cornerRadius: cornerRadius, padding: padding))
     }
 
-    /// Dense glass — for stacked / elevated contexts.
+    /// **Dense glass** — for stacked / elevated contexts. Alias of `.glassDense()`.
     func opsElevatedCardStyle(cornerRadius: CGFloat = OPSStyle.Layout.modalRadius, padding: CGFloat = 16) -> some View {
         self.modifier(OPSCardStyle.Elevated(cornerRadius: cornerRadius, padding: padding))
     }
 
-    /// Interactive glass card with press feedback.
+    /// **L1** interactive glass card with press feedback.
     func opsInteractiveCardStyle(cornerRadius: CGFloat = OPSStyle.Layout.panelRadius, padding: CGFloat = 16, action: @escaping () -> Void) -> some View {
         self.modifier(OPSCardStyle.Interactive(cornerRadius: cornerRadius, padding: padding, action: action))
     }
 
-    /// Accent-bordered card. Use sparingly — prefer status hues over `opsAccent`.
+    /// **L1** accent-bordered glass card. Use sparingly — prefer status hues over `opsAccent`.
     func opsAccentCardStyle(accentColor: Color = OPSStyle.Colors.opsAccent, cornerRadius: CGFloat = OPSStyle.Layout.panelRadius, padding: CGFloat = 16) -> some View {
         self.modifier(OPSCardStyle.Accent(accentColor: accentColor, cornerRadius: cornerRadius, padding: padding))
     }
@@ -167,10 +168,10 @@ struct CardStyles_Previews: PreviewProvider {
 
                 OPSCard {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                        Text("Standard Card")
+                        Text("L1 — Standard Card")
                             .font(OPSStyle.Typography.cardTitle)
                             .foregroundColor(OPSStyle.Colors.text)
-                        Text("Glass surface, hairline border, no shadow.")
+                        Text("Glass surface, hairline border, top-edge gradient, no shadow.")
                             .font(OPSStyle.Typography.cardBody)
                             .foregroundColor(OPSStyle.Colors.text2)
                     }
@@ -178,10 +179,10 @@ struct CardStyles_Previews: PreviewProvider {
 
                 OPSElevatedCard {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                        Text("Elevated (Dense Glass)")
+                        Text("Dense Glass")
                             .font(OPSStyle.Typography.cardTitle)
                             .foregroundColor(OPSStyle.Colors.text)
-                        Text("Stacked-surface treatment for modals and popovers.")
+                        Text("Stacked-surface treatment for sheets, popovers, dropdowns.")
                             .font(OPSStyle.Typography.cardBody)
                             .foregroundColor(OPSStyle.Colors.text2)
                     }
@@ -195,6 +196,25 @@ struct CardStyles_Previews: PreviewProvider {
                         Text("Press to trigger.")
                             .font(OPSStyle.Typography.cardBody)
                             .foregroundColor(OPSStyle.Colors.text2)
+                    }
+                }
+
+                // L2 nested cards sit inside an L1 surface — the canonical nesting.
+                OPSCard {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                        Text("// L1 WITH L2 TILES")
+                            .font(OPSStyle.Typography.metadata)
+                            .foregroundColor(OPSStyle.Colors.text3)
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            ForEach(["04", "03", "17"], id: \.self) { value in
+                                Text(value)
+                                    .font(OPSStyle.Typography.dataValueLg)
+                                    .foregroundColor(OPSStyle.Colors.text)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .nestedCard()
+                            }
+                        }
                     }
                 }
 

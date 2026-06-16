@@ -20,8 +20,14 @@ struct DeckTab2DView: View {
     @State private var measurementMode: Bool = false
     @State private var measurementStart: CGPoint?
     @State private var measurementEnd: CGPoint?
-    @State private var surfaceInspectionMode: Bool = false
-    @State private var inspectedSurface: SurfaceInspectionReadout?
+    // Select & measure mode. Tap edges and/or surfaces to build a selection;
+    // a live readout breaks the totals down by type — decking area by
+    // material, edge linear feet by category (deck edge / railing-by-type /
+    // house-by-cladding), and stairs (count + run). Generalizes the former
+    // single-surface inspector into additive multi-select.
+    @State private var selectionMode: Bool = false
+    @State private var selectedEdgeIds: Set<String> = []
+    @State private var selectedSurfaceIds: Set<String> = []
 
     private let canvasSize: CGFloat = 4800
 
@@ -58,12 +64,12 @@ struct DeckTab2DView: View {
             // when a tool mode is toggled on so it doesn't interfere with
             // pan/zoom.
             .simultaneousGesture(
-                (measurementMode || surfaceInspectionMode)
+                (measurementMode || selectionMode)
                     ? SpatialTapGesture().onEnded { value in
                         if measurementMode {
                             recordMeasurementTap(at: value.location, in: geometry.size)
                         } else {
-                            recordSurfaceInspectionTap(at: value.location, in: geometry.size)
+                            recordSelectionTap(at: value.location, in: geometry.size)
                         }
                     }
                     : nil
@@ -132,7 +138,8 @@ struct DeckTab2DView: View {
                                 level: level,
                                 positions: face.positions,
                                 assignedItems: resolved.assignedItems,
-                                label: resolved.label
+                                label: resolved.label,
+                                selected: selectedSurfaceIds.contains(face.id)
                             )
                         }
                     } else if level.isClosed {
@@ -163,7 +170,7 @@ struct DeckTab2DView: View {
                             legacyFootprint: drawingData.footprint,
                             isLegacyPrimary: face.id == primary
                         )
-                        drawSurfaceFill(context: context, positions: face.positions, assignedItems: resolved.assignedItems, label: resolved.label)
+                        drawSurfaceFill(context: context, positions: face.positions, assignedItems: resolved.assignedItems, label: resolved.label, selected: selectedSurfaceIds.contains(face.id))
                     }
                 } else if drawingData.isClosed {
                     drawFootprint(context: context)
@@ -273,7 +280,7 @@ struct DeckTab2DView: View {
     /// Tinted by the surface's first assigned item color when present —
     /// matches the in-builder look so per-surface materials read correctly
     /// in the project tab. DECK-NEW-1 follow-up.
-    private func drawSurfaceFill(context: GraphicsContext, positions: [CGPoint], assignedItems: [AssignedItem] = [], label: String? = nil) {
+    private func drawSurfaceFill(context: GraphicsContext, positions: [CGPoint], assignedItems: [AssignedItem] = [], label: String? = nil, selected: Bool = false) {
         guard positions.count >= 3 else { return }
         var path = Path()
         path.move(to: positions[0])
@@ -291,6 +298,8 @@ struct DeckTab2DView: View {
             context.stroke(path, with: .color(Color.white.opacity(0.08)), lineWidth: 1)
         }
 
+        drawSelectionHighlight(context: context, path: path, selected: selected)
+
         let resolvedLabel: String? = {
             if let l = label?.trimmingCharacters(in: .whitespacesAndNewlines), !l.isEmpty { return l }
             return assignedItems.first?.name
@@ -298,6 +307,14 @@ struct DeckTab2DView: View {
         if let l = resolvedLabel {
             drawSurfaceLabel(context: context, positions: positions, label: l)
         }
+    }
+
+    /// Accent fill + stroke layered over a selected surface so the pick reads
+    /// at a glance in sun/gloves. No-op when the surface isn't selected.
+    private func drawSelectionHighlight(context: GraphicsContext, path: Path, selected: Bool) {
+        guard selected else { return }
+        context.fill(path, with: .color(OPSStyle.Colors.primaryAccent.opacity(0.18)))
+        context.stroke(path, with: .color(OPSStyle.Colors.primaryAccent), lineWidth: 2.5)
     }
 
     /// Surface label — small monochrome pill at the surface centroid.
@@ -342,6 +359,10 @@ struct DeckTab2DView: View {
         var path = Path()
         path.move(to: start.position)
         path.addLine(to: end.position)
+        // Selection halo under the edge so its type color still reads.
+        if selectedEdgeIds.contains(edge.id) {
+            context.stroke(path, with: .color(OPSStyle.Colors.primaryAccent), lineWidth: lineWidth + 5)
+        }
         context.stroke(path, with: .color(lineColor), lineWidth: lineWidth)
 
         // House edge hatching
@@ -523,7 +544,7 @@ struct DeckTab2DView: View {
     /// level. Tinted by per-surface material color when present, falling
     /// back to the level's display color for the unassigned look.
     /// DECK-NEW-1 follow-up.
-    private func drawLevelSurfaceFill(context: GraphicsContext, level: DeckLevel, positions: [CGPoint], assignedItems: [AssignedItem] = [], label: String? = nil) {
+    private func drawLevelSurfaceFill(context: GraphicsContext, level: DeckLevel, positions: [CGPoint], assignedItems: [AssignedItem] = [], label: String? = nil, selected: Bool = false) {
         guard positions.count >= 3 else { return }
         var path = Path()
         path.move(to: positions[0])
@@ -540,6 +561,8 @@ struct DeckTab2DView: View {
             context.fill(path, with: .color(level.displayColor.swiftUIColor.opacity(0.06)))
             context.stroke(path, with: .color(level.displayColor.swiftUIColor.opacity(0.15)), lineWidth: 1)
         }
+
+        drawSelectionHighlight(context: context, path: path, selected: selected)
 
         let resolvedLabel: String? = {
             if let l = label?.trimmingCharacters(in: .whitespacesAndNewlines), !l.isEmpty { return l }
@@ -590,80 +613,168 @@ struct DeckTab2DView: View {
                        style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
     }
 
-    // MARK: - Surface Inspection
+    // MARK: - Select & Measure
 
-    private struct SurfaceInspectionReadout: Equatable {
-        let id: String
-        let title: String
-        let areaText: String
-        let perimeterText: String
-        let materialText: String
-        let levelText: String?
+    /// Every edge across the design (top-level or all levels), for hit-testing.
+    private var selectableEdges: [DeckEdge] {
+        drawingData.isMultiLevel ? drawingData.levels.flatMap(\.edges) : drawingData.edges
+    }
+    /// Every vertex across the design, paired to `selectableEdges`.
+    private var selectableVertices: [DeckVertex] {
+        drawingData.isMultiLevel ? drawingData.levels.flatMap(\.vertices) : drawingData.vertices
     }
 
-    private func recordSurfaceInspectionTap(at location: CGPoint, in viewportSize: CGSize) {
-        let canvasLoc = canvasPoint(from: location, viewportSize: viewportSize)
-        inspectedSurface = surfaceInspectionReadout(at: canvasLoc)
-    }
-
-    private func surfaceInspectionReadout(at point: CGPoint) -> SurfaceInspectionReadout? {
-        let scale = drawingData.effectiveScaleFactor
-        let hit: (face: DetectedSurface, payload: DeckResolvedSurfacePayload, levelName: String?)?
-
+    /// Detected closed faces across the design, each carrying the persisted
+    /// store needed to resolve its material/label.
+    private func surfaceContexts() -> [(face: DetectedSurface, persisted: [DeckSurface], footprint: DeckFootprint, primaryId: String?)] {
         if drawingData.isMultiLevel {
-            var candidates: [(DetectedSurface, DeckResolvedSurfacePayload, String?)] = []
-            for level in drawingData.levels {
-                let surfaces = level.detectedSurfaces
-                let primary = DeckSurfaceInspector.primarySurfaceId(among: surfaces)
-                for face in surfaces where PolygonMath.pointInPolygon(point, vertices: face.positions) {
-                    let payload = DeckSurfaceInspector.resolvedPayload(
-                        detected: face,
-                        persisted: level.surfaces,
-                        legacyFootprint: level.footprint,
-                        isLegacyPrimary: face.id == primary
-                    )
-                    candidates.append((face, payload, level.name))
-                }
+            return drawingData.levels.flatMap { level -> [(DetectedSurface, [DeckSurface], DeckFootprint, String?)] in
+                let faces = level.detectedSurfaces
+                let primary = DeckSurfaceInspector.primarySurfaceId(among: faces)
+                return faces.map { ($0, level.surfaces, level.footprint, primary) }
             }
-            hit = candidates.min(by: {
-                PolygonMath.area(vertices: $0.0.positions) < PolygonMath.area(vertices: $1.0.positions)
-            })
-        } else {
-            let surfaces = drawingData.detectedSurfaces
-            let primary = DeckSurfaceInspector.primarySurfaceId(among: surfaces)
-            let candidates = surfaces.compactMap { face -> (DetectedSurface, DeckResolvedSurfacePayload, String?)? in
-                guard PolygonMath.pointInPolygon(point, vertices: face.positions) else { return nil }
-                let payload = DeckSurfaceInspector.resolvedPayload(
-                    detected: face,
-                    persisted: drawingData.surfaces,
-                    legacyFootprint: drawingData.footprint,
-                    isLegacyPrimary: face.id == primary
-                )
-                return (face, payload, nil)
-            }
-            hit = candidates.min(by: {
-                PolygonMath.area(vertices: $0.0.positions) < PolygonMath.area(vertices: $1.0.positions)
-            })
         }
+        let faces = drawingData.detectedSurfaces
+        let primary = DeckSurfaceInspector.primarySurfaceId(among: faces)
+        return faces.map { ($0, drawingData.surfaces, drawingData.footprint, primary) }
+    }
 
-        guard let hit else { return nil }
-        let area = PolygonMath.realWorldArea(vertices: hit.face.positions, scaleFactor: scale)
-        let perimeter = PolygonMath.perimeter(vertices: hit.face.positions) / scale
-        let title: String = {
-            let trimmed = hit.payload.label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return trimmed.isEmpty ? "Surface" : trimmed
-        }()
-        let material = hit.payload.assignedItems.first?.name
-            ?? hit.payload.boardMaterial.replacingOccurrences(of: "_", with: " ").capitalized
+    /// Toggle the edge under the tap into the selection; if no edge is in
+    /// range, toggle the smallest enclosing surface. Edge hit-test wins so
+    /// tapping a perimeter line picks the edge while tapping the interior
+    /// picks the surface.
+    private func recordSelectionTap(at location: CGPoint, in viewportSize: CGSize) {
+        let p = canvasPoint(from: location, viewportSize: viewportSize)
+        // Threshold tracks zoom so it stays ~finger-sized at any canvas scale.
+        let edgeThreshold = max(14, 28 / Double(canvasScale))
+        if let edgeId = PolygonMath.findEdgeAtPoint(p, edges: selectableEdges, vertices: selectableVertices, hitThreshold: edgeThreshold) {
+            if selectedEdgeIds.contains(edgeId) { selectedEdgeIds.remove(edgeId) } else { selectedEdgeIds.insert(edgeId) }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            return
+        }
+        let enclosing = surfaceContexts()
+            .map(\.face)
+            .filter { PolygonMath.pointInPolygon(p, vertices: $0.positions) }
+            .min { PolygonMath.area(vertices: $0.positions) < PolygonMath.area(vertices: $1.positions) }
+        if let face = enclosing {
+            if selectedSurfaceIds.contains(face.id) { selectedSurfaceIds.remove(face.id) } else { selectedSurfaceIds.insert(face.id) }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+    }
 
-        return SurfaceInspectionReadout(
-            id: hit.payload.persistedId ?? hit.face.id,
-            title: title,
-            areaText: DimensionEngine.formatArea(area, system: drawingData.config.measurementSystem),
-            perimeterText: DimensionEngine.format(perimeter, system: drawingData.config.measurementSystem),
-            materialText: material,
-            levelText: hit.levelName
+    // MARK: - Selection Readout (totals by type)
+
+    private struct SelectionGroup: Identifiable {
+        let id: String
+        let label: String
+        let value: String
+    }
+
+    private struct SelectionReadout {
+        let surfaceGroups: [SelectionGroup]
+        let edgeGroups: [SelectionGroup]
+        let stairGroup: SelectionGroup?
+        let totalAreaText: String?
+        let totalLengthText: String?
+        let selectionCount: Int
+    }
+
+    /// Reduce the current selection into totals broken down by type. Pure
+    /// read over in-memory geometry — recomputed synchronously on every tap
+    /// so the readout updates instantly.
+    private func buildSelectionReadout() -> SelectionReadout {
+        let system = drawingData.config.measurementSystem
+        let scale = drawingData.effectiveScaleFactor
+
+        // Surfaces → area grouped by board material.
+        var surfaceTotals: [String: Double] = [:]
+        var surfaceOrder: [String] = []
+        for ctx in surfaceContexts() where selectedSurfaceIds.contains(ctx.face.id) {
+            let payload = DeckSurfaceInspector.resolvedPayload(
+                detected: ctx.face,
+                persisted: ctx.persisted,
+                legacyFootprint: ctx.footprint,
+                isLegacyPrimary: ctx.face.id == ctx.primaryId
+            )
+            let label = surfaceMaterialLabel(payload)
+            if surfaceTotals[label] == nil { surfaceOrder.append(label) }
+            surfaceTotals[label, default: 0] += PolygonMath.realWorldArea(vertices: ctx.face.positions, scaleFactor: scale)
+        }
+        let surfaceGroups = surfaceOrder.map {
+            SelectionGroup(id: "surf-\($0)", label: $0, value: DimensionEngine.formatArea(surfaceTotals[$0] ?? 0, system: system))
+        }
+        let totalArea = surfaceTotals.values.reduce(0, +)
+
+        // Edges → linear length grouped by category; stairs aggregated apart.
+        var edgeTotals: [String: Double] = [:]
+        var edgeOrder: [String] = []
+        var stairCount = 0
+        var stairRunInches: Double = 0
+        let vertices = selectableVertices
+        for edge in selectableEdges where selectedEdgeIds.contains(edge.id) {
+            let length = edgeLengthInches(edge, vertices: vertices, scale: scale) ?? 0
+            let label = edgeCategoryLabel(edge)
+            if edgeTotals[label] == nil { edgeOrder.append(label) }
+            edgeTotals[label, default: 0] += length
+            if let stair = edge.stairConfig {
+                stairCount += 1
+                let tc = stair.treadCount ?? StairConfig.calculateTreadCount(totalRise: stair.totalRiseInches ?? 0, risePerStep: stair.risePerStep)
+                stairRunInches += Double(tc) * stair.runPerTread
+            }
+        }
+        let edgeGroups = edgeOrder.map {
+            SelectionGroup(id: "edge-\($0)", label: $0, value: DimensionEngine.format(edgeTotals[$0] ?? 0, system: system))
+        }
+        let totalLength = edgeTotals.values.reduce(0, +)
+
+        let stairGroup: SelectionGroup? = stairCount > 0
+            ? SelectionGroup(
+                id: "stairs",
+                label: stairCount == 1 ? "STAIRS" : "STAIRS ×\(stairCount)",
+                value: "RUN \(DimensionEngine.format(stairRunInches, system: system))"
+              )
+            : nil
+
+        return SelectionReadout(
+            surfaceGroups: surfaceGroups,
+            edgeGroups: edgeGroups,
+            stairGroup: stairGroup,
+            totalAreaText: totalArea > 0 ? DimensionEngine.formatArea(totalArea, system: system) : nil,
+            totalLengthText: totalLength > 0 ? DimensionEngine.format(totalLength, system: system) : nil,
+            selectionCount: selectedEdgeIds.count + selectedSurfaceIds.count
         )
+    }
+
+    /// Category label for an edge in the by-type breakdown.
+    private func edgeCategoryLabel(_ edge: DeckEdge) -> String {
+        switch edge.edgeType {
+        case .houseEdge:
+            if let m = edge.houseEdgeMaterial { return "HOUSE · \(m.displayName.uppercased())" }
+            return "HOUSE"
+        case .deckEdge:
+            if let r = edge.railingConfig { return "RAILING · \(r.railingType.displayName.uppercased())" }
+            return "DECK EDGE"
+        }
+    }
+
+    /// Material label for a surface in the by-type breakdown — the assigned
+    /// item's name when present, else the board material.
+    private func surfaceMaterialLabel(_ payload: DeckResolvedSurfacePayload) -> String {
+        if let item = payload.assignedItems.first?.name.trimmingCharacters(in: .whitespacesAndNewlines), !item.isEmpty {
+            return item.uppercased()
+        }
+        let m = payload.boardMaterial.replacingOccurrences(of: "_", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        return m.isEmpty ? "DECKING" : m.uppercased()
+    }
+
+    /// Real-world length of an edge in inches — stored dimension when present,
+    /// else canvas length over the effective scale. Searches `vertices` for
+    /// the edge's endpoints (works across levels).
+    private func edgeLengthInches(_ edge: DeckEdge, vertices: [DeckVertex], scale: Double) -> Double? {
+        if let dim = edge.dimension, dim > 0 { return dim }
+        guard let s = vertices.first(where: { $0.id == edge.startVertexId })?.position,
+              let e = vertices.first(where: { $0.id == edge.endVertexId })?.position else { return nil }
+        return SnapEngine.distance(s, e) / scale
     }
 
     // MARK: - Bug 033b5328 — Measurement Tool
@@ -889,8 +1000,9 @@ struct DeckTab2DView: View {
                 Button {
                     measurementMode.toggle()
                     if measurementMode {
-                        surfaceInspectionMode = false
-                        inspectedSurface = nil
+                        selectionMode = false
+                        selectedEdgeIds = []
+                        selectedSurfaceIds = []
                     } else {
                         measurementStart = nil
                         measurementEnd = nil
@@ -917,34 +1029,35 @@ struct DeckTab2DView: View {
                 .accessibilityLabel("Measure distance")
 
                 Button {
-                    surfaceInspectionMode.toggle()
-                    if surfaceInspectionMode {
+                    selectionMode.toggle()
+                    if selectionMode {
                         measurementMode = false
                         measurementStart = nil
                         measurementEnd = nil
                     } else {
-                        inspectedSurface = nil
+                        selectedEdgeIds = []
+                        selectedSurfaceIds = []
                     }
                 } label: {
-                    Image(systemName: "info.square")
+                    Image(systemName: "hand.tap")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(surfaceInspectionMode ? .black : .white)
+                        .foregroundColor(selectionMode ? .black : .white)
                         .frame(width: 40, height: 40)
                         .background(
                             Circle().fill(
-                                surfaceInspectionMode
+                                selectionMode
                                     ? OPSStyle.Colors.primaryAccent
                                     : Color.black.opacity(0.6)
                             )
                         )
                         .overlay(
                             Circle().stroke(
-                                surfaceInspectionMode ? Color.clear : Color.white.opacity(0.2),
+                                selectionMode ? Color.clear : Color.white.opacity(0.2),
                                 lineWidth: 1
                             )
                         )
                 }
-                .accessibilityLabel("Inspect surface")
+                .accessibilityLabel("Select and measure")
             }
 
             if let hint = measurementHintText {
@@ -957,7 +1070,7 @@ struct DeckTab2DView: View {
                     .cornerRadius(4)
             }
 
-            if let hint = surfaceHintText {
+            if let hint = selectionHintText {
                 Text(hint)
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -967,8 +1080,8 @@ struct DeckTab2DView: View {
                     .cornerRadius(4)
             }
 
-            if let inspectedSurface {
-                surfaceReadoutCard(inspectedSurface)
+            if selectionMode, !(selectedEdgeIds.isEmpty && selectedSurfaceIds.isEmpty) {
+                selectionReadoutCard(buildSelectionReadout())
             }
         }
         .padding(.top, 16)
@@ -976,34 +1089,39 @@ struct DeckTab2DView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
     }
 
-    private func surfaceReadoutCard(_ readout: SurfaceInspectionReadout) -> some View {
+    private func selectionReadoutCard(_ readout: SelectionReadout) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(readout.title.uppercased())
+            HStack(spacing: 6) {
+                Text("SELECTED")
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                Spacer(minLength: 12)
-                Text(readout.areaText)
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                Text("\(readout.selectionCount)")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
+                Spacer(minLength: 12)
+                Button {
+                    selectedEdgeIds = []
+                    selectedSurfaceIds = []
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Text("CLEAR")
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                .accessibilityLabel("Clear selection")
             }
-            HStack {
-                Text("PERIM")
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Text(readout.perimeterText)
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                Spacer(minLength: 8)
-                Text(readout.materialText.uppercased())
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .lineLimit(1)
-            }
-            if let level = readout.levelText {
-                Text(level.uppercased())
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            ForEach(readout.surfaceGroups) { selectionRow($0.label, $0.value) }
+            ForEach(readout.edgeGroups) { selectionRow($0.label, $0.value) }
+            if let stair = readout.stairGroup { selectionRow(stair.label, stair.value) }
+
+            if readout.totalAreaText != nil || readout.totalLengthText != nil {
+                Rectangle()
+                    .fill(OPSStyle.Colors.cardBorder.opacity(0.6))
+                    .frame(height: 0.5)
+                    .padding(.vertical, 2)
+                if let area = readout.totalAreaText { selectionRow("TOTAL AREA", area, emphasized: true) }
+                if let length = readout.totalLengthText { selectionRow("TOTAL LENGTH", length, emphasized: true) }
             }
         }
         .padding(10)
@@ -1014,6 +1132,22 @@ struct DeckTab2DView: View {
                 .stroke(OPSStyle.Colors.primaryAccent.opacity(0.35), lineWidth: 1)
         )
         .cornerRadius(6)
+    }
+
+    /// One label/value line in the selection readout — dim micro-label on the
+    /// left, mono tabular value on the right; accent + bolder when a total.
+    private func selectionRow(_ label: String, _ value: String, emphasized: Bool = false) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.system(size: emphasized ? 10 : 9, weight: .semibold, design: .monospaced))
+                .foregroundColor(emphasized ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.system(size: emphasized ? 13 : 11, weight: emphasized ? .bold : .semibold, design: .monospaced))
+                .foregroundColor(emphasized ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
+                .lineLimit(1)
+        }
     }
 
     /// Hint shown beside the ruler toggle when measurement mode is on.
@@ -1027,8 +1161,8 @@ struct DeckTab2DView: View {
         return "TAP TO RESET"
     }
 
-    private var surfaceHintText: String? {
-        guard surfaceInspectionMode else { return nil }
-        return inspectedSurface == nil ? "TAP SURFACE" : "TAP ANOTHER SURFACE"
+    private var selectionHintText: String? {
+        guard selectionMode else { return nil }
+        return (selectedEdgeIds.isEmpty && selectedSurfaceIds.isEmpty) ? "TAP EDGES OR SURFACES" : nil
     }
 }

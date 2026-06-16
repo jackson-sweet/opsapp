@@ -188,8 +188,11 @@ struct CatalogView: View {
                 .font(OPSStyle.Typography.pageTitle)
                 .foregroundColor(OPSStyle.Colors.primaryText)
             Spacer()
-            // Universal search — Catalog uses a bespoke header, so this matches
-            // the kebab's bare-icon styling rather than AppHeader's circle.
+            kebabButton
+            // Universal search — always the right-most trailing action, matching
+            // AppHeader's convention that search is the rightmost button on every
+            // header. Catalog uses a bespoke header, so this matches the kebab's
+            // bare-icon styling rather than AppHeader's circle.
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 appState.showingUniversalSearch = true
@@ -200,7 +203,6 @@ struct CatalogView: View {
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
             }
             .accessibilityLabel("Search")
-            kebabButton
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.top, OPSStyle.Layout.spacing2)

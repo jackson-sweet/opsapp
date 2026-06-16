@@ -32,7 +32,7 @@ struct DeckSceneBuilder {
     private static let bottomRailOffsetM: Float = 4.0 * inchesToMeters // 4" above deck
     private static let topRailThicknessM: Float = 2.0 * inchesToMeters
     private static let treadThicknessM: Float = 1.5 * inchesToMeters  // 1.5" thick tread
-    private static let houseWallHeightM: Float = 8.0 * feetToMeters   // 8' wall above deck
+    private static let houseWallHeightM: Float = 6.0 * feetToMeters   // 6' wall above deck — reads as the house face without dominating the deck in the viewer
 
     // MARK: - Main Build
 

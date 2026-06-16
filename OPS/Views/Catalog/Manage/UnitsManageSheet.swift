@@ -55,8 +55,7 @@ struct UnitsManageSheet: View {
                     }
                 }
             }
-            .navigationTitle("UNITS")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle("UNITS")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Close") { dismiss() }
@@ -188,12 +187,6 @@ struct UnitFormSheet: View {
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
 
-                        if let errorMessage = errorMessage {
-                            Text(errorMessage)
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.errorText)
-                        }
-
                         if isEditing {
                             Button(role: .destructive) {
                                 showDeleteConfirm = true
@@ -216,8 +209,7 @@ struct UnitFormSheet: View {
                     .padding(OPSStyle.Layout.spacing3)
                 }
             }
-            .navigationTitle(isEditing ? "EDIT UNIT" : "NEW UNIT")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle(isEditing ? "EDIT UNIT" : "NEW UNIT")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
@@ -241,6 +233,7 @@ struct UnitFormSheet: View {
                 Text("This unit will be removed.")
             }
             .onAppear { loadInitial() }
+            .errorToast($errorMessage, label: Feedback.Err.operationFailed)
         }
     }
 
@@ -291,6 +284,7 @@ struct UnitFormSheet: View {
                 let dto = try await repo.createUnit(create)
                 applyDTOToLocal(dto)
             }
+            ToastCenter.shared.present(Feedback.Catalog.unitSaved)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
@@ -309,6 +303,7 @@ struct UnitFormSheet: View {
             try await repo.softDeleteUnit(unit.id)
             unit.deletedAt = Date()
             try? modelContext.save()
+            ToastCenter.shared.present(Feedback.Catalog.unitRemoved)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

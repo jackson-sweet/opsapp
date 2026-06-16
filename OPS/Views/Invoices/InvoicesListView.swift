@@ -134,14 +134,7 @@ struct InvoicesListView: View {
                 Text("This will write off \(inv.invoiceNumber) (\(inv.balanceDue, format: .currency(code: "USD"))) as bad debt. This action cannot be undone.")
             }
         }
-        .alert("Error", isPresented: Binding(
-            get: { viewModel.error != nil },
-            set: { if !$0 { viewModel.error = nil } }
-        )) {
-            Button("OK") { viewModel.error = nil }
-        } message: {
-            Text(viewModel.error ?? "")
-        }
+        .errorToast($viewModel.error, label: Feedback.Err.operationFailed)
         .task {
             if let companyId = dataController.currentUser?.companyId {
                 viewModel.setup(companyId: companyId, modelContext: modelContext)

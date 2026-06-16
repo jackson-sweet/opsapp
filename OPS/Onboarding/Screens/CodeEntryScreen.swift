@@ -20,7 +20,6 @@ struct CodeEntryScreen: View {
     @State private var isJoining = false
     @State private var showHelpSheet = false
     @State private var showSwitchConfirmation = false
-    @State private var showJoinFailedAlert = false
     @FocusState private var isInputFocused: Bool
 
     // Animation coordinator
@@ -126,11 +125,7 @@ struct CodeEntryScreen: View {
         } message: {
             Text("This will discard your current progress and start the company creation flow.")
         }
-        .alert("Couldn't Join Crew", isPresented: $showJoinFailedAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(errorMessage ?? "That code didn't work. Check it and try again.")
-        }
+        .errorToast($errorMessage, label: Feedback.Err.invalidCode)
     }
 
     // MARK: - Helpers
@@ -154,6 +149,7 @@ struct CodeEntryScreen: View {
 
                 await MainActor.run {
                     isJoining = false
+                    ToastCenter.shared.present(Feedback.Onboarding.codeAccepted)
                     manager.confirmationSource = .manualCodeEntry
                     manager.goToScreen(.companyConfirmation)
                 }
@@ -163,7 +159,6 @@ struct CodeEntryScreen: View {
                     generator.notificationOccurred(.error)
                     isJoining = false
                     errorMessage = error.localizedDescription
-                    showJoinFailedAlert = true
                 }
             }
         }
@@ -171,6 +166,7 @@ struct CodeEntryScreen: View {
 
     private func switchToCompanyCreator() {
         manager.state.companyData = OnboardingCompanyData()
+        ToastCenter.shared.present(Feedback.Onboarding.switchedToCompanySetup)
         manager.goToScreen(.userTypeSelection)
     }
 }

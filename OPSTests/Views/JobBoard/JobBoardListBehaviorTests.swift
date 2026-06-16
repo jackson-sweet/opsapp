@@ -35,6 +35,32 @@ final class JobBoardListBehaviorTests: XCTestCase {
         XCTAssertEqual(result.map(\.id), [visible.id])
     }
 
+    func testJobBoardVisibleTasksExcludeTasksFromPreAcceptanceProjects() {
+        // Regression: the job board task list must surface work for ACTIVE
+        // projects only (accepted / in-progress). Pre-acceptance projects
+        // (RFQ, Estimated) hadn't been greenlit yet, but their tasks were
+        // leaking into the list before `isJobBoardTaskListVisible` was gated
+        // on `Status.isActive`.
+        let rfqProject = makeProject(id: "rfq", status: .rfq)
+        let estimatedProject = makeProject(id: "estimated", status: .estimated)
+        let acceptedProject = makeProject(id: "accepted", status: .accepted)
+        let inProgressProject = makeProject(id: "in-progress", status: .inProgress)
+
+        _ = makeTask(id: "rfq-hidden", project: rfqProject)
+        _ = makeTask(id: "estimated-hidden", project: estimatedProject)
+        let acceptedTask = makeTask(id: "accepted-visible", project: acceptedProject)
+        let inProgressTask = makeTask(id: "in-progress-visible", project: inProgressProject)
+
+        let result = JobBoardTaskFiltering.visibleTasks(from: [
+            rfqProject,
+            estimatedProject,
+            acceptedProject,
+            inProgressProject
+        ])
+
+        XCTAssertEqual(result.map(\.id), [acceptedTask.id, inProgressTask.id])
+    }
+
     func testJobBoardVisibleTasksDeduplicateByTaskIdKeepingFirstVisibleTask() {
         let firstProject = makeProject(id: "first", status: .accepted)
         let secondProject = makeProject(id: "second", status: .inProgress)

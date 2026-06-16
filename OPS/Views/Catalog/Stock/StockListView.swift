@@ -20,6 +20,7 @@ struct StockListView: View {
     /// "UNCATEGORIZED" (bug 9a4bcfae).
     let categories: [CatalogCategory]
     var onTap: ((EnrichedVariantRow) -> Void)? = nil
+    var onOpenDetail: ((EnrichedVariantRow) -> Void)? = nil
 
     /// Build the (parent, parentRows, children) groupings used by the
     /// `LazyVStack` below. A row's parent is the row's category's parent,
@@ -109,6 +110,10 @@ struct StockListView: View {
                         children: group.children,
                         onTap: { row in
                             onTap?(row)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        },
+                        onOpenDetail: { row in
+                            onOpenDetail?(row)
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         }
                     )

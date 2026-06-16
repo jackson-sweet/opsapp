@@ -91,11 +91,19 @@ struct NewServiceSheet: View {
                     saveBar
                 }
             }
-            .navigationTitle("NEW SERVICE")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
+                    Button { dismiss() } label: {
+                        Text("CANCEL")
+                            .font(OPSStyle.Typography.buttonLabel)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+                }
+                ToolbarItem(placement: .principal) {
+                    Text("NEW SERVICE")
+                        .font(OPSStyle.Typography.panelTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
             }

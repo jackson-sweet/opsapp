@@ -2,7 +2,7 @@
 //  RoleDetailView.swift
 //  OPS
 //
-//  Edit permissions for a specific role. Groups 19 permissions by category.
+//  Edit permissions for a specific role. Groups the granular permissions by category.
 //  Toggle on/off and set scope (ALL / ASSIGNED / OWN).
 //
 
@@ -31,6 +31,13 @@ enum PermissionRegistry {
         PermissionDefinition(id: "clients.edit", label: "Edit Clients", category: "Clients"),
         // Estimates
         PermissionDefinition(id: "estimates.create", label: "Create Estimates", category: "Estimates"),
+        // Invoices
+        PermissionDefinition(id: "invoices.view", label: "View Invoices", category: "Invoices"),
+        PermissionDefinition(id: "invoices.create", label: "Create Invoices", category: "Invoices"),
+        PermissionDefinition(id: "invoices.edit", label: "Edit Invoices", category: "Invoices"),
+        PermissionDefinition(id: "invoices.send", label: "Send Invoices", category: "Invoices"),
+        PermissionDefinition(id: "invoices.record_payment", label: "Record Payments", category: "Invoices"),
+        PermissionDefinition(id: "invoices.delete", label: "Delete Invoices", category: "Invoices"),
         // Expenses
         PermissionDefinition(id: "expenses.create", label: "Create Expenses", category: "Expenses"),
         // Pipeline
@@ -105,6 +112,7 @@ enum PermissionRegistry {
     static let categoryFeatureFlag: [String: String] = [
         "Pipeline": "pipeline",
         "Estimates": "estimates",
+        "Invoices": "pipeline",
         "Deck Builder": "deck_builder",
     ]
 
@@ -119,6 +127,7 @@ enum PermissionRegistry {
         case "Tasks": return OPSStyle.Icons.task
         case "Clients": return OPSStyle.Icons.subClient
         case "Estimates": return OPSStyle.Icons.estimateDoc
+        case "Invoices": return OPSStyle.Icons.invoiceReceipt
         case "Expenses": return OPSStyle.Icons.expense
         case "Pipeline": return OPSStyle.Icons.accountingChart
         case "Calendar": return OPSStyle.Icons.calendar
@@ -160,6 +169,12 @@ private let permissionSearchTags: [String: [String]] = [
     "clients.create":               ["new client", "add client", "customer"],
     "clients.edit":                 ["modify client", "update client", "customer"],
     "estimates.create":             ["new estimate", "quote", "proposal"],
+    "invoices.view":                ["invoice", "bill", "billing"],
+    "invoices.create":              ["new invoice", "bill", "billing"],
+    "invoices.edit":                ["modify invoice", "update invoice", "bill"],
+    "invoices.send":                ["send invoice", "email invoice", "deliver"],
+    "invoices.record_payment":      ["record payment", "log payment", "mark paid", "collect"],
+    "invoices.delete":              ["remove invoice", "void invoice"],
     "expenses.create":              ["new expense", "add expense", "receipt"],
     "pipeline.view":                ["funnel", "leads", "opportunity"],
     "pipeline.manage":              ["funnel", "leads", "opportunity"],
@@ -195,8 +210,6 @@ struct RoleDetailView: View {
     // Team members assigned to this role
     @State private var roleUsers: [User] = []
 
-    // Feature gate alert
-    @State private var showFeatureGateAlert = false
 
     // Pending changes
     @State private var pendingChanges: [String: PermissionChange] = [:]
@@ -275,6 +288,8 @@ struct RoleDetailView: View {
                                 Text(PermissionRegistry.displayName(for: role.name).uppercased())
                                     .font(OPSStyle.Typography.bodyBold)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
                             }
                             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
@@ -304,38 +319,41 @@ struct RoleDetailView: View {
                                     }
                                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
-                                    ScrollView(.horizontal, showsIndicators: false) {
-                                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
-                                            ForEach(roleUsers) { user in
-                                                VStack(spacing: 6) {
-                                                    if let imageData = user.profileImageData,
-                                                       let uiImage = UIImage(data: imageData) {
-                                                        Image(uiImage: uiImage)
-                                                            .resizable()
-                                                            .scaledToFill()
-                                                            .frame(width: 44, height: 44)
-                                                            .clipShape(Circle())
-                                                    } else {
-                                                        Circle()
-                                                            .fill(user.userColor.flatMap { Color(hex: $0) } ?? OPSStyle.Colors.primaryAccent)
-                                                            .frame(width: 44, height: 44)
-                                                            .overlay(
-                                                                Text(user.firstName.prefix(1).uppercased())
-                                                                    .font(OPSStyle.Typography.bodyBold)
-                                                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                                            )
-                                                    }
-
-                                                    Text(user.firstName)
-                                                        .font(OPSStyle.Typography.smallCaption)
-                                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                                        .lineLimit(1)
+                                    LazyVGrid(
+                                        columns: [GridItem(.adaptive(minimum: 56, maximum: 72), spacing: OPSStyle.Layout.spacing2_5)],
+                                        alignment: .leading,
+                                        spacing: OPSStyle.Layout.spacing2_5
+                                    ) {
+                                        ForEach(roleUsers) { user in
+                                            VStack(spacing: 6) {
+                                                if let imageData = user.profileImageData,
+                                                   let uiImage = UIImage(data: imageData) {
+                                                    Image(uiImage: uiImage)
+                                                        .resizable()
+                                                        .scaledToFill()
+                                                        .frame(width: 44, height: 44)
+                                                        .clipShape(Circle())
+                                                } else {
+                                                    Circle()
+                                                        .fill(user.userColor.flatMap { Color(hex: $0) } ?? OPSStyle.Colors.primaryAccent)
+                                                        .frame(width: 44, height: 44)
+                                                        .overlay(
+                                                            Text(user.firstName.prefix(1).uppercased())
+                                                                .font(OPSStyle.Typography.bodyBold)
+                                                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                                        )
                                                 }
-                                                .frame(width: 56)
+
+                                                Text(user.firstName)
+                                                    .font(OPSStyle.Typography.smallCaption)
+                                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                                    .lineLimit(1)
+                                                    .truncationMode(.tail)
                                             }
+                                            .frame(width: 56)
                                         }
-                                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                                     }
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                                 }
                             }
 
@@ -426,11 +444,6 @@ struct RoleDetailView: View {
             // the user is still inside this fullScreenCover.
             NotificationCenter.default.post(name: Notification.Name("WizardRoleDetailViewed"), object: nil)
         }
-        .alert("In Testing", isPresented: $showFeatureGateAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text("This feature is currently in testing. Reach out if you'd like to be added to the testing group.")
-        }
     }
 
     // MARK: - Collapsible Category Card
@@ -463,6 +476,7 @@ struct RoleDetailView: View {
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
+                        .truncationMode(.tail)
 
                     Spacer(minLength: 0)
 
@@ -602,7 +616,7 @@ struct RoleDetailView: View {
 
     private func gatedCategory(_ category: String) -> some View {
         Button(action: {
-            showFeatureGateAlert = true
+            ToastCenter.shared.present(Feedback.Settings.featureInTesting)
         }) {
             HStack(spacing: 6) {
                 Image(systemName: PermissionRegistry.iconForCategory(category))
@@ -647,6 +661,8 @@ struct RoleDetailView: View {
             Text(perm.label)
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(level != .off ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
 
             permissionScopePicker(
                 selection: level,
@@ -684,6 +700,8 @@ struct RoleDetailView: View {
                     Text(level.displayName)
                         .font(OPSStyle.Typography.smallCaption)
                         .tracking(0.3)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                         .foregroundColor(
                             !isMixed && selection == level
                                 ? OPSStyle.Colors.primaryText
@@ -841,6 +859,7 @@ struct RoleDetailView: View {
                     pendingChanges = [:]
                     isSaving = false
 
+                    ToastCenter.shared.present(Feedback.Settings.permissionsSaved)
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.success)
                 }

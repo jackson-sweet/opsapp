@@ -237,28 +237,12 @@ class SubscriptionManager: ObservableObject {
         subscriptionEnd = company.subscriptionEnd
         trialEndDate = company.trialEndDate
 
-        // DEFENSIVE FIX: If backend has expired trial still marked as "trial", update it to "expired"
-        if let status = company.subscriptionStatusEnum,
-           status == .trial,
-           let trialEnd = company.trialEndDate,
-           trialEnd < Date() {
-            print("[SUBSCRIPTION] ⚠️ Detected expired trial with 'trial' status - updating to 'expired'")
-            print("[SUBSCRIPTION]    Trial ended: \(trialEnd.formatted())")
-            print("[SUBSCRIPTION]    Current date: \(Date().formatted())")
-
-            // Update Supabase in background (don't block UI)
-            Task {
-                do {
-                    try await dataController.updateCompanyFields(
-                        companyId: company.id,
-                        fields: ["subscription_status": "expired"]
-                    )
-                    print("[SUBSCRIPTION] ✅ Successfully updated Supabase: trial → expired")
-                } catch {
-                    print("[SUBSCRIPTION] ❌ Failed to update Supabase status: \(error)")
-                }
-            }
-        }
+        // Trial→expired is persisted server-side (ops-web cron /api/cron/trial-expiry,
+        // service_role). companies.subscription_status is client-immutable as of the
+        // privileged-column guard (guard_companies_privileged_columns_crit2), so a direct
+        // client write here would no-op / be rejected. Lockout for a lapsed trial does NOT
+        // depend on the stored status: shouldLockoutUser() LAYER 5 derives it from
+        // trialEndDate directly, so no client write is needed.
 
         print("[SUBSCRIPTION] 📊 Computed Days Remaining:")
         print("[SUBSCRIPTION]    - trialDaysRemaining: \(trialDaysRemaining?.description ?? "nil")")

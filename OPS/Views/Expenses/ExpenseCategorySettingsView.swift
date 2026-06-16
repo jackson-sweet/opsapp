@@ -57,14 +57,7 @@ struct ExpenseCategorySettingsView: View {
                 await viewModel.loadCategories()
             }
         }
-        .alert("Error", isPresented: Binding(
-            get: { viewModel.error != nil },
-            set: { if !$0 { viewModel.error = nil } }
-        )) {
-            Button("OK") { viewModel.error = nil }
-        } message: {
-            Text(viewModel.error ?? "")
-        }
+        .errorToast($viewModel.error, label: Feedback.Err.categoryUpdateFailed)
     }
 
     // MARK: - Categories List

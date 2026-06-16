@@ -24,13 +24,15 @@ struct DeckToolbar: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if viewModel.activeTool == .tapSelect {
+            if viewModel.activeTool == .tapSelect, viewModel.pendingPastePreview == nil {
                 multiSelectHeader
             }
 
             // Context-sensitive action bar — one shell, action set varies by
             // selected data type. Mixed selections keep the bulk bar.
-            if canEdit, !viewModel.selection.isEmpty {
+            if canEdit, viewModel.pendingPastePreview != nil {
+                pendingPasteTools
+            } else if canEdit, !viewModel.selection.isEmpty {
                 selectedContextTools
             } else {
                 defaultTools
@@ -174,8 +176,6 @@ struct DeckToolbar: View {
         let vertexCount = viewModel.selection.selectedVertexIds.count
         let surfaceSelected = viewModel.selection.selectedFootprint
 
-        // Material only makes sense when at least one edge or surface is selected
-        let canAssignMaterial = edgeCount > 0 || surfaceSelected
         // Move-to-level shows whenever a surface OR edge selection exists —
         // even in single-level mode it offers "+ New level" so the operator
         // can split off a second deck. Cap is 3 levels. Edge migration also
@@ -194,10 +194,8 @@ struct DeckToolbar: View {
 
             selectOnlyMenuIfUseful(includeKindSection: true)
 
-            if canAssignMaterial {
-                actionButton(icon: "square.grid.3x3", label: "Material") {
-                    viewModel.showingMaterialPicker = true
-                }
+            actionButton(icon: "slider.horizontal.3", label: "Properties") {
+                viewModel.showingPropertySheet = true
             }
 
             if surfaceSelected {
@@ -212,9 +210,13 @@ struct DeckToolbar: View {
                 viewModel.toggleSelectionMove()
             }
 
+            copySelectionButton
+
             if canMoveToLevel {
                 moveToLevelMenu
             }
+
+            pasteSelectionButton
 
             Spacer()
 
@@ -223,6 +225,28 @@ struct DeckToolbar: View {
             }
 
             clearSelectionButton
+        }
+    }
+
+    private var pendingPasteTools: some View {
+        contextToolBar {
+            contextLabel("Paste")
+
+            toolDivider
+
+            actionButton(icon: "hand.draw", label: "Move") {
+                viewModel.activeTool = .tapSelect
+            }
+
+            Spacer()
+
+            actionButton(icon: "checkmark", label: "Place", tint: OPSStyle.Colors.successStatus) {
+                viewModel.commitPendingPaste()
+            }
+
+            actionButton(icon: "xmark", label: "Cancel", tint: OPSStyle.Colors.errorStatus) {
+                viewModel.cancelPendingPaste()
+            }
         }
     }
 
@@ -341,6 +365,12 @@ struct DeckToolbar: View {
 
                     toolDivider
 
+                    pasteSelectionButton
+
+                    if viewModel.canPasteSelection {
+                        toolDivider
+                    }
+
                     actionButton(icon: "arrow.up.and.down.circle", label: "Height") {
                         viewModel.showingElevationInput = true
                     }
@@ -433,6 +463,10 @@ struct DeckToolbar: View {
                 viewModel.toggleSelectionMove()
             }
 
+            copySelectionButton
+
+            pasteSelectionButton
+
             Spacer()
 
             actionButton(icon: "trash", label: "Delete", tint: OPSStyle.Colors.errorStatus) {
@@ -466,13 +500,11 @@ struct DeckToolbar: View {
                 viewModel.toggleSelectionMove()
             }
 
-            // Material entry removed from edge toolbar — the floating
-            // assignment wheel (center-right of the canvas) is the
-            // canonical material-pick path for edge selections. Bug
-            // 6d1c0a2a — reporter saw two material buttons (toolbar +
-            // wheel) and didn't know which to use. Surface selections
-            // keep the toolbar Material button below because the wheel
-            // is hidden in surface-only mode.
+            copySelectionButton
+
+            // Material entry removed from context toolbars. Properties is the
+            // canonical selection inspector for edge type, cladding, railing
+            // finish, and catalog material assignment.
 
             // Move-to-level — edges + bounding vertices migrate; any
             // source-level surface whose perimeter the move breaks gets
@@ -489,6 +521,8 @@ struct DeckToolbar: View {
             actionButton(icon: "slider.horizontal.3", label: "Properties") {
                 viewModel.showingPropertySheet = true
             }
+
+            pasteSelectionButton
 
             Spacer()
 
@@ -514,10 +548,6 @@ struct DeckToolbar: View {
                 viewModel.showingStairConfig = true
             }
 
-            actionButton(icon: "shippingbox", label: "Material") {
-                viewModel.showingMaterialPicker = true
-            }
-
             actionButton(icon: "ruler", label: "Dimension") {
                 viewModel.showingDimensionInput = true
             }
@@ -527,6 +557,8 @@ struct DeckToolbar: View {
                 viewModel.toggleSelectionMove()
             }
 
+            copySelectionButton
+
             if viewModel.isMultiLevel || viewModel.drawingData.levels.count < 3 {
                 moveToLevelMenu
             }
@@ -534,6 +566,8 @@ struct DeckToolbar: View {
             actionButton(icon: "slider.horizontal.3", label: "Properties") {
                 viewModel.showingPropertySheet = true
             }
+
+            pasteSelectionButton
 
             Spacer()
 
@@ -553,10 +587,6 @@ struct DeckToolbar: View {
 
             toolDivider
 
-            actionButton(icon: "square.grid.3x3", label: "Material") {
-                viewModel.showingMaterialPicker = true
-            }
-
             actionButton(icon: "shippingbox", label: "Order Vinyl") {
                 viewModel.vinylOrderSurfaceScope = .selectedSurfaces
                 viewModel.showingVinylOrderSheet = true
@@ -571,6 +601,8 @@ struct DeckToolbar: View {
                 viewModel.toggleSelectionMove()
             }
 
+            copySelectionButton
+
             actionButton(icon: "arrow.up.and.down.circle", label: "Elevation") {
                 viewModel.showingElevationInput = true
             }
@@ -578,6 +610,8 @@ struct DeckToolbar: View {
             actionButton(icon: "slider.horizontal.3", label: "Properties") {
                 viewModel.showingPropertySheet = true
             }
+
+            pasteSelectionButton
 
             Spacer()
 
@@ -591,6 +625,21 @@ struct DeckToolbar: View {
         let selectedEdges = viewModel.drawingData.allEdges.filter { selectedIds.contains($0.id) }
         return selectedEdges.count == selectedIds.count
             && selectedEdges.allSatisfy { $0.stairConfig != nil }
+    }
+
+    private var copySelectionButton: some View {
+        actionButton(icon: "doc.on.doc", label: "Copy") {
+            _ = viewModel.copySelection()
+        }
+    }
+
+    @ViewBuilder
+    private var pasteSelectionButton: some View {
+        if viewModel.canPasteSelection {
+            actionButton(icon: "doc.on.clipboard", label: "Paste") {
+                viewModel.beginPaste()
+            }
+        }
     }
 
     private func contextToolBar<Content: View>(

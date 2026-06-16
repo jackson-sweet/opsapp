@@ -59,12 +59,10 @@ struct OnboardingContainer: View {
             }
         }
         .animation(OPSStyle.Animation.standard, value: manager.state.currentScreen)
-        .alert("Error", isPresented: $manager.showError) {
-            Button("OK") {
-                manager.clearError()
-            }
-        } message: {
-            Text(manager.errorMessage ?? "An error occurred")
+        .onChange(of: manager.showError) { _, isShowing in
+            guard isShowing, let msg = manager.errorMessage, !msg.isEmpty else { return }
+            ToastCenter.shared.present(Toast(label: Feedback.Err.operationFailed, tone: .error))
+            manager.clearError()
         }
         .onAppear {
             print("[ONBOARDING_CONTAINER] Container appeared, screen: \(manager.state.currentScreen)")

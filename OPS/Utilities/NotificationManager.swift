@@ -1102,16 +1102,24 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     private func handleRemoteNotificationResponse(userInfo: [AnyHashable: Any], actionIdentifier: String) {
         let projectId = userInfo["projectId"] as? String
         let taskId = userInfo["taskId"] as? String
+        let leadId = (userInfo["leadId"] as? String) ?? (userInfo["opportunityId"] as? String)
         let screen = userInfo["screen"] as? String
         let type = userInfo["type"] as? String
 
-        print("[NOTIFICATIONS] Handling remote notification response - screen: \(screen ?? "none"), type: \(type ?? "none")")
+        print("[NOTIFICATIONS] Handling remote notification response - screen: \(screen ?? "none"), type: \(type ?? "none"), lead: \(leadId ?? "none")")
 
         // Route based on screen or type (same logic as AppDelegate)
         if let screen = screen {
-            routeToScreen(screen, projectId: projectId, taskId: taskId)
+            routeToScreen(screen, projectId: projectId, taskId: taskId, leadId: leadId)
         } else if let type = type {
-            routeByType(type, projectId: projectId, taskId: taskId)
+            routeByType(type, projectId: projectId, taskId: taskId, leadId: leadId)
+        } else if let leadId = leadId {
+            // A bare lead/opportunity id with no screen/type still routes.
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenLeadDetails"),
+                object: nil,
+                userInfo: ["leadId": leadId]
+            )
         } else if let projectId = projectId {
             // Default: open project details
             NotificationCenter.default.post(
@@ -1169,7 +1177,7 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     }
 
     /// Route to specific screen based on payload
-    private func routeToScreen(_ screen: String, projectId: String?, taskId: String?) {
+    private func routeToScreen(_ screen: String, projectId: String?, taskId: String?, leadId: String?) {
         switch screen {
         case "projectDetails":
             if let projectId = projectId {
@@ -1191,14 +1199,35 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             NotificationCenter.default.post(name: Notification.Name("OpenSchedule"), object: nil)
         case "jobBoard":
             NotificationCenter.default.post(name: Notification.Name("OpenJobBoard"), object: nil)
+        case "pipeline", "leads", "leadDetails", "opportunity", "opportunities":
+            routeToLeadOrJobBoard(leadId: leadId)
         default:
             print("[NOTIFICATIONS] Unknown screen: \(screen)")
         }
     }
 
+    /// Open a lead detail when an id is present, otherwise the Job Board — never
+    /// a dead tap. MainTabView's OpenLeadDetails handler enforces pipeline.view.
+    private func routeToLeadOrJobBoard(leadId: String?) {
+        if let leadId = leadId, !leadId.isEmpty {
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenLeadDetails"),
+                object: nil,
+                userInfo: ["leadId": leadId]
+            )
+        } else {
+            NotificationCenter.default.post(name: Notification.Name("OpenJobBoard"), object: nil)
+        }
+    }
+
     /// Route based on notification type
-    private func routeByType(_ type: String, projectId: String?, taskId: String?) {
+    private func routeByType(_ type: String, projectId: String?, taskId: String?, leadId: String?) {
         switch type {
+        case "leads_waiting", "pipeline_complete",
+             "lead", "leads", "opportunity", "opportunities",
+             "lead_created", "lead_updated", "lead_follow_up_due",
+             "opportunity_created", "opportunity_updated", "opportunity_follow_up_due":
+            routeToLeadOrJobBoard(leadId: leadId)
         case "assignment", "update", "completion", "projectCompletion":
             if let projectId = projectId {
                 NotificationCenter.default.post(

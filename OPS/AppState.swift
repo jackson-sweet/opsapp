@@ -72,15 +72,19 @@ class AppState: ObservableObject {
     /// sheet animation is still unwinding.
     @Published var pendingRailDeepLink: String? = nil
 
-    // MARK: - Bug Reporting
-    @Published var showingBugReport: Bool = false
-    @Published var bugReportScreenshot: UIImage?
-
     // MARK: - Projects Needing Tasks Review
     /// Sheet presented when the user taps the rail notification for the
     /// "accepted projects with no tasks" alert. Mounted at MainTabView so
     /// it survives notification-rail dismissal.
     @Published var showProjectsNeedingTasksReview: Bool = false
+
+    // MARK: - Lead Notification Deep Link Baton
+    /// Opportunity id stashed by the `OpenLeadDetails` handler in MainTabView
+    /// before it switches to the LEADS tab. `LeadsTabView` reads and clears it
+    /// on appear / load so the matching `LeadDetailView` opens once the tab is
+    /// mounted and the pipeline data is in hand. Survives the LEADS tab not yet
+    /// being on-screen at tap time (push cold-launch, rail tap from any tab).
+    @Published var pendingLeadDeepLinkId: String? = nil
 
     /// Refresh unread notification count from Supabase
     func refreshUnreadCount() {
@@ -108,8 +112,11 @@ class AppState: ObservableObject {
     /// Returns true if completion can proceed directly, false if checklist sheet will be shown.
     @discardableResult
     func requestProjectCompletion(_ project: Project) -> Bool {
-        // Check for incomplete tasks (excluding cancelled)
-        let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
+        // Check for tasks that genuinely block completion (excludes terminal
+        // — completed/cancelled — and soft-deleted tasks). Shares the exact
+        // predicate the checklist sheet consumes so the gate and the sheet
+        // never disagree.
+        let incompleteTasks = project.tasksBlockingCompletion
 
         if !incompleteTasks.isEmpty {
             // Has incomplete tasks - show checklist sheet
@@ -288,9 +295,12 @@ class AppState: ObservableObject {
         self.showingGlobalCompletionChecklist = false
         self.unreadNotificationCount = 0
         self.showingNotifications = false
-        self.showingBugReport = false
-        self.bugReportScreenshot = nil
         self.showProjectsNeedingTasksReview = false
+        // Tear down the shake-to-report overlay window if it's up, so a
+        // logout doesn't leave it floating over the login screen.
+        Task { @MainActor in
+            BugReportPresenter.shared.dismiss()
+        }
         // Purge any pending deep link so the next signed-in user cannot
         // inherit a link that was sent to the previous account. The
         // coordinator is MainActor-isolated; resetForLogout is called

@@ -215,6 +215,12 @@ enum OnboardingStorageKeys {
     static let completed = "onboarding_completed"
     static let preSignupTutorialCompleted = "pre_signup_tutorial_completed"
 
+    /// Set true (new v4 flow only) when the user finished onboarding but the
+    /// server completion ACK (POST /api/onboarding/complete) failed/timed out.
+    /// Treated as "complete" for gating so the user is let into the app and never
+    /// re-onboarded; the sync sweep retries the ACK and clears this on success.
+    static let completionPending = "onboarding_completion_pending"
+
     // Legacy keys (for cleanup)
     static let stateV2 = "onboarding_state_v2"
     static let lastStepV2 = "last_onboarding_step_v2"

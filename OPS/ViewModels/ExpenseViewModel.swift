@@ -287,6 +287,7 @@ class ExpenseViewModel: ObservableObject {
         do {
             let created = try await repo.create(dto)
             expenses.insert(created, at: 0)
+            ToastCenter.shared.present(Feedback.Expense.saved)
             return created
         } catch {
             self.error = error.localizedDescription
@@ -294,12 +295,18 @@ class ExpenseViewModel: ObservableObject {
         }
     }
 
-    func updateExpense(_ expenseId: String, fields: UpdateExpenseDTO) async {
+    /// `silent: true` suppresses the success toast — use for background
+    /// follow-up writes (e.g. receipt URL after upload) that are invisible to
+    /// the user as a distinct save action.
+    func updateExpense(_ expenseId: String, fields: UpdateExpenseDTO, silent: Bool = false) async {
         guard let repo = repository else { return }
         do {
             let updated = try await repo.update(expenseId, fields: fields)
             if let idx = expenses.firstIndex(where: { $0.id == expenseId }) {
                 expenses[idx] = updated
+            }
+            if !silent {
+                ToastCenter.shared.present(Feedback.Expense.changesSaved)
             }
         } catch {
             self.error = error.localizedDescription
@@ -322,6 +329,7 @@ class ExpenseViewModel: ObservableObject {
             if let prev = previousBatchId, prev != updated.batchId {
                 _ = try? await repo.recalculateBatchTotal(prev)   // old envelope lost a line
             }
+            ToastCenter.shared.present(Feedback.Expense.changesSaved)
         } catch {
             self.error = error.localizedDescription
         }
@@ -343,6 +351,11 @@ class ExpenseViewModel: ObservableObject {
         do {
             try await repo.softDelete(expenseId)
             expenses.removeAll { $0.id == expenseId }
+            // Broadcast so every visible expense list refreshes — notably the
+            // project expenses tab, which renders a separate cache and otherwise
+            // keeps showing the deleted line until reopened.
+            NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
+            ToastCenter.shared.present(Feedback.Expense.deleted)
         } catch {
             self.error = error.localizedDescription
         }
@@ -362,6 +375,7 @@ class ExpenseViewModel: ObservableObject {
             if let idx = expenses.firstIndex(where: { $0.id == expenseId }) {
                 expenses[idx] = updated
             }
+            ToastCenter.shared.present(Feedback.Expense.submitted)
         } catch {
             self.error = error.localizedDescription
         }
@@ -376,6 +390,7 @@ class ExpenseViewModel: ObservableObject {
             }
             // Fire-and-forget: trigger accounting sync if company has a connected provider
             Task { await repo.triggerAccountingSync(expenseId: expenseId) }
+            ToastCenter.shared.present(Feedback.Expense.approved)
         } catch {
             self.error = error.localizedDescription
         }
@@ -388,6 +403,7 @@ class ExpenseViewModel: ObservableObject {
             if let idx = expenses.firstIndex(where: { $0.id == expenseId }) {
                 expenses[idx] = updated
             }
+            ToastCenter.shared.present(Feedback.Expense.rejected)
         } catch {
             self.error = error.localizedDescription
         }
@@ -395,7 +411,9 @@ class ExpenseViewModel: ObservableObject {
 
     // MARK: - Allocations
 
-    func setAllocations(_ expenseId: String, allocations: [CreateExpenseAllocationDTO]) async {
+    /// `silent: true` suppresses the success toast — use when allocation
+    /// writes are part of a larger save flow that already toasts its outcome.
+    func setAllocations(_ expenseId: String, allocations: [CreateExpenseAllocationDTO], silent: Bool = false) async {
         guard let repo = repository else { return }
         do {
             try await repo.setAllocations(expenseId, allocations: allocations)
@@ -403,6 +421,9 @@ class ExpenseViewModel: ObservableObject {
             let updated = try await repo.fetchOne(expenseId)
             if let idx = expenses.firstIndex(where: { $0.id == expenseId }) {
                 expenses[idx] = updated
+            }
+            if !silent {
+                ToastCenter.shared.present(Feedback.Expense.allocationsSaved)
             }
         } catch {
             self.error = error.localizedDescription
@@ -422,6 +443,7 @@ class ExpenseViewModel: ObservableObject {
         do {
             let created = try await repo.createCategory(dto)
             categories.append(created)
+            ToastCenter.shared.present(Feedback.Expense.categoryCreated)
         } catch {
             self.error = error.localizedDescription
         }
@@ -432,6 +454,7 @@ class ExpenseViewModel: ObservableObject {
         do {
             try await repo.updateCategory(categoryId, name: nil, icon: nil, isActive: isActive)
             categories = try await repo.fetchCategories()
+            ToastCenter.shared.present(Feedback.Expense.categoryUpdated)
         } catch {
             self.error = error.localizedDescription
         }
@@ -444,6 +467,7 @@ class ExpenseViewModel: ObservableObject {
         do {
             try await repo.upsertSettings(dto)
             settings = dto
+            ToastCenter.shared.present(Feedback.Expense.settingsSaved)
         } catch {
             self.error = error.localizedDescription
         }
@@ -503,12 +527,15 @@ class ExpenseViewModel: ObservableObject {
             if let idx = selectedBatchExpenses.firstIndex(where: { $0.id == expenseId }) {
                 selectedBatchExpenses[idx] = updated
             }
+            ToastCenter.shared.present(Feedback.Expense.flagged)
         } catch {
             self.error = error.localizedDescription
         }
     }
 
-    func unflagExpense(_ expenseId: String) async {
+    /// `silent: true` suppresses the per-item toast — used by `unflagAllExpenses`
+    /// which emits a single summary toast after the loop.
+    func unflagExpense(_ expenseId: String, silent: Bool = false) async {
         guard let repo = repository else { return }
         do {
             let updated = try await repo.unflagExpense(expenseId)
@@ -516,6 +543,9 @@ class ExpenseViewModel: ObservableObject {
             flagComments.removeValue(forKey: expenseId)
             if let idx = selectedBatchExpenses.firstIndex(where: { $0.id == expenseId }) {
                 selectedBatchExpenses[idx] = updated
+            }
+            if !silent {
+                ToastCenter.shared.present(Feedback.Expense.flagCleared)
             }
         } catch {
             self.error = error.localizedDescription
@@ -525,7 +555,10 @@ class ExpenseViewModel: ObservableObject {
     func unflagAllExpenses() async {
         let ids = Array(flaggedExpenseIds)
         for id in ids {
-            await unflagExpense(id)
+            await unflagExpense(id, silent: true)
+        }
+        if !ids.isEmpty {
+            ToastCenter.shared.present(Feedback.Expense.flagCleared)
         }
     }
 
@@ -582,6 +615,7 @@ class ExpenseViewModel: ObservableObject {
                 )
             }
 
+            ToastCenter.shared.present(Feedback.Invoice.approved)
             await loadBatchesForReview()
         } catch {
             self.error = error.localizedDescription
@@ -677,6 +711,7 @@ class ExpenseViewModel: ObservableObject {
                 )
             }
 
+            ToastCenter.shared.present(Feedback.Estimate.revisionsSent)
             await loadBatchesForReview()
         } catch {
             self.error = error.localizedDescription
@@ -709,6 +744,7 @@ class ExpenseViewModel: ObservableObject {
                 try await repo.setAutoApproveRuleMembers(rule.id, userIds: memberIds)
             }
             await loadAutoApproveRules()
+            ToastCenter.shared.present(Feedback.Expense.ruleCreated)
         } catch {
             self.error = error.localizedDescription
         }
@@ -719,6 +755,7 @@ class ExpenseViewModel: ObservableObject {
         do {
             try await repo.updateAutoApproveRule(ruleId, isActive: isActive)
             await loadAutoApproveRules()
+            ToastCenter.shared.present(Feedback.Expense.ruleUpdated)
         } catch {
             self.error = error.localizedDescription
         }
@@ -729,6 +766,7 @@ class ExpenseViewModel: ObservableObject {
         do {
             try await repo.deleteAutoApproveRule(ruleId)
             await loadAutoApproveRules()
+            ToastCenter.shared.present(Feedback.Expense.ruleDeleted)
         } catch {
             self.error = error.localizedDescription
         }

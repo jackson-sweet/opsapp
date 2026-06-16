@@ -67,8 +67,8 @@ struct ProjectNotesView: View {
                                 // highlighter spans the full "@First Last" range
                                 // instead of stopping after the first word.
                                 mentionNames: viewModel.mentionNames,
-                                onDelete: {
-                                    Task { await viewModel.deleteNote(note) }
+                                onDelete: { deletePhoto in
+                                    Task { await viewModel.deleteNote(note, deletePhoto: deletePhoto) }
                                 }
                             )
                             .id(note.id)
@@ -244,9 +244,19 @@ struct ProjectNoteRow: View {
     /// only highlighted the first whitespace-delimited token after `@` so
     /// "@Jason Sweet" rendered as "@Jason" + plain "Sweet".
     let mentionNames: [String]
-    let onDelete: () -> Void
+    /// `deletePhoto` is true when the user chose to also remove the note's
+    /// photo from the project gallery (only offered when the note has one).
+    let onDelete: (_ deletePhoto: Bool) -> Void
 
     @State private var showDeleteConfirmation = false
+
+    /// Photo URLs carried by this note (photoURL + attachments), used to decide
+    /// whether to offer "delete note and photo."
+    private var notePhotoURLs: [String] {
+        var urls = note.attachments.filter { !$0.isEmpty }
+        if let photo = note.photoURL, !photo.isEmpty { urls.append(photo) }
+        return urls
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
@@ -288,11 +298,22 @@ struct ProjectNoteRow: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
-        .confirmationDialog("Delete Note", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) { onDelete() }
+        .confirmationDialog(
+            notePhotoURLs.isEmpty ? "Delete Note" : "Delete the photo too?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            if notePhotoURLs.isEmpty {
+                Button("Delete", role: .destructive) { onDelete(false) }
+            } else {
+                Button("Delete note and photo", role: .destructive) { onDelete(true) }
+                Button("Delete note only", role: .destructive) { onDelete(false) }
+            }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This note will be permanently deleted.")
+            Text(notePhotoURLs.isEmpty
+                 ? "This note will be permanently deleted."
+                 : "This photo also shows in the project gallery.")
         }
     }
 

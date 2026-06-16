@@ -18,6 +18,7 @@ import SwiftData
 struct CatalogProductsListView: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.modelContext) private var modelContext
+    @ObservedObject private var permissionStore = PermissionStore.shared
 
     @Query private var allProducts: [Product]
     @Query private var allMaterials: [ProductMaterial]
@@ -26,6 +27,12 @@ struct CatalogProductsListView: View {
 
     @State private var selectedFilter: ProductFilter = .all
     @State private var searchText: String = ""
+
+    let onStartSetup: (() -> Void)?
+
+    init(onStartSetup: (() -> Void)? = nil) {
+        self.onStartSetup = onStartSetup
+    }
 
     enum ProductFilter: String, CaseIterable, Identifiable {
         case all
@@ -236,31 +243,70 @@ struct CatalogProductsListView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: OPSStyle.Layout.spacing3) {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
             Spacer()
-            Text(emptyStateMessage)
+
+            Text(emptyStateTitle)
                 .font(OPSStyle.Typography.panelTitle)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
+
+            if let emptyStateDetail {
+                Text(emptyStateDetail)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
+            }
+
+            if shouldShowSetupCTA {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onStartSetup?()
+                } label: {
+                    Text("SET UP PRODUCTS")
+                }
+                .opsPrimaryButtonStyle()
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
+                .padding(.top, OPSStyle.Layout.spacing2)
+                .accessibilityLabel("Set up products")
+                .accessibilityHint("Opens guided product setup.")
+            }
+
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var emptyStateMessage: String {
+    private var shouldShowSetupCTA: Bool {
+        companyProducts.isEmpty &&
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        permissionStore.can("catalog.products.manage") &&
+        onStartSetup != nil
+    }
+
+    private var emptyStateTitle: String {
         if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "// NO MATCHES"
         }
         if companyProducts.isEmpty {
-            return "// NO PRODUCTS YET — TAP + TO ADD"
+            return "// NO PRODUCTS YET"
         }
         switch selectedFilter {
         case .all:     return "// NO PRODUCTS MATCH"
         case .service: return "// NO SERVICES YET"
         case .good:    return "// NO GOODS YET"
-        case .bundle:  return "// NO BUNDLES YET — TAP + TO ADD"
+        case .bundle:  return "// NO BUNDLES YET"
         }
+    }
+
+    private var emptyStateDetail: String? {
+        if shouldShowSetupCTA {
+            return "Start with one service, one good, or one bundle. The guide keeps the setup path clean."
+        }
+        return nil
     }
 }
 

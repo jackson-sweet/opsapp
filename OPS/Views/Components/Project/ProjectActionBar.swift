@@ -26,6 +26,7 @@ struct ProjectActionBar: View {
     @State private var showExpenseForm = false
     @State private var showProjectDetails = false
     @State private var showImagePicker = false
+    @State private var actionBarError: String? = nil
     /// Bug 98773d61 — action-bar camera capture must use the native iOS
     /// camera path. The library path keeps using PHPicker.
     @State private var showNativeCamera = false
@@ -150,6 +151,7 @@ struct ProjectActionBar: View {
         // The alert content is computed once per render via `completeAlert`
         // so we can branch on `activeTask` cleanly.
         .alert(isPresented: $showCompleteConfirmation) { completeAlert }
+        .errorToast($actionBarError, label: Feedback.Err.operationFailed)
         // Expense Form Sheet
         .sheet(isPresented: $showExpenseForm) {
             ExpenseFormSheet(viewModel: expenseViewModel, prefilledProjectId: project.id)
@@ -373,26 +375,39 @@ struct ProjectActionBar: View {
                     }
                     let success = UINotificationFeedbackGenerator()
                     success.notificationOccurred(.success)
+                    ToastCenter.shared.present(Feedback.Task.completed)
                 }
             } catch {
                 print("[PROJECT_ACTION_BAR] ❌ Failed to complete task \(task.id): \(error)")
+                await MainActor.run { actionBarError = error.localizedDescription }
             }
         }
     }
     
     private func updateProjectStatus(_ status: Status) {
         Task {
-            // Update project status and exit project mode when completed
-            // Always force sync for user-initiated status changes in the UI
-            try? await dataController.updateProjectStatus(
-                project: project,
-                to: status
-            )
-            
-            // If marking as complete, exit project mode after a short delay
-            if status == .completed {
-                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-                appState.exitProjectMode()
+            do {
+                // Update project status and exit project mode when completed
+                // Always force sync for user-initiated status changes in the UI
+                try await dataController.updateProjectStatus(
+                    project: project,
+                    to: status
+                )
+
+                await MainActor.run {
+                    if status == .completed {
+                        ToastCenter.shared.present(Feedback.JobBoard.projectCompleted)
+                    }
+                }
+
+                // If marking as complete, exit project mode after a short delay
+                if status == .completed {
+                    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                    appState.exitProjectMode()
+                }
+            } catch {
+                print("[PROJECT_ACTION_BAR] ❌ Failed to update project status: \(error)")
+                await MainActor.run { actionBarError = error.localizedDescription }
             }
         }
     }

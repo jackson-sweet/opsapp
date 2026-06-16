@@ -100,8 +100,7 @@ struct StockItemPicker: View {
                     }
                 }
             }
-            .navigationTitle("LINK STOCK ITEM")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle("LINK STOCK ITEM")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Cancel") { dismiss() }

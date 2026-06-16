@@ -16,9 +16,7 @@ struct FeatureRequestView: View {
     @State private var featureTitle = ""
     @State private var featureDescription = ""
     @State private var isSubmitting = false
-    @State private var showSuccessAlert = false
-    @State private var errorMessage: String?
-    @State private var showErrorAlert = false
+    @State private var requestError: String? = nil
     
     var body: some View {
         ZStack {
@@ -134,18 +132,7 @@ struct FeatureRequestView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
-        .alert("Request Submitted", isPresented: $showSuccessAlert) {
-            Button("OK") {
-                dismiss()
-            }
-        } message: {
-            Text("Thank you for your suggestion! We'll review your feature request.")
-        }
-        .alert("Error", isPresented: $showErrorAlert) {
-            Button("Try Again") { }
-        } message: {
-            Text(errorMessage ?? "An error occurred while submitting your request. Please try again.")
-        }
+        .errorToast($requestError, label: Feedback.Err.requestFailed)
     }
     
     private func submitFeatureRequest() {
@@ -157,18 +144,16 @@ struct FeatureRequestView: View {
             do {
                 // Use the API service to submit the feature request
                 try await submitFeatureRequestToAPI()
-                
-                // Handle success
+
                 await MainActor.run {
                     isSubmitting = false
-                    showSuccessAlert = true
+                    ToastCenter.shared.present(Feedback.Settings.requestSubmitted)
+                    dismiss()
                 }
             } catch {
-                // Handle error
                 await MainActor.run {
                     isSubmitting = false
-                    errorMessage = error.localizedDescription
-                    showErrorAlert = true
+                    requestError = error.localizedDescription
                 }
             }
         }

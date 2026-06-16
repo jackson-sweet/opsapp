@@ -54,6 +54,12 @@ struct TaskRescheduleSheet: View {
     /// movement to eliminate Taptic Engine spin-up latency.
     private let zoomHaptic = UIImpactFeedbackGenerator(style: .medium)
 
+    /// Whether the current user may reschedule this task — calendar.edit,
+    /// scope-aware (own-scope → only their own tasks). The sheet is normally only
+    /// reached for editable tasks; this guards the mutation paths as defense in
+    /// depth, and cascade application filters to tasks the user may move.
+    private var canModify: Bool { task.canEditSchedule }
+
     var body: some View {
         ZStack {
             // Base reschedule surface — quick-push chips + open-calendar.
@@ -367,15 +373,15 @@ struct TaskRescheduleSheet: View {
                 pushChip(label: "+1D", days: 1, hint: "Push start date by one day")
                 pushChip(label: "+2D", days: 2, hint: "Push start date by two days")
                 pushChip(label: "+3D", days: 3, hint: "Push start date by three days")
-                pushChip(label: "+1W", days: 7, hint: "Push start date by one week")
+                pushChip(label: "+1W", days: 7, hint: "Push start date by one week", preserveCalendarWeek: true)
             }
         }
     }
 
-    private func pushChip(label: String, days: Int, hint: String) -> some View {
+    private func pushChip(label: String, days: Int, hint: String, preserveCalendarWeek: Bool = false) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            handlePush(days: days)
+            handlePush(days: days, preserveCalendarWeek: preserveCalendarWeek)
         } label: {
             Text(label)
                 .font(OPSStyle.Typography.dataValue)
@@ -481,8 +487,13 @@ struct TaskRescheduleSheet: View {
 
     // MARK: - Push Logic
 
-    private func handlePush(days: Int) {
-        let newDates = SchedulingEngine.pushByDays(task: task, days: days)
+    private func handlePush(days: Int, preserveCalendarWeek: Bool = false) {
+        // A week push preserves the weekday (exactly +7, no weekend-normalize);
+        // day nudges honor the company weekend-skip.
+        let skip = dataController.currentCompanySkipsWeekends
+        let newDates = preserveCalendarWeek
+            ? SchedulingEngine.pushByCalendarWeeks(task: task, weeks: days / 7)
+            : SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: skip)
 
         // Get project tasks for cascade calculation
         let projectTasks = getProjectTasks()
@@ -491,7 +502,8 @@ struct TaskRescheduleSheet: View {
             pushedTaskId: task.id,
             newStartDate: newDates.newStart,
             newEndDate: newDates.newEnd,
-            allProjectTasks: projectTasks
+            allProjectTasks: projectTasks,
+            skipWeekends: skip
         )
 
         if !cascadeResult.changes.isEmpty && cascadePreviewEnabled {
@@ -513,6 +525,7 @@ struct TaskRescheduleSheet: View {
     // MARK: - Apply
 
     private func applyReschedule(newStart: Date, newEnd: Date) {
+        guard canModify else { return }
         // Canonical path — saves context, records SyncOperation, and sends
         // schedule-change notifications to assigned team members. Direct
         // mutation was losing every reschedule because neither the save nor
@@ -541,7 +554,9 @@ struct TaskRescheduleSheet: View {
         // avoid race conditions on the shared sync queue.
         Task {
             for change in cascadeResult.changes {
-                guard let affectedTask = projectTasks.first(where: { $0.id == change.id }) else { continue }
+                // Own-scope users only shift tasks they may move; "all" passes all.
+                guard let affectedTask = projectTasks.first(where: { $0.id == change.id }),
+                      affectedTask.canEditSchedule else { continue }
                 do {
                     try await dataController.updateTaskSchedule(
                         task: affectedTask,

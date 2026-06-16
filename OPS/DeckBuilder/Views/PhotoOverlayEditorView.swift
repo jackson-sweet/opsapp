@@ -122,35 +122,8 @@ struct PhotoOverlayEditorView: View {
                 }
             )
         }
-        // Error toast
-        .overlay(alignment: .bottom) {
-            if let error = saveError {
-                HStack(spacing: 10) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(OPSStyle.Colors.errorStatus)
-
-                    Text(error)
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity)
-                .background(OPSStyle.Colors.errorStatus.opacity(0.15))
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .padding(.bottom, 100)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .onAppear {
-                    Task { @MainActor in
-                        try? await Task.sleep(for: .seconds(5))
-                        withAnimation { saveError = nil }
-                    }
-                }
-            }
-        }
-        .animation(OPSStyle.Animation.standard, value: saveError)
+        // Save failures route through the canonical Toast system.
+        .errorToast($saveError, label: Feedback.Err.saveFailed)
     }
 
     // MARK: - Top Bar

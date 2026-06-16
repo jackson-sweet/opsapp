@@ -27,12 +27,6 @@ struct MainTabView: View {
     @State private var keyboardIsShowing = false
     @State private var sheetIsPresented = false
 
-    // Bug 706a4d32 — shared namespace for persistent header buttons. The
-    // outgoing and incoming tab views both render an AppHeader; matching by
-    // stable button IDs in this namespace lets SwiftUI keep those elements
-    // visually still while the rest of the tab content slides.
-    @Namespace private var persistentHeaderNamespace
-
     /// Transient loading banner shown while a deep-linked project is being
     /// fetched from the server (cold-cache case). Dismissed when resolution
     /// completes (success, denial, or offline bail).
@@ -102,6 +96,14 @@ struct MainTabView: View {
 
     private let openEstimateDetailsObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenEstimateDetails"))
+
+    // Lead/opportunity deep link (notification rail tap, OneSignal onClick,
+    // and the UNUserNotificationCenter push tap path all post this). Gated on
+    // the granular `pipeline.view` permission + `pipeline` feature via
+    // `hasLeadsAccess`; the handler switches to the LEADS tab and hands the
+    // opportunity id to LeadsTabView through the AppState baton.
+    private let openLeadDetailsObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenLeadDetails"))
 
     private let showAccessDeniedObserver = NotificationCenter.default
         .publisher(for: Notification.Name("ShowAccessDenied"))
@@ -411,17 +413,10 @@ struct MainTabView: View {
             .id(selectedTab)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea(.all, edges: .bottom)
-            // Bug 706a4d32 — inject the shared header namespace so each tab's
-            // AppHeader can match-geometry its tab-specific persistent buttons
-            // (filter, scope, month, review). The universal search button is
-            // hosted by the overlay below instead — matchedGeometryEffect with
-            // two simultaneous isSource=true views during a tab swap doesn't
-            // reliably keep the element stationary, so we lift the only truly
-            // cross-tab element out of the sliding container entirely. Tab
-            // content reserves layout space so the other right-aligned buttons
-            // keep their horizontal position.
-            .environment(\.persistentHeaderNamespace, persistentHeaderNamespace)
-            .environment(\.hostsPersistentSearchButton, selectedTab != 0)
+            // Each tab's AppHeader (search + tab-specific action buttons) lives
+            // inside this sliding container, so the whole header slides as one
+            // unit with the body on a tab switch and every right-side button
+            // stays mutually aligned. No separate persistent overlay.
             // Pushed detail screens read this to fade the tab bar while on screen.
             .environment(\.tabBarVisibility, tabBarVisibility)
             .transition(slideTransition)
@@ -698,6 +693,35 @@ struct MainTabView: View {
             if let estimateId = notification.userInfo?["estimateId"] as? String {
                 print("[PUSH_NAVIGATION] Opening estimate details for: \(estimateId)")
                 openEstimateWithSync(estimateId: estimateId)
+            }
+        }
+
+        // Handle opening a lead/opportunity detail from a notification tap.
+        // Permission posture: the LEADS tab is gated on the granular
+        // `pipeline.view` permission + `pipeline` feature (`hasLeadsAccess`).
+        // A user without access gets the access-denied rail rather than a dead
+        // tap or a hidden tab. With access we switch to the LEADS tab and stash
+        // the opportunity id in `appState.pendingLeadDeepLinkId`; LeadsTabView
+        // drains it on appear/load and presents the matching LeadDetailView —
+        // which survives the tab not being mounted at tap time (push cold
+        // launch, rail tap from another tab).
+        .onReceive(openLeadDetailsObserver) { notification in
+            guard let leadId = notification.userInfo?["leadId"] as? String, !leadId.isEmpty else { return }
+            // When this link came from the DeepLinkCoordinator (cold-launch /
+            // PIN-unlock drain) it carries a deepLinkId — clear the stash so it
+            // can't re-fire on a later drain, mirroring the project path.
+            if notification.userInfo?[DeepLinkCoordinator.deepLinkIdUserInfoKey] != nil {
+                DeepLinkCoordinator.shared.clear()
+            }
+            guard hasLeadsAccess, let idx = leadsTabIndex else {
+                print("[PUSH_NAVIGATION] Lead \(leadId) tapped without pipeline access — access denied")
+                appState.presentAccessDenied(message: "This lead is no longer available.")
+                return
+            }
+            print("[PUSH_NAVIGATION] Opening lead details for: \(leadId)")
+            appState.pendingLeadDeepLinkId = leadId
+            withAnimation(OPSStyle.Animation.fast) {
+                selectedTab = idx
             }
         }
 

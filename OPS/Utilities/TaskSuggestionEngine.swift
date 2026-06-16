@@ -43,20 +43,47 @@ enum TaskSuggestionEngine {
     /// Days of history to consider.
     static let windowDays: Int = 60
 
-    /// Minimum number of occurrences within the window for a key to qualify.
+    /// Minimum number of tasks of a given type within the window for that type
+    /// to qualify as a suggestion.
     static let minOccurrences: Int = 2
 
     /// Maximum suggestions returned after ranking + dedup.
     static let maxResults: Int = 3
 
+    /// Most members a single chip ever suggests/commits. The chip renders
+    /// `prefix(2)` avatars (QuickAddSuggestionsRail.metaRow), so a wider crew
+    /// would silently assign members the user never saw. Cap to what the chip
+    /// shows.
+    static let maxCrew: Int = 2
+
     /// Compute top suggestions for a company, excluding any keys already on
     /// the given project. Reads from the provided SwiftData context.
+    ///
+    /// Suggestion model — recency-weighted task type, crewed with that type's
+    /// most-recent ACTIVE members (mirrors the task form's recency model in
+    /// `DataController+Recency.swift`):
+    ///   1. Rank task types by `sum(exp(-daysAgo / 30))` over the window,
+    ///      using each task's stable creation stamp (`createdAt`, falling back
+    ///      to `lastSyncedAt`), requiring at least `minOccurrences` tasks.
+    ///   2. For each surfaced type, derive the crew as the top `maxCrew`
+    ///      members by most-recent assignment to THAT type, keeping only
+    ///      members in `activeMemberIds` (the caller's current-company,
+    ///      non-deleted, active set). Each task's crew is deduped before it
+    ///      contributes, so a row that repeats the same id N times can't pad
+    ///      the signal.
+    ///   3. The keyHash / on-project dedup / dismissal store all key off the
+    ///      FINAL (active-filtered, deduped, sorted) crew, so dismissals stay
+    ///      stable.
+    ///
+    /// `activeMemberIds` must be lowercased to match the lowercased ids stored
+    /// in `ProjectTask.teamMemberIdsString`.
     ///
     /// Caller is responsible for being on @MainActor — `ModelContext` is not
     /// Sendable. Returns at most `maxResults`.
     static func suggestions(
         context: ModelContext,
         companyId: String,
+        activeMemberIds: Set<String>,
         for project: Project
     ) -> [TaskSuggestion] {
         guard !companyId.isEmpty else { return [] }
@@ -72,57 +99,87 @@ enum TaskSuggestionEngine {
         let descriptor = FetchDescriptor<ProjectTask>(predicate: predicate)
         guard let tasks = try? context.fetch(descriptor) else { return [] }
 
-        // Build dedup set of keys already present on the current project so
-        // we never suggest a setup the user has already added here.
-        let existingKeys: Set<String> = Set(
-            project.tasks
-                .filter { $0.deletedAt == nil }
-                .map { key(taskTypeId: $0.taskTypeId, teamIds: $0.getTeamMemberIds().sorted()) }
-        )
+        // Stable creation stamp — `createdAt` doesn't drift on edit-sync the
+        // way `lastSyncedAt` does. Falls back to `lastSyncedAt`, then
+        // `.distantPast` for rows synced before the column existed. Matches
+        // DataController+Recency.swift.
+        func stamp(for task: ProjectTask) -> Date {
+            task.createdAt ?? task.lastSyncedAt ?? .distantPast
+        }
 
-        struct Agg {
+        // Active, deduped, lowercased crew for a single task.
+        func activeCrew(for task: ProjectTask) -> [String] {
+            let lowered = task.getTeamMemberIds()
+                .map { $0.lowercased() }
+                .filter { !$0.isEmpty && activeMemberIds.contains($0) }
+            return Array(Set(lowered)).sorted()
+        }
+
+        let now = Date()
+
+        // MARK: Aggregate per task type.
+        struct TypeAgg {
             var score: Double = 0
             var occurrences: Int = 0
             var mostRecent: Date = .distantPast
-            var taskTypeId: String = ""
-            var teamMemberIds: [String] = []
+            /// memberId -> most-recent assignment stamp on this type.
+            var memberLatest: [String: Date] = [:]
         }
-        var bucket: [String: Agg] = [:]
+        var byType: [String: TypeAgg] = [:]
 
-        let now = Date()
-        for task in tasks {
-            // Recency stamp: `lastSyncedAt` is the only timestamp guaranteed
-            // to exist on every synced row today. If the parallel
-            // recency-suggestions work lands `ProjectTask.createdAt`, swap
-            // the next line to `task.createdAt ?? task.lastSyncedAt`.
-            let stamp = task.lastSyncedAt ?? .distantPast
-            guard stamp >= cutoff else { continue }
-
-            let sortedIds = task.getTeamMemberIds().sorted()
-            let k = key(taskTypeId: task.taskTypeId, teamIds: sortedIds)
-            if existingKeys.contains(k) { continue }
+        for task in tasks where !task.taskTypeId.isEmpty {
+            let s = stamp(for: task)
+            guard s >= cutoff else { continue }
 
             let daysAgo = Calendar.current.dateComponents(
-                [.day], from: stamp, to: now
+                [.day], from: s, to: now
             ).day ?? 0
             let weight = exp(-Double(max(0, daysAgo)) / 30.0)
 
-            var agg = bucket[k] ?? Agg()
+            var agg = byType[task.taskTypeId] ?? TypeAgg()
             agg.score += weight
             agg.occurrences += 1
-            if stamp > agg.mostRecent { agg.mostRecent = stamp }
-            agg.taskTypeId = task.taskTypeId
-            agg.teamMemberIds = sortedIds
-            bucket[k] = agg
+            if s > agg.mostRecent { agg.mostRecent = s }
+            for memberId in activeCrew(for: task) {
+                if (agg.memberLatest[memberId] ?? .distantPast) < s {
+                    agg.memberLatest[memberId] = s
+                }
+            }
+            byType[task.taskTypeId] = agg
         }
+
+        // Build dedup set of keys already present on the current project so we
+        // never suggest a setup the user has already added here. Normalize the
+        // existing crews the SAME way (active-filtered, deduped, sorted) so the
+        // comparison matches the final suggested crew.
+        let existingKeys: Set<String> = Set(
+            project.tasks
+                .filter { $0.deletedAt == nil }
+                .map { key(taskTypeId: $0.taskTypeId, teamIds: activeCrew(for: $0)) }
+        )
 
         let dismissed = dismissedKeyHashes(forProjectId: project.id)
 
-        let suggestions: [TaskSuggestion] = bucket.values.compactMap { agg -> TaskSuggestion? in
+        let suggestions: [TaskSuggestion] = byType.compactMap { (taskTypeId, agg) -> TaskSuggestion? in
             guard agg.occurrences >= minOccurrences else { return nil }
+
+            // Top-`maxCrew` active members by most-recent assignment to this
+            // type. Tie-break on member id for determinism.
+            let crew: [String] = agg.memberLatest
+                .sorted { lhs, rhs in
+                    if lhs.value != rhs.value { return lhs.value > rhs.value }
+                    return lhs.key < rhs.key
+                }
+                .prefix(maxCrew)
+                .map { $0.key }
+                .sorted()
+
+            let k = key(taskTypeId: taskTypeId, teamIds: crew)
+            guard !existingKeys.contains(k) else { return nil }
+
             let candidate = TaskSuggestion(
-                taskTypeId: agg.taskTypeId,
-                teamMemberIds: agg.teamMemberIds,
+                taskTypeId: taskTypeId,
+                teamMemberIds: crew,
                 score: agg.score,
                 mostRecentAt: agg.mostRecent
             )

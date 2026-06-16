@@ -7,67 +7,17 @@
 
 import SwiftUI
 
-// MARK: - Persistent Header Namespace (Bug 706a4d32)
+// MARK: - App Header
 //
-// When the user switches tabs, MainTabView swaps the entire tab content view —
-// including the inline AppHeader at the top of each tab. Without intervention
-// the whole view (header + body) participates in the slide transition, so the
-// magnifying glass / filter / scope buttons appear to "come along for the ride"
-// even though visually they live in the same screen position on every tab.
-//
-// To keep those persistent buttons visually stationary while the body slides,
-// each tab's header reads a Namespace from the environment (owned by MainTabView)
-// and applies `matchedGeometryEffect` with stable IDs to the persistent buttons.
-// Since both the outgoing and incoming tab views share the same namespace + IDs,
-// SwiftUI keeps the matched elements put while everything else slides.
-
-private struct PersistentHeaderNamespaceKey: EnvironmentKey {
-    static let defaultValue: Namespace.ID? = nil
-}
-
-extension EnvironmentValues {
-    /// Namespace owned by the root tab container so persistent header buttons
-    /// (search, filter, scope, review etc.) can keep their on-screen position
-    /// across tab swaps via `matchedGeometryEffect`.
-    var persistentHeaderNamespace: Namespace.ID? {
-        get { self[PersistentHeaderNamespaceKey.self] }
-        set { self[PersistentHeaderNamespaceKey.self] = newValue }
-    }
-}
-
-/// Bug 706a4d32 — when true, AppHeader omits the universal search button
-/// because the root tab container hosts a single persistent search button
-/// overlay outside the sliding container. That overlay does not animate
-/// during tab swaps, so items that remain between tabs stay visually still.
-private struct HostsPersistentSearchButtonKey: EnvironmentKey {
-    static let defaultValue: Bool = false
-}
-
-extension EnvironmentValues {
-    var hostsPersistentSearchButton: Bool {
-        get { self[HostsPersistentSearchButtonKey.self] }
-        set { self[HostsPersistentSearchButtonKey.self] = newValue }
-    }
-}
-
-private extension View {
-    /// Anchors a persistent header element so it stays visually still while
-    /// the rest of the tab content slides during a tab switch. No-op when no
-    /// namespace is available (preview / tests / non-tabbed contexts).
-    @ViewBuilder
-    func persistentHeaderMatch(id: String, namespace: Namespace.ID?) -> some View {
-        if let namespace {
-            self.matchedGeometryEffect(
-                id: id,
-                in: namespace,
-                properties: [.position, .size],
-                isSource: true
-            )
-        } else {
-            self
-        }
-    }
-}
+// The header lives inline at the top of every tab's view, so when the user
+// switches tabs the whole tab — header + body — slides as one unit via
+// MainTabView's tab transition. Every right-side action button (search,
+// filter, scope, month, review, insights) is part of this same trailing
+// HStack, so they share one baseline, stay vertically aligned, and animate
+// identically. (Earlier builds lifted the search button into a separate
+// fixed overlay to keep it stationary across tab swaps — that desynced it
+// from the other buttons and left it misaligned on tabs with a taller title
+// block. The overlay is gone; the search button is a normal sibling again.)
 
 struct AppHeader: View {
     enum HeaderType {
@@ -84,14 +34,6 @@ struct AppHeader: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @EnvironmentObject private var appState: AppState
-    // Bug 706a4d32 — namespace owned by MainTabView so persistent header
-    // buttons (search, filter, scope, review) match-geometry across tab
-    // swaps and remain visually still while the body slides.
-    @Environment(\.persistentHeaderNamespace) private var persistentHeaderNS
-    // Bug 706a4d32 — when the parent tab container hosts a persistent
-    // search button overlay, skip rendering ours so the only visible
-    // search button lives outside the sliding tab content.
-    @Environment(\.hostsPersistentSearchButton) private var hostsPersistentSearchButton
     @State private var showLockedMessage: String? = nil
     @State private var showLockedAlert: Bool = false
     // Bug 5d66ee80: avatar dimming during sync used to be wired via nested
@@ -108,7 +50,6 @@ struct AppHeader: View {
     // a search-results list while the input is focused.
     @FocusState private var settingsSearchFocused: Bool
     var headerType: HeaderType
-    var onSearchTapped: (() -> Void)? = nil
     var onRefreshTapped: (() -> Void)? = nil
     var onFilterTapped: (() -> Void)? = nil
     var onInsightsTapped: (() -> Void)? = nil
@@ -360,7 +301,6 @@ struct AppHeader: View {
                         }
                         .buttonStyle(PlainButtonStyle())
                         .wizardTarget("toggle_month", style: .circle)
-                        .persistentHeaderMatch(id: "header.month", namespace: persistentHeaderNS)
                     }
 
                     // Filter button (schedule only)
@@ -387,7 +327,6 @@ struct AppHeader: View {
                             }
                         }
                         .buttonStyle(PlainButtonStyle())
-                        .persistentHeaderMatch(id: "header.filter", namespace: persistentHeaderNS)
                     }
 
                     // ALL/MINE scope toggle (schedule only)
@@ -411,7 +350,6 @@ struct AppHeader: View {
                             }
                         }
                         .buttonStyle(PlainButtonStyle())
-                        .persistentHeaderMatch(id: "header.scope", namespace: persistentHeaderNS)
                     }
 
                     if headerType == .jobBoard {
@@ -446,7 +384,6 @@ struct AppHeader: View {
                                 }
                             }
                             .buttonStyle(PlainButtonStyle())
-                            .persistentHeaderMatch(id: "header.unscheduled", namespace: persistentHeaderNS)
                         }
 
                         // Task review button
@@ -482,7 +419,6 @@ struct AppHeader: View {
                             }
                             .buttonStyle(PlainButtonStyle())
                             .wizardTarget("open_task_review")
-                            .persistentHeaderMatch(id: "header.taskReview", namespace: persistentHeaderNS)
                         }
 
                         // Payment review button
@@ -518,7 +454,6 @@ struct AppHeader: View {
                             }
                             .buttonStyle(PlainButtonStyle())
                             .wizardTarget("open_payment_review")
-                            .persistentHeaderMatch(id: "header.paymentReview", namespace: persistentHeaderNS)
                         }
 
                     }
@@ -534,57 +469,50 @@ struct AppHeader: View {
                                 .clipShape(Circle())
                         }
                         .buttonStyle(PlainButtonStyle())
-                        .persistentHeaderMatch(id: "header.insights", namespace: persistentHeaderNS)
                     }
 
-                    // Universal search button (all pages except home).
+                    // Universal search button — rightmost in the trailing
+                    // cluster on every tab except home. It's a normal sibling
+                    // of the tab-specific buttons, so it shares their baseline
+                    // and slides with the rest of the header on a tab switch.
+                    //
                     // Bug G5 — Settings tab uses an expanding-in-place input;
                     // tapping the icon flips appState.isSettingsSearchActive
                     // so the header re-renders as the full-width input (see
                     // the `.settings && isSettingsSearchActive` branch above).
-                    //
-                    // Bug 706a4d32 — when the root tab container hosts a
-                    // persistent overlay, skip rendering this so the only
-                    // visible search button is the one outside the sliding
-                    // container. We still reserve the 44×44 layout slot
-                    // (via a clear placeholder) so other tab-specific
-                    // buttons keep their horizontal position.
-                    if hostsPersistentSearchButton {
-                        Color.clear
-                            .frame(width: 44, height: 44)
-                    } else {
-                        Button(action: {
-                            if headerType == .settings {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                withAnimation(OPSStyle.Animation.spring) {
-                                    appState.isSettingsSearchActive = true
-                                }
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                    settingsSearchFocused = true
-                                }
-                            } else {
-                                appState.showingUniversalSearch = true
+                    Button(action: {
+                        if headerType == .settings {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(OPSStyle.Animation.spring) {
+                                appState.isSettingsSearchActive = true
                             }
-                        }) {
-                            Image(systemName: "magnifyingglass")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .frame(width: 44, height: 44)
-                                .background(OPSStyle.Colors.cardBackground)
-                                .clipShape(Circle())
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                settingsSearchFocused = true
+                            }
+                        } else {
+                            appState.showingUniversalSearch = true
                         }
-                        .buttonStyle(PlainButtonStyle())
-                        .persistentHeaderMatch(id: "header.search", namespace: persistentHeaderNS)
+                    }) {
+                        Image(systemName: "magnifyingglass")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .frame(width: 44, height: 44)
+                            .background(OPSStyle.Colors.cardBackground)
+                            .clipShape(Circle())
                     }
+                    .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel("Search")
                 }
 
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
-            .alert("Locked", isPresented: $showLockedAlert) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(showLockedMessage ?? "")
+            .onChange(of: showLockedAlert) { _, showing in
+                guard showing else { return }
+                let message = showLockedMessage ?? ""
+                let label = message.isEmpty ? "// LOCKED" : "// \(message.uppercased())"
+                ToastCenter.shared.present(Toast(label: label, tone: .warning))
+                showLockedAlert = false
             }
 
         }

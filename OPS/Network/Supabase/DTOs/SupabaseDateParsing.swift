@@ -54,4 +54,55 @@ enum SupabaseDate {
     static func formatDate(_ date: Date) -> String {
         dateOnly.string(from: date)
     }
+
+    /// Re-anchor an ISO-8601 instant to LOCAL midnight of its calendar day
+    /// (device time zone), as an internet date-time string. Keeps all-day task
+    /// schedule dates canonical so they never render a day off across clients.
+    static func localMidnightISO(from iso: String) -> String? {
+        guard let instant = parse(iso) else { return nil }
+        return scheduleMidnight.string(from: Calendar.current.startOfDay(for: instant))
+    }
+
+    /// Return a copy of an outbound project_task payload with `start_date` /
+    /// `end_date` re-anchored to local midnight. String values only; nulls and
+    /// unparseable values are left untouched. Idempotent. Used by BOTH outbound
+    /// paths (OutboundProcessor and DataActor) so they cannot drift.
+    static func anchoringScheduleDates(_ payload: [String: Any]) -> [String: Any] {
+        var p = payload
+        for key in ["start_date", "end_date"] {
+            if let iso = p[key] as? String, let anchored = localMidnightISO(from: iso) {
+                p[key] = anchored
+            }
+        }
+        return p
+    }
+
+    private static let scheduleMidnight: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    /// JSONDecoder whose date strategy tolerates every Supabase wire format
+    /// (fractional seconds, plain internet date-time, and date-only columns).
+    ///
+    /// Needed for DTOs that decode `Date` directly (e.g. CalendarUserEventDTO):
+    /// the Supabase SDK's PostgREST decoder handles those on the REST path, but
+    /// Realtime payloads are decoded with our own JSONDecoder — a plain decoder
+    /// would fail on ISO strings. Build one of these per consumer and reuse it.
+    static func makeISODecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let raw = try container.decode(String.self)
+            if let date = parse(raw) ?? parseDateOnly(raw) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unparseable Supabase date: \(raw)"
+            )
+        }
+        return decoder
+    }
 }

@@ -11,6 +11,32 @@ import SwiftUI
 
 // MARK: - FAB Menu Data Models
 
+enum FABPermissionGate {
+    static let newInvoicePermission = "invoices.create"
+    static let newPaymentPermission = "invoices.record_payment"
+
+    static func canShowNewInvoice(can: (String) -> Bool) -> Bool {
+        can(newInvoicePermission)
+    }
+
+    static func canShowNewPayment(can: (String) -> Bool) -> Bool {
+        can(newPaymentPermission)
+    }
+
+    static func canShowFAB(can: (String) -> Bool) -> Bool {
+        [
+            "projects.create",
+            "tasks.create",
+            "clients.create",
+            "estimates.create",
+            newInvoicePermission,
+            newPaymentPermission,
+            "expenses.create",
+            "pipeline.manage",
+        ].contains(where: can)
+    }
+}
+
 /// A single item in the FAB menu
 fileprivate struct FABMenuItem: Identifiable {
     let id: String
@@ -99,16 +125,10 @@ struct FloatingActionMenu: View {
     @State private var showingCreateExpense = false
     @State private var showingCreateEstimate = false
     @State private var showingCreateInvoice = false
-    @State private var showingRecordPayment = false
     @State private var showingPersonalEventSheet = false
     @State private var showingTimeOffSheet = false
     @State private var showingLogActivity = false
     @State private var showingPrioritize = false
-
-    // Catalog FAB state — adapts based on selected segment in CatalogView. The
-    // segment selection lives in @AppStorage so the FAB and CatalogView share
-    // a single source of truth without an explicit parameter pipeline.
-    @AppStorage("catalog.selectedSegment") private var catalogSelectedSegmentRaw: String = CatalogSegment.stock.rawValue
 
     // BOOKS FAB state — adapts MONEY group ordering based on selected segment in
     // BooksTabView. Mirrors the catalog pattern above.
@@ -118,15 +138,6 @@ struct FloatingActionMenu: View {
     // `add-lead` stays in the MONEY group because the FAB is global.
     @AppStorage("books.selectedSegment") private var booksSelectedSegmentRaw: String = "INVOICES"
     @State private var showingAddLead = false
-
-    @State private var showingCatalogAddVariant = false
-    @State private var showingCatalogAddFamily = false
-    @State private var showingCatalogSetupFlow = false
-    @State private var showingCatalogImport = false
-    @State private var showingProductKindPicker = false
-    @State private var showingNewServiceSheet = false
-    @State private var showingNewGoodSheet = false
-    @State private var showingNewBundleSheet = false
 
     // View models — lazily created only when their sheets open
     @StateObject private var expenseViewModel = ExpenseViewModel()
@@ -230,12 +241,7 @@ struct FloatingActionMenu: View {
         if appState.isInventorySelectionMode { return false }
         if isScheduleTab { return true }
         if isCatalogTab && hasCatalogAccess { return true }
-        return permissionStore.can("projects.create")
-            || permissionStore.can("tasks.create")
-            || permissionStore.can("clients.create")
-            || permissionStore.can("estimates.create")
-            || permissionStore.can("expenses.create")
-            || permissionStore.can("pipeline.manage")
+        return FABPermissionGate.canShowFAB { permissionStore.can($0) }
     }
 
     private var isFABDisabledInTutorial: Bool {
@@ -403,7 +409,7 @@ struct FloatingActionMenu: View {
                         id: "new-invoice",
                         icon: OPSStyle.Icons.invoiceReceipt,
                         label: "New Invoice",
-                        permission: "estimates.create",
+                        permission: FABPermissionGate.newInvoicePermission,
                         disabledInTutorial: true,
                         action: {
                             showCreateMenu = false
@@ -414,11 +420,11 @@ struct FloatingActionMenu: View {
                         id: "new-payment",
                         icon: OPSStyle.Icons.banknoteFill,
                         label: "New Payment",
-                        permission: "expenses.create",
+                        permission: FABPermissionGate.newPaymentPermission,
                         disabledInTutorial: true,
                         action: {
                             showCreateMenu = false
-                            showingRecordPayment = true
+                            NotificationCenter.default.post(name: Notification.Name("OpenInvoices"), object: nil)
                         }
                     ),
                 ]))
@@ -444,115 +450,6 @@ struct FloatingActionMenu: View {
                 ),
             ])
         )
-
-        // Catalog — shown when user has catalog access. Actions vary by which
-        // CatalogView segment is currently selected; when off-tab, surface a
-        // single shortcut so users can jump straight to add-variant.
-        if hasCatalogAccess {
-            let segment = CatalogSegment(rawValue: catalogSelectedSegmentRaw) ?? .stock
-            var catalogItems: [FABMenuItem] = []
-            if isCatalogTab && segment == .stock {
-                catalogItems = [
-                    FABMenuItem(
-                        id: "catalog-guided-setup",
-                        icon: "wand.and.stars",
-                        label: "Guided Setup",
-                        permission: "catalog.manage",
-                        disabledInTutorial: true,
-                        action: {
-                            showCreateMenu = false
-                            NotificationCenter.default.post(
-                                name: Notification.Name("OpenGuidedStockSetup"),
-                                object: nil
-                            )
-                        }
-                    ),
-                    FABMenuItem(
-                        id: "catalog-stock-setup",
-                        icon: "square.grid.3x3",
-                        label: "Stock Setup",
-                        permission: "catalog.manage",
-                        disabledInTutorial: true,
-                        action: {
-                            showCreateMenu = false
-                            showingCatalogSetupFlow = true
-                        }
-                    ),
-                    FABMenuItem(
-                        id: "catalog-add-variant",
-                        icon: "plus.app",
-                        label: "Add Variant",
-                        permission: "catalog.manage",
-                        disabledInTutorial: true,
-                        action: {
-                            showCreateMenu = false
-                            showingCatalogAddVariant = true
-                        }
-                    ),
-                    FABMenuItem(
-                        id: "catalog-add-family",
-                        icon: "square.stack.3d.up",
-                        label: "Add Family",
-                        permission: "catalog.manage",
-                        disabledInTutorial: true,
-                        action: {
-                            showCreateMenu = false
-                            showingCatalogAddFamily = true
-                        }
-                    ),
-                    FABMenuItem(
-                        id: "catalog-import",
-                        icon: "square.and.arrow.down",
-                        label: "Import",
-                        permission: "catalog.import",
-                        disabledInTutorial: true,
-                        action: {
-                            showCreateMenu = false
-                            showingCatalogImport = true
-                        }
-                    ),
-                ]
-            } else if isCatalogTab && segment == .products {
-                catalogItems = [
-                    FABMenuItem(
-                        id: "catalog-quick-add-product",
-                        icon: "plus",
-                        label: "Add Product",
-                        permission: "catalog.products.manage",
-                        disabledInTutorial: true,
-                        action: {
-                            showCreateMenu = false
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            showingProductKindPicker = true
-                        }
-                    ),
-                    // "Full Setup" was a fake button that opened an alert
-                    // pointing the user to the web app. Removed — the redesigned
-                    // QuickAddProductSheet now surfaces that hint as a footer
-                    // note inside the sheet, which is honest about the
-                    // limitation without exposing a tappable dead-end.
-                ]
-            } else {
-                // Catalog access but not on the Catalog tab — surface a single
-                // shortcut so the user can still kick off an add-variant flow.
-                catalogItems = [
-                    FABMenuItem(
-                        id: "catalog-add-variant",
-                        icon: "plus.app",
-                        label: "Add Variant",
-                        permission: "catalog.manage",
-                        disabledInTutorial: true,
-                        action: {
-                            showCreateMenu = false
-                            showingCatalogAddVariant = true
-                        }
-                    ),
-                ]
-            }
-            if !catalogItems.isEmpty {
-                groups.append(FABMenuGroup(id: "catalog", title: "CATALOG", items: catalogItems))
-            }
-        }
 
         groups.append(
             FABMenuGroup(id: "scheduling", title: "SCHEDULING", items: [
@@ -828,50 +725,6 @@ struct FloatingActionMenu: View {
         .sheet(isPresented: $showingCreateTask) {
             TaskFormSheet(mode: .create) { _ in }
         }
-        .sheet(isPresented: $showingCatalogAddVariant) {
-            VariantFormSheet()
-                .environmentObject(dataController)
-        }
-        .sheet(isPresented: $showingCatalogAddFamily) {
-            AddFamilySheet()
-                .environmentObject(dataController)
-        }
-        .sheet(isPresented: $showingCatalogSetupFlow) {
-            CatalogSetupFlowSheet()
-                .environmentObject(dataController)
-        }
-        .sheet(isPresented: $showingCatalogImport) {
-            CatalogImportSheet()
-                .environmentObject(dataController)
-        }
-        .sheet(isPresented: $showingProductKindPicker) {
-            ProductKindPickerSheet { picked in
-                // Chained sheets — flip the next flag after the picker
-                // dismiss settles so SwiftUI doesn't drop the second
-                // presentation. The 0.25s delay matches the system's
-                // presentation transition tail.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    switch picked {
-                    case .service:  showingNewServiceSheet = true
-                    case .material: showingNewGoodSheet = true
-                    case .bundle:   showingNewBundleSheet = true
-                    case .fee:      break // not offered in v1 picker
-                    }
-                }
-            }
-        }
-        .sheet(isPresented: $showingNewServiceSheet) {
-            NewServiceSheet()
-                .environmentObject(dataController)
-        }
-        .sheet(isPresented: $showingNewGoodSheet) {
-            NewGoodSheet()
-                .environmentObject(dataController)
-        }
-        .sheet(isPresented: $showingNewBundleSheet) {
-            NewBundleSheet()
-                .environmentObject(dataController)
-        }
         .sheet(isPresented: $showingCreateExpense) {
             ExpenseFormSheet(viewModel: expenseViewModel)
         }
@@ -894,8 +747,6 @@ struct FloatingActionMenu: View {
         }
         // TODO: Wire up when InvoiceFormSheet is implemented
         // .sheet(isPresented: $showingCreateInvoice) { InvoiceFormSheet() }
-        // TODO: Wire up when RecordPaymentSheet is implemented
-        // .sheet(isPresented: $showingRecordPayment) { RecordPaymentSheet() }
         .sheet(isPresented: $showTaskReviewFromFAB) {
             TaskCompletionReviewView(tasks: computeFABReviewableTasks())
                 .environmentObject(appState)
@@ -915,24 +766,35 @@ struct FloatingActionMenu: View {
                 .environmentObject(appState)
                 .environmentObject(PermissionStore.shared)
         }
-        .alert("Locked", isPresented: $showLockedAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(lockedAlertMessage)
-        }
-        .alert("Payment Review", isPresented: $showPaymentReviewIntroFAB) {
-            Button("Got It") {
-                showPaymentReviewFromFAB = true
+        .onChange(of: showLockedAlert) { _, showing in
+            if showing {
+                ToastCenter.shared.present(
+                    Toast(label: lockedAlertMessage.isEmpty ? "// LOCKED" : "// \(lockedAlertMessage.uppercased())", tone: .warning)
+                )
+                showLockedAlert = false
             }
-        } message: {
-            Text("Completed projects with outstanding payments will show up here for review.")
         }
-        .alert("Task Review", isPresented: $showTaskReviewIntroFAB) {
-            Button("Got It") {
-                showTaskReviewFromFAB = true
-            }
-        } message: {
-            Text("Tasks with end dates in the past will show up here so you can complete, reschedule, or cancel them.")
+        .onChange(of: showPaymentReviewIntroFAB) { _, showing in
+            guard showing else { return }
+            ToastCenter.shared.present(
+                Toast(label: "// PAYMENT REVIEW READY", tone: .success, autoDismissAfter: 4,
+                      action: ToastAction(label: "OPEN") {
+                          showPaymentReviewIntroFAB = false
+                          showPaymentReviewFromFAB = true
+                      })
+            )
+            showPaymentReviewIntroFAB = false
+        }
+        .onChange(of: showTaskReviewIntroFAB) { _, showing in
+            guard showing else { return }
+            ToastCenter.shared.present(
+                Toast(label: "// TASK REVIEW READY", tone: .success, autoDismissAfter: 4,
+                      action: ToastAction(label: "OPEN") {
+                          showTaskReviewIntroFAB = false
+                          showTaskReviewFromFAB = true
+                      })
+            )
+            showTaskReviewIntroFAB = false
         }
         .sheet(isPresented: $showingPersonalEventSheet) {
             UserEventSheet(isPresented: $showingPersonalEventSheet, viewModel: calendarViewModel, mode: .personalEvent)
@@ -1291,8 +1153,13 @@ struct FloatingActionMenu: View {
         }
 
         return allTasks.filter { task in
+            // Only surface schedulable work for ACTIVE projects. A project that
+            // hasn't been accepted yet (`.rfq`/`.estimated`) or is finished
+            // (`.completed`/`.closed`/`.archived`) must not feed the review/
+            // auto-schedule flow — mirrors `isJobBoardTaskListVisible`.
             task.status == .active
                 && task.deletedAt == nil
+                && (task.project?.status.isActive ?? false)
                 && (task.startDate == nil || task.getTeamMemberIds().isEmpty)
         }
         .sorted { ($0.project?.title ?? "") < ($1.project?.title ?? "") }

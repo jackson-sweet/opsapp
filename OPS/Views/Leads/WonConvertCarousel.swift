@@ -15,8 +15,13 @@
 //    └──────────────────────────────────────────────┘
 //
 //  Per plan §2.1 decision Q6 = (carousel of all unconverted wins).
-//  - Page-indicator dots: 6pt active (text-3), 4pt inactive (0.15 white)
-//  - No accent on the dots.
+//  - Page indicator: up to 5 dots (per MOBILE.md § Hero Carousel) — 6pt
+//    active (text-3), 4pt inactive (white @ 0.18). Past 5 wins it collapses
+//    to a compact `NN / NN` tabular counter (JetBrains Mono) so a long
+//    backlog reads as absolute position AND the row can never out-grow the
+//    screen. (An uncapped 48-dot row was dragging the shared LEADS column
+//    off both edges.)
+//  - No accent on the dots or counter.
 //  - Light haptic on page snap.
 //
 
@@ -46,12 +51,14 @@ struct WonConvertCarousel: View {
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(maxWidth: .infinity)
                 .frame(height: cardHeight)
 
                 if leads.count > 1 {
-                    dots
+                    pageIndicator
                 }
             }
+            .frame(maxWidth: .infinity)
             .onChange(of: selected) { _, _ in
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
@@ -78,6 +85,24 @@ struct WonConvertCarousel: View {
         }
     }
 
+    /// Past this many wins the dot row stops being glanceable and starts
+    /// out-growing the screen, so we switch to a numeric counter. 5 matches
+    /// MOBILE.md § Hero Carousel ("Max 5 dots visible").
+    private var maxIndicatorDots: Int { 5 }
+
+    /// 1-based position, clamped — guards the brief window after a lead is
+    /// removed and before `clampSelection` runs.
+    private var currentPosition: Int { min(max(selected, 0), leads.count - 1) + 1 }
+
+    @ViewBuilder
+    private var pageIndicator: some View {
+        if leads.count <= maxIndicatorDots {
+            dots
+        } else {
+            positionCounter
+        }
+    }
+
     private var dots: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             ForEach(0..<leads.count, id: \.self) { i in
@@ -86,6 +111,21 @@ struct WonConvertCarousel: View {
                     .frame(width: i == selected ? 6 : 4, height: i == selected ? 6 : 4)
             }
         }
+        .accessibilityHidden(true)
+    }
+
+    /// Compact `NN / NN` readout for large backlogs. JetBrains Mono, tabular,
+    /// two-digit zero-pad. Current position carries the brighter `text3` (the
+    /// active-dot ink); the total dims to `textMute`, echoing the dot
+    /// active/inactive contrast. Fixed width — never bleeds the column.
+    private var positionCounter: some View {
+        HStack(spacing: 0) {
+            Text(String(format: "%02d", currentPosition))
+                .foregroundColor(OPSStyle.Colors.text3)
+            Text(" / \(String(format: "%02d", leads.count))")
+                .foregroundColor(OPSStyle.Colors.textMute)
+        }
+        .font(OPSStyle.Typography.metadata.monospacedDigit())
         .accessibilityHidden(true)
     }
 }
@@ -103,7 +143,7 @@ struct WonConvertCard: View {
                 wonBadge
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     eyebrow
-                    Text(lead.contactName.isEmpty ? "Unnamed lead" : lead.contactName)
+                    Text(lead.displayContactName)
                         .font(.custom("Mohave-Medium", size: 15))
                         .foregroundColor(OPSStyle.Colors.text)
                         .lineLimit(1)
@@ -119,7 +159,7 @@ struct WonConvertCard: View {
             // Read the card header as one element; CONVERT / LATER remain
             // separate focusable buttons below. (review W-4)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Won lead, \(lead.contactName.isEmpty ? (lead.title ?? "Unnamed lead") : lead.contactName), ready to convert to a project")
+            .accessibilityLabel("Won lead, \(lead.displayContactName), ready to convert to a project")
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 Button(action: {
@@ -239,6 +279,42 @@ struct WonConvertCard: View {
                          daysInStage: 1, actualCloseDaysAgo: 1)
             ]
         )
+    }
+    .preferredColorScheme(.dark)
+}
+
+// Reproduces the Canpro Deck & Rail case: 48 won-unconverted leads. Before the
+// indicator cap, the 48-dot row forced the carousel ~620pt wide, dragging the
+// whole shared LEADS column off both edges. The faux "LEADS" title sits in the
+// same leading-aligned column the real tab uses — if the carousel widened the
+// column the title would bleed too. Post-fix: the counter stays put, the title
+// holds its 20pt margin, nothing exceeds the screen.
+#Preview("WonConvertCarousel / 48 leads (overflow guard)") {
+    ZStack {
+        OPSStyle.Colors.background.ignoresSafeArea()
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("LEADS")
+                    .font(OPSStyle.Typography.pageTitle)
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .padding(.horizontal, 20)
+
+                WonConvertCarousel(
+                    leads: (1...48).map { i in
+                        Opportunity.preview(
+                            title: "Roof job #\(i)",
+                            contactName: "Customer \(i)",
+                            stage: .won,
+                            estimatedValue: Double(2_000 + i * 250),
+                            daysInStage: (i % 14) + 1,
+                            actualCloseDaysAgo: (i % 14) + 1
+                        )
+                    }
+                )
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 40)
+        }
     }
     .preferredColorScheme(.dark)
 }

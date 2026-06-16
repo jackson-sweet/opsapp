@@ -41,6 +41,7 @@ enum DrawingMode: Equatable {
     case lassoing(points: [CGPoint])               // drawing a freeform lasso
     case draggingVertex(vertexId: String)           // repositioning a vertex in 2D
     case movingSelection                            // repositioning selected geometry as one XY group
+    case movingPendingPaste                         // repositioning staged pasted geometry before commit
 }
 
 struct SelectionState: Equatable {
@@ -99,4 +100,135 @@ struct SelectionState: Equatable {
 struct DrawingSnapshot {
     let drawingData: DeckDrawingData
     let description: String // for debug/display
+}
+
+// MARK: - Copy / Paste Staging
+
+struct DeckSelectionClipboard: Equatable {
+    let vertices: [DeckVertex]
+    let edges: [DeckEdge]
+    let surfaces: [DeckSurface]
+    let bounds: CGRect
+
+    var center: CGPoint {
+        CGPoint(x: bounds.midX, y: bounds.midY)
+    }
+
+    var isEmpty: Bool {
+        vertices.isEmpty && edges.isEmpty && surfaces.isEmpty
+    }
+
+    func preview(centeredAt targetCenter: CGPoint) -> DeckPastePreview {
+        let delta = CGSize(
+            width: targetCenter.x - center.x,
+            height: targetCenter.y - center.y
+        )
+        return preview(offsetBy: delta)
+    }
+
+    private func preview(offsetBy delta: CGSize) -> DeckPastePreview {
+        var vertexIdMap: [String: String] = [:]
+        let clonedVertices = vertices.map { vertex -> DeckVertex in
+            let newId = UUID().uuidString
+            vertexIdMap[vertex.id] = newId
+            return DeckVertex(
+                id: newId,
+                position: CGPoint(
+                    x: vertex.position.x + delta.width,
+                    y: vertex.position.y + delta.height
+                ),
+                elevation: vertex.elevation,
+                elevationSource: vertex.elevationSource,
+                footingType: vertex.footingType,
+                postType: vertex.postType
+            )
+        }
+
+        let clonedEdges = edges.compactMap { edge -> DeckEdge? in
+            guard let startId = vertexIdMap[edge.startVertexId],
+                  let endId = vertexIdMap[edge.endVertexId] else { return nil }
+            return DeckEdge(
+                id: UUID().uuidString,
+                startVertexId: startId,
+                endVertexId: endId,
+                edgeType: edge.edgeType,
+                dimension: edge.dimension,
+                dimensionSource: edge.dimensionSource,
+                railingConfig: edge.railingConfig,
+                stairConfig: edge.stairConfig,
+                assignedItems: edge.assignedItems.map(Self.cloneAssignedItem),
+                accuracyPercent: edge.accuracyPercent,
+                dimensionStale: edge.dimensionStale,
+                label: edge.label,
+                houseEdgeMaterial: edge.houseEdgeMaterial
+            )
+        }
+
+        let clonedSurfaces = surfaces.compactMap { surface -> DeckSurface? in
+            let mappedIds = surface.vertexIds.compactMap { vertexIdMap[$0] }
+            guard mappedIds.count == surface.vertexIds.count else { return nil }
+            return DeckSurface(
+                id: UUID().uuidString,
+                vertexIds: Set(mappedIds),
+                assignedItems: surface.assignedItems.map(Self.cloneAssignedItem),
+                label: surface.label,
+                color: surface.color,
+                boardMaterial: surface.boardMaterial
+            )
+        }
+
+        let movedBounds = CGRect(
+            x: bounds.minX + delta.width,
+            y: bounds.minY + delta.height,
+            width: bounds.width,
+            height: bounds.height
+        )
+
+        return DeckPastePreview(
+            vertices: clonedVertices,
+            edges: clonedEdges,
+            surfaces: clonedSurfaces,
+            sourceBounds: bounds,
+            bounds: movedBounds
+        )
+    }
+
+    private static func cloneAssignedItem(_ item: AssignedItem) -> AssignedItem {
+        AssignedItem(
+            productId: item.productId,
+            name: item.name,
+            unitType: item.unitType,
+            unitPrice: item.unitPrice,
+            taskTypeId: item.taskTypeId,
+            taskTypeColor: item.taskTypeColor,
+            isGate: item.isGate
+        )
+    }
+}
+
+struct DeckPastePreview: Equatable {
+    var vertices: [DeckVertex]
+    var edges: [DeckEdge]
+    var surfaces: [DeckSurface]
+    let sourceBounds: CGRect
+    var bounds: CGRect
+
+    var isEmpty: Bool {
+        vertices.isEmpty && edges.isEmpty && surfaces.isEmpty
+    }
+
+    mutating func translate(by delta: CGSize) {
+        for i in vertices.indices {
+            vertices[i].position = CGPoint(
+                x: vertices[i].position.x + delta.width,
+                y: vertices[i].position.y + delta.height
+            )
+        }
+        bounds = CGRect(
+            x: bounds.minX + delta.width,
+            y: bounds.minY + delta.height,
+            width: bounds.width,
+            height: bounds.height
+        )
+    }
 }

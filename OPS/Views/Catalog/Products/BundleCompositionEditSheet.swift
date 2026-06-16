@@ -136,8 +136,7 @@ struct BundleCompositionEditSheet: View {
                     saveBar
                 }
             }
-            .navigationTitle("EDIT BUNDLE")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle("EDIT BUNDLE")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }

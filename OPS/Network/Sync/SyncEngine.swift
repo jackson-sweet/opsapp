@@ -283,7 +283,8 @@ final class SyncEngine {
         changedFields: [String: Any],
         previousValues: [String: Any]? = nil,
         priority: Int = 1,
-        dependsOnId: String? = nil
+        dependsOnId: String? = nil,
+        deferPush: Bool = false
     ) -> SyncOperation? {
         guard let modelContext else {
             print("[SYNC_ENGINE] Cannot record operation — modelContext not configured")
@@ -357,14 +358,70 @@ final class SyncEngine {
             print("[DUPE_TRACE] SYNCOP.record id=\(canonicalEntityId) op=\(operationType) status=pending createdAt=\(operation.createdAt) ctx=\(ObjectIdentifier(modelContext))")
         }
 
-        // Attempt immediate push if online
-        if connectivity?.shouldAttemptSync == true {
+        // Attempt immediate push if online. Bulk callers pass deferPush:true
+        // and call pushPending() once for the whole batch — otherwise N task
+        // writes each spawn a push, a request storm that drops the connection.
+        if !deferPush, connectivity?.shouldAttemptSync == true {
             Task {
                 await pushPending()
             }
         }
 
         return operation
+    }
+
+    /// One operation to enqueue via `recordOperations(_:)`.
+    struct BulkOperationSpec {
+        let entityType: SyncEntityType
+        let entityId: String
+        let operationType: String
+        let changedFields: [String: Any]
+    }
+
+    /// Enqueue many operations with a SINGLE context save and NO per-op push.
+    /// Built for bulk applies (priority-queue / auto-schedule run) so N task
+    /// writes don't trigger N saves + N pushes — the cause of the main-thread
+    /// hang and the `networkConnectionLost` request storm. The caller invokes
+    /// `pushPending()` once afterward.
+    @discardableResult
+    func recordOperations(_ specs: [BulkOperationSpec]) -> Int {
+        guard let modelContext else {
+            print("[SYNC_ENGINE] Cannot record operations — modelContext not configured")
+            return 0
+        }
+        guard !specs.isEmpty else { return 0 }
+        var recorded = 0
+        for spec in specs {
+            let payloadData: Data
+            do {
+                payloadData = try JSONSerialization.data(withJSONObject: spec.changedFields, options: [])
+            } catch {
+                print("[SYNC_ENGINE] Skipping bulk op for \(spec.entityId) — encode failed: \(error)")
+                continue
+            }
+            let operation = SyncOperation(
+                entityType: spec.entityType.rawValue,
+                entityId: spec.entityId.lowercased(),
+                operationType: spec.operationType,
+                payload: payloadData,
+                changedFields: Array(spec.changedFields.keys),
+                previousValues: nil,
+                priority: 1,
+                dependsOnId: nil
+            )
+            modelContext.insert(operation)
+            recorded += 1
+        }
+        guard recorded > 0 else { return 0 }
+        do {
+            try modelContext.save()   // ONE save for the whole batch
+        } catch {
+            print("[SYNC_ENGINE] Failed to save \(recorded) bulk operation(s): \(error)")
+            return 0
+        }
+        refreshPendingCount()
+        print("[SYNC_ENGINE] Recorded \(recorded) operation(s) in one batch (push deferred to caller)")
+        return recorded
     }
 
     // MARK: - Sync Triggers
@@ -588,6 +645,31 @@ final class SyncEngine {
         if !hasError {
             kickoffPhotoPrefetch()
         }
+
+        // Retry a queued onboarding-completion ACK if one is outstanding. This runs
+        // on every full sync (periodic timer + foreground + post-login), so a user
+        // who finished onboarding offline gets their server ACK re-sent and the
+        // pending flag cleared as soon as connectivity returns.
+        await retryPendingOnboardingCompletion()
+    }
+
+    /// Re-sends the onboarding-completion ACK (POST /api/onboarding/complete) when a
+    /// prior attempt was queued offline, clearing `onboarding_completion_pending` on
+    /// success. No-op when nothing is queued. Best-effort: failures are swallowed and
+    /// retried on the next sweep.
+    private func retryPendingOnboardingCompletion() async {
+        guard UserDefaults.standard.bool(forKey: OnboardingStorageKeys.completionPending) else {
+            return
+        }
+        guard let userId = currentUserId, !userId.isEmpty else { return }
+
+        do {
+            try await OnboardingService().markOnboardingComplete(userId: userId)
+            UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.completionPending)
+            print("[SYNC_ENGINE] Queued onboarding completion ACK delivered — flag cleared")
+        } catch {
+            print("[SYNC_ENGINE] Queued onboarding completion ACK still failing — will retry: \(error.localizedDescription)")
+        }
     }
 
     /// Pushes all pending local operations to the server via OutboundProcessor.
@@ -596,6 +678,11 @@ final class SyncEngine {
             print("[SYNC_ENGINE] Cannot push — not configured")
             return
         }
+
+        // Safety net: recover any task whose local edit never produced an
+        // outbound op (needsSync set without recordOperation) before reading the
+        // pending queue, so a future bypass can't silently drop a write.
+        enqueueOrphanedTaskWrites()
 
         let pending = getPendingOperations()
         guard !pending.isEmpty else {
@@ -622,6 +709,133 @@ final class SyncEngine {
         }
 
         refreshPendingCount()
+    }
+
+    /// Safety net for the persistence invariant. Task sync runs off the
+    /// recordOperation queue; `needsSync` alone is a conflict-resolution flag
+    /// with NO outbound sweep for tasks (only photos have one). If any code path
+    /// ever mutates a task and sets needsSync WITHOUT recordOperation, the edit
+    /// would silently never reach the server (the historical
+    /// handleTaskScheduleUpdate bug). This finds such orphans — needsSync with no
+    /// pending op — re-drives their schedule state, and logs each so a new bypass
+    /// surfaces immediately instead of losing data silently.
+    ///
+    /// Bug 0d183476 — the sweep must NOT blindly trust the local row. A task can
+    /// carry `needsSync == true` with a stale local date for reasons OTHER than a
+    /// genuine un-synced edit (e.g. a row left dirty by the previously-broken task
+    /// merge gate). Pushing such a row up would resurrect the stale local date over
+    /// an authoritative server NULL — the wrong direction (server/web is the
+    /// authoritative view per project convention). So we only re-enqueue when there
+    /// is POSITIVE evidence the local schedule value is a genuine, not-yet-synced
+    /// local edit: a recent SyncOperation lifecycle event for this task. A real
+    /// handleTaskScheduleUpdate-class orphan is caught here within seconds-to-minutes
+    /// of the edit (the sweep runs at every pushPending), while a stale-needsSync row
+    /// has no such recent local-write signal. Orphans lacking that evidence get
+    /// `needsSync` cleared so the next inbound/realtime merge applies the server
+    /// value and the row converges to server truth.
+    func enqueueOrphanedTaskWrites() {
+        guard let modelContext else { return }
+        let orphans: [ProjectTask]
+        do {
+            orphans = try modelContext.fetch(
+                FetchDescriptor<ProjectTask>(
+                    predicate: #Predicate { $0.needsSync == true && $0.deletedAt == nil }
+                )
+            )
+        } catch {
+            print("[SYNC_ENGINE] Orphan-task sweep fetch failed: \(error)")
+            return
+        }
+        guard !orphans.isEmpty else { return }
+
+        // A canonical write sets needsSync AND records an op in one synchronous
+        // step, so a needsSync task WITH a pending op is normal. Skip those, and
+        // skip ones created in the last 30s to avoid racing an in-flight create.
+        let graceCutoff = Date().addingTimeInterval(-30)
+        let writer = ISO8601DateFormatter()
+        writer.formatOptions = [.withInternetDateTime]
+
+        // Window for "recent local write" — generous enough to cover a genuine
+        // orphan edit (the sweep runs frequently, so a real bypass is detected long
+        // before this expires) yet short enough that a stale-needsSync row from a
+        // prior session is never mistaken for a live edit.
+        let recentLocalWriteWindow: TimeInterval = 15 * 60
+
+        var didMutate = false
+        for task in orphans {
+            if let created = task.createdAt, created > graceCutoff { continue }
+            if hasPendingOperation(entityId: task.id) { continue }
+
+            guard hasRecentLocalWrite(entityId: task.id, withinSeconds: recentLocalWriteWindow) else {
+                // No evidence of a genuine recent local edit. Do NOT push the local
+                // schedule up — it may be a stale value sitting over an authoritative
+                // server NULL. Clear the dirty flag and let the next inbound/realtime
+                // merge apply the server value.
+                print("[SYNC_ENGINE] Orphaned task \(task.id) has no recent local-write signal — clearing needsSync to defer to server truth (not re-pushing local schedule).")
+                task.needsSync = false
+                didMutate = true
+                continue
+            }
+
+            print("[SYNC_ENGINE] WARNING: orphaned task write (needsSync, no pending op, recent local edit): \(task.id) — re-driving schedule. A code path mutated this task without recordOperation.")
+
+            var fields: [String: Any] = ["duration": task.duration]
+            fields["start_date"] = task.startDate.map { writer.string(from: $0) } ?? NSNull()
+            fields["end_date"] = task.endDate.map { writer.string(from: $0) } ?? NSNull()
+
+            _ = recordOperation(
+                entityType: .projectTask,
+                entityId: task.id,
+                operationType: "update",
+                changedFields: fields
+            )
+        }
+
+        if didMutate {
+            do {
+                try modelContext.save()
+            } catch {
+                print("[SYNC_ENGINE] Orphan-task sweep save failed after clearing needsSync: \(error)")
+            }
+        }
+    }
+
+    /// True if a pending SyncOperation already exists for this entity id.
+    private func hasPendingOperation(entityId: String) -> Bool {
+        guard let modelContext else { return false }
+        let eid = entityId.lowercased()
+        let descriptor = FetchDescriptor<SyncOperation>(
+            predicate: #Predicate { $0.entityId == eid && $0.status == "pending" }
+        )
+        return ((try? modelContext.fetchCount(descriptor)) ?? 0) > 0
+    }
+
+    /// True if a SyncOperation for this entity had ANY lifecycle event
+    /// (created / attempted / completed) within the given window, regardless of
+    /// current status. Positive evidence that the local row reflects a genuine,
+    /// recent local write rather than a stale dirty flag. Mirrors
+    /// RealtimeProcessor.hasRecentLocalWrite; considers all three timestamps so the
+    /// window covers freshly-recorded, push-in-flight, recently-completed, and
+    /// offline-delayed-push cases.
+    private func hasRecentLocalWrite(entityId: String, withinSeconds seconds: TimeInterval) -> Bool {
+        guard let modelContext else { return false }
+        let idLower = entityId.lowercased()
+        let idUpper = entityId.uppercased()
+        let descriptor = FetchDescriptor<SyncOperation>(
+            predicate: #Predicate<SyncOperation> { op in
+                op.entityId == idLower || op.entityId == idUpper || op.entityId == entityId
+            }
+        )
+        guard let ops = try? modelContext.fetch(descriptor), !ops.isEmpty else {
+            return false
+        }
+        let cutoff = Date().addingTimeInterval(-seconds)
+        for op in ops {
+            if op.createdAt >= cutoff { return true }
+            if let last = op.lastAttemptedAt, last >= cutoff { return true }
+            if let completed = op.completedAt, completed >= cutoff { return true }
+        }
+        return false
     }
 
     /// Drains local artifact queues that do not use `SyncOperation` rows.

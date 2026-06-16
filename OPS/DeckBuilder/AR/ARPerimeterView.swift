@@ -163,6 +163,7 @@ struct ARPerimeterView: View {
             if viewModel.isClosed || viewModel.arVertices.count >= 3 {
                 Button("Save & Exit") {
                     let data = viewModel.toDrawingData()
+                    ToastCenter.shared.present(Feedback.Deck.arWalkSaved)
                     onComplete(data)
                 }
             }

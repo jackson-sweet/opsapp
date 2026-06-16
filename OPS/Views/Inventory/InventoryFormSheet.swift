@@ -822,6 +822,7 @@ struct InventoryFormSheet: View {
                         existingItem.lastSyncedAt = Date()
                         try? modelContext.save()
                         print("[INVENTORY_FORM] ✅ Item saved successfully")
+                        ToastCenter.shared.present(Feedback.Inventory.itemSaved)
                         dismiss()
                     }
                 } catch {
@@ -886,6 +887,7 @@ struct InventoryFormSheet: View {
                         newItem.lastSyncedAt = Date()
                         try? modelContext.save()
                         print("[INVENTORY_FORM] ✅ Item created successfully")
+                        ToastCenter.shared.present(Feedback.Inventory.itemCreated)
                         dismiss()
                     }
                 } catch {

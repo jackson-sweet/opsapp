@@ -22,8 +22,13 @@ struct CalendarEventCard: View {
     @State private var showingQuickActions = false
     @State private var showingStatusPicker = false
 
+    // Reschedule / quick-schedule actions are gated on calendar.edit, scope-aware
+    // on this task (own-scope → only the user's own tasks). The @EnvironmentObject
+    // permissionStore keeps this recomputing as grants change; the per-task scope
+    // resolves through PermissionStore.canEditSchedule. Crew / Unassigned (no
+    // grant) get status-only actions.
     private var canModify: Bool {
-        permissionStore.can("calendar.edit")
+        task.canEditSchedule
     }
 
     init(task: ProjectTask, isFirst: Bool, isOngoing: Bool = false,
@@ -295,9 +300,13 @@ struct CalendarEventCard: View {
     }
 
     private func updateTaskSchedule(task: ProjectTask, startDate: Date, endDate: Date) {
+        guard task.canEditSchedule else { return }
         Task {
             do {
                 try await dataController.updateTaskSchedule(task: task, startDate: startDate, endDate: endDate)
+                await MainActor.run {
+                    ToastCenter.shared.present(Feedback.Task.scheduledFor(start: startDate, end: endDate))
+                }
             } catch {
                 print("Error updating task schedule: \(error)")
             }
@@ -305,6 +314,7 @@ struct CalendarEventCard: View {
     }
 
     private func clearTaskDates(task: ProjectTask) {
+        guard task.canEditSchedule else { return }
         let projectId = task.project?.id
 
         // Capture other tasks' dates for project date recalculation
@@ -347,6 +357,10 @@ struct CalendarEventCard: View {
                             project: project, startDate: nil, endDate: nil
                         )
                     }
+                }
+
+                await MainActor.run {
+                    ToastCenter.shared.present(Feedback.Task.datesCleared)
                 }
             } catch {
                 print("Error clearing task dates: \(error)")

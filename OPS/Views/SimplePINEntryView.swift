@@ -118,15 +118,16 @@ struct SimplePINEntryView: View {
     private func validatePIN() {
         
         if pinManager.validatePIN(enteredPIN) {
-            
+
             // Success feedback
             pinState = .success
             showError = false
-            
+
             // Haptic feedback for success
             let generator = UINotificationFeedbackGenerator()
             generator.prepare()
             generator.notificationOccurred(.success)
+            ToastCenter.shared.present(Feedback.Onboarding.accessGranted)
             
             // Don't clear the PIN - keep all digits visible during success animation
             // The view will be dismissed anyway, so no need to clear

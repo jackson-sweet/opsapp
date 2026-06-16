@@ -18,6 +18,16 @@ struct ExpenseCard: View {
     /// its batch isn't loaded on this surface). Drives the "filling" vs
     /// "with the office" distinction for a submitted line.
     var batchStatus: ExpenseBatchStatus?
+    /// Resolved display name of whoever added the expense. Surfaced on shared
+    /// surfaces (e.g. a project's expense list) where the line may belong to a
+    /// teammate. Nil hides the attribution — used where the viewer is always the
+    /// owner (My Expenses) or the name can't be resolved.
+    var submittedByName: String?
+    /// Whether the current user may delete this line (submitter or admin).
+    /// Gates the swipe-to-delete affordance so we never reveal an action the
+    /// server would reject. Defaults true for surfaces that only list a user's
+    /// own expenses (e.g. My Expenses).
+    var canDelete: Bool = true
     let onTap: () -> Void
     let onSwipeLeft: () -> Void
 
@@ -28,6 +38,8 @@ struct ExpenseCard: View {
         categoryName: String?,
         categoryIcon: String?,
         batchStatus: ExpenseBatchStatus? = nil,
+        submittedByName: String? = nil,
+        canDelete: Bool = true,
         onTap: @escaping () -> Void,
         onSwipeLeft: @escaping () -> Void
     ) {
@@ -35,6 +47,8 @@ struct ExpenseCard: View {
         self.categoryName = categoryName
         self.categoryIcon = categoryIcon
         self.batchStatus = batchStatus
+        self.submittedByName = submittedByName
+        self.canDelete = canDelete
         self.onTap = onTap
         self.onSwipeLeft = onSwipeLeft
     }
@@ -45,9 +59,10 @@ struct ExpenseCard: View {
         ExpenseStatus(rawValue: expense.status) ?? .draft
     }
 
-    /// Approved / reimbursed lines are locked — no delete.
+    /// Approved / reimbursed lines are locked — no delete. Also gated by the
+    /// caller's `canDelete` (submitter or admin).
     private var canSwipeLeft: Bool {
-        expenseStatus != .approved && expenseStatus != .reimbursed
+        canDelete && expenseStatus != .approved && expenseStatus != .reimbursed
     }
 
     private var formattedDate: String {
@@ -93,7 +108,8 @@ struct ExpenseCard: View {
                     DragGesture()
                         .onChanged { value in
                             // Delete-only — ignore right swipes (no submit gesture).
-                            dragOffset = min(0, value.translation.width)
+                            // No reveal at all when the user can't delete this line.
+                            dragOffset = canSwipeLeft ? min(0, value.translation.width) : 0
                         }
                         .onEnded { value in
                             if value.translation.width < -swipeThreshold && canSwipeLeft {
@@ -122,7 +138,8 @@ struct ExpenseCard: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
 
-                // Row 2: category icon + name
+                // Row 2: category icon + name, with the adder on the trailing edge
+                // where a name is supplied (shared surfaces like a project list).
                 HStack(spacing: OPSStyle.Layout.spacing1) {
                     if let icon = categoryIcon, !icon.isEmpty {
                         Image(systemName: icon)
@@ -133,6 +150,17 @@ struct ExpenseCard: View {
                         .font(OPSStyle.Typography.smallBody)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .lineLimit(1)
+
+                    if let submittedByName, !submittedByName.isEmpty {
+                        Spacer(minLength: OPSStyle.Layout.spacing2)
+                        Image(systemName: OPSStyle.Icons.teamMember)
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        Text(submittedByName)
+                            .font(OPSStyle.Typography.smallBody)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .lineLimit(1)
+                    }
                 }
 
                 // Row 3: quiet state + envelope phase, with the date.

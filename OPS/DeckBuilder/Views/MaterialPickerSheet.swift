@@ -351,34 +351,49 @@ struct MaterialPickerSheet: View {
 
         let selectedEdgeIds = Array(viewModel.selection.selectedEdgeIds)
         let material = houseEdgeMaterial(for: standard)
+        var houseEdgeIds: [String] = []
+        var parapetCreateIds: [String] = []
+        var parapetMaterialIds: [String] = []
         var shouldAssignDeckItem = false
 
         for edgeId in selectedEdgeIds {
             guard let edge = viewModel.findEdge(byId: edgeId) else { continue }
 
             if edge.edgeType == .houseEdge {
-                if let material {
-                    viewModel.setHouseEdgeMaterial(edgeId, material: material)
+                if material != nil {
+                    houseEdgeIds.append(edgeId)
                 }
                 continue
             }
 
             if standard.id == "std.wall.parapet" {
-                viewModel.setRailing(
-                    edgeId,
-                    config: RailingConfig(
-                        railingType: .parapetWall,
-                        maxPostSpacing: RailingType.parapetWall.defaultMaxPostSpacing,
-                        wallMaterial: .parapet
-                    )
-                )
+                parapetCreateIds.append(edgeId)
                 shouldAssignDeckItem = true
-            } else if let material, edge.railingConfig?.railingType == .parapetWall {
-                viewModel.setRailingWallMaterial(edgeId, material: material)
+            } else if material != nil, edge.railingConfig?.railingType == .parapetWall {
+                parapetMaterialIds.append(edgeId)
                 shouldAssignDeckItem = true
             } else if standard.id.contains("gate") {
                 shouldAssignDeckItem = true
             }
+        }
+
+        if let material, !houseEdgeIds.isEmpty {
+            viewModel.setHouseEdgeMaterial(houseEdgeIds, material: material)
+        }
+
+        if !parapetCreateIds.isEmpty {
+            viewModel.setRailing(
+                parapetCreateIds,
+                config: RailingConfig(
+                    railingType: .parapetWall,
+                    maxPostSpacing: RailingType.parapetWall.defaultMaxPostSpacing,
+                    wallMaterial: .parapet
+                )
+            )
+        }
+
+        if let material, !parapetMaterialIds.isEmpty {
+            viewModel.setRailingWallMaterial(parapetMaterialIds, material: material)
         }
 
         if shouldAssignDeckItem {

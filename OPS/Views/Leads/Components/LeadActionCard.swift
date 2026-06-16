@@ -42,16 +42,19 @@ struct LeadActionCard: View {
         }
     }
 
-    private var displayTitle: String {
-        if let t = opportunity.title, !t.isEmpty { return t }
-        if !opportunity.contactName.isEmpty      { return opportunity.contactName }
-        return "Unnamed lead"
+    private var displayName: String {
+        // Row 1 leads with the contact name; when a lead has none (e.g. an
+        // unparsed email inquiry) the title is promoted so the row never reads
+        // "Unnamed lead" while a real subject line exists.
+        opportunity.displayContactName
     }
 
-    private var displayName: String {
-        // Row 1 leads with the contact name; title goes to row 2.
-        // Falls back to "Unnamed lead" if contact name is missing.
-        opportunity.contactName.isEmpty ? "Unnamed lead" : opportunity.contactName
+    /// Row 2's title — suppressed when `displayName` has already been forced to
+    /// show the title (no contact name), so the card never prints it on both rows.
+    private var secondaryTitle: String? {
+        guard !opportunity.contactName.isEmpty else { return nil }
+        if let t = opportunity.title, !t.isEmpty { return t }
+        return nil
     }
 
     private var valueText: String? {
@@ -140,12 +143,16 @@ struct LeadActionCard: View {
 
     private var row2: some View {
         HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
-            Text(displayTitle)
-                .font(.custom("Mohave-Regular", size: 13.5))
-                .foregroundColor(OPSStyle.Colors.text3)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if let secondaryTitle {
+                Text(secondaryTitle)
+                    .font(.custom("Mohave-Regular", size: 13.5))
+                    .foregroundColor(OPSStyle.Colors.text3)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Spacer(minLength: 0)
+            }
 
             Text("\(opportunity.stage.shortLabel) · \(opportunity.daysInStage)D")
                 .font(.custom("JetBrainsMono-Regular", size: 9.5))

@@ -28,8 +28,6 @@ struct TaskDetailsView: View {
     @EnvironmentObject private var permissionStore: PermissionStore
     @Query private var users: [User]
     
-    @State private var showingSaveNotification = false
-    @State private var notificationTimer: Timer?
     @State private var showingClientContact = false
     @State private var showingProjectDetails = false
     @State private var loadedTeamMembers: [User] = []
@@ -266,8 +264,6 @@ struct TaskDetailsView: View {
         }
         .onDisappear {
             AnalyticsService.shared.endScreenView(screenName: "task_details")
-            notificationTimer?.invalidate()
-            notificationTimer = nil
         }
         .alert("Complete Project?", isPresented: $showingProjectCompletionAlert) {
             Button("Complete Project", role: .destructive) {
@@ -533,7 +529,9 @@ struct TaskDetailsView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             Button(action: {
-                if permissionStore.can("tasks.edit") {
+                // Scheduling is gated on calendar.edit (scope-aware), not tasks.edit:
+                // a Crew member may edit task fields but never move it on the calendar.
+                if task.canEditSchedule {
                     showingScheduler = true
                 }
             }) {
@@ -566,8 +564,8 @@ struct TaskDetailsView: View {
 
                         Spacer()
 
-                        // Chevron indicator for users with edit permission
-                        if permissionStore.can("tasks.edit") {
+                        // Chevron indicator for users who can reschedule (calendar.edit)
+                        if task.canEditSchedule {
                             Image(systemName: OPSStyle.Icons.chevronRight)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -609,7 +607,7 @@ struct TaskDetailsView: View {
             }
             .buttonStyle(PlainButtonStyle())
             .id(refreshTrigger)
-            .allowsHitTesting(permissionStore.can("tasks.edit"))
+            .allowsHitTesting(task.canEditSchedule)
         }
     }
 
@@ -747,6 +745,7 @@ struct TaskDetailsView: View {
 
         // Show confirmation message
         showTeamUpdateMessage = true
+        ToastCenter.shared.present(Feedback.Task.teamUpdated)
 
         // Use centralized method which handles:
         // - Task teamMemberIdsString + teamMembers relationship
@@ -1004,6 +1003,7 @@ struct TaskDetailsView: View {
 
                 // Dismiss the view after successful deletion
                 await MainActor.run {
+                    ToastCenter.shared.present(Feedback.Task.deleted)
                     // Notify calendar views to refresh
                     dataController.scheduledTasksDidChange.toggle()
                     dismiss()
@@ -1018,6 +1018,7 @@ struct TaskDetailsView: View {
     // MARK: - Schedule Update
 
     private func handleScheduleUpdate(startDate: Date, endDate: Date) {
+        guard task.canEditSchedule else { return }
         print("🔄 Task handleScheduleUpdate called - New dates: \(startDate) to \(endDate)")
 
         // Set dates directly on the task
@@ -1045,6 +1046,7 @@ struct TaskDetailsView: View {
         do {
             try modelContext.save()
             print("✅ Successfully saved task schedule update")
+            ToastCenter.shared.present(Feedback.Task.rescheduled)
 
             // Force view refresh to show updated dates
             refreshTrigger.toggle()
@@ -1062,6 +1064,7 @@ struct TaskDetailsView: View {
     }
 
     private func handleClearDates() {
+        guard task.canEditSchedule else { return }
         print("🗑️ handleClearDates called - Clearing task dates")
 
         let projectId = task.project?.id
@@ -1086,6 +1089,7 @@ struct TaskDetailsView: View {
         do {
             try modelContext.save()
             print("✅ Successfully cleared task dates")
+            ToastCenter.shared.present(Feedback.Task.datesCleared)
 
             // Force view refresh to show cleared dates
             refreshTrigger.toggle()
@@ -1267,6 +1271,9 @@ struct TaskDetailsView: View {
         Task {
             do {
                 try await dataController.updateTaskStatus(task: task, to: newStatus)
+                await MainActor.run {
+                    ToastCenter.shared.present(Feedback.Task.statusUpdated)
+                }
 
                 // Check if all tasks are complete after successful update
                 if newStatus == .completed {
@@ -1466,49 +1473,15 @@ struct TaskDetailsView: View {
         }
     }
     
-    // MARK: - Save Notification
-    
-    private func showSaveNotification() {
-        withAnimation(OPSStyle.Animation.standard) {
-            showingSaveNotification = true
-        }
-        
-        notificationTimer?.invalidate()
-        notificationTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { _ in
-            withAnimation(OPSStyle.Animation.standard) {
-                showingSaveNotification = false
-            }
-        }
-    }
-    
     private var saveNotificationOverlay: some View {
-        ZStack(alignment: .top) {
-            // Notes saved notification
-            if showingSaveNotification {
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    Image(systemName: OPSStyle.Icons.complete)
-                        .foregroundColor(OPSStyle.Colors.successStatus)
-
-                    Text("Notes saved")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-                .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .padding(.top, 50)
-            }
-
-            // Team update push-in message (uses its own positioning)
-            PushInMessage(
-                isPresented: $showTeamUpdateMessage,
-                title: "TEAM UPDATED",
-                subtitle: "\(selectedTeamMemberIds.count) member\(selectedTeamMemberIds.count == 1 ? "" : "s") assigned",
-                type: .success,
-                autoDismissAfter: 3.0
-            )
-        }
+        // Team update push-in message (ambient — stays alongside the canonical toast)
+        PushInMessage(
+            isPresented: $showTeamUpdateMessage,
+            title: "TEAM UPDATED",
+            subtitle: "\(selectedTeamMemberIds.count) member\(selectedTeamMemberIds.count == 1 ? "" : "s") assigned",
+            type: .success,
+            autoDismissAfter: 3.0
+        )
     }
 }
 

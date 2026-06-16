@@ -131,6 +131,7 @@ struct ImportPreviewView: View {
             Button("Rename") {
                 if let oldTag = renamingTag {
                     renameTagGlobally(from: oldTag, to: renameTagText)
+                    ToastCenter.shared.present(Feedback.Inventory.tagRenamed)
                 }
                 renamingTag = nil
                 renameTagText = ""
@@ -812,7 +813,10 @@ struct ImportPreviewView: View {
             .buttonStyle(PlainButtonStyle())
 
             // Delete
-            Button(action: { deleteTagGlobally(tag) }) {
+            Button(action: {
+                deleteTagGlobally(tag)
+                ToastCenter.shared.present(Feedback.Inventory.tagDeleted)
+            }) {
                 Image(systemName: "trash")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.errorStatus.opacity(0.7))

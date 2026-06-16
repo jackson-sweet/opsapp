@@ -152,8 +152,7 @@ struct OrdersSheet: View {
                     .animation(OPSStyle.Animation.panel, value: subSegment)
                 }
             }
-            .navigationTitle("ORDERS")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle("ORDERS")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Close") { dismiss() }

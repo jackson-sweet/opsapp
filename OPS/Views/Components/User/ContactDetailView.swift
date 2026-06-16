@@ -983,6 +983,7 @@ struct ContactDetailView: View {
             )
             await MainActor.run {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
+                ToastCenter.shared.present(Feedback.Contact.fieldUpdated)
                 cancelInlineEdit()
             }
         } catch {
@@ -1357,6 +1358,7 @@ struct ContactDetailView: View {
 
                 let generator = UINotificationFeedbackGenerator()
                 generator.notificationOccurred(.success)
+                ToastCenter.shared.present(Feedback.Contact.roleUpdated)
             }
 
             print("[CONTACT_DETAIL] Updated \(user.fullName) role to \(newRole.displayName)")
@@ -1524,6 +1526,7 @@ struct ContactDetailView: View {
 
                 // Refresh UI
                 await MainActor.run {
+                    ToastCenter.shared.present(Feedback.Contact.subSaved)
                     subClientsRefreshKey = UUID()
                     subClientToEdit = nil
                 }
@@ -1548,6 +1551,7 @@ struct ContactDetailView: View {
                 await MainActor.run {
                     client.subClients.append(newSubClient)
                     client.lastSyncedAt = Date()
+                    ToastCenter.shared.present(Feedback.Contact.subSaved)
                     subClientsRefreshKey = UUID()
                     subClientToEdit = nil
                 }
@@ -1568,6 +1572,7 @@ struct ContactDetailView: View {
                     if let index = client?.subClients.firstIndex(where: { $0.id == subClient.id }) {
                         client?.subClients.remove(at: index)
                     }
+                    ToastCenter.shared.present(Feedback.Contact.subDeleted)
                     subClientsRefreshKey = UUID()
                 }
             } catch {

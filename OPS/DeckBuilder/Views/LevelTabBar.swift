@@ -6,7 +6,6 @@ struct LevelTabBar: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
     @State private var renamingIndex: Int?
     @State private var renameText: String = ""
-    @State private var showDeleteError: Bool = false
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -43,11 +42,6 @@ struct LevelTabBar: View {
         .frame(height: OPSStyle.Layout.touchTargetMin)
         // No solid background — the bar lives inside the title overlay's
         // shared card so the parent's translucent fill shows through.
-        .alert("Cannot Delete Level", isPresented: $showDeleteError) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Remove stair connections to this level first.")
-        }
         .alert("Rename Level", isPresented: Binding(
             get: { renamingIndex != nil },
             set: { if !$0 { renamingIndex = nil } }
@@ -118,7 +112,7 @@ struct LevelTabBar: View {
             Button(role: .destructive) {
                 let success = viewModel.deleteLevel(at: index)
                 if !success {
-                    showDeleteError = true
+                    ToastCenter.shared.present(Toast(label: Feedback.Err.connectionsPreventDelete, tone: .error))
                 }
             } label: {
                 Label("Delete Level", systemImage: "trash")

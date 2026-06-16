@@ -73,6 +73,14 @@ class DataController: ObservableObject {
     /// Created alongside dataActor; published for views to observe.
     @Published private(set) var refreshBridge: MainContextRefreshBridge?
 
+    /// Routes `.inboundDataMerged` (server data saved locally by Realtime /
+    /// delta / full sync — actor or legacy path alike) to the calendar's
+    /// existing refresh chains. Without this, snapshot caches like
+    /// CalendarViewModel.dayTaskCache only invalidate on LOCAL edits, so a
+    /// teammate's reschedule lands in SwiftData but never repaints the
+    /// schedule until the user changes weeks or pull-to-refreshes.
+    private(set) var inboundChangeRouter: InboundChangeRouter?
+
     private var cancellables = Set<AnyCancellable>()
 
     // Cancellable data wipe scheduled during logout — cancelled if re-login starts
@@ -214,6 +222,25 @@ class DataController: ObservableObject {
         //     immediately upon connectivity restore; SyncEngine.dataActor
         //     must be bound before that happens.
         //
+        // Route inbound merge signals (Realtime / delta / full sync) to the
+        // calendar's existing refresh chains. Created on BOTH the actor and
+        // legacy paths — every inbound merge site posts the same signal.
+        // Callbacks fire on main (the router is main-confined), matching how
+        // updateTaskSchedule toggles after local edits.
+        if self.inboundChangeRouter == nil {
+            self.inboundChangeRouter = InboundChangeRouter(
+                onCalendarTasksChanged: { [weak self] in
+                    self?.scheduledTasksDidChange.toggle()
+                },
+                onUserEventsChanged: {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("CalendarUserEventsDidChange"),
+                        object: nil
+                    )
+                }
+            )
+        }
+
         // The @ModelActor-synthesized init runs synchronously; only configure()
         // is async. Actor methods are FIFO-serialized, so scheduling configure()
         // first guarantees it runs before any queued cleanup/sync method.
@@ -897,6 +924,26 @@ class DataController: ObservableObject {
         }
     }
 
+    /// Whether a freshly-fetched user is "app-bound" — destined for the main app
+    /// (MainTabView) rather than the onboarding flow. Single source of truth for
+    /// the post-login authentication flip: `fetchUserFromAPI` defers that flip to
+    /// the END of the initial sync, and the returning-login workspace preload
+    /// gate's "ENTER ANYWAY" escape hatch consults the SAME predicate to
+    /// fast-forward a stalled sync into the app — so the hatch can never reveal a
+    /// login the deferred flip wouldn't also have. App-bound = server-onboarded
+    /// (`hasCompletedAppOnboarding`), belongs to a company, and has a resolved
+    /// user type; a partial join (a company without the server ACK) resumes
+    /// onboarding instead.
+    ///
+    /// `nonisolated`: a pure function of the passed-in user that touches no actor
+    /// state, so the `@MainActor` login path, the gate, and the tests can all use
+    /// it without an isolation hop.
+    nonisolated static func isAppBound(_ user: User?) -> Bool {
+        guard let user else { return false }
+        let hasCompany = !(user.companyId ?? "").isEmpty
+        return user.hasCompletedAppOnboarding && hasCompany && user.userType != nil
+    }
+
     @MainActor
     private func fetchUserFromAPI(userId: String) async throws {
         let crashlytics = Crashlytics.crashlytics()
@@ -1001,8 +1048,7 @@ class DataController: ObservableObject {
         await MainActor.run {
             isPerformingInitialSync = true
         }
-        let hasCompany = !(user.companyId ?? "").isEmpty
-        let shouldFlipAuthentication = user.hasCompletedAppOnboarding && hasCompany && user.userType != nil
+        let shouldFlipAuthentication = DataController.isAppBound(user)
 
         // Fetch company data if needed
         if isConnected, let companyId = user.companyId, !companyId.isEmpty {
@@ -1423,8 +1469,13 @@ class DataController: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "last_onboarding_step_v2")
 
         // Clear onboarding state to prevent auto-triggering onboarding after logout
+        // and to stop a prior account's onboarding-resume blob from leaking into
+        // the next account on this device. v4 is the rebuilt flow's resume blob
+        // (HIGH-4); v2/v3 are legacy. Clear all three on every auth teardown.
         UserDefaults.standard.removeObject(forKey: "onboarding_state_v2")
-        
+        UserDefaults.standard.removeObject(forKey: "onboarding_state_v3")
+        UserDefaults.standard.removeObject(forKey: "onboarding_state_v4")
+
         // Clear all user data
         UserDefaults.standard.removeObject(forKey: "user_id")
         UserDefaults.standard.removeObject(forKey: "currentUserId")
@@ -3846,9 +3897,11 @@ class DataController: ObservableObject {
             changedFields: changedFields
         )
 
-        // Send schedule change notification if dates actually changed
+        // Send schedule change notification if dates actually changed — but
+        // skip terminal tasks (a completed or cancelled task moving shouldn't
+        // ping the crew).
         let datesChanged = previousStartDate != startDate || previousEndDate != endDate
-        if datesChanged, let project = project {
+        if datesChanged, !task.status.isTerminal, let project = project {
             let teamMemberIds = task.getTeamMemberIds()
             if !teamMemberIds.isEmpty {
                 let capturedTaskName = task.displayTitle
@@ -3915,51 +3968,165 @@ class DataController: ObservableObject {
         return (try? ctx.fetch(descriptor)) ?? []
     }
 
+    /// All schedulable (non-deleted, status == .active) tasks for the current
+    /// user's company. The candidate set for crew consolidation, which ripples
+    /// a crew member's jobs across every project they work on.
+    func getActiveTasksForCompany() -> [ProjectTask] {
+        guard let companyId = currentUser?.companyId else { return [] }
+        return getAllTasks().filter { $0.companyId == companyId && $0.status == .active }
+    }
+
+    /// All non-deleted tasks for the current user's company, any status. Used by
+    /// undo so a cascaded task that has since changed state can still be restored.
+    func getCompanyTasks() -> [ProjectTask] {
+        guard let companyId = currentUser?.companyId else { return [] }
+        return getAllTasks().filter { $0.companyId == companyId }
+    }
+
+    /// Whether scheduling should skip weekends for the current company. Weekends
+    /// are skipped by default (most trades don't work them); only a company that
+    /// has turned on weekend work in settings lands tasks on Sat/Sun. Exposed so
+    /// every manual-push surface honors the same setting, not just auto-schedule.
+    var currentCompanySkipsWeekends: Bool {
+        getCurrentCompany()?.skipWeekendsInAutoSchedule ?? true
+    }
+
     /// Push a single task by N days (no cascade).
+    ///
+    /// `preserveCalendarWeeks` routes a week-sized push through the calendar-week
+    /// engine so "+1 week" lands exactly 7 days out on the same weekday and is
+    /// never weekend-normalized — keeping every week affordance identical and
+    /// avoiding the +9 over-advance on weekend-anchored tasks.
     @MainActor
-    func pushTask(_ task: ProjectTask, byDays days: Int, skipWeekends: Bool? = nil) async throws {
-        let skip = skipWeekends ?? (getCurrentCompany()?.skipWeekendsInAutoSchedule ?? false)
-        let result = SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: skip)
+    func pushTask(
+        _ task: ProjectTask,
+        byDays days: Int,
+        skipWeekends: Bool? = nil,
+        preserveCalendarWeeks: Bool = false
+    ) async throws {
+        let result: (newStart: Date, newEnd: Date)
+        if preserveCalendarWeeks {
+            // `days` is a whole-week magnitude here; `days / 7` preserves sign
+            // (a future backward week push stays backward) and matches the
+            // derivation used on every other surface.
+            result = SchedulingEngine.pushByCalendarWeeks(task: task, weeks: days / 7)
+        } else {
+            let skip = skipWeekends ?? currentCompanySkipsWeekends
+            result = SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: skip)
+        }
         try await updateTaskSchedule(task: task, startDate: result.newStart, endDate: result.newEnd)
     }
 
-    /// Push a task by N days and cascade to all dependent tasks.
-    /// Returns the cascade result so UI can show preview / enable undo.
+    /// The computed-but-not-yet-applied effect of a cascade push: the pushed
+    /// task's new dates plus every crew + dependency change. Rendering the
+    /// preview and committing the push both go through `planCascade`, so the
+    /// preview can never disagree with what actually lands.
+    struct CascadePlan {
+        let pushedNewStart: Date
+        let pushedNewEnd: Date
+        let cascade: SchedulingEngine.CascadeResult
+    }
+
+    /// Compute (without applying) the full cascade for a push: forward crew
+    /// consolidation across the company plus the project's dependency chain,
+    /// merged so a dependency only ever lands a task later than its crew slot.
+    /// Returns nil when the task has no start date.
     @MainActor
-    @discardableResult
-    func pushTaskWithCascade(_ task: ProjectTask, byDays days: Int) async throws -> SchedulingEngine.CascadeResult {
-        let skip = getCurrentCompany()?.skipWeekendsInAutoSchedule ?? false
-        let calendar = Calendar.current
+    func planCascade(
+        for task: ProjectTask,
+        byDays days: Int,
+        preserveCalendarWeeks: Bool = false
+    ) -> CascadePlan? {
+        guard let originalStart = task.startDate else { return nil }
+        let skip = currentCompanySkipsWeekends
 
-        guard let start = task.startDate else {
-            throw SchedulingError.noStartDate
-        }
+        // A week push preserves the weekday and skips weekend-normalization;
+        // a day push honors the company skip-weekends setting.
+        let pushedDates = preserveCalendarWeeks
+            ? SchedulingEngine.pushByCalendarWeeks(task: task, weeks: days / 7)
+            : SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: skip)
+        let newStart = pushedDates.newStart
+        let newEnd = pushedDates.newEnd
 
-        var newStart = calendar.date(byAdding: .day, value: days, to: start)!
-        if skip { newStart = SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: true).newStart }
-        let newEnd = calendar.date(byAdding: .day, value: max(task.duration - 1, 0), to: newStart)!
+        // Crew consolidation ripples the pushed task's crew across the whole
+        // company (their other jobs live on other projects). Forward pushes
+        // only — there is no pull-earlier cascade.
+        let companyTasks = getActiveTasksForCompany()
+        let crewChanges: [SchedulingEngine.CascadeResult.TaskDateChange] = days > 0
+            ? SchedulingEngine.calculateCrewConsolidation(
+                pushedTask: task,
+                pushedOriginalStart: originalStart,
+                pushedNewStart: newStart,
+                pushedNewEnd: newEnd,
+                allTasks: companyTasks,
+                skipWeekends: skip
+              )
+            : []
 
-        let projectTasks = getTasksForProject(task.projectId)
-
-        let cascade = SchedulingEngine.calculateCascade(
+        // Seed the dependency pass with the crew-shifted dates so a dependency
+        // can only push a task further out, never earlier than its crew slot.
+        // The dependency pass stays project-scoped: matching task types across
+        // unrelated projects would invent dependency links that don't exist.
+        let crewSeed = Dictionary(
+            crewChanges.map { ($0.id, (start: $0.newStartDate, end: $0.newEndDate)) },
+            uniquingKeysWith: { current, _ in current }
+        )
+        let dependency = SchedulingEngine.calculateCascade(
             pushedTaskId: task.id,
             newStartDate: newStart,
             newEndDate: newEnd,
-            allProjectTasks: projectTasks,
-            skipWeekends: skip
+            allProjectTasks: getTasksForProject(task.projectId),
+            skipWeekends: skip,
+            seededDates: crewSeed
+        )
+
+        // Merge crew + dependency changes. A task touched by both takes the
+        // dependency result, which only ever lands later than the crew slot.
+        var changesById: [String: SchedulingEngine.CascadeResult.TaskDateChange] = [:]
+        for change in crewChanges { changesById[change.id] = change }
+        for change in dependency.changes { changesById[change.id] = change }
+        let mergedChanges = changesById.values.sorted { $0.newStartDate < $1.newStartDate }
+
+        return CascadePlan(
+            pushedNewStart: newStart,
+            pushedNewEnd: newEnd,
+            cascade: SchedulingEngine.CascadeResult(changes: mergedChanges)
+        )
+    }
+
+    /// Push a task by N days and cascade to crew + dependent tasks.
+    /// Returns the cascade result so UI can show preview / enable undo.
+    @MainActor
+    @discardableResult
+    func pushTaskWithCascade(
+        _ task: ProjectTask,
+        byDays days: Int,
+        preserveCalendarWeeks: Bool = false
+    ) async throws -> SchedulingEngine.CascadeResult {
+        guard let plan = planCascade(for: task, byDays: days, preserveCalendarWeeks: preserveCalendarWeeks) else {
+            throw SchedulingError.noStartDate
+        }
+
+        // Resolve every task the plan may touch up front — company-wide and any
+        // status (matching undo), captured before the first await so a crew task
+        // that changes status mid-apply isn't silently skipped. Crew shifts can
+        // be cross-project, so a per-project lookup is not enough.
+        let applyLookup = Dictionary(
+            getCompanyTasks().map { ($0.id, $0) },
+            uniquingKeysWith: { current, _ in current }
         )
 
         // Apply the pushed task's new dates
-        try await updateTaskSchedule(task: task, startDate: newStart, endDate: newEnd)
+        try await updateTaskSchedule(task: task, startDate: plan.pushedNewStart, endDate: plan.pushedNewEnd)
 
-        // Apply cascade changes
-        for change in cascade.changes {
-            if let affectedTask = projectTasks.first(where: { $0.id == change.id }) {
+        // Apply every cascaded change (crew + dependency).
+        for change in plan.cascade.changes {
+            if let affectedTask = applyLookup[change.id] {
                 try await updateTaskSchedule(task: affectedTask, startDate: change.newStartDate, endDate: change.newEndDate, manualEdit: false)
             }
         }
 
-        return cascade
+        return plan.cascade
     }
 
     /// Undo a cascade by restoring previous dates.
@@ -3974,10 +4141,12 @@ class DataController: ObservableObject {
         // Restore original task
         try await updateTaskSchedule(task: originalTask, startDate: originalStart, endDate: originalEnd)
 
-        // Restore cascaded tasks
-        let projectTasks = getTasksForProject(originalTask.projectId)
+        // Restore cascaded tasks. Crew shifts can be cross-project, so restore
+        // from the company-wide set (any status — a task may have changed state
+        // since the push) rather than just the pushed task's project.
+        let restoreTasks = getCompanyTasks()
         for change in cascade.changes {
-            if let task = projectTasks.first(where: { $0.id == change.id }),
+            if let task = restoreTasks.first(where: { $0.id == change.id }),
                let oldStart = change.oldStartDate,
                let oldEnd = change.oldEndDate {
                 try await updateTaskSchedule(task: task, startDate: oldStart, endDate: oldEnd, manualEdit: false)
@@ -3988,7 +4157,7 @@ class DataController: ObservableObject {
     /// Auto-schedule all unscheduled tasks in a project.
     @MainActor
     func autoScheduleProject(_ project: Project, anchorDate: Date) async throws -> SchedulingEngine.AutoScheduleResult {
-        let skip = getCurrentCompany()?.skipWeekendsInAutoSchedule ?? false
+        let skip = currentCompanySkipsWeekends
         let allTasks = getTasksForProject(project.id)
         let unscheduled = allTasks.filter { $0.startDate == nil || $0.endDate == nil }
 
@@ -4085,7 +4254,7 @@ class DataController: ObservableObject {
     /// Recalculate and update taskIndex for all tasks in a project
     /// Tasks are ordered by startDate (earliest = 0), with unscheduled tasks at the end
     @MainActor
-    func recalculateTaskIndices(for project: Project) async throws {
+    func recalculateTaskIndices(for project: Project, deferPush: Bool = false) async throws {
         print("[TASK_INDEX] 🔢 Recalculating task indices for project: \(project.title)")
 
         let allTasks = project.tasks
@@ -4146,7 +4315,8 @@ class DataController: ObservableObject {
                     entityType: .projectTask,
                     entityId: task.id,
                     operationType: "update",
-                    changedFields: ["display_order": index]
+                    changedFields: ["display_order": index],
+                    deferPush: deferPush
                 )
                 print("[TASK_INDEX]   ✅ Recorded displayOrder=\(index) for task '\(task.displayTitle)'")
             }
@@ -4372,9 +4542,21 @@ class DataController: ObservableObject {
         }
 
         applyProjectTeamMembersCache(project: project, memberIds: targetMemberIds)
+        // Mirror the server's true per-task effect instead of flattening every
+        // task to the target set. `remove_project_team_member` stripped the
+        // removed members from EVERY non-deleted task; `assign_project_team_member`
+        // added the added members to every task in `taskIds` (the full active-task
+        // set, or the freshly created assignment task). Members present in both the
+        // old and new project team are left untouched, so per-task differentiation
+        // is preserved — blanket-setting wrongly cross-assigned unchanged members.
         for task in project.tasks where task.deletedAt == nil {
-            task.setTeamMemberIds(targetMemberIds)
-            task.teamMembers = fetchUsersById(targetMemberIds)
+            let updatedIds = Self.projectTaskTeamMemberIdsAfterServerAssignment(
+                currentTaskMemberIds: task.getTeamMemberIds(),
+                removedMemberIds: removedMemberIds,
+                addedMemberIds: addedMemberIds
+            )
+            task.setTeamMemberIds(updatedIds)
+            task.teamMembers = fetchUsersById(updatedIds)
             task.needsSync = false
             task.lastSyncedAt = Date()
         }
@@ -4382,6 +4564,26 @@ class DataController: ObservableObject {
         project.needsSync = false
         project.lastSyncedAt = Date()
         try modelContext?.save()
+    }
+
+    /// Computes a single task's crew after the project-level team editor's server
+    /// delta is applied, mirroring the `assign_project_team_member` /
+    /// `remove_project_team_member` RPCs: removed members are stripped from every
+    /// non-deleted task, added members are added to every active task, and members
+    /// present in both the old and new project team are left in place so per-task
+    /// differentiation survives. Lowercased + sorted to match Postgres's
+    /// `array_agg(distinct member_id order by member_id)`.
+    static func projectTaskTeamMemberIdsAfterServerAssignment(
+        currentTaskMemberIds: [String],
+        removedMemberIds: [String],
+        addedMemberIds: [String]
+    ) -> [String] {
+        let removed = Set(removedMemberIds.map { $0.lowercased() })
+        let added = Set(addedMemberIds.map { $0.lowercased() })
+        return Set(currentTaskMemberIds.map { $0.lowercased() })
+            .subtracting(removed)
+            .union(added)
+            .sorted()
     }
 
     @MainActor
@@ -5104,11 +5306,7 @@ class DataController: ObservableObject {
         if let oldURL = user.profileImageURL, !oldURL.isEmpty {
             print("[PROFILE_IMAGE] Deleting old image from S3")
             do {
-                try await S3UploadService.shared.deleteImageFromS3(
-                    url: oldURL,
-                    companyId: companyId,
-                    projectId: user.id  // Using userId as the path segment
-                )
+                try await PresignedURLUploadService.shared.deleteImage(url: oldURL)
                 print("[PROFILE_IMAGE] ✅ Old image deleted from S3")
             } catch {
                 print("[PROFILE_IMAGE] ⚠️ Failed to delete old image: \(error)")
@@ -5118,7 +5316,7 @@ class DataController: ObservableObject {
 
         // 3. Upload new image to S3
         do {
-            let s3URL = try await S3UploadService.shared.uploadProfileImage(
+            let s3URL = try await PresignedURLUploadService.shared.uploadProfileImage(
                 image,
                 userId: user.id,
                 companyId: companyId
@@ -5193,11 +5391,7 @@ class DataController: ObservableObject {
         if let oldURL = company.logoURL, !oldURL.isEmpty {
             print("[COMPANY_LOGO] Deleting old logo from S3")
             do {
-                try await S3UploadService.shared.deleteImageFromS3(
-                    url: oldURL,
-                    companyId: company.id,
-                    projectId: company.id  // Not used for S3 URLs, but required for signature
-                )
+                try await PresignedURLUploadService.shared.deleteImage(url: oldURL)
                 print("[COMPANY_LOGO] ✅ Old logo deleted from S3")
             } catch {
                 print("[COMPANY_LOGO] ⚠️ Failed to delete old logo: \(error)")
@@ -5207,7 +5401,7 @@ class DataController: ObservableObject {
 
         // 3. Upload new logo to S3
         do {
-            let s3URL = try await S3UploadService.shared.uploadCompanyLogo(
+            let s3URL = try await PresignedURLUploadService.shared.uploadCompanyLogo(
                 image,
                 companyId: company.id
             )
@@ -6479,6 +6673,127 @@ extension DataController {
         )
         return AutoScheduleManager.schedule(request: request, provider: self)
     }
+
+    /// Apply a batch of auto-schedule placements WITHOUT the per-task notification /
+    /// calendar / index / push storm that `updateTaskSchedule` runs for a single
+    /// manual edit. Built for the priority-queue "Schedule All / Next" run: one
+    /// save, one index recalc per affected project, one coalesced sync push, one
+    /// calendar refresh, and ONE summary notification per affected crew member
+    /// (not one per task). Returns the number of placements committed.
+    @MainActor
+    @discardableResult
+    func applySchedulePlan(_ plan: SchedulePlan) async -> Int {
+        guard let context = modelContext, !plan.placements.isEmpty else { return 0 }
+
+        let byId = Dictionary(getAllTasks().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+
+        var specs: [SyncEngine.BulkOperationSpec] = []
+        var affectedProjects: [String: Project] = [:]
+        var movedTaskIds: [String] = []
+        var memberMoveCounts: [String: Int] = [:]   // crew member id -> # of their tasks moved
+        var committed = 0
+
+        for placement in plan.placements {
+            guard let task = byId[placement.id] else { continue }
+            let prevStart = task.startDate
+            let prevEnd = task.endDate
+
+            task.startDate = placement.startDate
+            task.endDate = placement.endDate
+            let daysDiff = Calendar.current.dateComponents([.day], from: placement.startDate, to: placement.endDate).day ?? 0
+            task.duration = daysDiff + 1
+            // System-driven (auto-schedule) — do NOT lock the cascade, matching the
+            // manualEdit:false contract of updateTaskSchedule.
+            task.needsSync = true
+            committed += 1
+            if let project = task.project { affectedProjects[project.id] = project }
+
+            specs.append(.init(
+                entityType: .projectTask,
+                entityId: task.id,
+                operationType: "update",
+                changedFields: [
+                    "start_date": formatter.string(from: placement.startDate),
+                    "end_date": formatter.string(from: placement.endDate),
+                    "duration": task.duration
+                ]
+            ))
+
+            if prevStart != placement.startDate || prevEnd != placement.endDate {
+                movedTaskIds.append(task.id)
+                for memberId in task.getTeamMemberIds() {
+                    memberMoveCounts[memberId, default: 0] += 1
+                }
+            }
+        }
+
+        guard committed > 0 else { return 0 }
+
+        // ONE save for every task's new dates, then ONE batched enqueue (no per-op push).
+        try? context.save()
+        syncEngine.recordOperations(specs)
+
+        // ONE index recalc per affected project (was once PER TASK in the old loop);
+        // its index sync ops are deferred into the single push below.
+        for project in affectedProjects.values {
+            try? await recalculateTaskIndices(for: project, deferPush: true)
+        }
+
+        // ONE coalesced push for the whole batch.
+        await syncEngine.pushPending()
+
+        // ONE calendar-view refresh.
+        scheduledTasksDidChange.toggle()
+
+        // Mirror moved tasks to the iPhone Calendar off the hot path.
+        let idsToMirror = movedTaskIds
+        Task { @MainActor in
+            for id in idsToMirror {
+                await CalendarMirrorService.shared.mirrorEvent(opsId: id, source: .projectTask)
+            }
+        }
+
+        // ONE summary notification per affected crew member — replaces the old
+        // per-task push to every member (the N×members request storm).
+        await sendScheduleRunSummaries(memberMoveCounts: memberMoveCounts)
+
+        return committed
+    }
+
+    /// Send a single "your schedule changed" summary to each affected crew member
+    /// after a bulk auto-schedule run (excludes the operator who ran it).
+    @MainActor
+    private func sendScheduleRunSummaries(memberMoveCounts: [String: Int]) async {
+        guard let companyId = currentUser?.companyId else { return }
+        let currentId = UserDefaults.standard.string(forKey: "currentUserId")
+        let recipients = memberMoveCounts.filter { $0.key != currentId && $0.value > 0 }
+        guard !recipients.isEmpty else { return }
+
+        let notifRepo = NotificationRepository()
+        for (memberId, count) in recipients {
+            let body = count == 1
+                ? "1 of your tasks was rescheduled"
+                : "\(count) of your tasks were rescheduled"
+            let dto = NotificationRepository.CreateNotificationDTO(
+                userId: memberId,
+                companyId: companyId,
+                type: "schedule_change",
+                title: "Schedule updated",
+                body: body,
+                projectId: nil,
+                noteId: nil,
+                expenseId: nil,
+                batchId: nil,
+                deepLinkType: "jobBoard"
+            )
+            try? await notifRepo.createNotification(dto)
+        }
+
+        // One summary push per affected member (vs one push PER TASK before).
+        await OneSignalService.shared.notifyScheduleBatchUpdate(userMoveCounts: recipients)
+    }
 }
 
 // MARK: - Project Priority (drag-to-reorder)
@@ -6526,4 +6841,3 @@ extension DataController {
         }
     }
 }
-

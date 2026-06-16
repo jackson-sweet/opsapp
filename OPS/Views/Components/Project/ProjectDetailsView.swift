@@ -73,7 +73,6 @@ struct ProjectDetailsView: View {
                 mainContent
                     .navigationBarHidden(true)
                     // MARK: - Sheets & Alerts
-                    .overlay(saveNotificationOverlay)
                     .fullScreenCover(isPresented: $viewModel.showingPhotoViewer) {
                         photoViewerContent
                             .onAppear {
@@ -175,6 +174,8 @@ struct ProjectDetailsView: View {
                                 currentEndDate: task.endDate,
                                 onScheduleUpdate: viewModel.handleTaskScheduleUpdate,
                                 onClearDates: {
+                                    // Gated on calendar.edit, scope-aware on the task.
+                                    guard task.canEditSchedule else { return }
                                     // Bug f3604d52 — allow clearing the task's
                                     // dates from the scheduler sheet toolbar.
                                     // Mirrors CalendarEventCard.clearTaskDates.
@@ -243,6 +244,7 @@ struct ProjectDetailsView: View {
                                 }
                             },
                             onReschedule: { t in
+                                guard t.canEditSchedule else { return }
                                 viewModel.selectedTask = t
                                 taskDetailTask = nil
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
@@ -254,6 +256,7 @@ struct ProjectDetailsView: View {
                                 viewModel.cancelSelectedTask()
                             },
                             onScheduleTap: { t in
+                                guard t.canEditSchedule else { return }
                                 viewModel.selectedTask = t
                                 taskDetailTask = nil
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
@@ -274,11 +277,7 @@ struct ProjectDetailsView: View {
                     } message: {
                         Text("You have unsaved changes. Discard them?")
                     }
-                    .alert("Network Error", isPresented: $viewModel.showingNetworkError) {
-                        Button("OK", role: .cancel) { }
-                    } message: {
-                        Text(viewModel.networkErrorMessage)
-                    }
+                    .errorToast($viewModel.networkError, label: Feedback.Err.operationFailed)
                     .alert("Delete Project?", isPresented: $viewModel.showingDeleteAlert) {
                         Button("Delete", role: .destructive) {
                             viewModel.isDeleting = true
@@ -310,6 +309,14 @@ struct ProjectDetailsView: View {
                         wizardStateManager?.evaluateStepPrerequisites(
                             projectPhotoCount: dataController.modelContext.map { viewModel.project.mergedGalleryImageURLs(using: $0).count } ?? viewModel.project.getProjectImages().count
                         )
+                    }
+                    .onReceive(NotificationCenter.default.publisher(for: .opsExpensesDidChange)) { _ in
+                        // An expense was added/edited (this project's add sheet, the
+                        // global FAB) or arrived via realtime. The expenses tab reads
+                        // `projectExpenses` — a separate cache from
+                        // ExpenseViewModel.expenses — so refetch it live instead of
+                        // waiting for the tab's onAppear `.task` to re-run on reopen.
+                        Task { await viewModel.loadExpenses() }
                     }
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardStepChanged"))) { notification in
                         guard let mgr = wizardStateManager,
@@ -416,10 +423,17 @@ struct ProjectDetailsView: View {
                         },
                         onExpense: { openNewExpenseSheet() },
                         onComplete: { viewModel.toggleTaskStatus() },
-                        onReschedule: { viewModel.showingTaskScheduler = true },
+                        onReschedule: {
+                            guard viewModel.selectedTask?.canEditSchedule == true else { return }
+                            viewModel.showingTaskScheduler = true
+                        },
                         onContact: { viewModel.showingClientContact = true },
                         onAddTask: { viewModel.showingAddTaskSheet = true },
-                        onDeckDesign: permissionStore.isFeatureEnabled("deck_builder") ? { showingDeckCreationPicker = true } : nil,
+                        onDeckDesign: ProjectQuickActionPermissionGate.canShowDeckAction(
+                            featureEnabled: permissionStore.isFeatureEnabled("deck_builder"),
+                            canCreate: permissionStore.can("deck_builder.create", requiredScope: "assigned"),
+                            canEdit: permissionStore.can("deck_builder.edit", requiredScope: "assigned")
+                        ) ? { showingDeckCreationPicker = true } : nil,
                         // LiDAR Dimensioned Photo Capture (spec §3.1) — gated
                         // by `MeasureActionButton.shouldRender` so flag + capability
                         // checks stay in one place. Same logic as Home's
@@ -1022,39 +1036,6 @@ struct ProjectDetailsView: View {
                 )
             }
             .padding(.trailing, OPSStyle.Layout.spacing3)
-        }
-    }
-
-    // MARK: - Save Notification Overlay
-
-    private var saveNotificationOverlay: some View {
-        Group {
-            if viewModel.showingSaveNotification {
-                VStack {
-                    Spacer()
-                    HStack {
-                        Image(systemName: OPSStyle.Icons.complete)
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                        Text("Saved")
-                            .font(OPSStyle.Typography.captionBold)
-                    }
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .fill(.ultraThinMaterial)
-                            .environment(\.colorScheme, .dark)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                    )
-                    .padding(.bottom, OPSStyle.Layout.spacing5)
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .animation(OPSStyle.Animation.standard, value: viewModel.showingSaveNotification)
-            }
         }
     }
 

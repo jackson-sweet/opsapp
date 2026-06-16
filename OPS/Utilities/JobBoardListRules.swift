@@ -47,6 +47,41 @@ struct JobBoardTaskFiltering {
     }
 }
 
+struct JobBoardProjectFiltering {
+    static func kanbanProjects(
+        from projects: [Project],
+        activeOnly: Bool = false,
+        assignedToMe: Bool,
+        currentUserId: String?,
+        selectedStatuses: Set<Status>,
+        selectedTeamMemberIds: Set<String>
+    ) -> [Project] {
+        var filtered = projects.filter {
+            $0.deletedAt == nil && $0.status != .closed && $0.status != .archived
+        }
+
+        if activeOnly {
+            filtered = filtered.filter { $0.status.isActive }
+        }
+
+        if assignedToMe, let currentUserId {
+            filtered = filtered.filter { $0.getTeamMemberIds().contains(currentUserId) }
+        }
+
+        if !selectedStatuses.isEmpty {
+            filtered = filtered.filter { selectedStatuses.contains($0.status) }
+        }
+
+        if !selectedTeamMemberIds.isEmpty {
+            filtered = filtered.filter { project in
+                !Set(project.getTeamMemberIds()).intersection(selectedTeamMemberIds).isEmpty
+            }
+        }
+
+        return filtered
+    }
+}
+
 struct ProjectListOrdering {
     static func activeFirst(_ projects: [Project]) -> [Project] {
         projects
@@ -93,15 +128,13 @@ struct ProjectListOrdering {
 
 private extension Project {
     var isJobBoardTaskListVisible: Bool {
-        guard deletedAt == nil else {
-            return false
-        }
-
-        switch status {
-        case .rfq, .estimated, .accepted, .inProgress:
-            return true
-        case .completed, .closed, .archived:
-            return false
-        }
+        // The job board task list shows work for ACTIVE projects only — those
+        // accepted and underway (`.accepted` / `.inProgress`). Pre-acceptance
+        // projects (`.rfq`, `.estimated`) haven't been greenlit, so their tasks
+        // must not surface here; terminal projects (`.completed`, `.closed`,
+        // `.archived`) are done. Gating on `Status.isActive` keeps this the
+        // single source of truth and in lockstep with the job board PROJECT
+        // list (`JobBoardProjectListView`), which already filters on `isActive`.
+        deletedAt == nil && status.isActive
     }
 }

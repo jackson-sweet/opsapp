@@ -22,9 +22,15 @@ struct JobBoardView: View {
     @State private var showingFilters = false
     @State private var showingProjectFilterSheet = false
     @State private var showingTaskFilterSheet = false
+    // Drives the project LIST's own self-contained filter sheet, distinct from
+    // showingProjectFilterSheet (which drives the Kanban filter sheet at body level).
+    @State private var showingProjectListFilterSheet = false
     @State private var activeOnly = false
     @State private var assignedToMe = false
     @State private var prioritizeMode = false
+    @State private var selectedProjectStatuses: Set<Status> = []
+    @State private var selectedProjectTeamMemberIds: Set<String> = []
+    @AppStorage("projectListSortOrder") private var projectSortOptionRaw: String = ProjectSortOption.latestEdited.rawValue
 
     // Payment review state
     @State private var showPaymentReview: Bool = false
@@ -82,6 +88,22 @@ struct JobBoardView: View {
         dataController.getAllTasks().filter { $0.status == .completed }.count
     }
 
+    private var projectSortOption: Binding<ProjectSortOption> {
+        Binding<ProjectSortOption>(
+            get: { ProjectSortOption(rawValue: projectSortOptionRaw) ?? .latestEdited },
+            set: { projectSortOptionRaw = $0.rawValue }
+        )
+    }
+
+    private var availableProjectTeamMembers: [User] {
+        guard let companyId = dataController.currentUser?.companyId else { return [] }
+        return dataController.getTeamMembers(companyId: companyId)
+    }
+
+    private var hasActiveProjectFilters: Bool {
+        !selectedProjectStatuses.isEmpty || !selectedProjectTeamMemberIds.isEmpty
+    }
+
     private var isPaymentReviewLocked: Bool {
         completedProjectCount < Self.paymentReviewThreshold
     }
@@ -112,331 +134,352 @@ struct JobBoardView: View {
     }
 
     var body: some View {
+        ZStack {
+            // Background
+            OPSStyle.Colors.background
+                .ignoresSafeArea()
 
-            ZStack {
-                // Background
-                OPSStyle.Colors.background
-                    .ignoresSafeArea()
+            VStack(spacing: 0) {
+                headerSection
 
-                VStack(spacing: 0) {
-                    AppHeader(
-                        headerType: .jobBoard,
-                        onPaymentReviewTapped: (permissionStore.can("projects.edit") || permissionStore.hasFullAccess("projects.view")) ? {
-                            if !UserDefaults.standard.bool(forKey: "review_payment_intro_shown") {
-                                UserDefaults.standard.set(true, forKey: "review_payment_intro_shown")
-                                showPaymentReviewIntro = true
-                            } else {
-                                computeReviewProjects()
-                                showPaymentReview = true
-                            }
-                        } : nil,
-                        paymentReviewBadgeCount: overdueCount,
-                        isPaymentReviewLocked: isPaymentReviewLocked,
-                        paymentReviewLockedMessage: "Complete \(Self.paymentReviewThreshold) projects to unlock payment review. You've completed \(completedProjectCount) so far.",
-                        onTaskReviewTapped: {
-                            // When a wizard is guiding the user to open task review,
-                            // bypass the first-open intro alert to avoid an unexpected
-                            // intermediate step that the wizard doesn't account for.
-                            let wizardActive = wizardStateManager?.isActive == true
-                                && wizardStateManager?.currentStep?.id == "open_task_review"
-                            if !wizardActive && !UserDefaults.standard.bool(forKey: "review_task_intro_shown") {
-                                UserDefaults.standard.set(true, forKey: "review_task_intro_shown")
-                                showTaskReviewIntro = true
-                            } else {
-                                UserDefaults.standard.set(true, forKey: "review_task_intro_shown")
-                                computeReviewableTasks()
-                                showTaskReview = true
-                            }
-                        },
-                        taskReviewBadgeCount: reviewableTaskCount,
-                        isTaskReviewLocked: isTaskReviewLocked,
-                        taskReviewLockedMessage: "Complete \(Self.taskReviewThreshold) tasks to unlock task review. You've completed \(completedTaskCount) so far.",
-                        onUnscheduledReviewTapped: permissionStore.can("tasks.edit") ? {
-                            computeUnscheduledTasks()
-                            showUnscheduledReview = true
-                        } : nil,
-                        unscheduledReviewBadgeCount: permissionStore.can("tasks.edit") ? unscheduledTaskCount : 0
-                    )
-                    .padding(.bottom, OPSStyle.Layout.spacing2)
+                sectionSelectorSection
 
-                    // Section selector — shown whenever the role has more than one section
-                    if sections.count > 1 {
-                        JobBoardSectionSelector(sections: sections, selectedSection: $selectedSection)
-                            .onChange(of: selectedSection) { oldValue, newValue in
-                                previousSection = oldValue
-                                searchText = ""
-                            }
-                            .onChange(of: tutorialPhase) { oldPhase, newPhase in
-                                if tutorialMode && newPhase == .projectListStatusDemo {
-                                    withAnimation(OPSStyle.Animation.panel) {
-                                        selectedSection = .projects
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, OPSStyle.Layout.spacing3)
-                            .padding(.bottom, OPSStyle.Layout.spacing2)
-                            .opacity(tutorialMode && tutorialPhase == .dragToAccepted ? 0.4 : 1.0)
-                            .allowsHitTesting(!(tutorialMode && tutorialPhase == .dragToAccepted))
-                    }
+                actionRowSection
 
-                    // Action row: filter + active toggle + assigned to me
-                    if !tutorialMode && (selectedSection == .projects || selectedSection == .myProjects || selectedSection == .tasks || selectedSection == .kanban) {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
-                            Button(action: {
-                                if selectedSection == .tasks {
-                                    showingTaskFilterSheet = true
-                                } else {
-                                    showingProjectFilterSheet = true
-                                }
-                            }) {
-                                Image(systemName: "line.3.horizontal.decrease")
-                                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, OPSStyle.Layout.spacing2)
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                    )
-                            }
-                            .wizardTarget("open_filters")
-
-                            Button(action: {
-                                withAnimation(OPSStyle.Animation.panel) { activeOnly.toggle() }
-                            }) {
-                                Text("ACTIVE ONLY")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(activeOnly ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
-                                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-                                    .padding(.vertical, OPSStyle.Layout.spacing2)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .fill(activeOnly ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(activeOnly ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                    )
-                            }
-
-                            Button(action: {
-                                withAnimation(OPSStyle.Animation.panel) { assignedToMe.toggle() }
-                            }) {
-                                Text("ASSIGNED TO ME")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(assignedToMe ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
-                                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-                                    .padding(.vertical, OPSStyle.Layout.spacing2)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .fill(assignedToMe ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(assignedToMe ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                    )
-                            }
-
-                            if selectedSection == .projects && permissionStore.can("projects.edit") {
-                                Button(action: {
-                                    withAnimation(OPSStyle.Animation.panel) { prioritizeMode.toggle() }
-                                }) {
-                                    Text("PRIORITIZE")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(prioritizeMode ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
-                                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-                                        .padding(.vertical, OPSStyle.Layout.spacing2)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .fill(prioritizeMode ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
-                                        )
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(prioritizeMode ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                        )
-                                }
-                            }
-
-                        }
-                        .padding(.horizontal, OPSStyle.Layout.spacing3)
-                        }
-                        .padding(.top, OPSStyle.Layout.spacing2)
-                        .padding(.bottom, OPSStyle.Layout.spacing2_5)
-                    }
-
-                    // Main content with slide transitions
-                    // Tutorial mode overrides section when in project list phases
-                    Group {
-                        if shouldShowProjectsList {
-                            // Force show projects list during tutorial
-                            JobBoardProjectListView(
-                                searchText: searchText,
-                                showingFilters: $showingFilters,
-                                showingFilterSheet: $showingProjectFilterSheet,
-                                activeOnly: activeOnly,
-                                assignedToMe: assignedToMe
-                            )
-                            .padding(.horizontal, OPSStyle.Layout.spacing3)
-                        } else {
-                            switch selectedSection {
-                            case .myTasks:
-                                JobBoardMyTasksView()
-                            case .myProjects:
-                                JobBoardProjectListView(
-                                    searchText: searchText,
-                                    showingFilters: $showingFilters,
-                                    showingFilterSheet: $showingProjectFilterSheet,
-                                    activeOnly: activeOnly,
-                                    assignedToMe: assignedToMe
-                                )
-                                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                            case .projects:
-                                if prioritizeMode {
-                                    PriorityQueueView(displayMode: .inline, dataController: dataController)
-                                        .padding(.horizontal, OPSStyle.Layout.spacing3)
-                                } else {
-                                    JobBoardProjectListView(
-                                        searchText: searchText,
-                                        showingFilters: $showingFilters,
-                                        showingFilterSheet: $showingProjectFilterSheet,
-                                        activeOnly: activeOnly,
-                                        assignedToMe: assignedToMe
-                                    )
-                                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                                }
-                            case .tasks:
-                                JobBoardTasksView(
-                                    searchText: searchText,
-                                    showingFilters: $showingFilters,
-                                    showingFilterSheet: $showingTaskFilterSheet,
-                                    assignedToMe: assignedToMe
-                                )
-                                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                            case .kanban:
-                                JobBoardKanbanView(assignedToMe: assignedToMe)
-                            }
-                        }
-                    }
-                    .id(selectedSection)
-                    .transition(slideTransition)
-                    .animation(.accessibleEaseInOut(duration: 0.2), value: selectedSection)
-                    .onChange(of: selectedSection) { oldValue, newSection in
-                        previousSection = oldValue
-                        // Track section changes within Job Board
-                        let screenName: ScreenName? = {
-                            switch newSection {
-                            case .projects, .myProjects: return .jobBoardProjects
-                            case .tasks, .myTasks:       return .jobBoardTasks
-                            default: return nil
-                            }
-                        }()
-                        if let screenName = screenName {
-                            AnalyticsManager.shared.trackScreenView(screenName: screenName, screenClass: "JobBoardView")
-                        }
-                    }
-                    .task {
-                        // Wizard system: evaluate job board wizard trigger (requires ≥1 project)
-                        if let wizard = WizardRegistry.contextualWizard(for: "job_board") {
-                            let projectCount = await MainActor.run { dataController.getProjects().count }
-                            await MainActor.run {
-                                wizardTriggerService?.evaluateTrigger(for: wizard, context: "job_board_tab_visit", projectCount: projectCount)
-                            }
-                        }
-                    }
-                    .task {
-                        // Compute overdue count for badge
-                        computeReviewProjects()
-                    }
-                    .task {
-                        // Compute reviewable task count for badge
-                        computeReviewableTasks()
-                    }
-                    .task {
-                        // Compute unscheduled/unassigned task count for badge
-                        computeUnscheduledTasks()
-                    }
-                    .onAppear {
-                        selectedSection = defaultSection(for: dataController.currentUser)
-                        AnalyticsManager.shared.trackScreenView(screenName: .jobBoard, screenClass: "JobBoardView")
-                        AnalyticsService.shared.trackScreenView(screenName: "job_board")
-                    }
-                    .onDisappear {
-                        AnalyticsService.shared.endScreenView(screenName: "job_board")
-                    }
-                    // Wizard: listen for section-level navigation requests
-                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardNavigateToSection"))) { notification in
-                        guard let sectionRaw = notification.userInfo?["section"] as? String,
-                              let target = JobBoardSection(rawValue: sectionRaw),
-                              sections.contains(target) else { return }
-                        withAnimation(.accessibleEaseInOut(duration: 0.2)) {
-                            selectedSection = target
-                        }
-                    }
-                }
-
+                mainContentSection
             }
-            .trackScreen("JobBoard")
-            .sheet(isPresented: $appState.showingJobBoardSearch) {
-                UniversalSearchSheet()
-                    .environmentObject(dataController)
-                    .environmentObject(appState)
-                    .environmentObject(PermissionStore.shared)
+        }
+        .trackScreen("JobBoard")
+        .sheet(isPresented: $appState.showingJobBoardSearch) {
+            UniversalSearchSheet()
+                .environmentObject(dataController)
+                .environmentObject(appState)
+                .environmentObject(PermissionStore.shared)
+        }
+        .sheet(isPresented: $showingProjectFilterSheet) {
+            ProjectListFilterSheet(
+                selectedStatuses: $selectedProjectStatuses,
+                selectedTeamMemberIds: $selectedProjectTeamMemberIds,
+                sortOption: projectSortOption,
+                availableTeamMembers: availableProjectTeamMembers
+            )
+            .environmentObject(dataController)
+            .onDisappear {
+                showingFilters = hasActiveProjectFilters
+                NotificationCenter.default.post(name: Notification.Name("WizardJobBoardFilterOpened"), object: nil)
             }
-            .sheet(isPresented: $showPaymentReview) {
-                ProjectPaymentReviewView(
-                    overdueProjects: overdueProjects,
-                    completedProjects: completedProjects
-                )
+        }
+        .sheet(isPresented: $showPaymentReview) {
+            ProjectPaymentReviewView(
+                overdueProjects: overdueProjects,
+                completedProjects: completedProjects
+            )
+            .environmentObject(appState)
+            .environmentObject(permissionStore)
+            .wizardBannerIfAvailable(stateManager: wizardStateManager)
+            .wizardOverlayIfAvailable(stateManager: wizardStateManager)
+        }
+        .sheet(isPresented: $showTaskReview) {
+            TaskCompletionReviewView(tasks: reviewableTasks)
                 .environmentObject(appState)
                 .environmentObject(permissionStore)
                 .wizardBannerIfAvailable(stateManager: wizardStateManager)
                 .wizardOverlayIfAvailable(stateManager: wizardStateManager)
-            }
-            .sheet(isPresented: $showTaskReview) {
-                TaskCompletionReviewView(tasks: reviewableTasks)
-                    .environmentObject(appState)
-                    .environmentObject(permissionStore)
-                    .wizardBannerIfAvailable(stateManager: wizardStateManager)
-                    .wizardOverlayIfAvailable(stateManager: wizardStateManager)
-            }
-            .sheet(isPresented: $showUnscheduledReview) {
-                UnscheduledTaskReviewView(tasks: unscheduledTasks)
-                    .environmentObject(dataController)
-                    .environmentObject(appState)
-                    .environmentObject(permissionStore)
-            }
-            .alert("Payment Review", isPresented: $showPaymentReviewIntro) {
-                Button("Got It") {
-                    computeReviewProjects()
-                    showPaymentReview = true
-                }
-            } message: {
-                Text("Completed projects with outstanding payments will show up here for review.")
-            }
-            .alert("Task Review", isPresented: $showTaskReviewIntro) {
-                Button("Got It") {
-                    computeReviewableTasks()
-                    showTaskReview = true
-                }
-            } message: {
-                Text("Tasks with end dates in the past will show up here so you can complete, reschedule, or cancel them.")
-            }
-            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenPaymentReview"))) { _ in
+        }
+        .sheet(isPresented: $showUnscheduledReview) {
+            UnscheduledTaskReviewView(tasks: unscheduledTasks)
+                .environmentObject(dataController)
+                .environmentObject(appState)
+                .environmentObject(permissionStore)
+        }
+        .alert("Payment Review", isPresented: $showPaymentReviewIntro) {
+            Button("Got It") {
                 computeReviewProjects()
                 showPaymentReview = true
             }
-            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenTaskReview"))) { _ in
+        } message: {
+            Text("Completed projects with outstanding payments will show up here for review.")
+        }
+        .alert("Task Review", isPresented: $showTaskReviewIntro) {
+            Button("Got It") {
                 computeReviewableTasks()
                 showTaskReview = true
             }
-            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenUnscheduledReview"))) { _ in
+        } message: {
+            Text("Tasks with end dates in the past will show up here so you can complete, reschedule, or cancel them.")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenPaymentReview"))) { _ in
+            computeReviewProjects()
+            showPaymentReview = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenTaskReview"))) { _ in
+            computeReviewableTasks()
+            showTaskReview = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenUnscheduledReview"))) { _ in
+            computeUnscheduledTasks()
+            showUnscheduledReview = true
+        }
+        .onChange(of: selectedProjectStatuses) { _, _ in
+            showingFilters = hasActiveProjectFilters
+        }
+        .onChange(of: selectedProjectTeamMemberIds) { _, _ in
+            showingFilters = hasActiveProjectFilters
+        }
+    }
+
+    // MARK: - Body Sections
+
+    // App header with payment / task / unscheduled review entry points.
+    @ViewBuilder private var headerSection: some View {
+        AppHeader(
+            headerType: .jobBoard,
+            onPaymentReviewTapped: (permissionStore.can("projects.edit") || permissionStore.hasFullAccess("projects.view")) ? {
+                if !UserDefaults.standard.bool(forKey: "review_payment_intro_shown") {
+                    UserDefaults.standard.set(true, forKey: "review_payment_intro_shown")
+                    showPaymentReviewIntro = true
+                } else {
+                    computeReviewProjects()
+                    showPaymentReview = true
+                }
+            } : nil,
+            paymentReviewBadgeCount: overdueCount,
+            isPaymentReviewLocked: isPaymentReviewLocked,
+            paymentReviewLockedMessage: "Complete \(Self.paymentReviewThreshold) projects to unlock payment review. You've completed \(completedProjectCount) so far.",
+            onTaskReviewTapped: {
+                // When a wizard is guiding the user to open task review,
+                // bypass the first-open intro alert to avoid an unexpected
+                // intermediate step that the wizard doesn't account for.
+                let wizardActive = wizardStateManager?.isActive == true
+                    && wizardStateManager?.currentStep?.id == "open_task_review"
+                if !wizardActive && !UserDefaults.standard.bool(forKey: "review_task_intro_shown") {
+                    UserDefaults.standard.set(true, forKey: "review_task_intro_shown")
+                    showTaskReviewIntro = true
+                } else {
+                    UserDefaults.standard.set(true, forKey: "review_task_intro_shown")
+                    computeReviewableTasks()
+                    showTaskReview = true
+                }
+            },
+            taskReviewBadgeCount: reviewableTaskCount,
+            isTaskReviewLocked: isTaskReviewLocked,
+            taskReviewLockedMessage: "Complete \(Self.taskReviewThreshold) tasks to unlock task review. You've completed \(completedTaskCount) so far.",
+            onUnscheduledReviewTapped: permissionStore.can("tasks.edit") ? {
                 computeUnscheduledTasks()
                 showUnscheduledReview = true
+            } : nil,
+            unscheduledReviewBadgeCount: permissionStore.can("tasks.edit") ? unscheduledTaskCount : 0
+        )
+        .padding(.bottom, OPSStyle.Layout.spacing2)
+    }
+
+    // Section selector — shown whenever the role has more than one section.
+    @ViewBuilder private var sectionSelectorSection: some View {
+        if sections.count > 1 {
+            JobBoardSectionSelector(sections: sections, selectedSection: $selectedSection)
+                .onChange(of: selectedSection) { oldValue, newValue in
+                    previousSection = oldValue
+                    searchText = ""
+                }
+                .onChange(of: tutorialPhase) { oldPhase, newPhase in
+                    if tutorialMode && newPhase == .projectListStatusDemo {
+                        withAnimation(OPSStyle.Animation.panel) {
+                            selectedSection = .projects
+                        }
+                    }
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
+                .opacity(tutorialMode && tutorialPhase == .dragToAccepted ? 0.4 : 1.0)
+                .allowsHitTesting(!(tutorialMode && tutorialPhase == .dragToAccepted))
+        }
+    }
+
+    // Action row: filter + active toggle + assigned to me + prioritize.
+    @ViewBuilder private var actionRowSection: some View {
+        if !tutorialMode && (selectedSection == .projects || selectedSection == .myProjects || selectedSection == .tasks || selectedSection == .kanban) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                    Button(action: {
+                        switch selectedSection {
+                        case .tasks:
+                            showingTaskFilterSheet = true
+                        case .kanban:
+                            showingProjectFilterSheet = true
+                        default:
+                            showingProjectListFilterSheet = true
+                        }
+                    }) {
+                        Image(systemName: "line.3.horizontal.decrease")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            )
+                            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .wizardTarget("open_filters")
+
+                    Button(action: {
+                        withAnimation(OPSStyle.Animation.panel) { activeOnly.toggle() }
+                    }) {
+                        JobBoardFilterPill(title: "ACTIVE ONLY", isOn: activeOnly)
+                            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: {
+                        withAnimation(OPSStyle.Animation.panel) { assignedToMe.toggle() }
+                    }) {
+                        JobBoardFilterPill(title: "ASSIGNED TO ME", isOn: assignedToMe)
+                            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    if selectedSection == .projects && permissionStore.can("projects.edit") {
+                        Button(action: {
+                            withAnimation(OPSStyle.Animation.panel) { prioritizeMode.toggle() }
+                        }) {
+                            JobBoardFilterPill(title: "PRIORITIZE", isOn: prioritizeMode)
+                                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+            }
+            .padding(.top, OPSStyle.Layout.spacing2)
+            .padding(.bottom, OPSStyle.Layout.spacing2_5)
+        }
+    }
+
+    // Main content with slide transitions.
+    // Tutorial mode overrides section when in project list phases.
+    @ViewBuilder private var mainContentSection: some View {
+        Group {
+            if shouldShowProjectsList {
+                // Force show projects list during tutorial
+                JobBoardProjectListView(
+                    searchText: searchText,
+                    showingFilters: $showingFilters,
+                    showingFilterSheet: $showingProjectListFilterSheet,
+                    activeOnly: activeOnly,
+                    assignedToMe: assignedToMe
+                )
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+            } else {
+                switch selectedSection {
+                case .myTasks:
+                    JobBoardMyTasksView()
+                case .myProjects:
+                    JobBoardProjectListView(
+                        searchText: searchText,
+                        showingFilters: $showingFilters,
+                        showingFilterSheet: $showingProjectListFilterSheet,
+                        activeOnly: activeOnly,
+                        assignedToMe: assignedToMe
+                    )
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                case .projects:
+                    if prioritizeMode {
+                        PriorityQueueView(displayMode: .inline, dataController: dataController)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    } else {
+                        JobBoardProjectListView(
+                            searchText: searchText,
+                            showingFilters: $showingFilters,
+                            showingFilterSheet: $showingProjectListFilterSheet,
+                            activeOnly: activeOnly,
+                            assignedToMe: assignedToMe
+                        )
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    }
+                case .tasks:
+                    JobBoardTasksView(
+                        searchText: searchText,
+                        showingFilters: $showingFilters,
+                        showingFilterSheet: $showingTaskFilterSheet,
+                        assignedToMe: assignedToMe
+                    )
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                case .kanban:
+                    JobBoardKanbanView(
+                        activeOnly: activeOnly,
+                        assignedToMe: assignedToMe,
+                        selectedStatuses: selectedProjectStatuses,
+                        selectedTeamMemberIds: selectedProjectTeamMemberIds
+                    )
+                }
             }
         }
+        .id(selectedSection)
+        .transition(slideTransition)
+        .animation(.accessibleEaseInOut(duration: 0.2), value: selectedSection)
+        .onChange(of: selectedSection) { oldValue, newSection in
+            previousSection = oldValue
+            // Track section changes within Job Board
+            let screenName: ScreenName? = {
+                switch newSection {
+                case .projects, .myProjects: return .jobBoardProjects
+                case .tasks, .myTasks:       return .jobBoardTasks
+                default: return nil
+                }
+            }()
+            if let screenName = screenName {
+                AnalyticsManager.shared.trackScreenView(screenName: screenName, screenClass: "JobBoardView")
+            }
+        }
+        .task {
+            // Wizard system: evaluate job board wizard trigger (requires ≥1 project)
+            if let wizard = WizardRegistry.contextualWizard(for: "job_board") {
+                let projectCount = await MainActor.run { dataController.getProjects().count }
+                await MainActor.run {
+                    wizardTriggerService?.evaluateTrigger(for: wizard, context: "job_board_tab_visit", projectCount: projectCount)
+                }
+            }
+        }
+        .task {
+            // Compute overdue count for badge
+            computeReviewProjects()
+        }
+        .task {
+            // Compute reviewable task count for badge
+            computeReviewableTasks()
+        }
+        .task {
+            // Compute unscheduled/unassigned task count for badge
+            computeUnscheduledTasks()
+        }
+        .onAppear {
+            selectedSection = defaultSection(for: dataController.currentUser)
+            AnalyticsManager.shared.trackScreenView(screenName: .jobBoard, screenClass: "JobBoardView")
+            AnalyticsService.shared.trackScreenView(screenName: "job_board")
+        }
+        .onDisappear {
+            AnalyticsService.shared.endScreenView(screenName: "job_board")
+        }
+        // Wizard: listen for section-level navigation requests
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardNavigateToSection"))) { notification in
+            guard let sectionRaw = notification.userInfo?["section"] as? String,
+                  let target = JobBoardSection(rawValue: sectionRaw),
+                  sections.contains(target) else { return }
+            withAnimation(.accessibleEaseInOut(duration: 0.2)) {
+                selectedSection = target
+            }
+        }
+    }
 
     // MARK: - Payment Review
 
@@ -489,6 +532,279 @@ struct JobBoardView: View {
 
     // MARK: - Unscheduled Task Review
 
+    /// The section selector row (shown when the role has more than one section).
+    /// Extracted from `body` to keep the main VStack within the type-checker budget.
+    @ViewBuilder
+    private var sectionSelector: some View {
+        if sections.count > 1 {
+            JobBoardSectionSelector(sections: sections, selectedSection: $selectedSection)
+                .onChange(of: selectedSection) { oldValue, newValue in
+                    previousSection = oldValue
+                    searchText = ""
+                }
+                .onChange(of: tutorialPhase) { oldPhase, newPhase in
+                    if tutorialMode && newPhase == .projectListStatusDemo {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selectedSection = .projects
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+                .opacity(tutorialMode && tutorialPhase == .dragToAccepted ? 0.4 : 1.0)
+                .allowsHitTesting(!(tutorialMode && tutorialPhase == .dragToAccepted))
+        }
+    }
+
+    /// The section content area (per-section list/board) plus its lifecycle hooks
+    /// (slide transition, screen-view analytics, badge-count tasks, wizard
+    /// navigation). Extracted from `body` so its switch and chain of modifiers are
+    /// type-checked in isolation — the main VStack was exceeding the Swift
+    /// type-checker's budget as one expression.
+    private var mainContent: some View {
+        Group {
+            if shouldShowProjectsList {
+                // Force show projects list during tutorial
+                projectList
+            } else {
+                switch selectedSection {
+                case .myTasks:
+                    JobBoardMyTasksView()
+                case .myProjects:
+                    projectList
+                case .projects:
+                    if prioritizeMode {
+                        PriorityQueueView(displayMode: .inline, dataController: dataController)
+                            .padding(.horizontal, 16)
+                    } else {
+                        projectList
+                    }
+                case .tasks:
+                    JobBoardTasksView(
+                        searchText: searchText,
+                        showingFilters: $showingFilters,
+                        showingFilterSheet: $showingTaskFilterSheet,
+                        assignedToMe: assignedToMe
+                    )
+                    .padding(.horizontal, 16)
+                case .kanban:
+                    // JobBoardKanbanView self-derives its status buckets and only
+                    // accepts `assignedToMe` now; the prior extra args were a stale
+                    // call site (see projectList note).
+                    JobBoardKanbanView(assignedToMe: assignedToMe)
+                }
+            }
+        }
+        .id(selectedSection)
+        .transition(slideTransition)
+        .animation(.accessibleEaseInOut(duration: 0.2), value: selectedSection)
+        .onChange(of: selectedSection) { oldValue, newSection in
+            previousSection = oldValue
+            // Track section changes within Job Board
+            let screenName: ScreenName? = {
+                switch newSection {
+                case .projects, .myProjects: return .jobBoardProjects
+                case .tasks, .myTasks:       return .jobBoardTasks
+                default: return nil
+                }
+            }()
+            if let screenName = screenName {
+                AnalyticsManager.shared.trackScreenView(screenName: screenName, screenClass: "JobBoardView")
+            }
+        }
+        .task {
+            // Wizard system: evaluate job board wizard trigger (requires ≥1 project)
+            if let wizard = WizardRegistry.contextualWizard(for: "job_board") {
+                let projectCount = await MainActor.run { dataController.getProjects().count }
+                await MainActor.run {
+                    wizardTriggerService?.evaluateTrigger(for: wizard, context: "job_board_tab_visit", projectCount: projectCount)
+                }
+            }
+        }
+        .task {
+            // Compute overdue count for badge
+            computeReviewProjects()
+        }
+        .task {
+            // Compute reviewable task count for badge
+            computeReviewableTasks()
+        }
+        .task {
+            // Compute unscheduled/unassigned task count for badge
+            computeUnscheduledTasks()
+        }
+        .onAppear {
+            selectedSection = defaultSection(for: dataController.currentUser)
+            AnalyticsManager.shared.trackScreenView(screenName: .jobBoard, screenClass: "JobBoardView")
+            AnalyticsService.shared.trackScreenView(screenName: "job_board")
+        }
+        .onDisappear {
+            AnalyticsService.shared.endScreenView(screenName: "job_board")
+        }
+        // Wizard: listen for section-level navigation requests
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardNavigateToSection"))) { notification in
+            guard let sectionRaw = notification.userInfo?["section"] as? String,
+                  let target = JobBoardSection(rawValue: sectionRaw),
+                  sections.contains(target) else { return }
+            withAnimation(.accessibleEaseInOut(duration: 0.2)) {
+                selectedSection = target
+            }
+        }
+    }
+
+    /// The project list (shared by the tutorial-forced list, .myProjects, and
+    /// .projects sections). Extracted to a single computed so its seven-argument
+    /// initializer is type-checked once in isolation — three inline copies were a
+    /// large part of what pushed `body` past the Swift type-checker's budget — and
+    /// to DRY up three identical call sites.
+    private var projectList: some View {
+        // NOTE: JobBoardProjectListView was refactored (commit 9b7742ff and
+        // siblings) to self-manage status/team filters (@State) and sort order
+        // (@AppStorage) — its initializer now takes only the binding pair below.
+        // JobBoardView's call sites were not updated then; recompiling this file
+        // surfaced the mismatch. Matched to the current initializer.
+        JobBoardProjectListView(
+            searchText: searchText,
+            showingFilters: $showingFilters,
+            showingFilterSheet: $showingProjectFilterSheet,
+            activeOnly: activeOnly,
+            assignedToMe: assignedToMe
+        )
+        .padding(.horizontal, 16)
+    }
+
+    /// The job-board header (review entry points + badges). Extracted from `body`
+    /// so its 11-argument initializer and inline closures are type-checked in
+    /// isolation, keeping the main VStack within the Swift type-checker's budget.
+    private var jobBoardHeader: some View {
+        AppHeader(
+            headerType: .jobBoard,
+            onPaymentReviewTapped: (permissionStore.can("projects.edit") || permissionStore.hasFullAccess("projects.view")) ? {
+                if !UserDefaults.standard.bool(forKey: "review_payment_intro_shown") {
+                    UserDefaults.standard.set(true, forKey: "review_payment_intro_shown")
+                    showPaymentReviewIntro = true
+                } else {
+                    computeReviewProjects()
+                    showPaymentReview = true
+                }
+            } : nil,
+            paymentReviewBadgeCount: overdueCount,
+            isPaymentReviewLocked: isPaymentReviewLocked,
+            paymentReviewLockedMessage: "Complete \(Self.paymentReviewThreshold) projects to unlock payment review. You've completed \(completedProjectCount) so far.",
+            onTaskReviewTapped: {
+                // When a wizard is guiding the user to open task review,
+                // bypass the first-open intro alert to avoid an unexpected
+                // intermediate step that the wizard doesn't account for.
+                let wizardActive = wizardStateManager?.isActive == true
+                    && wizardStateManager?.currentStep?.id == "open_task_review"
+                if !wizardActive && !UserDefaults.standard.bool(forKey: "review_task_intro_shown") {
+                    UserDefaults.standard.set(true, forKey: "review_task_intro_shown")
+                    showTaskReviewIntro = true
+                } else {
+                    UserDefaults.standard.set(true, forKey: "review_task_intro_shown")
+                    computeReviewableTasks()
+                    showTaskReview = true
+                }
+            },
+            taskReviewBadgeCount: reviewableTaskCount,
+            isTaskReviewLocked: isTaskReviewLocked,
+            taskReviewLockedMessage: "Complete \(Self.taskReviewThreshold) tasks to unlock task review. You've completed \(completedTaskCount) so far.",
+            onUnscheduledReviewTapped: unscheduledReviewTapped,
+            unscheduledReviewBadgeCount: unscheduledReviewBadge
+        )
+        .padding(.bottom, 8)
+    }
+
+    /// A pill-style filter toggle (ACTIVE ONLY / ASSIGNED TO ME / PRIORITIZE).
+    /// Extracted from the filter row so its ternary-heavy styling doesn't push the
+    /// header view-builder past the Swift type-checker's budget — and to DRY up
+    /// three byte-identical button bodies.
+    @ViewBuilder
+    private func filterChip(_ label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(isActive ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .fill(isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(isActive ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+        }
+    }
+
+    /// The horizontal filter/sort action row (filter sheet + ACTIVE ONLY /
+    /// ASSIGNED TO ME / PRIORITIZE toggles). Extracted from `body` so the VStack
+    /// stays within the Swift type-checker's budget.
+    @ViewBuilder
+    private var filterControls: some View {
+        if !tutorialMode && (selectedSection == .projects || selectedSection == .myProjects || selectedSection == .tasks || selectedSection == .kanban) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    Button(action: {
+                        if selectedSection == .tasks {
+                            showingTaskFilterSheet = true
+                        } else {
+                            showingProjectFilterSheet = true
+                        }
+                    }) {
+                        Image(systemName: "line.3.horizontal.decrease")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            )
+                    }
+                    .wizardTarget("open_filters")
+
+                    filterChip("ACTIVE ONLY", isActive: activeOnly) {
+                        withAnimation(.easeInOut(duration: 0.2)) { activeOnly.toggle() }
+                    }
+
+                    filterChip("ASSIGNED TO ME", isActive: assignedToMe) {
+                        withAnimation(.easeInOut(duration: 0.2)) { assignedToMe.toggle() }
+                    }
+
+                    if selectedSection == .projects && permissionStore.can("projects.edit") {
+                        filterChip("PRIORITIZE", isActive: prioritizeMode) {
+                            withAnimation(.easeInOut(duration: 0.2)) { prioritizeMode.toggle() }
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .padding(.top, 8)
+            .padding(.bottom, 12)
+        }
+    }
+
+    /// Tap handler for the unscheduled-review entry. Nil when the user holds no
+    /// calendar.edit grant (scheduling is gated on calendar.edit), which hides the
+    /// entry — Crew / Unassigned can't schedule. Extracted from the header
+    /// view-builder so that large expression stays within the type-checker budget.
+    private var unscheduledReviewTapped: (() -> Void)? {
+        guard permissionStore.canEditAnySchedule else { return nil }
+        return {
+            computeUnscheduledTasks()
+            showUnscheduledReview = true
+        }
+    }
+
+    /// Badge count for the unscheduled-review entry — zero without a calendar.edit grant.
+    private var unscheduledReviewBadge: Int {
+        permissionStore.canEditAnySchedule ? unscheduledTaskCount : 0
+    }
+
     private func computeUnscheduledTasks() {
         let allTasks: [ProjectTask]
         if PermissionStore.shared.hasFullAccess("tasks.view") {
@@ -502,8 +818,13 @@ struct JobBoardView: View {
         }
 
         unscheduledTasks = allTasks.filter { task in
+            // Only surface schedulable work for ACTIVE projects. A project that
+            // hasn't been accepted yet (`.rfq`/`.estimated`) or is finished
+            // (`.completed`/`.closed`/`.archived`) must not feed the review/
+            // auto-schedule flow — mirrors `isJobBoardTaskListVisible`.
             task.status == .active
                 && task.deletedAt == nil
+                && (task.project?.status.isActive ?? false)
                 && (task.startDate == nil || task.getTeamMemberIds().isEmpty)
         }
         .sorted { ($0.project?.title ?? "") < ($1.project?.title ?? "") }
@@ -583,6 +904,35 @@ func defaultSection(for user: User?) -> JobBoardSection {
     guard user != nil else { return .projects }
     // Users who can see the kanban board land on it by default; everyone else keeps My Tasks.
     return PermissionStore.shared.can("job_board.manage_sections") ? .kanban : .myTasks
+}
+
+// MARK: - Filter Pill
+/// A single pill-style toggle label used in the Job Board action row.
+/// The on/off ternaries are hoisted into typed locals so the modifier chain
+/// type-checks cheaply — inlining them in `JobBoardView.body` was a primary
+/// contributor to the "unable to type-check this expression" cold-build failure.
+private struct JobBoardFilterPill: View {
+    let title: String
+    let isOn: Bool
+
+    var body: some View {
+        let fg: Color = isOn ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText
+        let bg: Color = isOn ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark
+        let stroke: Color = isOn ? Color.clear : OPSStyle.Colors.cardBorder
+        Text(title)
+            .font(OPSStyle.Typography.smallCaption)
+            .foregroundColor(fg)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .fill(bg)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(stroke, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+    }
 }
 
 // MARK: - Section Selector

@@ -117,14 +117,7 @@ struct EstimateDetailView: View {
         .sheet(isPresented: $showEditSheet) {
             EstimateFormSheet(viewModel: viewModel, editing: estimate)
         }
-        .alert("Error", isPresented: Binding(
-            get: { viewModel.error != nil },
-            set: { if !$0 { viewModel.error = nil } }
-        )) {
-            Button("OK") { viewModel.error = nil }
-        } message: {
-            Text(viewModel.error ?? "")
-        }
+        .errorToast($viewModel.error, label: Feedback.Err.operationFailed)
     }
 
     @ViewBuilder
@@ -371,6 +364,12 @@ struct EstimateDetailView: View {
                 Text(item.type.rawValue.uppercased())
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
+                if let label = item.resolvedOptionsLabel, !label.isEmpty {
+                    Text("· \(label)")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .lineLimit(1)
+                }
                 let children = childItems(for: item.id)
                 if !children.isEmpty {
                     Text("[\(children.count) items]")
@@ -398,7 +397,7 @@ struct EstimateDetailView: View {
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineLimit(1)
-                Text("\(formatQuantity(item.quantity)) \(item.unit ?? "") · \(item.unitPrice, format: .currency(code: "USD"))")
+                Text(childMetaLine(item))
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -411,6 +410,18 @@ struct EstimateDetailView: View {
         .padding(.trailing, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing1)
         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.3))
+    }
+
+    /// Child-row metadata: "qty unit · [chosen option] · unit price". The option
+    /// label appears only when the child line snapshotted a configured option.
+    private func childMetaLine(_ item: EstimateLineItem) -> String {
+        let qtyUnit = "\(formatQuantity(item.quantity)) \(item.unit ?? "")"
+            .trimmingCharacters(in: .whitespaces)
+        let price = item.unitPrice.formatted(.currency(code: "USD"))
+        if let label = item.resolvedOptionsLabel, !label.isEmpty {
+            return "\(qtyUnit) · \(label) · \(price)"
+        }
+        return "\(qtyUnit) · \(price)"
     }
 
     private func formatQuantity(_ qty: Double) -> String {

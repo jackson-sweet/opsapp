@@ -84,20 +84,22 @@ struct TimelineView: View {
             .padding(.leading, 52)
             .padding(.trailing, OPSStyle.Layout.spacing2)
             .offset(y: yOffset + (draggedTaskId == task.id ? dragOffset : 0))
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        draggedTaskId = task.id
-                        dragOffset = value.translation.height
-                    }
-                    .onEnded { value in
-                        let newY = yOffset + value.translation.height
-                        let snappedTime = timeFromY(newY)
-                        updateTaskTime(task, newStartTime: snappedTime)
-                        draggedTaskId = nil
-                        dragOffset = 0
-                    }
-            )
+            .gesture(task.canEditSchedule ? timeDragGesture(for: task, yOffset: yOffset) : nil)
+    }
+
+    private func timeDragGesture(for task: ProjectTask, yOffset: CGFloat) -> some Gesture {
+        DragGesture()
+            .onChanged { value in
+                draggedTaskId = task.id
+                dragOffset = value.translation.height
+            }
+            .onEnded { value in
+                let newY = yOffset + value.translation.height
+                let snappedTime = timeFromY(newY)
+                updateTaskTime(task, newStartTime: snappedTime)
+                draggedTaskId = nil
+                dragOffset = 0
+            }
     }
 
     private func yPosition(for time: Date) -> CGFloat {
@@ -136,6 +138,8 @@ struct TimelineView: View {
     }
 
     private func updateTaskTime(_ task: ProjectTask, newStartTime: Date) {
+        guard task.canEditSchedule else { return }
+
         let duration = task.endTime.timeIntervalSince(task.startTime)
         let newEndTime = newStartTime.addingTimeInterval(duration)
 

@@ -97,7 +97,12 @@ struct PipelineStageListView: View {
                 Button("MARK LOST", role: .destructive) { onRequestSheet(.lost(lead)) }
                 Button("EDIT") { onRequestSheet(.edit(lead)) }
                 Button("ARCHIVE") {
-                    Task { try? await viewModel.archive(opportunityId: lead.id) }
+                    Task {
+                        do {
+                            try await viewModel.archive(opportunityId: lead.id)
+                            ToastCenter.shared.present(Feedback.Lead.archived)
+                        } catch {}
+                    }
                 }
             }
             Button("CANCEL", role: .cancel) {}
@@ -174,11 +179,14 @@ struct PipelineStageListView: View {
     private func advance(_ lead: Opportunity) {
         guard canManage, !lead.stage.isTerminal, let next = lead.stage.next else { return }
         Task {
-            try? await viewModel.moveToStage(
-                opportunityId: lead.id,
-                to: next,
-                userId: dataController.currentUser?.id
-            )
+            do {
+                try await viewModel.moveToStage(
+                    opportunityId: lead.id,
+                    to: next,
+                    userId: dataController.currentUser?.id
+                )
+                ToastCenter.shared.present(Feedback.Lead.stageAdvanced)
+            } catch {}
         }
     }
 

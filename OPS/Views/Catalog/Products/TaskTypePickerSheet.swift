@@ -67,12 +67,20 @@ struct TaskTypePickerSheet: View {
                     }
                 }
             }
-            .navigationTitle("PICK TASK TYPE")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Cancel") { dismiss() }
+                ToolbarItem(placement: .principal) {
+                    Text("PICK TASK TYPE")
+                        .font(OPSStyle.Typography.panelTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { dismiss() } label: {
+                        Text("CANCEL")
+                            .font(OPSStyle.Typography.buttonLabel)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
                 }
             }
         }
@@ -137,7 +145,7 @@ struct TaskTypePickerSheet: View {
                 Image(systemName: "plus.circle.fill")
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                Text("// + NEW TASK TYPE")
+                Text("NEW TASK TYPE")
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 Spacer()

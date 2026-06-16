@@ -159,8 +159,27 @@ class KeychainManager {
         delete(account: account)
     }
 
+    // MARK: - Generic String Storage (arbitrary account keys)
+
+    /// Store a string under an arbitrary account key. Public, additive wrapper
+    /// over the private `save` so callers (e.g. the Apple-name cache) can persist
+    /// non-credential values in the Keychain without widening the credential API.
+    func storeString(_ value: String, account: String) {
+        save(value: value, account: account)
+    }
+
+    /// Retrieve a string stored under an arbitrary account key, or nil if absent.
+    func retrieveString(account: String) -> String? {
+        retrieve(account: account)
+    }
+
+    /// Delete a string stored under an arbitrary account key.
+    func deleteString(account: String) {
+        delete(account: account)
+    }
+
     // MARK: - Private Keychain Methods
-    
+
     /// Save a string value to Keychain
     /// - Parameters:
     ///   - value: The string value to save

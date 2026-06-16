@@ -74,8 +74,7 @@ struct DefaultsManageSheet: View {
                     }
                 }
             }
-            .navigationTitle("DEFAULTS")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle("DEFAULTS")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Close") { dismiss() }

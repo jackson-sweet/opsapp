@@ -11,9 +11,12 @@ import SwiftUI
 struct BugReportSheet: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var dataController: DataController
-    @Environment(\.dismiss) private var dismiss
 
     let screenshot: UIImage?
+    /// Closes the report. Supplied by BugReportPresenter, which owns the
+    /// dedicated overlay window — SwiftUI's `\.dismiss` does not drive a
+    /// UIKit-presented hosting controller, so we close explicitly.
+    let onClose: () -> Void
 
     @State private var description: String = ""
     @State private var selectedCategory: BugCategory = .bug
@@ -63,7 +66,7 @@ struct BugReportSheet: View {
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
-                        dismiss()
+                        onClose()
                     }
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -321,7 +324,7 @@ struct BugReportSheet: View {
         .transition(.opacity)
         .task {
             try? await Task.sleep(for: .seconds(1.2))
-            dismiss()
+            onClose()
         }
     }
 

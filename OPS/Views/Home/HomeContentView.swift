@@ -252,6 +252,15 @@ struct HomeContentView: View {
                     .frame(height: 120)
             }
 
+            // Map filter chips — below carousel
+            if !appState.isInProjectMode {
+                MapFilterChips(filterMode: $mapFilterMode)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.top, OPSStyle.Layout.spacing1)
+            }
+
+            // Billable-this-week rollup — sits below the TODAY / ACTIVE / ALL
+            // filter chips; collapsible so it can tuck out of the way.
             if !appState.isInProjectMode,
                billableRollup.hasItems,
                permissionStore.can("finances.view") {
@@ -261,13 +270,6 @@ struct HomeContentView: View {
                 )
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.top, OPSStyle.Layout.spacing1)
-            }
-
-            // Map filter chips — below carousel
-            if !appState.isInProjectMode {
-                MapFilterChips(filterMode: $mapFilterMode)
-                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                    .padding(.top, OPSStyle.Layout.spacing1)
             }
 
             Spacer()
@@ -566,9 +568,45 @@ private struct HomeBillableThisWeekCard: View {
     let rollup: HomeBillableThisWeekRollup
     let onSelect: (HomeBillableProjectCandidate) -> Void
 
+    // Collapsed by default — the header (total + job count) carries the
+    // at-a-glance value; the detail is opt-in. The choice persists per operator.
+    //
+    // NOTE: @AppStorage mutations do NOT participate in `withAnimation`
+    // transactions, so animating `isExpanded` directly off AppStorage makes the
+    // collapse snap with no motion. We drive the animation off a plain @State
+    // and mirror it into AppStorage on every toggle (and read it back on appear).
+    @AppStorage("homeBillableThisWeekExpanded") private var persistedExpanded = false
+    @State private var isExpanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            HStack(alignment: .firstTextBaseline) {
+            header
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                    if !rollup.closingThisWeek.isEmpty {
+                        section("CLOSING", items: rollup.closingThisWeek)
+                    }
+
+                    if !rollup.readyToBill.isEmpty {
+                        section("READY TO BILL", items: rollup.readyToBill)
+                    }
+                }
+                .transition(.opacity)
+            }
+        }
+        .opsCardStyle(padding: OPSStyle.Layout.spacing3)
+        // Restore the persisted state without animation so the card simply
+        // appears in its last state rather than animating open on every launch.
+        .onAppear { isExpanded = persistedExpanded }
+    }
+
+    // MARK: - Header (tap anywhere to collapse / expand)
+
+    private var header: some View {
+        Button(action: toggle) {
+            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("// BILLABLE THIS WEEK")
                         .font(OPSStyle.Typography.caption)
@@ -591,17 +629,30 @@ private struct HomeBillableThisWeekCard: View {
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.text3)
                 }
-            }
 
-            if !rollup.closingThisWeek.isEmpty {
-                section("CLOSING", items: rollup.closingThisWeek)
+                // Disclosure chevron — points down when collapsed, rotates
+                // 180° to point up when expanded. Single OPS easing, no spring.
+                Image(systemName: OPSStyle.Icons.chevronDown)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.textMute)
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                    .padding(.leading, OPSStyle.Layout.spacing1)
             }
-
-            if !rollup.readyToBill.isEmpty {
-                section("READY TO BILL", items: rollup.readyToBill)
-            }
+            .contentShape(Rectangle())
         }
-        .opsCardStyle(padding: OPSStyle.Layout.spacing3)
+        .buttonStyle(.plain)
+    }
+
+    private func toggle() {
+        // Single easing curve, no spring. Reduced motion falls back to a
+        // 150ms opacity-only change per the OPS motion identity. Animate the
+        // @State (which participates in the transaction); persist alongside.
+        withAnimation(reduceMotion ? .easeInOut(duration: 0.15) : OPSStyle.Animation.standard) {
+            isExpanded.toggle()
+        }
+        persistedExpanded = isExpanded
+        // Light impact — one earned tick on a deliberate user toggle.
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     private func section(_ title: String, items: [HomeBillableProjectCandidate]) -> some View {
@@ -628,12 +679,14 @@ private struct HomeBillableThisWeekCard: View {
 
                         Spacer()
 
-                        Text(item.amount.map(currency) ?? "—")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(item.amount == nil ? OPSStyle.Colors.textMute : OPSStyle.Colors.finRevenue)
-                            .monospacedDigit()
+                        if let amount = item.amount {
+                            Text(currency(amount))
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.finRevenue)
+                                .monospacedDigit()
+                        }
 
-                        Image(systemName: OPSStyle.Icons.forward)
+                        Image(systemName: OPSStyle.Icons.arrowRight)
                             .font(OPSStyle.Typography.microLabel)
                             .foregroundColor(OPSStyle.Colors.textMute)
                     }

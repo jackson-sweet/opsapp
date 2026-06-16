@@ -274,6 +274,7 @@ struct LinkedProductsAttachSheet: View {
             product.taskTypeId = dto.taskTypeId
             try? modelContext.save()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            ToastCenter.shared.present(Feedback.Task.productAttached)
             pendingReassign = nil
             onAttach(product)
             dismiss()

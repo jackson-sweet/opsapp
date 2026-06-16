@@ -70,19 +70,8 @@ struct MeasureActionButton: View {
                         }
                     )
                 }
+                .errorToast($pendingErrorBanner, label: Feedback.Err.operationFailed)
             }
-        }
-        .alert(
-            "Capture failed",
-            isPresented: Binding(
-                get: { pendingErrorBanner != nil },
-                set: { if !$0 { pendingErrorBanner = nil } }
-            ),
-            presenting: pendingErrorBanner
-        ) { _ in
-            Button("OK", role: .cancel) { pendingErrorBanner = nil }
-        } message: { msg in
-            Text(msg)
         }
     }
 }

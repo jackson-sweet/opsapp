@@ -39,6 +39,21 @@ class OnboardingManager: ObservableObject {
     private let dataController: DataController
     private let onboardingService: OnboardingServiceProtocol
 
+    /// Narrow injectable seam for the `create_company_for_owner` RPC boundary.
+    /// Defaults to the live Supabase call; tests inject a closure to exercise the
+    /// NO_USER_ROW→sync-user→retry path and typed-error mapping without a network.
+    /// Throws the raw transport error (a `PostgrestError` whose `message`/`code`
+    /// carries the server token); `createCompanyViaRPC` does the token mapping.
+    typealias CreateCompanyRPCInvoking = (
+        _ name: String,
+        _ industries: [String],
+        _ email: String?,
+        _ phone: String?,
+        _ address: String?
+    ) async throws -> CreateCompanyRPCResult
+
+    private let createCompanyRPC: CreateCompanyRPCInvoking
+
     var dataControllerForTesting: DataController {
         dataController
     }
@@ -49,9 +64,14 @@ class OnboardingManager: ObservableObject {
 
     // MARK: - Initialization
 
-    init(dataController: DataController, onboardingService: OnboardingServiceProtocol = OnboardingService()) {
+    init(
+        dataController: DataController,
+        onboardingService: OnboardingServiceProtocol = OnboardingService(),
+        createCompanyRPC: CreateCompanyRPCInvoking? = nil
+    ) {
         self.dataController = dataController
         self.onboardingService = onboardingService
+        self.createCompanyRPC = createCompanyRPC ?? OnboardingManager.liveCreateCompanyRPC
 
         // Load saved state or create initial
         if let savedState = OnboardingState.load() {
@@ -143,6 +163,18 @@ class OnboardingManager: ObservableObject {
             // Not logged in - show welcome screen
             let manager = OnboardingManager(dataController: dataController)
             return (true, manager)
+        }
+
+        // A queued completion (new v4 flow, server ACK still pending) counts as
+        // complete: the user already finished onboarding and was admitted locally,
+        // so they must not be re-onboarded while the sync sweep retries the ACK.
+        if UserDefaults.standard.bool(forKey: OnboardingStorageKeys.completionPending),
+           let user = dataController.currentUser,
+           !(user.companyId ?? "").isEmpty,
+           user.userType != nil {
+            OnboardingState.clear()
+            print("[ONBOARDING_MANAGER] Completion is queued (pending server ACK) — skipping onboarding")
+            return (false, nil)
         }
 
         // Check if currentUser exists
@@ -661,7 +693,11 @@ class OnboardingManager: ObservableObject {
             state.userData.email = email
             state.userData.userId = userId
             UserDefaults.standard.set(email, forKey: "user_email")
-            UserDefaults.standard.set(password, forKey: "user_password")
+            // Plaintext passwords are never persisted. No *reachable* path re-reads
+            // `user_password`; the one remaining reader lives in the legacy
+            // OnboardingViewModel / OnboardingContainerView / EmailView flow, which
+            // is unwired (its presenter is replaced by MinimalSignupView in the live
+            // A/B path) and will be deleted in P7. Firebase Auth owns session/credential.
             UserDefaults.standard.set(userId, forKey: "user_id")
             UserDefaults.standard.set(userId, forKey: "currentUserId")
             UserDefaults.standard.set(flow.userType.rawValue, forKey: "selected_user_type")
@@ -1001,6 +1037,255 @@ class OnboardingManager: ObservableObject {
         }
     }
 
+    // MARK: - create_company_for_owner RPC (Company Creator flow, v4)
+
+    /// Decoded result of `public.create_company_for_owner`.
+    /// The RPC returns `{ company_id, company_code, already_existed }` on success;
+    /// failures surface as a thrown `PostgrestError` (token in `message`/`code`),
+    /// never as a field on this struct.
+    struct CreateCompanyRPCResult: Decodable {
+        let companyId: String
+        let companyCode: String
+        let alreadyExisted: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case companyId = "company_id"
+            case companyCode = "company_code"
+            case alreadyExisted = "already_existed"
+        }
+    }
+
+    /// Typed outcomes the CrewCode/company-creation UI can branch on. Maps the
+    /// server's RAISE-EXCEPTION tokens (`NO_USER_ROW`, `ALREADY_IN_COMPANY`,
+    /// `INVALID_NAME`, …) to a small Swift surface.
+    enum CreateCompanyError: LocalizedError {
+        /// `NO_USER_ROW` survived a sync-user re-run + one retry — the users row
+        /// the RPC keys on (firebase_uid = JWT sub) still isn't visible.
+        case userRowMissing
+        case alreadyInCompany
+        case invalidName
+        case noUserId
+        case generic(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .userRowMissing:
+                return "We couldn't finish setting up your account. Check your connection and try again."
+            case .alreadyInCompany:
+                return "This account already belongs to a company."
+            case .invalidName:
+                return "Enter a company name to continue."
+            case .noUserId:
+                return "User ID not found. Please try again."
+            case .generic:
+                // TODO(P3/P4 copy): final error copy via ops-copywriter
+                return "Something went wrong creating your company. Try again."
+            }
+        }
+    }
+
+    /// Live `create_company_for_owner` invocation. Identity comes from the caller's
+    /// JWT (Firebase-bridged Supabase session) → `users.firebase_uid`; the RPC
+    /// accepts no user-id param. Decodes the JSONB result; PostgREST may wrap a
+    /// scalar JSONB in an array, so both shapes are handled. Errors propagate raw.
+    private static func liveCreateCompanyRPC(
+        name: String,
+        industries: [String],
+        email: String?,
+        phone: String?,
+        address: String?
+    ) async throws -> CreateCompanyRPCResult {
+        let params: [String: AnyJSON] = [
+            "p_name": .string(name),
+            "p_industries": .array(industries.map { .string($0) }),
+            "p_email": email.map { .string($0) } ?? .null,
+            "p_phone": phone.map { .string($0) } ?? .null,
+            "p_address": address.map { .string($0) } ?? .null
+        ]
+
+        let responseData: Data = try await SupabaseService.shared.client
+            .rpc("create_company_for_owner", params: params)
+            .execute()
+            .data
+
+        let decoder = JSONDecoder()
+        if let single = try? decoder.decode(CreateCompanyRPCResult.self, from: responseData) {
+            return single
+        }
+        if let array = try? decoder.decode([CreateCompanyRPCResult].self, from: responseData),
+           let first = array.first {
+            return first
+        }
+        let raw = String(data: responseData, encoding: .utf8) ?? "nil"
+        throw OnboardingManagerError.serverError("Could not parse company-creation response: \(raw.prefix(300))")
+    }
+
+    /// Extracts the server token (e.g. `NO_USER_ROW`) from a thrown RPC error.
+    /// `create_company_for_owner` raises the token AS the exception message, and
+    /// `PostgrestError.message` carries it. Falls back to `localizedDescription`.
+    private func rpcErrorToken(from error: Error) -> String {
+        if let pgError = error as? PostgrestError {
+            return pgError.message
+        }
+        return error.localizedDescription
+    }
+
+    /// Maps an RPC error's server token to a `CreateCompanyError`.
+    /// The raw token is always logged here so `.generic` can return a human
+    /// fallback string without losing debuggability.
+    private func mapCreateCompanyError(_ error: Error) -> CreateCompanyError {
+        let token = rpcErrorToken(from: error)
+        if token.contains("NO_USER_ROW") { return .userRowMissing }
+        if token.contains("ALREADY_IN_COMPANY") { return .alreadyInCompany }
+        if token.contains("INVALID_NAME") { return .invalidName }
+        print("[ONBOARDING_MANAGER] ❌ Unrecognised RPC token (generic): \(token)")
+        return .generic(token)
+    }
+
+    /// Create a company via the shared `create_company_for_owner` RPC (v4 flow).
+    ///
+    /// Additive sibling to `createCompany()` — it does NOT replace it. The server RPC
+    /// owns the company insert, owner record (role/admin/user_type), user_roles Owner
+    /// upsert, and `initialize_company_defaults`, so this method only: updates the
+    /// caller's profile fields the RPC doesn't touch, invokes the RPC (with a single
+    /// sync-user-then-retry on `NO_USER_ROW`), then persists company_id/company_code
+    /// into local state exactly like `createCompany()` so the CrewCode screen shows
+    /// the DB-truth code.
+    ///
+    /// - Returns: the DB-truth company code.
+    /// - Throws: `CreateCompanyError` the UI can branch on.
+    @discardableResult
+    func createCompanyViaRPC() async throws -> String {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        guard let userId = state.userData.userId ?? dataController.currentUser?.id else {
+            throw CreateCompanyError.noUserId
+        }
+
+        let trimmedName = state.companyData.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw CreateCompanyError.invalidName
+        }
+
+        print("[ONBOARDING_MANAGER] ========== CREATE COMPANY (RPC) START ==========")
+        print("[ONBOARDING_MANAGER] Creating company via RPC: \(trimmedName), userId: \(userId)")
+
+        state.profileCompanyPhase = .processing
+
+        let industries = state.companyData.industry.isEmpty ? [] : [state.companyData.industry]
+        let email = state.companyData.email.isEmpty ? nil : state.companyData.email
+        let phone = state.companyData.phone.isEmpty ? nil : state.companyData.phone
+        let address = state.companyData.address.isEmpty ? nil : state.companyData.address
+
+        do {
+            // Write first/last/phone the RPC does not set, before creating the company.
+            try await updateUserProfile()
+
+            let result: CreateCompanyRPCResult
+            do {
+                result = try await createCompanyRPC(trimmedName, industries, email, phone, address)
+            } catch {
+                // NO_USER_ROW = the sync-user row isn't visible yet (race). Re-run
+                // sync-user, then retry the RPC exactly once before surfacing a
+                // typed error.
+                if rpcErrorToken(from: error).contains("NO_USER_ROW") {
+                    print("[ONBOARDING_MANAGER] RPC NO_USER_ROW — re-running sync-user then retrying once")
+                    _ = try? await onboardingService.syncUser(
+                        email: state.userData.email,
+                        firstName: state.userData.firstName.isEmpty ? nil : state.userData.firstName,
+                        lastName: state.userData.lastName.isEmpty ? nil : state.userData.lastName,
+                        photoURL: nil
+                    )
+                    do {
+                        result = try await createCompanyRPC(trimmedName, industries, email, phone, address)
+                    } catch {
+                        print("[ONBOARDING_MANAGER] RPC retry still failed: \(rpcErrorToken(from: error))")
+                        throw mapCreateCompanyError(error)
+                    }
+                } else {
+                    throw mapCreateCompanyError(error)
+                }
+            }
+
+            let companyId = result.companyId
+            let companyCode = result.companyCode
+            print("[ONBOARDING_MANAGER] RPC company \(result.alreadyExisted ? "reused" : "created"): \(companyId), code: \(companyCode)")
+
+            // Persist into local state exactly like createCompany() does, so the
+            // CrewCode screen renders the DB-truth code and resume is correct.
+            state.companyData.companyId = companyId
+            state.companyData.companyCode = companyCode
+            state.profileCompanyPhase = .success
+            state.hasExistingCompany = true
+            state.resumeBoundary = .completionPendingServerACK
+            state.save()
+
+            UserDefaults.standard.set(companyId, forKey: "company_id")
+            UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
+            UserDefaults.standard.set(trimmedName, forKey: "Company Name")
+
+            // Update local user (the RPC already wrote role/admin/user_type server-side).
+            if let currentUser = dataController.currentUser {
+                currentUser.companyId = companyId
+                currentUser.firstName = state.userData.firstName
+                currentUser.lastName = state.userData.lastName
+                if !state.userData.phone.isEmpty {
+                    currentUser.phone = state.userData.phone
+                }
+                currentUser.role = .owner
+                currentUser.userType = .company
+                try? dataController.modelContext?.save()
+                print("[ONBOARDING_MANAGER] ✅ Updated local user — companyId: \(companyId)")
+            } else {
+                print("[ONBOARDING_MANAGER] ⚠️ DataController.currentUser is NIL after RPC create")
+            }
+
+            // Create Company object in SwiftData if not already present.
+            if let modelContext = dataController.modelContext {
+                let compDesc = FetchDescriptor<Company>(
+                    predicate: #Predicate<Company> { $0.id == companyId }
+                )
+                if (try? modelContext.fetch(compDesc).first) == nil {
+                    let companyObject = Company(id: companyId, name: trimmedName)
+                    companyObject.email = email ?? ""
+                    companyObject.phone = phone ?? ""
+                    companyObject.address = address ?? ""
+                    companyObject.subscriptionStatus = "trial"
+                    companyObject.subscriptionPlan = "trial"
+                    companyObject.trialStartDate = Date()
+                    companyObject.trialEndDate = Calendar.current.date(byAdding: .day, value: 30, to: Date())
+                    companyObject.maxSeats = 10
+                    companyObject.seatedEmployeeIds = userId
+                    companyObject.adminIdsString = userId
+                    modelContext.insert(companyObject)
+                    try? modelContext.save()
+                    print("[ONBOARDING_MANAGER] ✅ Company saved to SwiftData")
+                }
+            }
+
+            // Reconfigure sync + load company data. `syncEngine` is an
+            // implicitly-unwrapped optional that only exists once a model context
+            // has been set; guard so a not-yet-configured controller (e.g. tests,
+            // or a create that races sync-manager init) can't crash on force-unwrap.
+            if dataController.syncEngine != nil {
+                dataController.syncEngine.reconfigureForCompany()
+                await dataController.triggerCompanySync()
+            }
+
+            print("[ONBOARDING_MANAGER] ========== CREATE COMPANY (RPC) END ==========")
+            return companyCode
+
+        } catch let error as CreateCompanyError {
+            state.profileCompanyPhase = .form
+            throw error
+        } catch {
+            state.profileCompanyPhase = .form
+            throw mapCreateCompanyError(error)
+        }
+    }
+
     /// Join an existing company (Employee flow)
     ///
     /// Calls the `public.join_user_to_company` Supabase RPC which atomically handles:
@@ -1057,12 +1342,10 @@ class OnboardingManager: ObservableObject {
 
             print("[ONBOARDING_MANAGER] ✅ RPC success — role: \(joinResult.roleName ?? "unassigned"), seat_granted: \(joinResult.seatGranted ?? false)")
 
-            // Set employee-specific fields not handled by the RPC.
-            let userRepo = UserRepository(companyId: companyId)
-            try? await userRepo.updateFields(userId: userId, fields: [
-                "is_company_admin": .bool(false),
-                "user_type": .string("employee")
-            ])
+            // user_type / is_company_admin are now written by join_user_to_company
+            // itself (atomically, with an owner/admin non-demotion guard). The old
+            // client-side PostgREST update is therefore both redundant and unsafe
+            // (it would blindly demote an owner re-joining), so it is removed.
 
             state.companyData.companyId = companyId
             state.companyData.companyCode = companyCodeProof
@@ -1075,8 +1358,12 @@ class OnboardingManager: ObservableObject {
             UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
             UserDefaults.standard.set(companyDTO.name, forKey: "Company Name")
 
-            // Reconfigure sync engine now that company_id is set in UserDefaults
-            dataController.syncEngine.reconfigureForCompany()
+            // Reconfigure sync engine now that company_id is set in UserDefaults.
+            // `syncEngine` is an IUO that only exists once a model context has been
+            // set; guard so a not-yet-configured controller (e.g. tests) can't crash.
+            if dataController.syncEngine != nil {
+                dataController.syncEngine.reconfigureForCompany()
+            }
 
             // NOW update profile data — userRepo is available after repo reconfiguration
             try await updateUserProfile()
@@ -1122,29 +1409,14 @@ class OnboardingManager: ObservableObject {
             await dataController.triggerCompanySync()
             print("[ONBOARDING_MANAGER] Company sync triggered after join")
 
-            // Notify company admins that a new member joined (push only — the RPC
-            // does not create web-rail notifications; OneSignal push is iOS-only here).
+            // Push company admins that a new member joined. The in-app rail rows
+            // are now fanned out by join_user_to_company itself (one 'role_needed'
+            // row per admin, deduped). Inserting a client-side 'team_join' row here
+            // double-notified, so it is removed; only the OneSignal push — which a
+            // DB RPC cannot deliver — stays on the client.
             do {
                 let notifyIds = joinResult.adminIds ?? companyDTO.adminIds ?? []
                 let memberName = "\(state.userData.firstName) \(state.userData.lastName)"
-                // Create in-app notifications for each admin
-                let notifRepo = NotificationRepository()
-                for adminId in notifyIds {
-                    let dto = NotificationRepository.CreateNotificationDTO(
-                        userId: adminId,
-                        companyId: companyId,
-                        type: "team_join",
-                        title: "New Team Member",
-                        body: "\(memberName) joined as Crew. Tap to set their role.",
-                        projectId: nil,
-                        noteId: nil,
-                        expenseId: nil,
-                        batchId: nil,
-                        deepLinkType: "manageTeam"
-                    )
-                    try? await notifRepo.createNotification(dto)
-                }
-                // Send push
                 try await OneSignalService.shared.notifyTeamJoin(
                     adminUserIds: notifyIds,
                     newMemberName: memberName,
@@ -1152,7 +1424,7 @@ class OnboardingManager: ObservableObject {
                     companyId: companyId
                 )
             } catch {
-                print("[ONBOARDING_MANAGER] ⚠️ Failed to send team join notification: \(error)")
+                print("[ONBOARDING_MANAGER] ⚠️ Failed to send team join push: \(error)")
             }
 
             print("[ONBOARDING_MANAGER] Joined company: \(companyId)")
@@ -1351,12 +1623,10 @@ class OnboardingManager: ObservableObject {
 
             print("[ONBOARDING_MANAGER] ✅ RPC success — role: \(joinResult.roleName ?? "unassigned"), seat_granted: \(joinResult.seatGranted ?? false)")
 
-            // Set employee-specific fields not handled by the RPC
-            let userRepo = UserRepository(companyId: companyId)
-            try? await userRepo.updateFields(userId: userId, fields: [
-                "is_company_admin": .bool(false),
-                "user_type": .string("employee")
-            ])
+            // user_type / is_company_admin are now written by join_user_to_company
+            // itself (atomically, with an owner/admin non-demotion guard). The old
+            // client-side PostgREST update is therefore both redundant and unsafe
+            // (it would blindly demote an owner re-joining), so it is removed.
 
             // Store company info in state and UserDefaults
             state.companyData.companyId = companyId
@@ -1369,8 +1639,12 @@ class OnboardingManager: ObservableObject {
             UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
             UserDefaults.standard.set(companyDTO.name, forKey: "Company Name")
 
-            // Reconfigure sync engine now that company_id is set in UserDefaults
-            dataController.syncEngine.reconfigureForCompany()
+            // Reconfigure sync engine now that company_id is set in UserDefaults.
+            // `syncEngine` is an IUO that only exists once a model context has been
+            // set; guard so a not-yet-configured controller (e.g. tests) can't crash.
+            if dataController.syncEngine != nil {
+                dataController.syncEngine.reconfigureForCompany()
+            }
 
             // DO NOT call updateUserProfile() — Profile screen hasn't been filled yet
 
@@ -1407,28 +1681,14 @@ class OnboardingManager: ObservableObject {
             await dataController.triggerCompanySync()
             print("[ONBOARDING_MANAGER] Company sync triggered after join")
 
-            // Notify company admins that a new member joined
+            // Push company admins that a new member joined. The in-app rail rows
+            // are now fanned out by join_user_to_company itself (one 'role_needed'
+            // row per admin, deduped). Inserting a client-side 'team_join' row here
+            // double-notified, so it is removed; only the OneSignal push — which a
+            // DB RPC cannot deliver — stays on the client.
             do {
                 let notifyIds = joinResult.adminIds ?? companyDTO.adminIds ?? []
                 let memberName = "\(state.userData.firstName) \(state.userData.lastName)"
-                // Create in-app notifications for each admin
-                let notifRepo = NotificationRepository()
-                for adminId in notifyIds {
-                    let dto = NotificationRepository.CreateNotificationDTO(
-                        userId: adminId,
-                        companyId: companyId,
-                        type: "team_join",
-                        title: "New Team Member",
-                        body: "\(memberName) joined as Crew. Tap to set their role.",
-                        projectId: nil,
-                        noteId: nil,
-                        expenseId: nil,
-                        batchId: nil,
-                        deepLinkType: "manageTeam"
-                    )
-                    try? await notifRepo.createNotification(dto)
-                }
-                // Send push
                 try await OneSignalService.shared.notifyTeamJoin(
                     adminUserIds: notifyIds,
                     newMemberName: memberName,
@@ -1436,7 +1696,7 @@ class OnboardingManager: ObservableObject {
                     companyId: companyId
                 )
             } catch {
-                print("[ONBOARDING_MANAGER] ⚠️ Failed to send team join notification: \(error)")
+                print("[ONBOARDING_MANAGER] ⚠️ Failed to send team join push: \(error)")
             }
 
             print("[ONBOARDING_MANAGER] Successfully joined company \(companyId)")
@@ -1505,6 +1765,47 @@ class OnboardingManager: ObservableObject {
         } catch {
             print("[ONBOARDING_MANAGER] ⚠️ Avatar upload failed: \(error)")
         }
+    }
+
+    /// Upload the onboarding avatar and write the user row's `profile_image_url`,
+    /// THROWING on any failure and returning the public URL on success.
+    ///
+    /// This is the surfaced-failure sibling of `uploadAvatarDuringOnboarding` (which
+    /// deliberately swallows its error for the legacy join-time best-effort upload).
+    /// The rebuilt S6c profile screen needs a real success/failure signal so it can
+    /// show a retry-able error (R7 — never silent), so this variant propagates the
+    /// throw. The legacy method is left untouched for its existing caller.
+    ///
+    /// - Returns: the public URL the row was pointed at.
+    func uploadOnboardingAvatarThrowing(imageData: Data) async throws -> String {
+        guard let userId = state.userData.userId ?? dataController.currentUser?.id else {
+            throw OnboardingManagerError.noUserId
+        }
+
+        let fileName = "\(userId)/profile.jpg"
+        try await SupabaseService.shared.client.storage
+            .from("profile-images")
+            .upload(
+                path: fileName,
+                file: imageData,
+                options: .init(contentType: "image/jpeg", upsert: true)
+            )
+
+        let publicURL = try SupabaseService.shared.client.storage
+            .from("profile-images")
+            .getPublicURL(path: fileName)
+
+        let companyId = state.companyData.companyId ?? dataController.currentUser?.companyId ?? ""
+        let userRepo = UserRepository(companyId: companyId)
+        try await userRepo.updateProfileImageUrl(userId: userId, url: publicURL.absoluteString)
+
+        // Reflect the new avatar locally so the rest of the app sees it immediately.
+        dataController.currentUser?.profileImageURL = publicURL.absoluteString
+        dataController.currentUser?.profileImageData = imageData
+        try? dataController.modelContext?.save()
+
+        print("[ONBOARDING_MANAGER] ✅ Avatar uploaded (throwing): \(publicURL.absoluteString)")
+        return publicURL.absoluteString
     }
 
     /// Save employee profile fields including emergency contact to Supabase.
@@ -1679,6 +1980,52 @@ class OnboardingManager: ObservableObject {
         return true
     }
 
+    /// Outcome of `markOnboardingCompleteOrQueue()`.
+    enum CompletionOutcome: Equatable {
+        /// Server ACK landed (or was already complete) — fully completed.
+        case acknowledged
+        /// Server ACK failed/timed out — completion is queued. The user is let into
+        /// the app locally; the sync sweep retries the ACK and clears the flag.
+        case queued
+    }
+
+    /// Complete onboarding, queueing the server ACK when offline (new v4 flow only).
+    ///
+    /// Additive sibling to `completeOnboardingAwaitingServerAck()`. The legacy A/B
+    /// flow never calls this and so never sets `completionPending` — its behavior is
+    /// unchanged. On ACK success this behaves exactly like the awaiting path. On ACK
+    /// failure it persists `onboarding_completion_pending = true`, completes locally
+    /// so the CompletionGate can admit the user, and returns `.queued`; the SyncEngine
+    /// sweep (`retryPendingOnboardingCompletion`) re-sends the ACK and clears the flag.
+    @discardableResult
+    func markOnboardingCompleteOrQueue(callCompletion: Bool = true) async -> CompletionOutcome {
+        // Fast path: a clean ACK is indistinguishable from today's behavior.
+        do {
+            _ = try await completeOnboardingAwaitingServerAck(callCompletion: callCompletion)
+            // A prior queued attempt that has now succeeded should clear the flag.
+            UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.completionPending)
+            return .acknowledged
+        } catch {
+            print("[ONBOARDING_MANAGER] Completion ACK failed — queuing: \(error.localizedDescription)")
+        }
+
+        // Queue: mark pending, complete locally so the user gets into the app, and
+        // let the sync sweep retry the server ACK.
+        UserDefaults.standard.set(true, forKey: OnboardingStorageKeys.completionPending)
+
+        storeCredentials()
+        dataController.currentUser?.hasCompletedAppOnboarding = true
+        OnboardingState.markCompleted()
+        ABTestFlowStep.clearSaved()
+        UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
+        state.resumeBoundary = nil
+
+        if callCompletion {
+            onComplete?()
+        }
+        return .queued
+    }
+
     /// Store user credentials for app to use after onboarding
     private func storeCredentials() {
         print("[ONBOARDING_MANAGER] Storing credentials...")
@@ -1729,7 +2076,7 @@ class OnboardingManager: ObservableObject {
         }
 
         do {
-            let fields: [String: AnyJSON] = ["has_completed_app_tutorial": .bool(true)]
+            let fields: [String: AnyJSON] = ["has_completed_tutorial": .bool(true)]
             try await dataController.updateUserFields(userId: userId, fields: fields)
             print("[ONBOARDING_MANAGER] hasCompletedAppTutorial synced to true (pre-signup tutorial)")
         } catch {

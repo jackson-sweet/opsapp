@@ -197,7 +197,6 @@ struct TaskFormSheet: View {
 
     @State private var isSaving = false
     @State private var errorMessage: String?
-    @State private var showingError = false
     @FocusState private var focusedField: TaskFormField?
     @State private var tempNotes: String = ""
 
@@ -516,13 +515,7 @@ struct TaskFormSheet: View {
             }
             .environmentObject(dataController)
         }
-        .alert("Error", isPresented: $showingError) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            if let errorMessage = errorMessage {
-                Text(errorMessage)
-            }
-        }
+        .errorToast($errorMessage, label: Feedback.Err.saveFailed)
         .onAppear {
             // Track screen view for analytics
             AnalyticsManager.shared.trackScreenView(screenName: .taskForm, screenClass: "TaskFormSheet")
@@ -1257,6 +1250,21 @@ struct TaskFormSheet: View {
         }
     }
 
+    /// Whether the current user may set this task's schedule (the DATES field and
+    /// AUTO button). Gated on calendar.edit, scope-aware: an existing task uses its
+    /// own scope; a new / draft task uses the selected project's scope (or any
+    /// grant before a project is chosen). Crew / Unassigned (no grant) can fill the
+    /// rest of the form but never set a schedule.
+    private var canSchedule: Bool {
+        if let task = mode.task {
+            return task.canEditSchedule
+        }
+        if let project = selectedProject {
+            return project.canEditSchedule
+        }
+        return PermissionStore.shared.canEditAnySchedule
+    }
+
     private var datesField: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack {
@@ -1267,8 +1275,9 @@ struct TaskFormSheet: View {
 
                 Spacer()
 
-                // Auto-schedule button — only show when project and task type are selected
-                if !tutorialMode && selectedProjectId != nil && selectedTaskTypeId != nil {
+                // Auto-schedule button — only show when project and task type are
+                // selected AND the user may schedule (calendar.edit, scope-aware).
+                if !tutorialMode && selectedProjectId != nil && selectedTaskTypeId != nil && canSchedule {
                     Button(action: {
                         autoScheduleTask()
                     }) {
@@ -1283,6 +1292,9 @@ struct TaskFormSheet: View {
             }
 
             Button(action: {
+                    // Scheduling is gated on calendar.edit (scope-aware); no grant
+                    // means the DATES field is read-only.
+                    guard canSchedule else { return }
                     // Track if dates existed before opening scheduler
                     datesExistedBeforeScheduler = (startDate != nil && endDate != nil)
                     schedulerConfirmed = false  // Reset confirmation flag
@@ -1458,6 +1470,7 @@ struct TaskFormSheet: View {
     // MARK: - Auto Schedule
 
     private func autoScheduleTask() {
+        guard canSchedule else { return }
         guard let projectId = selectedProjectId,
               let taskTypeId = selectedTaskTypeId else { return }
 
@@ -1544,7 +1557,6 @@ struct TaskFormSheet: View {
                           let taskTypeId = snapshotTaskTypeId else {
                         isSaving = false
                         errorMessage = "Missing project or task type."
-                        showingError = true
                         return
                     }
                     let taskColor = snapshotTaskType?.color ?? "#59779F"
@@ -1622,7 +1634,6 @@ struct TaskFormSheet: View {
             } catch {
                 isSaving = false
                 errorMessage = "Failed to save task locally: \(error.localizedDescription)"
-                showingError = true
                 return
             }
 
@@ -1700,7 +1711,6 @@ struct TaskFormSheet: View {
                 // The local task is already saved, so this is a soft failure.
                 // Surface the message but do not roll back the task insert.
                 errorMessage = "Task saved. Some related updates will retry: \(error.localizedDescription)"
-                showingError = true
                 // Fall through to dismiss path so the user isn't stuck.
             }
 
@@ -1725,6 +1735,7 @@ struct TaskFormSheet: View {
             onSave?(task)
 
             if case .create = mode {
+                ToastCenter.shared.present(Feedback.Task.created)
                 let hasSchedule = snapshotStart != nil || snapshotEnd != nil
                 AnalyticsManager.shared.trackTaskCreated(
                     taskType: snapshotTaskType?.display,
@@ -1932,19 +1943,44 @@ struct TeamMemberPickerSheet: View {
                 .fill(OPSStyle.Colors.line)
                 .frame(height: OPSStyle.Layout.Border.standard)
 
-            ScrollView {
-                VStack(spacing: OPSStyle.Layout.Border.standard) {
-                    ForEach(Array(allTeamMembers.enumerated()), id: \.element.id) { index, member in
-                        teamMemberRow(member: member, index: index)
+            if allTeamMembers.isEmpty {
+                // Bug 685e1d0e — never present a silent blank scroll. When a
+                // company has no active members synced (or pre-sync), show the
+                // OPS em-dash empty state instead of nothing.
+                emptyState
+            } else {
+                ScrollView {
+                    VStack(spacing: OPSStyle.Layout.Border.standard) {
+                        ForEach(Array(allTeamMembers.enumerated()), id: \.element.id) { index, member in
+                            teamMemberRow(member: member, index: index)
+                        }
                     }
+                    .padding(CGFloat(OPSStyle.Layout.spacing3))
                 }
-                .padding(CGFloat(OPSStyle.Layout.spacing3))
             }
         }
         .background(OPSStyle.Colors.background.ignoresSafeArea())
         .onAppear {
             selectionDraft = TeamMemberSelectionDraft(committedIds: selectedTeamMemberIds)
         }
+    }
+
+    /// Bug 685e1d0e — OPS em-dash empty state for a company with no active
+    /// team members. Follows the design-system empty-state pattern: a hero
+    /// em-dash glyph over a JetBrains-Mono `//`-prefixed label.
+    private var emptyState: some View {
+        VStack(spacing: CGFloat(OPSStyle.Layout.spacing2)) {
+            Spacer()
+            Text("—")
+                .font(OPSStyle.Typography.displayLarge)
+                .foregroundColor(OPSStyle.Colors.text3)
+            Text("// NO TEAM MEMBERS")
+                .font(OPSStyle.Typography.sectionLabel)
+                .foregroundColor(OPSStyle.Colors.textMute)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(CGFloat(OPSStyle.Layout.spacing3))
     }
 
     private func teamMemberRow(member: User, index: Int) -> some View {

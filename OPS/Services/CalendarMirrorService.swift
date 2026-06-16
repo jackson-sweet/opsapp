@@ -289,6 +289,7 @@ final class CalendarMirrorService: ObservableObject {
         }
         let source = store.defaultCalendarForNewEvents?.source
             ?? store.sources.first(where: { $0.sourceType == .calDAV })
+            ?? store.sources.first(where: { $0.sourceType == .exchange })
             ?? store.sources.first(where: { $0.sourceType == .local })
         guard let source else { throw CalendarMirrorError.noUsableSource }
         let cal = EKCalendar(for: .event, eventStore: store)

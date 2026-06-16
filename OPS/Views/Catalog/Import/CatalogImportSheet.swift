@@ -139,8 +139,7 @@ struct CatalogImportSheet: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .navigationTitle("IMPORT CATALOG")
-            .navigationBarTitleDisplayMode(.inline)
+            .catalogNavigationTitle("IMPORT CATALOG")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(closeLabel) { dismiss() }

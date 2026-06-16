@@ -16,7 +16,7 @@ struct TaskCompletionChecklistSheet: View {
     @State private var taskStates: [String: Bool] = [:]
 
     private var allTasksComplete: Bool {
-        let incompleteTasks = project.tasks.filter { $0.status != .completed }
+        let incompleteTasks = project.tasksBlockingCompletion
         return incompleteTasks.allSatisfy { taskStates[$0.id] == true }
     }
 
@@ -30,7 +30,7 @@ struct TaskCompletionChecklistSheet: View {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                             headerSection
 
-                            if project.tasks.filter({ $0.status != .completed }).isEmpty {
+                            if project.tasksBlockingCompletion.isEmpty {
                                 allTasksAlreadyCompleteView
                             } else {
                                 taskChecklistSection
@@ -95,9 +95,10 @@ struct TaskCompletionChecklistSheet: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             VStack(spacing: 0) {
-                ForEach(project.tasks.filter { $0.status != .completed }, id: \.id) { task in
+                let blockingTasks = project.tasksBlockingCompletion
+                ForEach(blockingTasks, id: \.id) { task in
                     taskChecklistRow(task: task)
-                    if task.id != project.tasks.filter({ $0.status != .completed }).last?.id {
+                    if task.id != blockingTasks.last?.id {
                         Divider()
                             .background(OPSStyle.Colors.subtleBackground)
                     }
@@ -178,7 +179,7 @@ struct TaskCompletionChecklistSheet: View {
     }
 
     private func completeAllTasksAndProject() {
-        let incompleteTasks = project.tasks.filter { $0.status != .completed }
+        let incompleteTasks = project.tasksBlockingCompletion
 
         Task {
             for task in incompleteTasks where taskStates[task.id] == true {

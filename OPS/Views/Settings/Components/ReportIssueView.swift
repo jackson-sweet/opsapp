@@ -16,9 +16,7 @@ struct ReportIssueView: View {
     @State private var issueTitle = ""
     @State private var issueDescription = ""
     @State private var isSubmitting = false
-    @State private var showSuccessAlert = false
-    @State private var errorMessage: String?
-    @State private var showErrorAlert = false
+    @State private var reportError: String? = nil
     
     var body: some View {
         ZStack {
@@ -132,18 +130,7 @@ struct ReportIssueView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
-        .alert("Report Submitted", isPresented: $showSuccessAlert) {
-            Button("OK") {
-                dismiss()
-            }
-        } message: {
-            Text("Thank you for reporting this issue! We'll investigate and work on a fix.")
-        }
-        .alert("Error", isPresented: $showErrorAlert) {
-            Button("Try Again") { }
-        } message: {
-            Text(errorMessage ?? "An error occurred while submitting your report. Please try again.")
-        }
+        .errorToast($reportError, label: Feedback.Err.reportFailed)
     }
     
     private func submitIssueReport() {
@@ -155,18 +142,16 @@ struct ReportIssueView: View {
             do {
                 // Use the API service to submit the issue report
                 try await submitIssueReportToAPI()
-                
-                // Handle success
+
                 await MainActor.run {
                     isSubmitting = false
-                    showSuccessAlert = true
+                    ToastCenter.shared.present(Feedback.Settings.issueReported)
+                    dismiss()
                 }
             } catch {
-                // Handle error
                 await MainActor.run {
                     isSubmitting = false
-                    errorMessage = error.localizedDescription
-                    showErrorAlert = true
+                    reportError = error.localizedDescription
                 }
             }
         }

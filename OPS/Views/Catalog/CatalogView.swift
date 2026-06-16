@@ -28,6 +28,7 @@ struct CatalogView: View {
     private var canViewProducts: Bool { permissionStore.can("catalog.products.view") }
     private var canViewOrders:   Bool { permissionStore.can("catalog.orders.view") }
     private var canManage:       Bool { permissionStore.can("catalog.manage") }
+    private var canManageProducts: Bool { permissionStore.can("catalog.products.manage") }
 
     /// Available segments for the current user. Stock is always present
     /// when this view is reachable (catalog.view gates the tab itself);
@@ -49,7 +50,14 @@ struct CatalogView: View {
     @State private var showSetupFlow: Bool = false
     @State private var setupMissingMappingKey: String?
     @State private var showGuidedSetup: Bool = false
+    @State private var showGuidedProductSetup: Bool = false
+    @State private var showGuidedCatalogSetup: Bool = false
     @State private var showImport: Bool = false
+    @State private var showAddVariant: Bool = false
+    @State private var showAddFamily: Bool = false
+    @State private var showNewService: Bool = false
+    @State private var showNewGood: Bool = false
+    @State private var showNewBundle: Bool = false
 
     private var selectedSegment: CatalogSegment {
         let raw = CatalogSegment(rawValue: selectedSegmentRaw) ?? .stock
@@ -86,7 +94,9 @@ struct CatalogView: View {
                         // doesn't need stack semantics, so wrapping at
                         // the segment level keeps both flows clean.
                         NavigationStack {
-                            CatalogProductsListView()
+                            CatalogProductsListView(onStartSetup: {
+                                showGuidedProductSetup = true
+                            })
                         }
                         .transition(.opacity)
                     }
@@ -115,8 +125,40 @@ struct CatalogView: View {
             CatalogImportSheet()
                 .environmentObject(dataController)
         }
+        .sheet(isPresented: $showAddVariant) {
+            VariantFormSheet()
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showAddFamily) {
+            AddFamilySheet()
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showNewService) {
+            NewServiceSheet()
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showNewGood) {
+            NewGoodSheet()
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showNewBundle) {
+            NewBundleSheet()
+                .environmentObject(dataController)
+        }
         .fullScreenCover(isPresented: $showGuidedSetup) {
             GuidedStockSetupFlow(
+                companyId: dataController.currentUser?.companyId ?? "",
+                userId: dataController.currentUser?.id ?? ""
+            )
+            .environmentObject(dataController)
+        }
+        .fullScreenCover(isPresented: $showGuidedProductSetup) {
+            GuidedProductSetupFlow()
+                .environmentObject(dataController)
+                .environmentObject(permissionStore)
+        }
+        .fullScreenCover(isPresented: $showGuidedCatalogSetup) {
+            GuidedCatalogSetupFlow(
                 companyId: dataController.currentUser?.companyId ?? "",
                 userId: dataController.currentUser?.id ?? ""
             )
@@ -141,12 +183,26 @@ struct CatalogView: View {
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             Text("CATALOG")
                 .font(OPSStyle.Typography.pageTitle)
                 .foregroundColor(OPSStyle.Colors.primaryText)
             Spacer()
             kebabButton
+            // Universal search — always the right-most trailing action, matching
+            // AppHeader's convention that search is the rightmost button on every
+            // header. Catalog uses a bespoke header, so this matches the kebab's
+            // bare-icon styling rather than AppHeader's circle.
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                appState.showingUniversalSearch = true
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.title3)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            }
+            .accessibilityLabel("Search")
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.top, OPSStyle.Layout.spacing2)
@@ -195,41 +251,70 @@ struct CatalogView: View {
         let showStockSection: Bool = true  // Snapshots are always visible (read-only).
         let showStockManageRows = canManage
         let showOrdersSection = canViewOrders
-        let showSetupSection = canManage
+        let showProductsSection = canManageProducts
+        let showManageSection = canManage
 
-        if showStockSection || showOrdersSection || showSetupSection {
+        if showStockSection || showOrdersSection || showProductsSection || showManageSection {
             Menu {
                 if showStockSection {
                     Section("STOCK") {
+                        if showStockManageRows {
+                            Button { showGuidedSetup = true } label: {
+                                Label("Guided Setup", systemImage: "wand.and.stars")
+                            }
+                            Button { showSetupFlow = true } label: {
+                                Label("Stock Setup", systemImage: "square.grid.3x3")
+                            }
+                            Button { showAddVariant = true } label: {
+                                Label("Add Variant", systemImage: "plus.app")
+                            }
+                            Button { showAddFamily = true } label: {
+                                Label("Add Family", systemImage: "square.stack.3d.up")
+                            }
+                        }
+                        if permissionStore.can("catalog.import") {
+                            Button { showImport = true } label: {
+                                Label("Import", systemImage: "square.and.arrow.down")
+                            }
+                        }
                         Button { showSnapshots = true } label: {
                             Label("Snapshots", systemImage: "clock.arrow.circlepath")
                         }
+                    }
+                }
+                if showProductsSection {
+                    Section("PRODUCTS") {
+                        Button { showGuidedCatalogSetup = true } label: {
+                            Label("Set up your catalog", systemImage: "checklist")
+                        }
+                        Button { showGuidedProductSetup = true } label: {
+                            Label("Guided Setup", systemImage: "wand.and.stars")
+                        }
+                        Button { showNewService = true } label: {
+                            Label("New Service", systemImage: ProductCategory.service.iconName)
+                        }
+                        Button { showNewGood = true } label: {
+                            Label("New Good", systemImage: ProductCategory.material.iconName)
+                        }
+                        Button { showNewBundle = true } label: {
+                            Label("New Bundle", systemImage: ProductCategory.bundle.iconName)
+                        }
+                    }
+                }
+                if showManageSection {
+                    Section("MANAGE") {
                         if showStockManageRows {
                             Button { showCategoriesManage = true } label: { Label("Categories", systemImage: "folder") }
                             Button { showTagsManage = true }       label: { Label("Tags", systemImage: "tag") }
                             Button { showUnitsManage = true }      label: { Label("Units", systemImage: "ruler") }
                             Button { showThresholdsManage = true } label: { Label("Thresholds", systemImage: "exclamationmark.triangle") }
+                            Button { showDefaultsManage = true } label: { Label("Defaults", systemImage: "gearshape") }
                         }
                     }
                 }
                 if showOrdersSection {
                     Section("ORDERS") {
                         Button { showOrders = true } label: { Label("Orders", systemImage: "shippingbox") }
-                    }
-                }
-                if showSetupSection {
-                    Section("SETUP") {
-                        Button { showSetupFlow = true } label: {
-                            Label("Stock Setup", systemImage: "square.grid.3x3")
-                        }
-                        if canManage {
-                            Button { showDefaultsManage = true } label: { Label("Defaults", systemImage: "gearshape") }
-                        }
-                        if permissionStore.can("catalog.import") {
-                            Button { showImport = true } label: {
-                                Label("Import…", systemImage: "square.and.arrow.down")
-                            }
-                        }
                     }
                 }
             } label: {

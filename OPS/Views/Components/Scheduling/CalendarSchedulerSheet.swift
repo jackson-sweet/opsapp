@@ -44,9 +44,10 @@ struct CalendarSchedulerSheet: View {
 
     // Quick push / cascade state
     @State private var cascadeEnabled: Bool = false
-    @State private var cascadeResult: SchedulingEngine.CascadeResult?
+    @State private var cascadePlan: DataController.CascadePlan?
     @State private var showingCascadePreview: Bool = false
     @State private var pendingPushDays: Int = 0
+    @State private var pendingPushPreservesCalendarWeek: Bool = false
     @AppStorage("showCascadePreview") private var showCascadePreviewPref: Bool = true
 
     // Grid configuration
@@ -165,16 +166,20 @@ struct CalendarSchedulerSheet: View {
             loadScheduledTasks()
         }
         .sheet(isPresented: $showingCascadePreview) {
-            if let cascade = cascadeResult, case .task(let task) = itemType {
+            if let plan = cascadePlan, case .task(let task) = itemType {
                 CascadePreviewSheet(
                     pushedTaskName: task.displayTitle,
                     pushedTaskOldStart: task.startDate,
-                    pushedTaskNewStart: SchedulingEngine.pushByDays(task: task, days: pendingPushDays).newStart,
-                    pushedTaskNewEnd: SchedulingEngine.pushByDays(task: task, days: pendingPushDays).newEnd,
-                    cascadeChanges: cascade.changes,
+                    pushedTaskNewStart: plan.pushedNewStart,
+                    pushedTaskNewEnd: plan.pushedNewEnd,
+                    cascadeChanges: plan.cascade.changes,
                     onConfirm: {
                         Task {
-                            try? await dataController.pushTaskWithCascade(task, byDays: pendingPushDays)
+                            try? await dataController.pushTaskWithCascade(
+                                task,
+                                byDays: pendingPushDays,
+                                preserveCalendarWeeks: pendingPushPreservesCalendarWeek
+                            )
                         }
                         isPresented = false
                     },
@@ -678,9 +683,21 @@ struct CalendarSchedulerSheet: View {
 
     // MARK: - Calendar Grid
     private var calendarGridView: some View {
-        LazyVGrid(columns: columns, spacing: 2) {
+        // Precompute once per render: day → events spanning that day, plus the
+        // set of conflict days. This replaces the per-cell helpers that each
+        // re-filtered the full task pool and re-allocated `spannedDates`, turning
+        // the grid from O(cells × tasks × spannedDates) into O(tasks) per render.
+        // That blowup, re-run on every DataController sync republish, was the
+        // "app glitches and slows down when scheduling" freeze. Built fresh each
+        // render from the current filteredScheduledTasks/viewMode, so it can
+        // never go stale.
+        let dayIndex = dayEventIndex(filteredScheduledTasks)
+        let conflictKeys = conflictDayKeys()
+        let calendar = Calendar.current
+        return LazyVGrid(columns: columns, spacing: 2) {
             ForEach(daysInMonth(), id: \.self) { date in
-                let visibleEvents = getEventsForDate(date)
+                let dayKey = calendar.startOfDay(for: date)
+                let visibleEvents = dayIndex[dayKey] ?? []
                 SchedulerDayCell(
                     date: date,
                     isInCurrentMonth: isInCurrentMonth(date),
@@ -691,12 +708,64 @@ struct CalendarSchedulerSheet: View {
                     isInRange: isDateInRange(date),
                     isStartDate: isStartDate(date),
                     isEndDate: isEndDate(date),
-                    hasConflicts: hasConflicts(on: date),
-                    hasTeamConflicts: hasTeamConflicts(on: date),
+                    hasConflicts: conflictKeys.contains(dayKey),
+                    hasTeamConflicts: dayHasTeamConflict(visibleEvents),
                     isToday: isToday(date),
                     onTap: { handleDateSelection(date) }
                 )
             }
+        }
+    }
+
+    /// Day → events spanning that day, bucketed by `startOfDay`. Reproduces
+    /// `getEventsForDate` exactly (a task lands on day D iff one of its
+    /// `spannedDates` is the same day as D) and preserves
+    /// `filteredScheduledTasks` order, but computes each task's `spannedDates`
+    /// once instead of once per (cell × task).
+    private func dayEventIndex(_ tasks: [ProjectTask]) -> [Date: [ProjectTask]] {
+        let calendar = Calendar.current
+        var index: [Date: [ProjectTask]] = [:]
+        for task in tasks {
+            var seenDays = Set<Date>()
+            for spanned in task.spannedDates {
+                let key = calendar.startOfDay(for: spanned)
+                if seenDays.insert(key).inserted {
+                    index[key, default: []].append(task)
+                }
+            }
+        }
+        return index
+    }
+
+    /// Day-keys carrying a scheduling conflict — only in reviewing mode, matching
+    /// `hasConflicts(on:)`. Empty otherwise.
+    private func conflictDayKeys() -> Set<Date> {
+        guard viewMode == .reviewing else { return [] }
+        let calendar = Calendar.current
+        var keys = Set<Date>()
+        for task in conflictingEvents {
+            for spanned in task.spannedDates {
+                keys.insert(calendar.startOfDay(for: spanned))
+            }
+        }
+        return keys
+    }
+
+    /// Team-conflict test for a day, computed from that day's already-resolved
+    /// events — matches `hasTeamConflicts(on:)`: exclude the current item, require
+    /// crew overlap with the item being scheduled.
+    private func dayHasTeamConflict(_ events: [ProjectTask]) -> Bool {
+        let myCrew = currentItemTeamMemberIds
+        guard !myCrew.isEmpty else { return false }
+        return events.contains { scheduledTask in
+            let isSameItem: Bool
+            switch itemType {
+            case .project: isSameItem = false
+            case .task(let task): isSameItem = scheduledTask.id == task.id
+            case .draftTask: isSameItem = false
+            }
+            guard !isSameItem else { return false }
+            return !Set(scheduledTask.getTeamMemberIds()).isDisjoint(with: myCrew)
         }
     }
 
@@ -765,20 +834,20 @@ struct CalendarSchedulerSheet: View {
                 ForEach([1, 2, 3], id: \.self) { days in
                     quickPushButton(label: "+\(days)", days: days)
                 }
-                quickPushButton(label: "+1W", days: 7)
+                quickPushButton(label: "+1W", days: 7, preserveCalendarWeek: true)
             }
 
-            // Cascade toggle (only for tasks with dependents)
+            // Cascade toggle (only when a push could ripple the crew or dependents)
             if case .task(let task) = itemType {
-                let dependentCount = countDependentTasks(for: task)
-                if dependentCount > 0 {
+                let affectedCount = cascadeAffectedCount(for: task)
+                if affectedCount > 0 {
                     HStack {
                         Toggle(isOn: $cascadeEnabled) {
                             HStack(spacing: 6) {
-                                Text("Push dependent tasks")
+                                Text("Move the crew's jobs")
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                                Text("\(dependentCount)")
+                                Text("\(affectedCount)")
                                     .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 6)
@@ -795,9 +864,13 @@ struct CalendarSchedulerSheet: View {
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
-    private func quickPushButton(label: String, days: Int) -> some View {
+    private func quickPushButton(
+        label: String,
+        days: Int,
+        preserveCalendarWeek: Bool = false
+    ) -> some View {
         Button(action: {
-            handleQuickPush(days: days)
+            handleQuickPush(days: days, preserveCalendarWeek: preserveCalendarWeek)
         }) {
             Text(label)
                 .font(OPSStyle.Typography.button)
@@ -809,43 +882,72 @@ struct CalendarSchedulerSheet: View {
         }
     }
 
-    private func handleQuickPush(days: Int) {
+    /// Resolve the landing dates for a quick push. A week push preserves the
+    /// weekday (exactly +7, never weekend-normalized); a day push uses the
+    /// plain day engine so the preview matches what commits.
+    private func quickPushDates(
+        for task: ProjectTask,
+        days: Int,
+        preserveCalendarWeek: Bool
+    ) -> (newStart: Date, newEnd: Date) {
+        if preserveCalendarWeek {
+            return SchedulingEngine.pushByCalendarWeeks(task: task, weeks: days / 7)
+        }
+        return SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: dataController.currentCompanySkipsWeekends)
+    }
+
+    private func handleQuickPush(days: Int, preserveCalendarWeek: Bool = false) {
         guard case .task(let task) = itemType else { return }
 
-        let result = SchedulingEngine.pushByDays(task: task, days: days)
-
-        if cascadeEnabled {
-            let allTasks = dataController.getTasksForProject(task.projectId)
-            let cascade = SchedulingEngine.calculateCascade(
-                pushedTaskId: task.id,
-                newStartDate: result.newStart,
-                newEndDate: result.newEnd,
-                allProjectTasks: allTasks
-            )
-
-            if showCascadePreviewPref && !cascade.changes.isEmpty {
-                cascadeResult = cascade
+        // With cascade on, plan the full ripple (crew + dependencies) so the
+        // preview and the optimistic update match exactly what commits.
+        if cascadeEnabled,
+           let plan = dataController.planCascade(for: task, byDays: days, preserveCalendarWeeks: preserveCalendarWeek) {
+            if showCascadePreviewPref && !plan.cascade.changes.isEmpty {
+                cascadePlan = plan
                 pendingPushDays = days
+                pendingPushPreservesCalendarWeek = preserveCalendarWeek
                 showingCascadePreview = true
             } else {
-                onScheduleUpdate(result.newStart, result.newEnd)
+                onScheduleUpdate(plan.pushedNewStart, plan.pushedNewEnd)
                 Task {
-                    try? await dataController.pushTaskWithCascade(task, byDays: days)
+                    try? await dataController.pushTaskWithCascade(
+                        task,
+                        byDays: days,
+                        preserveCalendarWeeks: preserveCalendarWeek
+                    )
                 }
                 isPresented = false
             }
         } else {
+            let result = quickPushDates(for: task, days: days, preserveCalendarWeek: preserveCalendarWeek)
             onScheduleUpdate(result.newStart, result.newEnd)
             isPresented = false
         }
     }
 
-    private func countDependentTasks(for task: ProjectTask) -> Int {
-        let allTasks = dataController.getTasksForProject(task.projectId)
-        return allTasks.filter { other in
+    /// Count of jobs a cascade push could ripple — same-crew jobs scheduled on
+    /// or after this one (across projects), plus task-type dependents. Drives
+    /// whether the cascade toggle appears and the badge it shows.
+    private func cascadeAffectedCount(for task: ProjectTask) -> Int {
+        let dependents = dataController.getTasksForProject(task.projectId).filter { other in
             other.id != task.id &&
             other.effectiveDependencies.contains { $0.dependsOnTaskTypeId == task.taskTypeId }
-        }.count
+        }
+        var ids = Set(dependents.map(\.id))
+
+        let crew = task.schedulingTeamMemberIds
+        if let start = task.startDate, !crew.isEmpty {
+            let calendar = Calendar.current
+            let anchor = calendar.startOfDay(for: start)
+            for other in dataController.getActiveTasksForCompany() where other.id != task.id && !other.schedulingLocked {
+                guard !other.schedulingTeamMemberIds.isDisjoint(with: crew),
+                      let otherStart = other.startDate,
+                      calendar.startOfDay(for: otherStart) >= anchor else { continue }
+                ids.insert(other.id)
+            }
+        }
+        return ids.count
     }
 
     // MARK: - Helper Methods
@@ -903,12 +1005,6 @@ struct CalendarSchedulerSheet: View {
         date >= selectedStartDate && date <= selectedEndDate
     }
 
-    private func getEventsForDate(_ date: Date) -> [ProjectTask] {
-        filteredScheduledTasks.filter { task in
-            task.spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
-        }
-    }
-
     /// True when at least one of the visible events on `date` belongs to the
     /// current item's project. Powers the left-edge "this project" stripe on
     /// the day cell.
@@ -963,30 +1059,6 @@ struct CalendarSchedulerSheet: View {
         case .project(let project): return Set(project.getTeamMemberIds())
         case .task(let task): return Set(task.getTeamMemberIds())
         case .draftTask(_, let teamMemberIds, _): return Set(teamMemberIds)
-        }
-    }
-
-    private func hasConflicts(on date: Date) -> Bool {
-        guard viewMode == .reviewing else { return false }
-        return conflictingEvents.contains { task in
-            task.spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
-        }
-    }
-
-    private func hasTeamConflicts(on date: Date) -> Bool {
-        let myCrew = currentItemTeamMemberIds
-        guard !myCrew.isEmpty else { return false }
-
-        return filteredScheduledTasks.contains { scheduledTask in
-            let isSameItem: Bool
-            switch itemType {
-            case .project: isSameItem = false
-            case .task(let task): isSameItem = scheduledTask.id == task.id
-            case .draftTask: isSameItem = false
-            }
-            guard !isSameItem else { return false }
-            guard scheduledTask.spannedDates.contains(where: { Calendar.current.isDate($0, inSameDayAs: date) }) else { return false }
-            return !Set(scheduledTask.getTeamMemberIds()).isDisjoint(with: myCrew)
         }
     }
 

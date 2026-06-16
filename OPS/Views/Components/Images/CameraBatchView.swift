@@ -206,6 +206,7 @@ struct CameraBatchView: View {
     private func handleCapture(_ image: UIImage) {
         capturedImages.append(image)
         bumpCaptureBeat()
+        ToastCenter.shared.present(Feedback.Photo.captured)
     }
 
     private func bumpCaptureBeat() {

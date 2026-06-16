@@ -217,6 +217,193 @@ class PresignedURLUploadService {
         return presignedResponse.publicUrl
     }
 
+    /// Upload a client profile image using a presigned URL. Mirrors the 512px
+    /// square crop the legacy direct-S3 path produced.
+    func uploadClientProfileImage(_ image: UIImage, clientId: String, companyId: String) async throws -> String {
+        let resizedImage = resizeImageToSquare(image, maxSize: 512)
+        guard let imageData = resizedImage.jpegData(compressionQuality: 0.8) else {
+            throw UploadError.invalidResponse
+        }
+
+        let timestamp = Date().timeIntervalSince1970
+        let filename = "client_\(clientId)_\(timestamp).jpg"
+
+        // `client-images/*` is the bucket's public-read prefix for client
+        // avatars (the legacy direct-S3 path stored these under the public
+        // `company-*` prefix). Keep them publicly displayable.
+        let presignedResponse = try await requestPresignedURL(
+            filename: filename,
+            contentType: "image/jpeg",
+            folder: "client-images/\(companyId)"
+        )
+        try await uploadToPresignedURL(
+            presignedResponse: presignedResponse,
+            imageData: imageData,
+            contentType: "image/jpeg"
+        )
+        return presignedResponse.publicUrl
+    }
+
+    /// Upload an expense receipt (full image + thumbnail) using presigned URLs.
+    /// Returns (fullUrl, thumbnailUrl); on thumbnail failure the full URL is
+    /// returned for both, matching the legacy direct-S3 behavior.
+    func uploadExpenseReceipt(_ image: UIImage, expenseId: String, companyId: String) async throws -> (url: String, thumbnailUrl: String) {
+        // Full-size receipt (max 2048px, quality 0.85).
+        let fullImage = resizeImageIfNeeded(image)
+        guard let fullData = fullImage.jpegData(compressionQuality: 0.85) else {
+            throw UploadError.invalidResponse
+        }
+
+        let timestamp = Date().timeIntervalSince1970
+        let filename = "receipt_\(expenseId)_\(timestamp).jpg"
+        let thumbFilename = "receipt_\(expenseId)_\(timestamp)_thumb.jpg"
+
+        // Receipts render via their stored public URL, so the bucket must grant
+        // public-read on `expenses/*` (the legacy direct-S3 path stored receipts
+        // under the public `company-*` prefix). See the AWS bucket-policy step in
+        // the credential-removal runbook.
+        let fullPresign = try await requestPresignedURL(
+            filename: filename,
+            contentType: "image/jpeg",
+            folder: "expenses/\(companyId)"
+        )
+        try await uploadToPresignedURL(
+            presignedResponse: fullPresign,
+            imageData: fullData,
+            contentType: "image/jpeg"
+        )
+
+        // Thumbnail (512px square, quality 0.7). Best-effort — reuse the full
+        // URL for both if thumbnail generation or upload fails.
+        guard let thumbData = resizeImageToSquare(image, maxSize: 512)
+            .jpegData(compressionQuality: 0.7) else {
+            return (url: fullPresign.publicUrl, thumbnailUrl: fullPresign.publicUrl)
+        }
+
+        do {
+            let thumbPresign = try await requestPresignedURL(
+                filename: thumbFilename,
+                contentType: "image/jpeg",
+                folder: "expenses/\(companyId)"
+            )
+            try await uploadToPresignedURL(
+                presignedResponse: thumbPresign,
+                imageData: thumbData,
+                contentType: "image/jpeg"
+            )
+            return (url: fullPresign.publicUrl, thumbnailUrl: thumbPresign.publicUrl)
+        } catch {
+            return (url: fullPresign.publicUrl, thumbnailUrl: fullPresign.publicUrl)
+        }
+    }
+
+    // MARK: - Server-Mediated Operations
+    //
+    // These call dedicated ops-web endpoints rather than the presign flow,
+    // because the server does extra work that must not run with client-held
+    // credentials: writing the `bug_reports.screenshot_url` row for
+    // screenshots, and authorizing the object key against the caller's company
+    // before issuing an S3 delete.
+
+    /// Upload a bug-report screenshot via `/api/bug-reports/screenshot`. The
+    /// server stores the object and writes `bug_reports.screenshot_url` itself,
+    /// so the caller does not persist a URL. Throws on failure (best-effort).
+    func uploadBugReportScreenshot(_ image: UIImage, reportId: String, companyId: String) async throws {
+        // Max 1024px longest edge, quality 0.7 — matches the legacy sizing and
+        // stays well under the endpoint's 8MB cap.
+        let processed = resizeToFit(image, maxDimension: 1024)
+        guard let imageData = processed.jpegData(compressionQuality: 0.7) else {
+            throw UploadError.invalidResponse
+        }
+
+        let idToken: String
+        do {
+            idToken = try await FirebaseAuthService.shared.getIDToken()
+        } catch {
+            throw UploadError.invalidResponse
+        }
+
+        let endpoint = AppConfiguration.apiBaseURL.appendingPathComponent("/api/bug-reports/screenshot")
+        let boundary = "Boundary-\(UUID().uuidString)"
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        func appendField(_ name: String, _ value: String) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+        appendField("reportId", reportId)
+        appendField("companyId", companyId)
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"screenshot.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n".data(using: .utf8)!)
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw UploadError.invalidResponse
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw UploadError.s3Error(statusCode: httpResponse.statusCode)
+        }
+    }
+
+    /// Delete a previously-uploaded object via `/api/uploads/delete`. The
+    /// server extracts the object key from the URL and authorizes it against
+    /// the caller's company before deleting, so no client AWS credentials are
+    /// required. Best-effort: callers swallow errors (orphan cleanup only).
+    func deleteImage(url: String) async throws {
+        let idToken: String
+        do {
+            idToken = try await FirebaseAuthService.shared.getIDToken()
+        } catch {
+            throw UploadError.invalidResponse
+        }
+
+        let endpoint = AppConfiguration.apiBaseURL.appendingPathComponent("/api/uploads/delete")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "url", value: url)]
+        request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw UploadError.invalidResponse
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw UploadError.s3Error(statusCode: httpResponse.statusCode)
+        }
+    }
+
+    /// Resize so the longest edge is at most `maxDimension`, preserving aspect
+    /// ratio. Returns the original if already within bounds.
+    private func resizeToFit(_ image: UIImage, maxDimension: CGFloat) -> UIImage {
+        guard image.size.width > maxDimension || image.size.height > maxDimension else {
+            return image
+        }
+        let aspectRatio = image.size.width / image.size.height
+        let newSize = image.size.width > image.size.height
+            ? CGSize(width: maxDimension, height: maxDimension / aspectRatio)
+            : CGSize(width: maxDimension * aspectRatio, height: maxDimension)
+        UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+        image.draw(in: CGRect(origin: .zero, size: newSize))
+        let resized = UIGraphicsGetImageFromCurrentImageContext() ?? image
+        UIGraphicsEndImageContext()
+        return resized
+    }
+
     // MARK: - Generic Upload (used by PhotoProcessor)
 
     /// Upload raw image data to S3 via presigned URL, returning the public URL.

@@ -160,9 +160,15 @@ struct TaskRow: View {
                 Button("Change Team") {
                     showingTeamPicker = true
                 }
+            }
+            // Reschedule is gated on calendar.edit (scope-aware), not tasks.edit:
+            // a Crew member may edit the task but never move it on the calendar.
+            if task.canEditSchedule {
                 Button("Reschedule") {
                     showingScheduler = true
                 }
+            }
+            if canModify {
                 Button("Delete", role: .destructive) {
                     showingDeleteConfirmation = true
                 }
@@ -184,6 +190,7 @@ struct TaskRow: View {
                 currentStartDate: task.startDate,
                 currentEndDate: task.endDate,
                 onScheduleUpdate: { startDate, endDate in
+                    guard task.canEditSchedule else { return }
                     print("[RESCHEDULE_TASK] 📅 Task rescheduled")
                     print("[RESCHEDULE_TASK] Task: \(task.displayTitle)")
                     print("[RESCHEDULE_TASK] New dates: \(startDate) to \(endDate)")
@@ -196,6 +203,9 @@ struct TaskRow: View {
                         do {
                             try await dataController.updateTaskSchedule(task: task, startDate: startDate, endDate: endDate)
                             print("[RESCHEDULE_TASK] ✅ Task schedule synced")
+                            await MainActor.run {
+                                ToastCenter.shared.present(Feedback.Task.rescheduled)
+                            }
 
                             // Update project dates (computed from the now-updated tasks)
                             if let project = task.project {
@@ -248,6 +258,7 @@ struct TaskRow: View {
         task.needsSync = true
         try? modelContext.save()
         print("[DELETE_TASK] ✅ Task soft-deleted locally (UI updated)")
+        ToastCenter.shared.present(Feedback.Task.deleted)
 
         // STEP 3: Update project dates in background
         Task {

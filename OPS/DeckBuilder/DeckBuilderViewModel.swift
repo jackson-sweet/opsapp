@@ -56,6 +56,10 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var isSelectionMoveArmed: Bool = false
     private var selectionMoveStart: CGPoint?
     private var selectionMoveOriginalVertices: [String: CGPoint] = [:]
+    @Published private(set) var selectionClipboard: DeckSelectionClipboard?
+    @Published private(set) var pendingPastePreview: DeckPastePreview?
+    private var pendingPasteMoveStart: CGPoint?
+    private var pendingPasteMoveOriginalPreview: DeckPastePreview?
     /// Fixed drag-start anchor for the active marquee. The running
     /// `.selecting(rect:)` can't double as the anchor — once a reversing drag
     /// pulls the rect origin to a min corner, that corner is no longer the
@@ -134,33 +138,20 @@ class DeckBuilderViewModel: ObservableObject {
 
     // MARK: - Error State
 
-    @Published var saveError: String?
     @Published var isLocallySaved: Bool = true
     @Published var estimateValidationError: String?
-    @Published var showUndoLevelToast: Bool = false
     private var hasShownUndoLevelToast: Bool = false
 
     // MARK: - Assignment Wheel
 
     @Published var activeAssignment: AssignedItem?
-    @Published var showAssignmentToast: Bool = false
-    @Published var assignmentToastText: String = ""
-    private var assignmentToastTimer: Timer?
 
     // MARK: - Laser Meter
 
     @Published var isLaserConnected: Bool = false
     @Published var bufferedMeasurement: LaserMeasurement?
-    @Published var showMeasurementToast: Bool = false
-    @Published var measurementToastText: String = ""
-    @Published var showLaserErrorToast: Bool = false
-    @Published var laserErrorText: String = ""
-    @Published var showDisconnectToast: Bool = false
-    @Published var disconnectToastText: String = ""
     private var laserCancellables = Set<AnyCancellable>()
     private var bufferTimer: Timer?
-    private var errorTimer: Timer?
-    private var disconnectTimer: Timer?
 
     // MARK: - Multi-Level State
 
@@ -468,6 +459,21 @@ class DeckBuilderViewModel: ObservableObject {
         return PolygonMath.realWorldArea(vertices: positions, scaleFactor: scale)
     }
 
+    var selectedSurfaceSummary: DeckSurfaceSelectionSummary? {
+        DeckSurfaceInspector.summary(
+            selectedSurfaceIds: selection.selectedSurfaceIds,
+            detectedSurfaces: activeSurfaces,
+            persistedSurfaces: activePersistedSurfaces,
+            legacyFootprint: activeFootprint,
+            scaleFactor: drawingData.effectiveScaleFactor
+        )
+    }
+
+    var canPasteSelection: Bool {
+        guard let clipboard = selectionClipboard else { return false }
+        return !clipboard.isEmpty && pendingPastePreview == nil
+    }
+
     var totalPerimeter: Double? {
         let scale = drawingData.effectiveScaleFactor
         if isMultiLevel {
@@ -596,15 +602,10 @@ class DeckBuilderViewModel: ObservableObject {
     }
 
     deinit {
-        // Invalidate any in-flight toast / buffer timers so a deck builder
-        // dismissed mid-toast doesn't leave a Timer running for up to 10s
-        // against a deallocated owner. `[weak self]` in the closures already
-        // prevents leaks, but tidying up here keeps the runloop clean.
-        // Timer.invalidate() is safe to call from any actor context.
-        assignmentToastTimer?.invalidate()
+        // Invalidate the measurement buffer timer so a deck builder dismissed
+        // mid-measurement doesn't leave a Timer running against a deallocated
+        // owner. Timer.invalidate() is safe to call from any actor context.
         bufferTimer?.invalidate()
-        errorTimer?.invalidate()
-        disconnectTimer?.invalidate()
         autosaveTimer?.invalidate()
         // Set<AnyCancellable> auto-cancels its members on deinit.
     }
@@ -701,10 +702,10 @@ class DeckBuilderViewModel: ObservableObject {
     func undo() {
         guard let snapshot = undoStack.popLast() else { return }
 
-        // First undo in multi-level mode: show a one-time toast
+        // First undo in multi-level mode: show a one-time informational toast
         if isMultiLevel && !hasShownUndoLevelToast {
             hasShownUndoLevelToast = true
-            showUndoLevelToast = true
+            ToastCenter.shared.present(Toast(label: "// UNDO AFFECTS ALL LEVELS", tone: .warning))
         }
 
         redoStack.append(DrawingSnapshot(drawingData: drawingData, description: "redo"))
@@ -1541,6 +1542,146 @@ class DeckBuilderViewModel: ObservableObject {
         save()
     }
 
+    // MARK: - Copy / Paste Selection
+
+    @discardableResult
+    func copySelection() -> Bool {
+        guard let clipboard = buildSelectionClipboard(), !clipboard.isEmpty else { return false }
+        selectionClipboard = clipboard
+        hapticLight()
+        return true
+    }
+
+    func beginPaste() {
+        guard let clipboard = selectionClipboard else { return }
+        let target = CGPoint(x: clipboard.center.x + 48, y: clipboard.center.y + 48)
+        beginPaste(at: target)
+    }
+
+    func beginPaste(at point: CGPoint) {
+        guard let clipboard = selectionClipboard, !clipboard.isEmpty else { return }
+        pendingPastePreview = clipboard.preview(centeredAt: point)
+        pendingPasteMoveStart = nil
+        pendingPasteMoveOriginalPreview = nil
+        selection.clear()
+        isSelectionMoveArmed = false
+        drawingMode = .idle
+        activeTool = .tapSelect
+        hapticLight()
+    }
+
+    func beginPendingPasteMove(at point: CGPoint) {
+        guard let preview = pendingPastePreview else { return }
+        pendingPasteMoveStart = point
+        pendingPasteMoveOriginalPreview = preview
+        drawingMode = .movingPendingPaste
+        alignmentGuides = []
+    }
+
+    func updatePendingPasteMove(to point: CGPoint) {
+        guard case .movingPendingPaste = drawingMode,
+              let start = pendingPasteMoveStart,
+              var preview = pendingPasteMoveOriginalPreview else { return }
+        preview.translate(by: CGSize(width: point.x - start.x, height: point.y - start.y))
+        pendingPastePreview = preview
+    }
+
+    func endPendingPasteMove() {
+        guard case .movingPendingPaste = drawingMode else { return }
+        drawingMode = .idle
+        pendingPasteMoveStart = nil
+        pendingPasteMoveOriginalPreview = nil
+        alignmentGuides = []
+        hapticLight()
+    }
+
+    func commitPendingPaste() {
+        guard let preview = pendingPastePreview, !preview.isEmpty else { return }
+        pushUndo("paste selection")
+
+        var vertices = activeVertices
+        vertices.append(contentsOf: preview.vertices)
+        activeVertices = vertices
+
+        var edges = activeEdges
+        edges.append(contentsOf: preview.edges)
+        activeEdges = edges
+
+        if !preview.surfaces.isEmpty {
+            var surfaces = activePersistedSurfaces
+            surfaces.append(contentsOf: preview.surfaces)
+            activePersistedSurfaces = surfaces
+        }
+
+        reconcileSurfaces()
+
+        selection.clear()
+        selection.selectedVertexIds = Set(preview.vertices.map(\.id))
+        selection.selectedEdgeIds = Set(preview.edges.map(\.id))
+        let liveSurfaceIds = Set(activePersistedSurfaces.map(\.id))
+        selection.selectedSurfaceIds = Set(preview.surfaces.map(\.id)).intersection(liveSurfaceIds)
+
+        pendingPastePreview = nil
+        pendingPasteMoveStart = nil
+        pendingPasteMoveOriginalPreview = nil
+        drawingMode = .idle
+        activeTool = .tapSelect
+        hapticMedium()
+        save()
+    }
+
+    func cancelPendingPaste() {
+        pendingPastePreview = nil
+        pendingPasteMoveStart = nil
+        pendingPasteMoveOriginalPreview = nil
+        if case .movingPendingPaste = drawingMode {
+            drawingMode = .idle
+        }
+        hapticLight()
+    }
+
+    private func buildSelectionClipboard() -> DeckSelectionClipboard? {
+        var vertexIds = selection.selectedVertexIds
+        var edgeIds = selection.selectedEdgeIds
+        let selectedSurfaces = activePersistedSurfaces.filter { selection.selectedSurfaceIds.contains($0.id) }
+
+        for edge in activeEdges where edgeIds.contains(edge.id) {
+            vertexIds.insert(edge.startVertexId)
+            vertexIds.insert(edge.endVertexId)
+        }
+
+        for surface in selectedSurfaces {
+            vertexIds.formUnion(surface.vertexIds)
+            for edge in activeEdges where surface.vertexIds.contains(edge.startVertexId)
+                && surface.vertexIds.contains(edge.endVertexId) {
+                edgeIds.insert(edge.id)
+            }
+        }
+
+        let vertices = activeVertices.filter { vertexIds.contains($0.id) }
+        guard !vertices.isEmpty else { return nil }
+        let liveVertexIds = Set(vertices.map(\.id))
+        let edges = activeEdges.filter {
+            edgeIds.contains($0.id)
+                && liveVertexIds.contains($0.startVertexId)
+                && liveVertexIds.contains($0.endVertexId)
+        }
+        let surfaces = selectedSurfaces.filter { $0.vertexIds.isSubset(of: liveVertexIds) }
+        let xs = vertices.map { $0.position.x }
+        let ys = vertices.map { $0.position.y }
+        guard let minX = xs.min(),
+              let maxX = xs.max(),
+              let minY = ys.min(),
+              let maxY = ys.max() else { return nil }
+
+        return DeckSelectionClipboard(
+            vertices: vertices,
+            edges: edges,
+            surfaces: surfaces,
+            bounds: CGRect(x: minX, y: minY, width: max(maxX - minX, 1), height: max(maxY - minY, 1))
+        )
+    }
+
     private func selectedMoveVertexIds() -> Set<String> {
         var ids = selection.selectedVertexIds
         for edge in activeEdges where selection.selectedEdgeIds.contains(edge.id) {
@@ -1961,32 +2102,77 @@ class DeckBuilderViewModel: ObservableObject {
     /// 2D hatch color, 3D wall fill, and house-edge label. No-op when the
     /// edge is not a house edge.
     func setHouseEdgeMaterial(_ edgeId: String, material: HouseEdgeMaterial?) {
-        guard var edge = activeEdge(byId: edgeId), edge.edgeType == .houseEdge else { return }
+        setHouseEdgeMaterial([edgeId], material: material)
+    }
+
+    func setHouseEdgeMaterial(_ edgeIds: [String], material: HouseEdgeMaterial?) {
+        let ids = edgeIds.filter {
+            guard let edge = activeEdge(byId: $0) else { return false }
+            return edge.edgeType == .houseEdge
+        }
+        guard !ids.isEmpty else { return }
         pushUndo("set house cladding")
-        edge.houseEdgeMaterial = material
-        activeUpdateEdge(edge)
+        for id in ids {
+            guard var edge = activeEdge(byId: id) else { continue }
+            edge.houseEdgeMaterial = material
+            activeUpdateEdge(edge)
+        }
+        if ids.count > 1 {
+            let label = material?.displayName ?? "Cladding cleared"
+            showAssignmentConfirmation("\(label) applied to \(ids.count) house edges")
+        }
         save()
+        ToastCenter.shared.present(Feedback.Deck.houseEdgeMaterialSet)
     }
 
     func setRailing(_ edgeId: String, config: RailingConfig?) {
-        guard var edge = activeEdge(byId: edgeId) else { return }
-        guard config == nil || edge.edgeType == .deckEdge else { return }
+        setRailing([edgeId], config: config)
+    }
+
+    func setRailing(_ edgeIds: [String], config: RailingConfig?) {
+        let ids = edgeIds.filter {
+            guard let edge = activeEdge(byId: $0) else { return false }
+            return config == nil || edge.edgeType == .deckEdge
+        }
+        guard !ids.isEmpty else { return }
         pushUndo("set railing")
-        edge.railingConfig = config
-        activeUpdateEdge(edge)
+        for id in ids {
+            guard var edge = activeEdge(byId: id) else { continue }
+            edge.railingConfig = config
+            activeUpdateEdge(edge)
+        }
+        if ids.count > 1, let config {
+            showAssignmentConfirmation("\(config.railingType.displayName) applied to \(ids.count) edges")
+        }
         save()
+        ToastCenter.shared.present(Feedback.Deck.railingApplied)
     }
 
     func setRailingWallMaterial(_ edgeId: String, material: HouseEdgeMaterial) {
-        guard var edge = activeEdge(byId: edgeId),
-              edge.edgeType == .deckEdge,
-              var railing = edge.railingConfig,
-              railing.railingType == .parapetWall else { return }
+        setRailingWallMaterial([edgeId], material: material)
+    }
+
+    func setRailingWallMaterial(_ edgeIds: [String], material: HouseEdgeMaterial) {
+        let ids = edgeIds.filter {
+            guard let edge = activeEdge(byId: $0),
+                  edge.edgeType == .deckEdge,
+                  edge.railingConfig?.railingType == .parapetWall else { return false }
+            return true
+        }
+        guard !ids.isEmpty else { return }
         pushUndo("set parapet finish")
-        railing.wallMaterial = material
-        edge.railingConfig = railing
-        activeUpdateEdge(edge)
+        for id in ids {
+            guard var edge = activeEdge(byId: id),
+                  var railing = edge.railingConfig else { continue }
+            railing.wallMaterial = material
+            edge.railingConfig = railing
+            activeUpdateEdge(edge)
+        }
+        if ids.count > 1 {
+            showAssignmentConfirmation("\(material.displayName) applied to \(ids.count) parapet edges")
+        }
         save()
+        ToastCenter.shared.present(Feedback.Deck.wallMaterialSet)
     }
 
     func setStairs(_ edgeId: String, config: StairConfig?) {
@@ -2019,6 +2205,7 @@ class DeckBuilderViewModel: ObservableObject {
         edge.railingConfig = railing
         activeUpdateEdge(edge)
         save()
+        ToastCenter.shared.present(Feedback.Deck.railingUpdated)
     }
 
     /// Updates the catalog metadata vocabulary fields on a stair config.
@@ -2311,6 +2498,7 @@ class DeckBuilderViewModel: ObservableObject {
         fp.assignedItems.removeAll { $0.id == itemId }
         activeFootprint = fp
         save()
+        ToastCenter.shared.present(Feedback.Deck.itemRemoved)
     }
 
     /// Sets a label on every currently-selected surface. Pass `nil` or
@@ -2327,6 +2515,7 @@ class DeckBuilderViewModel: ObservableObject {
         }
         activePersistedSurfaces = surfaces
         save()
+        ToastCenter.shared.present(Feedback.Deck.surfacesLabeled)
     }
 
     /// Sets the legacy footprint label — used from the property sheet so the
@@ -2340,6 +2529,7 @@ class DeckBuilderViewModel: ObservableObject {
         fp.label = value
         activeFootprint = fp
         save()
+        ToastCenter.shared.present(Feedback.Deck.footprintLabeled)
     }
 
     /// Optional per-edge label. The model stores it on `DeckEdge.label`
@@ -2353,6 +2543,7 @@ class DeckBuilderViewModel: ObservableObject {
         edge.label = value
         activeUpdateEdge(edge)
         save()
+        ToastCenter.shared.present(Feedback.Deck.edgeLabeled)
     }
 
     /// Creates a fresh level (migrating from single-level if needed) and
@@ -2397,6 +2588,7 @@ class DeckBuilderViewModel: ObservableObject {
         selection.clear()
         hapticMedium()
         save()
+        ToastCenter.shared.present(Feedback.Deck.levelCreatedSurfaces)
     }
 
     /// Reassigns every currently-selected surface to a different level.
@@ -2428,6 +2620,7 @@ class DeckBuilderViewModel: ObservableObject {
         }
         hapticMedium()
         save()
+        ToastCenter.shared.present(Feedback.Deck.surfacesMoved)
     }
 
     /// Moves every selected edge (and its bounding vertices) to a different
@@ -2452,6 +2645,7 @@ class DeckBuilderViewModel: ObservableObject {
         selection.clear()
         hapticMedium()
         save()
+        ToastCenter.shared.present(Feedback.Deck.edgesMoved)
     }
 
     /// Combined add-level + move-edges-there. Same atomic pattern as
@@ -2481,6 +2675,7 @@ class DeckBuilderViewModel: ObservableObject {
         selection.clear()
         hapticMedium()
         save()
+        ToastCenter.shared.present(Feedback.Deck.levelCreatedEdges)
     }
 
     /// Worker for both edge-level migration entry points. Walks every level
@@ -2583,14 +2778,7 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Assignment Toast
 
     private func showAssignmentConfirmation(_ text: String) {
-        assignmentToastTimer?.invalidate()
-        assignmentToastText = text
-        showAssignmentToast = true
-        assignmentToastTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                self?.showAssignmentToast = false
-            }
-        }
+        ToastCenter.shared.present(Toast(label: "// \(text.uppercased())", tone: .success))
     }
 
     // MARK: - Auto-Fill Scale
@@ -2793,13 +2981,9 @@ class DeckBuilderViewModel: ObservableObject {
         do {
             try modelContext?.save()
             isLocallySaved = true
-            // Clear any previous failure now that we've succeeded — otherwise
-            // the toast keeps showing a stale error after the user has worked
-            // around whatever caused it.
-            saveError = nil
         } catch {
             print("[DeckBuilder] Save failed: \(error)")
-            saveError = "Save failed — check storage"
+            ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
         }
 
         // Bug ab554b5f — enqueue the change for the offline sync queue so
@@ -2909,6 +3093,7 @@ class DeckBuilderViewModel: ObservableObject {
         guard !trimmed.isEmpty else { return }
         deckDesign.title = trimmed
         save()
+        ToastCenter.shared.present(Feedback.Deck.designRenamed)
     }
 
     func clearDesign() {
@@ -2919,6 +3104,7 @@ class DeckBuilderViewModel: ObservableObject {
         editingVertexId = nil
         save()
         hapticMedium()
+        ToastCenter.shared.present(Feedback.Deck.designCleared)
     }
 
     // MARK: - Render + Save Thumbnail
@@ -2955,6 +3141,9 @@ class DeckBuilderViewModel: ObservableObject {
         // best-effort enhancement; thumbnail failure must not block the
         // primary save.
         save()
+        if hasGeometry {
+            ToastCenter.shared.present(Feedback.Deck.designSaved)
+        }
 
         // Bug 14555d2c — skip the thumbnail render + S3 upload when the
         // drawing has no geometry. The renderer returns a blank white PNG
@@ -3071,14 +3260,16 @@ class DeckBuilderViewModel: ObservableObject {
         // No edge selected — buffer the measurement for 5 seconds
         bufferedMeasurement = measurement
         let formatted = DimensionEngine.format(measurement.inches, system: drawingData.config.measurementSystem)
-        measurementToastText = "\(formatted) received — tap an edge to apply"
-        showMeasurementToast = true
+        ToastCenter.shared.present(Toast(
+            label: "// \(formatted.uppercased()) — TAP AN EDGE TO APPLY",
+            tone: .warning,
+            autoDismissAfter: 5
+        ))
 
         bufferTimer?.invalidate()
         bufferTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 self?.bufferedMeasurement = nil
-                self?.showMeasurementToast = false
             }
         }
     }
@@ -3087,60 +3278,31 @@ class DeckBuilderViewModel: ObservableObject {
         if let buffered = bufferedMeasurement {
             setEdgeDimension(edgeId, inches: buffered.inches, source: .laser)
             bufferedMeasurement = nil
-            showMeasurementToast = false
             bufferTimer?.invalidate()
             hapticLight()
         }
     }
 
     private func handleLaserError(_ error: String) {
-        laserErrorText = error
-        showLaserErrorToast = true
-
         // Clear the error on the service so it doesn't re-fire
         LaserMeterService.shared.measurementError = nil
-
-        errorTimer?.invalidate()
-        errorTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                self?.showLaserErrorToast = false
-            }
-        }
+        ToastCenter.shared.present(Toast(label: "// LASER ERROR — \(error.uppercased())", tone: .error))
     }
 
     private func handleConnectionStateChange(_ state: LaserConnectionState) {
         switch state {
         case .reconnecting:
-            disconnectToastText = "Laser disconnected — reconnecting..."
-            showDisconnectToast = true
-
-            // Auto-dismiss after 10 seconds if still reconnecting
-            disconnectTimer?.invalidate()
-            disconnectTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
-                Task { @MainActor in
-                    guard let self = self, self.showDisconnectToast else { return }
-                    self.disconnectToastText = "Reconnection failed"
-                    // Dismiss after 2 more seconds
-                    self.disconnectTimer?.invalidate()
-                    self.disconnectTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
-                        Task { @MainActor in
-                            self?.showDisconnectToast = false
-                        }
-                    }
-                }
-            }
+            ToastCenter.shared.present(Toast(
+                label: "// LASER DISCONNECTED — RECONNECTING",
+                tone: .error,
+                autoDismissAfter: 10
+            ))
 
         case .connected:
-            if showDisconnectToast {
-                // Connection restored — brief confirmation then dismiss
-                disconnectToastText = "Laser reconnected"
-                disconnectTimer?.invalidate()
-                disconnectTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
-                    Task { @MainActor in
-                        self?.showDisconnectToast = false
-                    }
-                }
-            }
+            ToastCenter.shared.present(Toast(
+                label: "// LASER RECONNECTED",
+                tone: .success
+            ))
 
         default:
             break
@@ -3414,7 +3576,6 @@ class DeckBuilderViewModel: ObservableObject {
     func prepareShareImage() async {
         let (clientId, _) = resolveProjectContext()
         let clientName = resolveClientName(clientId: clientId)
-        let companyName = resolveCompanyName()
 
         guard let image = DeckShareRenderer.renderShareImage(
             drawingData: drawingData,

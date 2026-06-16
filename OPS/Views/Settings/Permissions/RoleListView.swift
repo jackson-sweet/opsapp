@@ -119,6 +119,12 @@ struct RoleListView: View {
                             .buttonStyle(PlainButtonStyle())
                             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
+                        // Bug e6004ed0: cap the scroll content to the viewport
+                        // width so no descendant row can report an intrinsic
+                        // width wider than the screen and reintroduce sideways
+                        // scroll. Belt-and-suspenders on top of per-row
+                        // truncation (be2b9e23 / 45a9c534).
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, OPSStyle.Layout.spacing3)
                         .tabBarPadding()
                         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
@@ -372,6 +378,12 @@ struct RoleListView: View {
                     showingRoleForm = false
                     loadRoles()
 
+                    switch roleFormMode {
+                    case .create:
+                        ToastCenter.shared.present(Feedback.Settings.roleCreated)
+                    case .rename:
+                        ToastCenter.shared.present(Feedback.Settings.roleRenamed)
+                    }
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                 }
             } catch {
@@ -397,6 +409,7 @@ struct RoleListView: View {
 
                 await MainActor.run {
                     loadRoles()
+                    ToastCenter.shared.present(Feedback.Settings.roleDuplicated)
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
 
                     // Open the new role for editing
@@ -422,6 +435,7 @@ struct RoleListView: View {
                     isDeleting = false
                     roleToDelete = nil
                     loadRoles()
+                    ToastCenter.shared.present(Feedback.Settings.roleDeleted)
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                 }
             } catch {

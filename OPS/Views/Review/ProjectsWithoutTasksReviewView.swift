@@ -487,6 +487,10 @@ private struct InlineQuickTaskComposer: View {
 
     private func presentScheduler() {
         guard !saving else { return }
+        // Scheduling a draft is gated on calendar.edit, scope-aware on the project
+        // (own-scope → only projects the user is on). Crew / Unassigned (no grant)
+        // can review and create tasks but never set their schedule.
+        guard project.canEditSchedule else { return }
         schedulerDatesExisted = draftTask.startDate != nil
         schedulerConfirmed = false
         schedulerStart = draftTask.startDate ?? Date()

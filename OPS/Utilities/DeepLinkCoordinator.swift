@@ -252,6 +252,10 @@ final class DeepLinkCoordinator: ObservableObject {
             return (Notification.Name("OpenInvoiceDetails"), "invoiceId")
         case "estimates":
             return (Notification.Name("OpenEstimateDetails"), "estimateId")
+        case "leads", "opportunities":
+            // Both entity spellings resolve to the same LEADS-tab detail; the
+            // OpenLeadDetails observer in MainTabView reads `leadId`.
+            return (Notification.Name("OpenLeadDetails"), "leadId")
         case "tasks":
             return (Notification.Name("OpenTaskDetails"), "taskId")
         default:

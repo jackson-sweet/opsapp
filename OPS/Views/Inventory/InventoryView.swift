@@ -909,6 +909,7 @@ struct InventoryView: View {
         tag.needsSync = true
 
         try? modelContext.save()
+        ToastCenter.shared.present(Feedback.Inventory.tagRenamed)
 
         // Sync the tag rename to API
         Task {
@@ -944,6 +945,7 @@ struct InventoryView: View {
         tag.needsSync = true
 
         try? modelContext.save()
+        ToastCenter.shared.present(Feedback.Inventory.tagDeleted)
 
         // Sync deletion to API
         Task {
@@ -989,6 +991,7 @@ struct InventoryView: View {
         // Save locally and exit selection mode immediately
         try? modelContext.save()
         exitSelectionMode()
+        ToastCenter.shared.present(Feedback.Inventory.itemsDeleted)
 
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.success)

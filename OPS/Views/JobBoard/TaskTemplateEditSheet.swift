@@ -251,6 +251,7 @@ struct TaskTemplateEditSheet: View {
                 modelContext.insert(model)
                 try? modelContext.save()
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
+                ToastCenter.shared.present(Feedback.Task.subCreated)
                 onSave(model)
                 dismiss()
             } catch {
@@ -273,6 +274,7 @@ struct TaskTemplateEditSheet: View {
                 template.updatedAt = updated.updatedAt.flatMap { SupabaseDate.parse($0) }
                 try? modelContext.save()
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
+                ToastCenter.shared.present(Feedback.Task.subUpdated)
                 onSave()
                 dismiss()
             } catch {
@@ -295,6 +297,7 @@ struct TaskTemplateEditSheet: View {
             template.deletedAt = Date()
             try? modelContext.save()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            ToastCenter.shared.present(Feedback.Task.subDeleted)
             onSave()
             dismiss()
         } catch {

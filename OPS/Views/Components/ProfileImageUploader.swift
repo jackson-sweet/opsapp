@@ -58,7 +58,6 @@ struct ProfileImageUploader: View {
     @State private var showingCamera = false
     @State private var showingActionSheet = false
     @State private var errorMessage: String?
-    @State private var showingError = false
     @State private var localImage: UIImage?
     @State private var loadedImage: UIImage?
     @State private var isLoadingImage = false
@@ -114,13 +113,7 @@ struct ProfileImageUploader: View {
                 handleImageSelected(image)
             }
         }
-        .alert("ERROR", isPresented: $showingError) {
-            Button("OK") {
-                errorMessage = nil
-            }
-        } message: {
-            Text(errorMessage ?? "An error occurred")
-        }
+        .errorToast($errorMessage, label: Feedback.Err.uploadFailed)
         .onAppear {
             loadImageIfNeeded()
         }
@@ -298,13 +291,13 @@ struct ProfileImageUploader: View {
                 await MainActor.run {
                     isUploading = false
                     errorMessage = nil
+                    ToastCenter.shared.present(Feedback.Photo.uploaded)
                 }
             } catch {
                 print("[IMAGE_UPLOADER] ❌ Upload failed: \(error)")
                 await MainActor.run {
                     isUploading = false
-                    errorMessage = "UPLOAD FAILED"
-                    showingError = true
+                    errorMessage = "upload failed"
                     // Keep local image so user can see what failed
                 }
             }
@@ -324,13 +317,13 @@ struct ProfileImageUploader: View {
                     localImage = nil
                     loadedImage = nil
                     isUploading = false
+                    ToastCenter.shared.present(Feedback.Photo.removed)
                 }
             } catch {
                 print("[IMAGE_UPLOADER] ❌ Delete failed: \(error)")
                 await MainActor.run {
                     isUploading = false
-                    errorMessage = "DELETE FAILED"
-                    showingError = true
+                    errorMessage = "delete failed"
                 }
             }
         }

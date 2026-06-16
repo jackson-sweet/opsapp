@@ -474,6 +474,7 @@ struct PhotoStorageManagementView: View {
         if !StorageProfiler.shared.wouldExceedBudget(adding: 0) {
             PhotoPrefetchService.shared.resolveCapHitRailNotifications()
         }
+        ToastCenter.shared.present(Feedback.Settings.spaceFreed)
         Task { await refreshBreakdown() }
     }
 
@@ -516,6 +517,7 @@ struct PhotoStorageManagementView: View {
             PhotoPrefetchService.shared.resolveCapHitRailNotifications()
         }
 
+        ToastCenter.shared.present(Feedback.Settings.photosRemoved)
         await refreshBreakdown()
     }
 

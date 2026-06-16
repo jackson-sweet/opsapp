@@ -46,13 +46,28 @@ struct UniversalSearchSheet: View {
     @FocusState private var searchFocused: Bool
     @State private var query: String = ""
 
-    // Detail sheet states
-    @State private var selectedClient: Client?
-    @State private var selectedUser: User?
-    @State private var selectedInvoice: Invoice?
-    @State private var selectedEstimate: Estimate?
-    @State private var selectedInventoryItem: InventoryItem?
-    @State private var selectedCatalogRow: EnrichedVariantRow?
+    // Detail presentation. Client / invoice / estimate deep-link through the
+    // app-root sheets (AppState.viewXDetailsById) — the same robust path the
+    // project/task rows already use — because stacking many sibling .sheet
+    // modifiers on one view silently drops the innermost one, which is exactly
+    // why tapping a client search result never opened anything. User / inventory
+    // / catalog have no app-root sheet, so they share ONE enum-driven sheet
+    // rather than three more stacked modifiers.
+    @State private var selectedDetail: SearchDetail?
+
+    private enum SearchDetail: Identifiable {
+        case user(User)
+        case inventory(InventoryItem)
+        case catalog(EnrichedVariantRow)
+
+        var id: String {
+            switch self {
+            case .user(let u): return "user-\(u.id)"
+            case .inventory(let i): return "inventory-\(i.id)"
+            case .catalog(let r): return "catalog-\(r.id)"
+            }
+        }
+    }
 
     // Collapsed-by-default inactive folders (bug f2f87911). Closed/archived
     // projects and completed/cancelled tasks live behind a disclosure so the
@@ -341,33 +356,9 @@ struct UniversalSearchSheet: View {
             searchFocused = true
             loadSupabaseData()
         }
-        // Detail sheets
-        .sheet(item: $selectedClient) { client in
-            ContactDetailView(client: client, project: nil)
-                .environmentObject(dataController)
-        }
-        .sheet(item: $selectedUser) { user in
-            ContactDetailView(user: user)
-                .environmentObject(dataController)
-        }
-        .sheet(item: $selectedInvoice) { invoice in
-            NavigationStack {
-                InvoiceDetailView(invoice: invoice, viewModel: invoiceVM)
-            }
-        }
-        .sheet(item: $selectedEstimate) { estimate in
-            NavigationStack {
-                EstimateDetailView(estimate: estimate, viewModel: estimateVM)
-            }
-        }
-        .sheet(item: $selectedInventoryItem) { item in
-            InventoryFormSheet(item: item)
-                .environmentObject(dataController)
-        }
-        .sheet(item: $selectedCatalogRow) { row in
-            VariantDetailView(row: row)
-                .environmentObject(dataController)
-        }
+        // Detail sheets — client/invoice/estimate route to the app-root deep-link
+        // sheets (see navigateToClient/Invoice/Estimate); user/inventory/catalog
+        // share the single enum-driven sheet attached at the end of this chain.
         // Quick-action sheets — scheduler
         .sheet(item: $schedulingTaskPickerProject) { project in
             UniversalSearchTaskSchedulePickerSheet(
@@ -392,6 +383,7 @@ struct UniversalSearchSheet: View {
                 currentStartDate: task.startDate,
                 currentEndDate: task.endDate,
                 onScheduleUpdate: { start, end in
+                    guard task.canEditSchedule else { return }
                     Task {
                         try? await dataController.updateTaskSchedule(
                             task: task,
@@ -444,6 +436,23 @@ struct UniversalSearchSheet: View {
         .sheet(isPresented: $showingNewClient) {
             ClientSheet(mode: .create) { _ in }
                 .environmentObject(dataController)
+        }
+        // Single consolidated detail sheet for the result types with no app-root
+        // deep-link. Attached LAST so it is the outermost (least-shadowed) sheet
+        // in the chain, avoiding the multi-sibling-sheet drop that broke the old
+        // per-type detail sheets.
+        .sheet(item: $selectedDetail) { detail in
+            switch detail {
+            case .user(let user):
+                ContactDetailView(user: user)
+                    .environmentObject(dataController)
+            case .inventory(let item):
+                InventoryFormSheet(item: item)
+                    .environmentObject(dataController)
+            case .catalog(let row):
+                VariantDetailView(row: row)
+                    .environmentObject(dataController)
+            }
         }
     }
 
@@ -560,7 +569,7 @@ struct UniversalSearchSheet: View {
                                     color: invoice.status.isPaid ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent
                                 ),
                                 quickActions: [],
-                                onTap: { selectedInvoice = invoice }
+                                onTap: { navigateToInvoice(invoice) }
                             )
                         }
                     }
@@ -580,7 +589,7 @@ struct UniversalSearchSheet: View {
                                     color: OPSStyle.Colors.primaryAccent
                                 ),
                                 quickActions: [],
-                                onTap: { selectedEstimate = estimate }
+                                onTap: { navigateToEstimate(estimate) }
                             )
                         }
                     }
@@ -604,7 +613,7 @@ struct UniversalSearchSheet: View {
                                     color: row.thresholdStatus.color
                                 ),
                                 quickActions: [],
-                                onTap: { selectedCatalogRow = row }
+                                onTap: { selectedDetail = .catalog(row) }
                             )
                         }
                         ForEach(matchingInventoryItems) { item in
@@ -618,7 +627,7 @@ struct UniversalSearchSheet: View {
                                     color: item.effectiveThresholdStatus().color
                                 ),
                                 quickActions: [],
-                                onTap: { selectedInventoryItem = item }
+                                onTap: { selectedDetail = .inventory(item) }
                             )
                         }
                     }
@@ -708,7 +717,9 @@ struct UniversalSearchSheet: View {
                 completeTask(task)
             })
         }
-        if canEditTasks && !task.status.isTerminal {
+        // Reschedule is gated on calendar.edit (scope-aware on the task), not
+        // tasks.edit — scheduling authority is separate from task editing.
+        if task.canEditSchedule && !task.status.isTerminal {
             actions.append(QuickActionSpec(
                 id: "reschedule",
                 icon: OPSStyle.Icons.schedule,
@@ -760,7 +771,7 @@ struct UniversalSearchSheet: View {
             subtitle: client.email ?? client.phoneNumber,
             pill: nil,
             quickActions: actions,
-            onTap: { selectedClient = client }
+            onTap: { navigateToClient(client) }
         )
     }
 
@@ -795,7 +806,7 @@ struct UniversalSearchSheet: View {
                 color: user.roleColor
             ),
             quickActions: actions,
-            onTap: { selectedUser = user }
+            onTap: { selectedDetail = .user(user) }
         )
     }
 
@@ -1157,6 +1168,27 @@ struct UniversalSearchSheet: View {
         dismiss()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             appState.viewProjectDetails(project)
+        }
+    }
+
+    private func navigateToClient(_ client: Client) {
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            appState.viewClientDetailsById(client.id)
+        }
+    }
+
+    private func navigateToInvoice(_ invoice: Invoice) {
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            appState.viewInvoiceDetailsById(invoice.id)
+        }
+    }
+
+    private func navigateToEstimate(_ estimate: Estimate) {
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            appState.viewEstimateDetailsById(estimate.id)
         }
     }
 

@@ -37,7 +37,6 @@ struct SharePhotoToProjectSheet: View {
     @State private var selectedProject: Project?
     @State private var isUploading = false
     @State private var uploadError: String?
-    @State private var showingUploadError = false
     @State private var projectSearchText = ""
 
     @Query(
@@ -86,11 +85,7 @@ struct SharePhotoToProjectSheet: View {
                 onAction: { attachAndDismiss() }
             )
         }
-        .alert("Upload Error", isPresented: $showingUploadError) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(uploadError ?? "Failed to attach photos.")
-        }
+        .errorToast($uploadError, label: Feedback.Err.uploadFailed)
         .onChange(of: selectedPhotoItems) { _, newItems in
             Task { await loadPhotoItems(newItems) }
         }
@@ -334,7 +329,6 @@ struct SharePhotoToProjectSheet: View {
                 let urls = await dataController.imageSyncManager.saveImages(images, for: project)
                 if urls.isEmpty {
                     uploadError = "Upload failed. Check your connection and try again."
-                    showingUploadError = true
                     return
                 }
             } else {
@@ -351,6 +345,7 @@ struct SharePhotoToProjectSheet: View {
             }
 
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            ToastCenter.shared.present(Feedback.Photo.uploaded)
             onDismiss()
             dismiss()
         }

@@ -35,10 +35,14 @@ final class PriorityQueueViewModel: ObservableObject {
         reload()
     }
 
-    /// Load active (non-terminal, non-deleted) projects, split by waterline.
+    /// Load schedulable (accepted / in-progress, non-deleted) projects, split by
+    /// waterline. Pre-acceptance projects (`.rfq`, `.estimated`) haven't been
+    /// greenlit, so auto-scheduling their tasks would assign dates to work that
+    /// isn't accepted yet — they're excluded here on the same `Status.isActive`
+    /// rule the job board task list uses (`isJobBoardTaskListVisible`).
     func reload() {
         let active = dataController.getProjects().filter {
-            $0.deletedAt == nil && $0.status != .completed && $0.status != .closed && $0.status != .archived
+            $0.deletedAt == nil && $0.status.isActive
         }
         ranked = active.filter { $0.priorityRank != nil }.sorted { lhs, rhs in
             let lr = lhs.priorityRank ?? 0, rr = rhs.priorityRank ?? 0
@@ -146,15 +150,11 @@ final class PriorityQueueViewModel: ObservableObject {
     /// committed (a placement whose task can't be found is skipped, not counted).
     @discardableResult
     private func applyPlacements(_ plan: SchedulePlan) async -> Int {
-        let byId = Dictionary(dataController.getAllTasks().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        var committed = 0
-        for placement in plan.placements {
-            guard let task = byId[placement.id] else { continue }
-            try? await dataController.updateTaskSchedule(
-                task: task, startDate: placement.startDate, endDate: placement.endDate, manualEdit: false)
-            committed += 1
-        }
-        return committed
+        // Route through the batched apply: one save, one index recalc per project,
+        // one coalesced push, and ONE schedule summary per crew member. The old
+        // per-placement updateTaskSchedule loop froze the main thread and flooded
+        // the network (a push + per-member notifications PER task).
+        await dataController.applySchedulePlan(plan)
     }
 
     func commit(plan: SchedulePlan) async {

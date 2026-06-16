@@ -47,8 +47,6 @@ struct UniversalJobBoardCard: View {
     @State private var confirmingDirection: CardSwipeDirection? = nil
     @State private var showingDeleteConfirmation = false
     @State private var showingClientDeletionSheet = false
-    @State private var showingNoTasksAlert = false
-    @State private var customAlert: CustomAlertConfig?
     @State private var showingWrongSwipeHint = false
     private let menuLongPressDuration: Double = 0.55
     private let menuLongPressMaximumDistance: CGFloat = 12
@@ -384,15 +382,6 @@ struct UniversalJobBoardCard: View {
             itemName: deleteItemName,
             onConfirm: deleteItem
         )
-        .customAlert($customAlert)
-        .alert("No Tasks to Reschedule", isPresented: $showingNoTasksAlert) {
-            Button("Create Task") {
-                showingTaskForm = true
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("This project has no tasks. Create one to schedule work.")
-        }
     }
 
     /// Whether to show tutorial shimmer for swipe hint
@@ -877,7 +866,6 @@ struct UniversalJobBoardCard: View {
             itemName: deleteItemName,
             onConfirm: deleteItem
         )
-        .customAlert($customAlert)
     }
 
     @ViewBuilder
@@ -1053,12 +1041,15 @@ struct UniversalJobBoardCard: View {
                 Button("Add Task") {
                     showingTaskForm = true
                 }
+            }
 
-                if case .project(let project) = cardType,
-                   UniversalSearchScheduleTargeting.target(forProject: project) != .unavailable {
-                    Button("Reschedule") {
-                        handleRescheduleForProject()
-                    }
+            // Reschedule is gated on calendar.edit (scope-aware on the project),
+            // not projects.edit — scheduling authority is separate from editing.
+            if case .project(let project) = cardType,
+               project.canEditSchedule,
+               UniversalSearchScheduleTargeting.target(forProject: project) != .unavailable {
+                Button("Reschedule") {
+                    handleRescheduleForProject()
                 }
             }
 
@@ -1116,7 +1107,9 @@ struct UniversalJobBoardCard: View {
                 showingProjectDetails = true
             }
 
-            if canModify {
+            // Reschedule is gated on calendar.edit (scope-aware on the task),
+            // not projects.edit — a user may edit the task but not move it.
+            if case .task(let task) = cardType, task.canEditSchedule {
                 Button("Reschedule") {
                     showingScheduler = true
                 }
@@ -1175,6 +1168,7 @@ struct UniversalJobBoardCard: View {
                         Task {
                             do {
                                 // Update dates directly on the task
+                                guard selectedTask.canEditSchedule else { return }
                                 try await dataController.updateTaskSchedule(task: selectedTask, startDate: startDate, endDate: endDate)
 
                                 // Update parent project dates if necessary
@@ -1198,6 +1192,7 @@ struct UniversalJobBoardCard: View {
                         // Clear task dates
                         Task {
                             do {
+                                guard selectedTask.canEditSchedule else { return }
                                 // Clear dates directly on the task
                                 await MainActor.run {
                                     selectedTask.startDate = nil
@@ -1261,6 +1256,7 @@ struct UniversalJobBoardCard: View {
                     Task {
                         do {
                             // Update dates directly on the task
+                            guard task.canEditSchedule else { return }
                             try await dataController.updateTaskSchedule(task: task, startDate: startDate, endDate: endDate)
 
                             // Update parent project dates if necessary
@@ -1284,6 +1280,7 @@ struct UniversalJobBoardCard: View {
                     // Clear task dates
                     Task {
                         do {
+                            guard task.canEditSchedule else { return }
                             print("🗑️ [JOB_BOARD] Clearing task dates")
 
                             // Update locally
@@ -1343,12 +1340,13 @@ struct UniversalJobBoardCard: View {
     /// Checks if project has tasks and shows appropriate UI
     private func handleRescheduleForProject() {
         guard case .project(let project) = cardType else { return }
+        guard project.canEditSchedule else { return }
 
         let activeTasks = UniversalSearchScheduleTargeting.schedulableTasks(forProject: project)
 
         if activeTasks.isEmpty {
-            // No tasks - show alert with option to create one
-            showingNoTasksAlert = true
+            // No tasks - present toast with action to create one
+            ToastCenter.shared.present(Feedback.JobBoard.noTasksToReschedule(createTask: { showingTaskForm = true }))
         } else if activeTasks.count == 1 {
             // Exactly one task - reschedule it automatically
             selectedTaskForScheduling = activeTasks.first
@@ -1907,11 +1905,7 @@ struct UniversalJobBoardCard: View {
                     let activeProjects = client.activeProjects
                     guard activeProjects.isEmpty else {
                         await MainActor.run {
-                            customAlert = CustomAlertConfig(
-                                title: "CANNOT DELETE CLIENT",
-                                message: "This client has \(activeProjects.count) project(s). Use the Delete option from the menu to properly handle projects.",
-                                color: OPSStyle.Colors.errorStatus
-                            )
+                            ToastCenter.shared.present(Toast(label: "// CLIENT HAS ACTIVE PROJECTS", tone: .error))
                         }
                         return
                     }
@@ -1924,13 +1918,9 @@ struct UniversalJobBoardCard: View {
                     print("[DELETE_TASK_CARD] ✅ Task deleted successfully")
                 }
 
-                // Show success feedback (in-app popup only, no push notification)
+                // Show success feedback via canonical toast
                 await MainActor.run {
-                    customAlert = CustomAlertConfig(
-                        title: "DELETED",
-                        message: itemName,
-                        color: OPSStyle.Colors.successStatus
-                    )
+                    ToastCenter.shared.present(Feedback.JobBoard.deleted)
                 }
             } catch {
                 print("[DELETE] ❌ Error deleting item: \(error)")

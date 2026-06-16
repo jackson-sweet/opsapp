@@ -53,12 +53,17 @@ struct LeadsTabView: View {
     @StateObject private var viewModel: PipelineViewModel
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
+    @EnvironmentObject private var appState: AppState
 
     @State private var selectedBucket: PipelineViewModel.TriageBucket?
     @State private var detailLead: Opportunity?
     @State private var activeSheet: LeadsSheet?
     @State private var moreForLead: Opportunity?
     @State private var footerStage: PipelineStage?
+
+    /// Guards the deep-link drain so a single tap resolves once even if both
+    /// the `.task` load and the `pendingLeadDeepLinkId` change fire.
+    @State private var isResolvingDeepLink = false
 
     init(viewModel: PipelineViewModel? = nil) {
         _viewModel = StateObject(wrappedValue: viewModel ?? PipelineViewModel())
@@ -181,7 +186,12 @@ struct LeadsTabView: View {
                     Button("MARK LOST", role: .destructive) { activeSheet = .lost(lead) }
                     Button("EDIT") { activeSheet = .edit(lead) }
                     Button("ARCHIVE") {
-                        Task { try? await viewModel.archive(opportunityId: lead.id) }
+                        Task {
+                            do {
+                                try await viewModel.archive(opportunityId: lead.id)
+                                ToastCenter.shared.present(Feedback.Lead.archived)
+                            } catch {}
+                        }
                     }
                 }
                 Button("CANCEL", role: .cancel) {}
@@ -193,6 +203,15 @@ struct LeadsTabView: View {
                 viewModel.setup(companyId: companyId, currentUserId: dataController.currentUser?.id)
                 await viewModel.loadData()
             }
+            // Drain a pending lead deep link once the pipeline data is in hand.
+            await resolvePendingLeadDeepLinkIfNeeded()
+        }
+        // A deep link can arrive AFTER the tab has already loaded (rail tap from
+        // another tab, second push while LEADS is foregrounded). Drain on change
+        // too so those land without requiring a reload.
+        .onChange(of: appState.pendingLeadDeepLinkId) { _, newValue in
+            guard newValue != nil else { return }
+            Task { await resolvePendingLeadDeepLinkIfNeeded() }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadCreatedSuccess"))) { _ in
             Task { await viewModel.loadData() }
@@ -384,6 +403,70 @@ struct LeadsTabView: View {
         }
     }
 
+    // MARK: - Deep link
+
+    /// Resolve `appState.pendingLeadDeepLinkId` to an `Opportunity` and present
+    /// its `LeadDetailView`. Looks in the already-loaded pipeline first; if the
+    /// lead isn't present locally (sync lag, or a lead just outside the current
+    /// fetch window) it fetches the single row directly. The id is always
+    /// cleared so a stale baton can't re-fire. When the lead can't be resolved
+    /// (deleted, or not in this company) we surface the access-denied rail
+    /// rather than stranding the operator on a silent no-op.
+    @MainActor
+    private func resolvePendingLeadDeepLinkIfNeeded() async {
+        guard let leadId = appState.pendingLeadDeepLinkId, !leadId.isEmpty else { return }
+        guard !isResolvingDeepLink else { return }
+        isResolvingDeepLink = true
+        // Clear immediately so a re-entrant change or a later tab appear can't
+        // double-open the same lead.
+        appState.pendingLeadDeepLinkId = nil
+        defer { isResolvingDeepLink = false }
+
+        // Already in hand?
+        if let lead = viewModel.allOpportunities.first(where: { $0.id == leadId }) {
+            presentDeepLinkedLead(lead)
+            return
+        }
+
+        // Not loaded locally — fetch the single opportunity directly. Mirrors
+        // the project/task deep-link handlers in MainTabView that hydrate a
+        // single record on a cold tap rather than forcing a full reload.
+        guard let companyId = dataController.currentUser?.companyId else {
+            appState.presentAccessDenied(message: "This lead is no longer available.")
+            return
+        }
+        let repo = OpportunityRepository(companyId: companyId)
+        do {
+            let dto = try await repo.fetchOne(leadId)
+            let lead = dto.toModel()
+            // A soft-deleted lead is no longer actionable; treat as unavailable.
+            guard !lead.isDeleted else {
+                appState.presentAccessDenied(message: "This lead is no longer available.")
+                return
+            }
+            presentDeepLinkedLead(lead)
+        } catch {
+            print("[Pipeline] Deep-linked lead \(leadId) not resolvable: \(error)")
+            appState.presentAccessDenied(message: "This lead is no longer available.")
+        }
+    }
+
+    /// Present the resolved lead. Light impact mirrors the in-list row-tap
+    /// arrival; if a detail is already up for a different lead we swap after a
+    /// beat so the navigation push doesn't race the prior one.
+    @MainActor
+    private func presentDeepLinkedLead(_ lead: Opportunity) {
+        if let current = detailLead, current.id != lead.id {
+            detailLead = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                detailLead = lead
+            }
+        } else {
+            detailLead = lead
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
     // MARK: - Helpers
 
     private var atmosphereTone: Atmosphere.Tone {
@@ -411,11 +494,14 @@ struct LeadsTabView: View {
     private func advance(_ lead: Opportunity) {
         guard canManage, !lead.stage.isTerminal, let next = lead.stage.next else { return }
         Task {
-            try? await viewModel.moveToStage(
-                opportunityId: lead.id,
-                to: next,
-                userId: dataController.currentUser?.id
-            )
+            do {
+                try await viewModel.moveToStage(
+                    opportunityId: lead.id,
+                    to: next,
+                    userId: dataController.currentUser?.id
+                )
+                ToastCenter.shared.present(Feedback.Lead.stageAdvanced)
+            } catch {}
         }
     }
 

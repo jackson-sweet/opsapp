@@ -164,7 +164,7 @@ When spawning a follow-up chat, fresh worktree, or background task (e.g. via `mc
 
 - **Never use the simulator for plain `build`.** Always use `xcodebuild -scheme OPS -destination 'generic/platform=iOS'` for device-target build verification. Do NOT use `-destination 'platform=iOS Simulator,...'` for `build`.
 - **Test compilation and execution use the simulator destination** (`-destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'`). `xcodebuild build-for-testing` verifies tests compile clean; `xcodebuild test` runs the suite.
-- **Secrets.xcconfig** lives at `OPS/Utilities/Secrets.xcconfig` (gitignored). It populates `MBX_ACCESS_TOKEN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET`, `AWS_REGION` via build-setting substitution into `Info.plist`. Worktrees do NOT inherit this file — copy it in before running tests: `cp OPS/Utilities/Secrets.xcconfig <worktree>/OPS/Utilities/Secrets.xcconfig`.
+- **Secrets.xcconfig** lives at `OPS/Utilities/Secrets.xcconfig` (gitignored). It populates `MBX_ACCESS_TOKEN` via build-setting substitution into `Info.plist`. Worktrees do NOT inherit this file — copy it in before running tests: `cp OPS/Utilities/Secrets.xcconfig <worktree>/OPS/Utilities/Secrets.xcconfig`. (The app holds no AWS credentials — all S3 access is mediated server-side by ops-web via `/api/uploads/presign`, `/api/uploads/delete`, and `/api/bug-reports/screenshot`.)
 - **DerivedData collisions.** Multiple parallel `xcodebuild` invocations on the same DerivedData path will fight. Check `lsof` / `ps aux | grep xcodebuild` before kicking off a build if a parallel session may be active.
 
 ## Field-First Implementation

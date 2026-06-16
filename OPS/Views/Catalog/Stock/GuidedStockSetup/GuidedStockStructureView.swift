@@ -1122,6 +1122,11 @@ private struct StockCard: View {
                             onChange: { syncOffcutsToEntry() }
                         )
 
+                        Text(group.lengthUnit)
+                            .font(OPSStyle.Typography.metadata)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .frame(minWidth: 28, alignment: .leading)
+
                         // Delete offcut row
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -1850,8 +1855,8 @@ private struct AttributeValueEditor: View {
             .buttonStyle(.plain)
             .frame(minHeight: OPSStyle.Layout.touchTargetMin)
         }
+        .padding(OPSStyle.Layout.spacing3)
         .nestedCard()
-        .padding(OPSStyle.Layout.spacing2)
         .onAppear { applyPrefillIfNeeded() }
     }
 

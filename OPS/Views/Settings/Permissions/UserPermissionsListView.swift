@@ -73,6 +73,12 @@ struct UserPermissionsListView: View {
                             )
                             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
+                        // Bug e6004ed0: cap the scroll content to the viewport
+                        // width so no member row can report an intrinsic width
+                        // wider than the screen and reintroduce sideways scroll.
+                        // Belt-and-suspenders on top of per-row truncation
+                        // (be2b9e23 / 45a9c534).
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, OPSStyle.Layout.spacing3)
                         .tabBarPadding()
                         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in

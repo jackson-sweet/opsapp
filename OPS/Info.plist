@@ -50,14 +50,6 @@
 	<string>OPS uses the microphone to transcribe voice notes and speak deck dimensions hands-free while measuring.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>OPS uses speech recognition to convert your voice into text for activity logging and deck dimension entry.</string>
-	<key>AWS_ACCESS_KEY_ID</key>
-	<string>$(AWS_ACCESS_KEY_ID)</string>
-	<key>AWS_SECRET_ACCESS_KEY</key>
-	<string>$(AWS_SECRET_ACCESS_KEY)</string>
-	<key>AWS_S3_BUCKET</key>
-	<string>$(AWS_S3_BUCKET)</string>
-	<key>AWS_REGION</key>
-	<string>$(AWS_REGION)</string>
 	<key>MBXAccessToken</key>
 	<string>$(MBX_ACCESS_TOKEN)</string>
 	<key>UIRequiredDeviceCapabilities</key>

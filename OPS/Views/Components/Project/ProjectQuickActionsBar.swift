@@ -8,6 +8,20 @@
 
 import SwiftUI
 
+/// Pure permission gate for the action-bar DECK quick action.
+///
+/// The DECK button opens the deck-creation picker (a create/edit surface), so
+/// it must appear only when the deck-builder feature flag is on AND the user
+/// can create or edit deck designs. View-only roles (e.g. Crew with
+/// `deck_builder.view` only) must not see it — the read-only DECK tab covers
+/// their access. Kept as a pure, side-effect-free function so the gate is
+/// unit-testable independent of the view hierarchy.
+enum ProjectQuickActionPermissionGate {
+    static func canShowDeckAction(featureEnabled: Bool, canCreate: Bool, canEdit: Bool) -> Bool {
+        featureEnabled && (canCreate || canEdit)
+    }
+}
+
 struct ProjectQuickActionsBar: View {
     let selectedTask: ProjectTask?
     let hasClientContact: Bool

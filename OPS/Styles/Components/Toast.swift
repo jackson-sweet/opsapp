@@ -128,34 +128,77 @@ final class ToastCenter: ObservableObject {
 
     @Published private(set) var current: Toast?
 
+    /// Pending toasts behind `current`, FIFO. Readable for tests.
+    private(set) var queue: [Toast] = []
+
+    /// Max queued toasts (excludes the visible one). Overflow drops the oldest
+    /// auto-dismissing entry; manual-dismiss (error) toasts are never dropped.
+    private let maxQueue = 3
+
+    /// When a backlog exists, auto-dismiss toasts compress to this interval so a
+    /// burst drains quickly instead of holding the screen for the full 3s each.
+    private let compressedInterval: TimeInterval = 1.2
+
     private var dismissTask: Task<Void, Never>?
 
     private init() {}
 
-    /// Present a toast. Cancels and replaces any in-flight toast — the
-    /// freshest user action wins. Auto-dismiss fires after the toast's
-    /// `autoDismissAfter` interval; pass `0` for manual-only dismiss.
+    /// Enqueue a toast. Identical consecutive labels are coalesced (a burst of
+    /// the same event reads as one). If nothing is showing it appears
+    /// immediately; otherwise it queues behind the current toast. Pass a toast
+    /// with `autoDismissAfter: 0` for manual-only dismiss (errors with an action).
     func present(_ toast: Toast) {
+        // Ensure the dedicated toast window exists before we show anything — this
+        // is what lets a toast fired from inside a sheet appear ABOVE the sheet.
+        ToastWindowController.shared.install()
+        if current?.label == toast.label { return }
+        if queue.last?.label == toast.label { return }
+        guard current != nil else { show(toast); return }
+        queue.append(toast)
+        trimQueue()
+    }
+
+    /// Dismiss the visible toast and advance to the next queued one. Called by
+    /// tap and by the auto-dismiss timer.
+    func dismiss() {
         dismissTask?.cancel()
+        dismissTask = nil
+        if queue.isEmpty { current = nil }
+        else { show(queue.removeFirst()) }
+    }
+
+    /// Test/teardown hook — clears all state.
+    func reset() {
+        dismissTask?.cancel()
+        dismissTask = nil
+        current = nil
+        queue.removeAll()
+    }
+
+    private func show(_ toast: Toast) {
         current = toast
-
-        let interval = toast.autoDismissAfter
-        guard interval > 0 else { return }
-
+        let base = toast.autoDismissAfter
+        guard base > 0 else { return } // manual-dismiss (error + action)
+        let interval = queue.isEmpty ? base : compressedInterval
         let id = toast.id
         dismissTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
             guard !Task.isCancelled else { return }
             await MainActor.run {
-                if self?.current?.id == id { self?.dismiss() }
+                guard let self, self.current?.id == id else { return }
+                self.dismiss()
             }
         }
     }
 
-    func dismiss() {
-        dismissTask?.cancel()
-        dismissTask = nil
-        current = nil
+    private func trimQueue() {
+        while queue.count > maxQueue {
+            if let idx = queue.firstIndex(where: { $0.autoDismissAfter > 0 }) {
+                queue.remove(at: idx)
+            } else {
+                queue.removeFirst()
+            }
+        }
     }
 }
 
@@ -336,10 +379,13 @@ private struct ToastBanner: View {
 // MARK: - View extension — `.toastHost()`
 
 extension View {
-    /// Mounts the toast layer above this view. Apply once at a root container
-    /// (MainTabView) so toasts persist across tab swaps.
+    /// Installs the toast layer in a dedicated window above everything (see
+    /// `ToastWindowController`). Apply once at a root container (MainTabView).
+    /// A plain `.overlay` can't clear a presented `.sheet` — UIKit presents the
+    /// sheet above the whole root — so toasts fired from inside a form sheet
+    /// rendered behind it. The window sits at `.alert` level and fixes that.
     func toastHost() -> some View {
-        overlay(ToastHostView())
+        onAppear { ToastWindowController.shared.install() }
     }
 }
 

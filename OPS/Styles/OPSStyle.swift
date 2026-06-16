@@ -423,6 +423,12 @@ enum OPSStyle {
         static let touchTargetStandard = 56.0
         static let touchTargetLarge = 64.0
 
+        // Mobile control heights — `ops-design-system/project/mobile/MOBILE.md`.
+        // Spec'd component heights that sit between the touch-target presets.
+        static let inputHeight: CGFloat = 48.0          // §9 text input height (mobile touch)
+        static let bottomCTAHeight: CGFloat = 52.0      // §8 bottom-anchored primary CTA (thumb zone)
+        static let chipMinHeight: CGFloat = 36.0        // §4.3 filter / form-picker chip — the one sanctioned sub-44pt target
+
         // MARK: - Corner radius (spec v2 — sharp, tactical, no 999px pills)
         // Prefer the new semantic names (panelRadius, chipRadius, etc.).
         // Legacy names are kept as aliases so existing call sites still compile.
@@ -685,6 +691,7 @@ enum OPSStyle {
         static let close = "xmark"                          // THE icon for Close/Dismiss
         static let back = "chevron.left"                    // THE icon for Back navigation
         static let forward = "chevron.right"                // THE icon for Forward navigation
+        static let arrowRight = "arrow.right"               // THE icon for a directional right arrow (list-row affordance)
 
         // MARK: - Legacy SF Symbols (Currently in Use)
         // These are used in existing code - during Track F migration, replace with semantic icons above
@@ -786,6 +793,7 @@ enum OPSStyle {
         static let receipt          = "doc.text.viewfinder"
         static let clockFill        = "clock.fill"
         static let exclamationmarkCircleFill = "exclamationmark.circle.fill"
+        static let lockFill         = "lock.fill"
     }
 
     // MARK: - Wizard

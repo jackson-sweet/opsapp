@@ -239,9 +239,14 @@ struct ProductDetailView: View {
                 .padding(OPSStyle.Layout.spacing3)
             }
         }
-        .navigationTitle(product.category3Way.navigationTitle)
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text(product.category3Way.navigationTitle)
+                    .font(OPSStyle.Typography.panelTitle)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
             if hasChanges && canManageProducts {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {

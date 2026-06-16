@@ -427,6 +427,9 @@ struct ProjectPaymentReviewView: View {
         Task {
             do {
                 try await dataController.updateProjectStatus(project: project, to: .closed)
+                await MainActor.run {
+                    ToastCenter.shared.present(Feedback.JobBoard.projectClosed)
+                }
             } catch {
                 print("[PaymentReview] Failed to close project: \(error)")
             }
@@ -436,6 +439,7 @@ struct ProjectPaymentReviewView: View {
     private func executeSendReminder(_ project: Project) {
         // Future: send actual reminder. For now, just a note placeholder.
         print("[PaymentReview] Reminder sent for project: \(project.title)")
+        ToastCenter.shared.present(Feedback.Invoice.reminderSent)
     }
 
     private func executeWriteOff(_ project: Project) {
@@ -449,6 +453,10 @@ struct ProjectPaymentReviewView: View {
             // Write off outstanding invoices if user has financial access
             if hasFinancialAccess {
                 await writeOffOutstandingInvoices(for: project)
+            }
+
+            await MainActor.run {
+                ToastCenter.shared.present(Feedback.Invoice.writtenOff)
             }
         }
 

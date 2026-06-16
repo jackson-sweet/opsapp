@@ -16,8 +16,7 @@ struct SeatManagementView: View {
     @State private var allTeamMembers: [User] = []
     @State private var isLoading = true
     @State private var isSaving = false
-    @State private var showError = false
-    @State private var errorMessage = ""
+    @State private var errorMessage: String? = nil
     @State private var hasChanges = false
     @State private var showPlanSelection = false
     @State private var showInfo = false
@@ -86,11 +85,7 @@ struct SeatManagementView: View {
         .onAppear {
             loadTeamMembers()
         }
-        .alert("Error", isPresented: $showError) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(errorMessage)
-        }
+        .errorToast($errorMessage, label: Feedback.Err.operationFailed)
         .sheet(isPresented: $showPlanSelection) {
             PlanSelectionView()
         }
@@ -444,13 +439,13 @@ struct SeatManagementView: View {
 
                 // Dismiss after everything is done
                 await MainActor.run {
+                    ToastCenter.shared.present(Feedback.Settings.seatsUpdated)
                     dismiss()
                 }
             } catch {
                 await MainActor.run {
                     isSaving = false
                     errorMessage = "Failed to update seats: \(error.localizedDescription)"
-                    showError = true
                 }
             }
         }

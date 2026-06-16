@@ -212,6 +212,7 @@ class EstimateViewModel: ObservableObject {
             }
             try ctx.save()
             reloadFromLocal()
+            ToastCenter.shared.present(Feedback.Estimate.created)
             return est
         } catch {
             self.error = error.localizedDescription
@@ -258,6 +259,7 @@ class EstimateViewModel: ObservableObject {
         do {
             _ = try await repo.addLineItem(dto)
             await refreshEstimate(estimateId)
+            ToastCenter.shared.present(Feedback.Estimate.lineItemAdded)
         } catch {
             self.error = error.localizedDescription
         }
@@ -274,6 +276,7 @@ class EstimateViewModel: ObservableObject {
         do {
             _ = try await repo.updateLineItem(id, fields: dto)
             await refreshEstimate(estimateId)
+            ToastCenter.shared.present(Feedback.Estimate.lineItemUpdated)
         } catch {
             self.error = error.localizedDescription
         }
@@ -284,6 +287,7 @@ class EstimateViewModel: ObservableObject {
         do {
             try await repo.deleteLineItem(id)
             await refreshEstimate(estimateId)
+            ToastCenter.shared.present(Feedback.Estimate.lineItemDeleted)
         } catch {
             self.error = error.localizedDescription
         }
@@ -301,6 +305,7 @@ class EstimateViewModel: ObservableObject {
                 try ctx.save()
             }
             reloadFromLocal()
+            ToastCenter.shared.present(Feedback.Estimate.updated)
         } catch {
             self.error = error.localizedDescription
         }
@@ -384,6 +389,7 @@ class EstimateViewModel: ObservableObject {
             _ = try await repo.convertToInvoice(estimateId: estimate.id)
             estimate.status = .converted
             await refreshEstimate(estimate.id)
+            ToastCenter.shared.present(Feedback.Estimate.converted)
         } catch {
             self.error = error.localizedDescription
         }
@@ -401,6 +407,7 @@ class EstimateViewModel: ObservableObject {
                 lineItemSelections: lineItemSelections
             )
             await refreshEstimate(estimate.id)
+            ToastCenter.shared.present(Feedback.Estimate.progressInvoice)
             return true
         } catch {
             self.error = error.localizedDescription
@@ -421,6 +428,9 @@ class EstimateViewModel: ObservableObject {
             let updated = try await repo.updateStatus(estimate.id, status: status)
             estimate.status = EstimateStatus(rawValue: updated.status) ?? status
             await refreshEstimate(estimate.id)
+            if status == .sent {
+                ToastCenter.shared.present(Feedback.Estimate.sent)
+            }
         } catch {
             estimate.status = originalStatus
             self.error = error.localizedDescription

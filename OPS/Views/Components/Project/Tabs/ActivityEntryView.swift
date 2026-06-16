@@ -25,7 +25,9 @@ struct ActivityEntryView: View {
     /// can fire the same `@`-mention picker as the compose bar. Without
     /// it the edit flow had no source of truth for avatars + ids.
     let allTeamMembers: [TeamMember]
-    let onDelete: () -> Void
+    /// `deletePhoto` is true when the user chose to also remove the note's
+    /// photo from the project gallery (only offered when the note has one).
+    let onDelete: (_ deletePhoto: Bool) -> Void
     let onEdit: (String) -> Void
     let onPhotoTap: (([String], Int) -> Void)?
 
@@ -168,11 +170,22 @@ struct ActivityEntryView: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
-        .confirmationDialog("Delete Note", isPresented: $showDeleteConfirmation) {
-            Button("Delete", role: .destructive, action: onDelete)
+        .confirmationDialog(
+            notePhotoURLs.isEmpty ? "Delete Note" : "Delete the photo too?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            if notePhotoURLs.isEmpty {
+                Button("Delete", role: .destructive) { onDelete(false) }
+            } else {
+                Button("Delete note and photo", role: .destructive) { onDelete(true) }
+                Button("Delete note only", role: .destructive) { onDelete(false) }
+            }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("Are you sure you want to delete this note?")
+            Text(notePhotoURLs.isEmpty
+                 ? "Are you sure you want to delete this note?"
+                 : "This photo also shows in the project gallery.")
         }
         // Bug f6cd3c43 — opens when the user taps an `@member` span.
         .sheet(item: $contactSheetMember) { member in

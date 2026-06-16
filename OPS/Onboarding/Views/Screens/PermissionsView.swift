@@ -114,27 +114,29 @@ struct PermissionsView: View {
                 isRequestingNotifications = false
             }
         }
-        // Location Permission Denied Alert
-        .alert("Location Access Required", isPresented: $showLocationDeniedAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Open Settings") {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
-            }
-        } message: {
-            Text("OPS needs location access to show nearby jobs and navigate to job sites. Please enable location access in Settings to use these features.")
+        .onChange(of: showLocationDeniedAlert) { _, isShowing in
+            guard isShowing else { return }
+            showLocationDeniedAlert = false
+            ToastCenter.shared.present(
+                Toast(label: Feedback.Err.locationRequired, tone: .error, autoDismissAfter: 0,
+                      action: ToastAction(label: "OPEN SETTINGS") {
+                          if let url = URL(string: UIApplication.openSettingsURLString) {
+                              UIApplication.shared.open(url)
+                          }
+                      })
+            )
         }
-        // Notification Permission Denied Alert
-        .alert("Notifications Required", isPresented: $showNotificationDeniedAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Open Settings") {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
-            }
-        } message: {
-            Text("OPS needs notification access to keep you updated about schedule changes and job assignments. Please enable notifications in Settings.")
+        .onChange(of: showNotificationDeniedAlert) { _, isShowing in
+            guard isShowing else { return }
+            showNotificationDeniedAlert = false
+            ToastCenter.shared.present(
+                Toast(label: Feedback.Err.notificationsDisabled, tone: .error, autoDismissAfter: 0,
+                      action: ToastAction(label: "OPEN SETTINGS") {
+                          if let url = URL(string: UIApplication.openSettingsURLString) {
+                              UIApplication.shared.open(url)
+                          }
+                      })
+            )
         }
     }
 }

@@ -18,8 +18,7 @@ struct ProfileSettingsView: View {
     @State private var phone: String = ""
     @State private var homeAddress: String = ""
     @State private var showSaveConfirmation = false
-    @State private var showSaveError = false
-    @State private var saveErrorMessage = ""
+    @State private var saveError: String? = nil
     @State private var showResetPasswordSheet = false
     @State private var resetEmail = ""
     @State private var passwordResetInProgress = false
@@ -286,11 +285,7 @@ struct ProfileSettingsView: View {
             } message: {
                 Text("Save your profile changes?")
             }
-            .alert("Error", isPresented: $showSaveError) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(saveErrorMessage)
-            }
+            .errorToast($saveError, label: Feedback.Err.saveFailed)
             .sheet(isPresented: $showResetPasswordSheet, onDismiss: {
                 resetPasswordFields()
             }) {
@@ -612,6 +607,7 @@ struct ProfileSettingsView: View {
 
                 if success {
                     passwordResetSuccess = true
+                    ToastCenter.shared.present(Feedback.Settings.resetLinkSent)
                 } else {
                     passwordResetError = errorMessage ?? "Failed to send reset link. Please try again."
                 }
@@ -726,9 +722,9 @@ struct ProfileSettingsView: View {
                     originalLastName = lastName
                     originalPhone = phone
                     originalHomeAddress = homeAddress
+                    ToastCenter.shared.present(Feedback.Settings.profileUpdated)
                 } else {
-                    saveErrorMessage = "Failed to save profile changes. Please try again."
-                    showSaveError = true
+                    saveError = "Failed to save profile changes."
                 }
             }
         }
@@ -767,6 +763,7 @@ struct ProfileSettingsView: View {
                         // This will automatically trigger ContentView to show LandingView (signup page)
                         isDeletingAccount = false
                         showDeleteAccountSheet = false
+                        ToastCenter.shared.present(Feedback.Settings.accountDeleted)
 
                         // Dismiss all presented views to ensure clean navigation
                         dismiss()

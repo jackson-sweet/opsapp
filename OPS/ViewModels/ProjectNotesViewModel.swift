@@ -136,9 +136,12 @@ class ProjectNotesViewModel: ObservableObject {
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
         let all = (try? context.fetch(descriptor)) ?? []
-        // Only surface annotations that carry a visible note — drawing-only
-        // annotations (no text) aren't meaningful in a text feed.
-        annotations = all.filter { !$0.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        // Surface annotations that carry markup OR a text note (see
+        // AnnotationFeedPolicy). Drawing-only markups now show as "marked up a
+        // photo"; pure dimensioned captures (no overlay, no note) stay out.
+        annotations = all.filter {
+            AnnotationFeedPolicy.belongsInFeed(annotationURL: $0.annotationURL, note: $0.note)
+        }
     }
 
     // MARK: - Pending Images
@@ -309,6 +312,7 @@ class ProjectNotesViewModel: ObservableObject {
                 try? context.save()
             }
             loadNotesFromLocal()
+            ToastCenter.shared.present(Feedback.Project.notePosted)
 
             // Send push notifications for mentions
             await sendMentionNotifications(mentionedIds: mentionedIds, noteText: noteContent, noteId: created.id, attachmentURLs: attachmentURLs)
@@ -393,8 +397,16 @@ class ProjectNotesViewModel: ObservableObject {
 
     // MARK: - Delete
 
-    func deleteNote(_ note: ProjectNote) async {
+    func deleteNote(_ note: ProjectNote, deletePhoto: Bool = false) async {
         guard let repo = repository else { return }
+
+        // Capture the note's photo URLs before deletion so we can optionally
+        // prune them once the note's own soft delete succeeds.
+        let photoURLs: [String] = {
+            var urls = note.attachments.filter { !$0.isEmpty }
+            if let photo = note.photoURL, !photo.isEmpty { urls.append(photo) }
+            return Array(Set(urls))
+        }()
 
         // Optimistic soft delete
         note.deletedAt = Date()
@@ -405,6 +417,14 @@ class ProjectNotesViewModel: ObservableObject {
 
         do {
             try await repo.softDelete(note.id)
+            // A photo posted with a note is mirrored into the project gallery and
+            // a project_photos row, so soft-deleting the note alone leaves the
+            // photo in the carousel ("delete did nothing"). When the user opts to
+            // remove the photo too, prune every photo this note owned that no
+            // surviving note still references.
+            if deletePhoto {
+                await removeNotePhotosFromProject(photoURLs)
+            }
         } catch {
             // Revert on failure
             note.deletedAt = nil
@@ -414,6 +434,78 @@ class ProjectNotesViewModel: ObservableObject {
             loadNotesFromLocal()
             if !(error is CancellationError) {
                 self.error = error.localizedDescription
+            }
+        }
+    }
+
+    /// Remove a deleted note's photos from the project gallery so they stop
+    /// appearing in the Activity carousel. Prunes only URLs that no surviving
+    /// note still references (the just-deleted note is already out of `notes`
+    /// after `loadNotesFromLocal()`). Mirrors `addAttachmentsToProjectGallery`
+    /// in reverse and additionally soft-deletes the local + remote
+    /// `project_photos` rows.
+    ///
+    /// NOTE: `ImageSyncManager.deleteImage` only clears the local file cache —
+    /// it does NOT touch the gallery CSV or `project_photos` — so the removal
+    /// must be done explicitly here.
+    private func removeNotePhotosFromProject(_ urls: [String]) async {
+        let prunable = urls.filter { commentCount(forPhotoURL: $0) == 0 }
+        guard !prunable.isEmpty,
+              let context = modelContext,
+              let project = fetchProject() else { return }
+
+        // 1) Drop from the legacy CSV gallery (local mirror of project_images).
+        var gallery = project.getProjectImageURLs()
+        let csvCountBefore = gallery.count
+        gallery.removeAll { prunable.contains($0) }
+        let csvChanged = gallery.count != csvCountBefore
+        if csvChanged {
+            project.setProjectImageURLs(gallery)
+            project.needsSync = true
+            project.syncPriority = 2
+        }
+
+        // 2) Soft-delete the local ProjectPhoto rows so the @Query-backed
+        //    carousel drops them immediately.
+        let pid = projectId
+        let descriptor = FetchDescriptor<ProjectPhoto>(
+            predicate: #Predicate { $0.projectId == pid && $0.deletedAt == nil }
+        )
+        let localPhotos = (try? context.fetch(descriptor)) ?? []
+        for photo in localPhotos where prunable.contains(photo.url) {
+            photo.deletedAt = Date()
+        }
+
+        try? context.save()
+
+        // 3) Push the CSV change to Supabase (canonical write side).
+        if csvChanged, let dataController = dataController {
+            do {
+                try await dataController.updateProjectFields(
+                    projectId: projectId,
+                    fields: [
+                        "project_images": .array(gallery.map { .string($0) })
+                    ]
+                )
+            } catch {
+                print("[NOTES] Failed to queue project_images removal: \(error)")
+            }
+        }
+
+        // 4) Soft-delete the remote project_photos rows (web portal + other
+        //    devices). Best-effort per URL.
+        struct ProjectPhotoSoftDelete: Encodable { let deleted_at: String }
+        let nowISO = ISO8601DateFormatter().string(from: Date())
+        for url in prunable {
+            do {
+                try await SupabaseService.shared.client
+                    .from("project_photos")
+                    .update(ProjectPhotoSoftDelete(deleted_at: nowISO))
+                    .eq("project_id", value: projectId)
+                    .eq("url", value: url)
+                    .execute()
+            } catch {
+                print("[NOTES] Failed to soft-delete remote project_photos for \(url): \(error)")
             }
         }
     }

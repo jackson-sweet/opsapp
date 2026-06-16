@@ -544,6 +544,7 @@ class OnboardingViewModel: ObservableObject {
                 emergencyContactName: nil,
                 emergencyContactPhone: nil,
                 emergencyContactRelationship: nil,
+                firebaseUid: nil,
                 deletedAt: nil
             )
             try? await userRepo.upsert(userDTO)
@@ -554,6 +555,7 @@ class OnboardingViewModel: ObservableObject {
                 UserDefaults.standard.set(userIdValue, forKey: "user_id")
                 UserDefaults.standard.set(userIdValue, forKey: "currentUserId")
 
+                ToastCenter.shared.present(Feedback.Onboarding.accountCreated)
                 print("[ONBOARDING] User signed up successfully with ID: \(userIdValue)")
 
                 // Create User object in SwiftData
@@ -706,6 +708,7 @@ class OnboardingViewModel: ObservableObject {
             // Store data and update SwiftData
             await MainActor.run {
                 isCompanyJoined = true
+                ToastCenter.shared.present(Feedback.Onboarding.joinedCrew)
                 companyName = companyDTO.name
 
                 // Store in UserDefaults
@@ -1311,6 +1314,7 @@ class OnboardingViewModel: ObservableObject {
 
             await MainActor.run {
                 isCompanyCreationComplete = true
+                ToastCenter.shared.present(Feedback.Onboarding.companyCreated)
                 print("[ONBOARDING] ✅ Company creation marked complete")
             }
         } catch {

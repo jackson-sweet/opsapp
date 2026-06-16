@@ -36,7 +36,6 @@ struct LandingView: View {
     @State private var password = ""
     @State private var isLoggingIn = false
     @State private var errorMessage: String?
-    @State private var showError = false
     @State private var showOnboarding = false
 
     // New onboarding manager (created when needed)
@@ -368,13 +367,7 @@ struct LandingView: View {
         .sheet(isPresented: $showForgotPassword) {
             ForgotPasswordView(prefilledEmail: username)
         }
-        .alert(isPresented: $showError, content: {
-            Alert(
-                title: Text("Sign In Failed"),
-                message: Text(errorMessage ?? "Please check your credentials and try again."),
-                dismissButton: .default(Text("OK"))
-            )
-        })
+        .errorToast($errorMessage, label: Feedback.Err.signInFailed)
         .onAppear {
             checkResumeOnboarding()
             // Delay enabling animation to prevent initial mount transition
@@ -429,7 +422,6 @@ struct LandingView: View {
                     } else {
                         onLoginAbandoned?()
                         errorMessage = loginError ?? "Incorrect email or password. Please try again."
-                        showError = true
                     }
                 }
             } catch let authError as AuthError {
@@ -437,14 +429,12 @@ struct LandingView: View {
                     isLoggingIn = false
                     onLoginAbandoned?()
                     errorMessage = authError.localizedDescription
-                    showError = true
                 }
             } catch {
                 await MainActor.run {
                     isLoggingIn = false
                     onLoginAbandoned?()
                     errorMessage = "Login failed: \(error.localizedDescription)"
-                    showError = true
                 }
             }
         }
@@ -485,7 +475,6 @@ struct LandingView: View {
                 .flatMap({ $0.windows })
                 .first(where: { $0.isKeyWindow }) else {
                 errorMessage = "Cannot present Apple Sign-In"
-                showError = true
                 isLoggingIn = false
                 return
             }
@@ -502,7 +491,6 @@ struct LandingView: View {
                 if !success {
                     onLoginAbandoned?()
                     errorMessage = "No account found. Please sign up with your company first."
-                    showError = true
                 } else {
                     let (shouldShowOnboarding, _) = OnboardingManager.shouldShowOnboarding(dataController: dataController)
 
@@ -527,7 +515,6 @@ struct LandingView: View {
                     // User canceled
                 } else {
                     errorMessage = "Apple Sign-In failed: \(error.localizedDescription)"
-                    showError = true
                 }
             }
         }
@@ -541,7 +528,6 @@ struct LandingView: View {
             guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                   let rootViewController = windowScene.windows.first?.rootViewController else {
                 errorMessage = "Cannot present Google Sign-In"
-                showError = true
                 isLoggingIn = false
                 return
             }
@@ -558,7 +544,6 @@ struct LandingView: View {
                 if !success {
                     onLoginAbandoned?()
                     errorMessage = "No account found. Please sign up with your company first."
-                    showError = true
                 } else {
                     let (shouldShowOnboarding, _) = OnboardingManager.shouldShowOnboarding(dataController: dataController)
 
@@ -583,7 +568,6 @@ struct LandingView: View {
                     // User canceled
                 } else {
                     errorMessage = "Google Sign-In failed: \(error.localizedDescription)"
-                    showError = true
                 }
             }
         }

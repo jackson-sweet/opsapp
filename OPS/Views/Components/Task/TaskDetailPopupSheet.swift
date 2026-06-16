@@ -218,6 +218,8 @@ struct TaskDetailPopupSheet: View {
 
     private var datesRow: some View {
         Button(action: {
+            // Scheduling is gated on calendar.edit, scope-aware on this task.
+            guard task.canEditSchedule else { return }
             onScheduleTap?(task)
         }) {
             HStack(spacing: OPSStyle.Layout.spacing2_5) {
@@ -424,6 +426,7 @@ struct TaskDetailPopupSheet: View {
                 // the parent defers it off the dismiss critical path.
                 selectedTeamMemberIds = committed
                 onCommitTeam?(committed)
+                ToastCenter.shared.present(Feedback.Task.teamUpdated)
                 withAnimation(OPSStyle.Animation.panel) {
                     showTeamPicker = false
                 }

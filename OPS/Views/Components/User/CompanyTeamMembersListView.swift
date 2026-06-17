@@ -46,8 +46,7 @@ struct CompanyTeamMembersListView: View {
             }
         }
         .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
     
     private func fetchTeamMembers() {
@@ -139,6 +138,6 @@ struct CompanyTeamMemberListRow: View {
     return CompanyTeamMembersListView(company: company)
         .environmentObject(DataController())
         .padding()
-        .background(OPSStyle.Colors.backgroundGradient)
+        .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
 }

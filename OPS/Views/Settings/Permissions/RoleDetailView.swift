@@ -256,7 +256,7 @@ struct RoleDetailView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -390,11 +390,11 @@ struct RoleDetailView: View {
                             }
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.vertical, OPSStyle.Layout.spacing2)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
@@ -508,12 +508,7 @@ struct RoleDetailView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(OPSStyle.Colors.background)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .frame(maxWidth: .infinity)
     }
@@ -542,7 +537,7 @@ struct RoleDetailView: View {
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .frame(maxWidth: .infinity)
-            .background(OPSStyle.Colors.subtleBackground)
+            .background(OPSStyle.Colors.surfaceHover)
 
             // Individual permission rows
             ForEach(permissions) { perm in
@@ -592,7 +587,7 @@ struct RoleDetailView: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 14)
-            .background(OPSStyle.Colors.subtleBackground)
+            .background(OPSStyle.Colors.surfaceHover)
 
             // Individual permission rows (darker)
             ForEach(permissions) { perm in
@@ -603,12 +598,7 @@ struct RoleDetailView: View {
                 permissionRow(perm)
             }
         }
-        .background(OPSStyle.Colors.background)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
@@ -635,19 +625,14 @@ struct RoleDetailView: View {
                     .padding(.vertical, 3)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(OPSStyle.Colors.subtleBackground)
+                            .fill(OPSStyle.Colors.surfaceInput)
                     )
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 14)
         }
         .buttonStyle(PlainButtonStyle())
-        .background(OPSStyle.Colors.background)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .opacity(0.4)
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
@@ -713,7 +698,7 @@ struct RoleDetailView: View {
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .fill(
                                     !isMixed && selection == level
-                                        ? OPSStyle.Colors.subtleBackground
+                                        ? OPSStyle.Colors.surfaceActive
                                         : Color.clear
                                 )
                         )
@@ -725,7 +710,7 @@ struct RoleDetailView: View {
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .fill(OPSStyle.Colors.subtleBackground)
+                .fill(OPSStyle.Colors.surfaceInput)
         )
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

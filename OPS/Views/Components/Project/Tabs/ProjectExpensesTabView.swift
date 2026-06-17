@@ -45,12 +45,7 @@ struct ProjectExpensesTabView: View {
                 }
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .padding(14)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
-                )
+                .glassSurface(borderColor: OPSStyle.Colors.primaryAccent.opacity(0.3))
             }
             .buttonStyle(PlainButtonStyle())
             .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -74,12 +69,7 @@ struct ProjectExpensesTabView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-        )
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
@@ -127,12 +117,7 @@ struct ProjectExpensesTabView: View {
                 }
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-        )
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 

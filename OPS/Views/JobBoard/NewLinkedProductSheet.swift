@@ -60,7 +60,7 @@ struct NewLinkedProductSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         nameField
@@ -120,11 +120,11 @@ struct NewLinkedProductSheet: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .focused($nameFieldFocused)
                 .padding(OPSStyle.Layout.spacing2)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
     }
@@ -141,13 +141,13 @@ struct NewLinkedProductSheet: View {
                     .monospacedDigit()
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(OPSStyle.Layout.spacing2)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(priceParseError
                                     ? OPSStyle.Colors.errorText
-                                    : OPSStyle.Colors.cardBorder,
+                                    : OPSStyle.Colors.inputFieldBorder,
                                     lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .onChange(of: priceString) { _, newValue in
@@ -202,11 +202,11 @@ struct NewLinkedProductSheet: View {
             }
             .padding(OPSStyle.Layout.spacing2)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }

@@ -86,7 +86,7 @@ struct TaskBioSheet: View {
         let photos = task.project?.getProjectImages() ?? []
         if photos.isEmpty {
             Rectangle()
-                .fill(OPSStyle.Colors.cardBackgroundDark)
+                .fill(OPSStyle.Colors.background)
                 .frame(height: 200)
                 .overlay(
                     VStack(spacing: OPSStyle.Layout.spacing2) {
@@ -162,12 +162,7 @@ struct TaskBioSheet: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.line, lineWidth: 1)
-            )
+            .glassSurface()
         }
     }
 
@@ -192,12 +187,7 @@ struct TaskBioSheet: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.line, lineWidth: 1)
-            )
+            .glassSurface()
         }
     }
 
@@ -272,12 +262,7 @@ struct TaskBioSheet: View {
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
-                )
+                .glassSurface(borderColor: OPSStyle.Colors.primaryAccent.opacity(0.3))
         }
         .disabled(task.project == nil)
     }

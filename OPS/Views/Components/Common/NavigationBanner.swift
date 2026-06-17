@@ -56,9 +56,8 @@ struct NavigationBanner: View {
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(OPSStyle.Colors.cardBackground)
         }
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
     
     /// Determines which arrow icon to show based on the instruction

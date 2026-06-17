@@ -104,19 +104,14 @@ struct StockAlertsSection: View {
             }
         }
         .padding(.bottom, OPSStyle.Layout.spacing2_5)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         // Left border stripe
         .overlay(alignment: .leading) {
             Rectangle()
                 .fill(accentColor)
                 .frame(width: 3)
         }
-        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius))
     }
 }
 
@@ -293,7 +288,7 @@ private struct ThresholdEditorPopover: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .background(OPSStyle.Colors.surfaceInput)
                         .cornerRadius(OPSStyle.Layout.buttonRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
@@ -317,7 +312,7 @@ private struct ThresholdEditorPopover: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
+        .glassDense()
         .frame(width: 280)
         .presentationCompactAdaptation(.popover)
     }

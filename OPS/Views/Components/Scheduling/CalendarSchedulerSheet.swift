@@ -291,11 +291,8 @@ struct CalendarSchedulerSheet: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(hasSelectedDates ? OPSStyle.Colors.primaryAccent.opacity(0.3) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        .glassSurface(
+            borderColor: hasSelectedDates ? OPSStyle.Colors.primaryAccent.opacity(0.3) : OPSStyle.Colors.glassBorder
         )
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .animation(OPSStyle.Animation.fast, value: hasSelectedDates)
@@ -502,12 +499,7 @@ struct CalendarSchedulerSheet: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         } else {
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 Text("//")
@@ -519,12 +511,7 @@ struct CalendarSchedulerSheet: View {
                 Spacer()
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .strokeBorder(OPSStyle.Colors.cardBorderSubtle, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface(borderColor: OPSStyle.Colors.cardBorderSubtle)
         }
     }
 
@@ -787,7 +774,7 @@ struct CalendarSchedulerSheet: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -813,7 +800,7 @@ struct CalendarSchedulerSheet: View {
                         .foregroundColor(hasSelectedDates ? OPSStyle.Colors.invertedText : OPSStyle.Colors.tertiaryText)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(hasSelectedDates ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
+                        .background(hasSelectedDates ? OPSStyle.Colors.primaryText : OPSStyle.Colors.surfaceInput)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

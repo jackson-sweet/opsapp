@@ -104,16 +104,16 @@ struct ClientListView: View {
                                         )
                                 }
                             }
-                            .foregroundColor(activeFilter == filter ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
+                            .foregroundColor(activeFilter == filter ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
                             .padding(.horizontal, 14)
                             .padding(.vertical, OPSStyle.Layout.spacing2)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                    .fill(activeFilter == filter ? OPSStyle.Colors.primaryText : .clear)
+                                    .fill(activeFilter == filter ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                    .stroke(activeFilter == filter ? .clear : OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                    .stroke(activeFilter == filter ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder, lineWidth: 1)
                             )
                         }
                         .buttonStyle(PlainButtonStyle())

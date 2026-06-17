@@ -30,10 +30,7 @@ struct OldProjectMarkerPopup: View {
             }
         }
         .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .fill(OPSStyle.Colors.cardBackground)
-        )
+        .glassDense()
     }
 }
 

@@ -51,12 +51,7 @@ struct ProjectSummaryCard: View {
             // MARK: - Info Row
             infoRow
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .onAppear {
             calculateTravelTime()
         }
@@ -81,7 +76,7 @@ struct ProjectSummaryCard: View {
                 .allowsHitTesting(false)
             } else {
                 // No location fallback
-                OPSStyle.Colors.cardBackground
+                OPSStyle.Colors.background
                     .overlay(
                         HStack(spacing: OPSStyle.Layout.spacing2) {
                             Image(systemName: "map.slash")
@@ -105,10 +100,10 @@ struct ProjectSummaryCard: View {
         }
         .clipShape(
             UnevenRoundedRectangle(
-                topLeadingRadius: OPSStyle.Layout.cornerRadius,
+                topLeadingRadius: OPSStyle.Layout.panelRadius,
                 bottomLeadingRadius: 0,
                 bottomTrailingRadius: 0,
-                topTrailingRadius: OPSStyle.Layout.cornerRadius
+                topTrailingRadius: OPSStyle.Layout.panelRadius
             )
         )
     }
@@ -153,7 +148,6 @@ struct ProjectSummaryCard: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing2_5)
         .padding(.vertical, 10)
-        .background(OPSStyle.Colors.cardBackgroundDark)
     }
 
     // MARK: - Travel Time Calculation

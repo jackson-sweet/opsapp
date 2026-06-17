@@ -69,12 +69,7 @@ struct ProjectStatusChangeSheet: View {
                                 Spacer()
                             }
                             .padding(OPSStyle.Layout.spacing3)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .glassSurface()
                         }
 
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
@@ -98,12 +93,7 @@ struct ProjectStatusChangeSheet: View {
                                     }
                                 }
                             }
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .glassSurface()
                         }
                     }
                     .padding(OPSStyle.Layout.spacing3_5)
@@ -201,8 +191,8 @@ struct StatusOption: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .background(OPSStyle.Colors.surfaceInput)
+                        .cornerRadius(OPSStyle.Layout.chipRadius)
                 }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -267,8 +257,7 @@ struct SchedulingModeConversionSheet: View {
                         }
                     }
                     .padding(OPSStyle.Layout.spacing3)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .glassSurface()
 
                     // Explanation
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
@@ -287,8 +276,7 @@ struct SchedulingModeConversionSheet: View {
                         )
                     }
                     .padding(OPSStyle.Layout.spacing3)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .glassSurface()
 
                     Spacer()
 
@@ -490,12 +478,7 @@ struct TaskPickerForTeamChange: View {
                                     }
                                 }
                             }
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .glassSurface()
                         }
 
                         // Create New Task button
@@ -511,7 +494,7 @@ struct TaskPickerForTeamChange: View {
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -608,12 +591,7 @@ struct ProjectTeamChangeView: View {
             Spacer()
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var currentTeamList: some View {
@@ -646,12 +624,7 @@ struct ProjectTeamChangeView: View {
                 }
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var teamSelectionSection: some View {
@@ -668,12 +641,7 @@ struct ProjectTeamChangeView: View {
                     Spacer()
                 }
                 .padding(OPSStyle.Layout.spacing3)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
             } else {
                 VStack(spacing: 0) {
                     ForEach(availableMembers, id: \.id) { member in
@@ -690,16 +658,11 @@ struct ProjectTeamChangeView: View {
 
                         if member.id != availableMembers.last?.id {
                             Divider()
-                                .background(OPSStyle.Colors.cardBackground)
+                                .background(OPSStyle.Colors.line)
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
             }
         }
     }
@@ -888,12 +851,7 @@ struct TaskTeamChangeView: View {
             Spacer()
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var currentTeamList: some View {
@@ -928,12 +886,7 @@ struct TaskTeamChangeView: View {
             }
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var teamSelectionSection: some View {
@@ -950,12 +903,7 @@ struct TaskTeamChangeView: View {
                     Spacer()
                 }
                 .padding(OPSStyle.Layout.spacing3)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
             } else {
                 VStack(spacing: 0) {
                     ForEach(availableMembers, id: \.id) { member in
@@ -976,12 +924,7 @@ struct TaskTeamChangeView: View {
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
             }
         }
     }

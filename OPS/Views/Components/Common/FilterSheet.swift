@@ -163,7 +163,7 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
 
                     if index < options.count - 1 {
                         Divider()
-                            .background(OPSStyle.Colors.cardBackground)
+                            .background(OPSStyle.Colors.separator)
                             .padding(.leading, 40)
                     }
                 }
@@ -201,10 +201,7 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
                     }
                 }
                 .padding(OPSStyle.Layout.spacing3)
-                .background(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-                )
+                .glassSurface()
 
                 Spacer()
             }
@@ -245,14 +242,7 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
             VStack(spacing: 0) {
                 content()
             }
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
@@ -513,7 +503,7 @@ private struct MultiSelectFilterSection<T: Hashable>: View {
 
                     if index < options.count - 1 {
                         Divider()
-                            .background(OPSStyle.Colors.cardBackground)
+                            .background(OPSStyle.Colors.separator)
                             .padding(.leading, getColorIndicator != nil || getIcon != nil ? 40 : 20)
                     }
                 }
@@ -600,7 +590,7 @@ private struct IdBasedMultiSelectSection<T: Identifiable>: View {
 
                     if index < options.count - 1 {
                         Divider()
-                            .background(OPSStyle.Colors.cardBackground)
+                            .background(OPSStyle.Colors.separator)
                             .padding(.leading, getIcon != nil ? 40 : 20)
                     }
                 }
@@ -714,7 +704,14 @@ private struct SearchableMultiSelectSection<T: Hashable & Identifiable>: View {
                 }
                 .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .background(OPSStyle.Colors.background.opacity(0.5))
+                .background(OPSStyle.Colors.surfaceInput)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                )
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
 
                 Divider()
                     .background(OPSStyle.Colors.separator)
@@ -732,7 +729,7 @@ private struct SearchableMultiSelectSection<T: Hashable & Identifiable>: View {
 
                     if index < displayedOptions.count - 1 {
                         Divider()
-                            .background(OPSStyle.Colors.cardBackground)
+                            .background(OPSStyle.Colors.separator)
                             .padding(.leading, OPSStyle.Layout.spacing3)
                     }
                 }
@@ -807,14 +804,7 @@ private struct FilterSectionContainer<Content: View>: View {
             VStack(spacing: 0) {
                 content()
             }
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }

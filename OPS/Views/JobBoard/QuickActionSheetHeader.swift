@@ -45,7 +45,7 @@ struct QuickActionSheetHeader: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.vertical, OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.background)
 
             Divider()
                 .background(OPSStyle.Colors.separator)
@@ -129,12 +129,7 @@ struct QuickActionContextHeader: View {
                 Spacer()
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
     }
 }

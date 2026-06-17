@@ -67,12 +67,7 @@ struct CompanyContactCard: View {
         }
         .padding(.vertical, 14)
         .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Contact Row
@@ -140,7 +135,7 @@ struct CompanyContactCard: View {
 
     private var logoPlaceholder: some View {
         Circle()
-            .fill(OPSStyle.Colors.cardBackgroundDark)
+            .fill(OPSStyle.Colors.background)
             .frame(width: logoSize, height: logoSize)
             .overlay(
                 Image(systemName: "building.2")

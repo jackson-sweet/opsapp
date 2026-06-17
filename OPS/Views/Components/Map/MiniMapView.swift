@@ -51,7 +51,7 @@ struct MiniMapView: View {
                     // Show a placeholder that's distinct from the "no
                     // address at all" state — indicates loading / pending
                     // resolution. Bug bec71df9.
-                    OPSStyle.Colors.cardBackgroundDark
+                    OPSStyle.Colors.background
                         .overlay(
                             VStack(spacing: OPSStyle.Layout.spacing2) {
                                 if isResolving {
@@ -82,7 +82,7 @@ struct MiniMapView: View {
                         )
                 } else {
                     // Fallback for no coordinates AND no address at all.
-                    OPSStyle.Colors.cardBackgroundDark
+                    OPSStyle.Colors.background
                         .overlay(
                             VStack(spacing: OPSStyle.Layout.spacing2) {
                                 Image(systemName: "map.slash")

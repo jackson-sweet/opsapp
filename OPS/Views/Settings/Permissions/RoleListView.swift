@@ -189,18 +189,13 @@ struct RoleListView: View {
 
                     if role.id != roles.last?.id {
                         Rectangle()
-                            .fill(OPSStyle.Colors.cardBorder)
+                            .fill(OPSStyle.Colors.separator)
                             .frame(height: 1)
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
@@ -238,7 +233,7 @@ struct RoleListView: View {
                                 .padding(.vertical, 2)
                                 .background(
                                     RoundedRectangle(cornerRadius: 3)
-                                        .fill(OPSStyle.Colors.subtleBackground)
+                                        .fill(OPSStyle.Colors.fillNeutral)
                                 )
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
@@ -305,7 +300,7 @@ struct RoleListView: View {
     private var roleFormSheet: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
 
                 VStack(spacing: OPSStyle.Layout.spacing3_5) {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
@@ -318,11 +313,11 @@ struct RoleListView: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.vertical, 14)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                             .autocorrectionDisabled()
                     }

@@ -733,7 +733,7 @@ struct FilterBadge: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
+                .fill(OPSStyle.Colors.surfaceInput)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
@@ -799,7 +799,7 @@ struct JBFilterChip: View {
             .padding(.vertical, OPSStyle.Layout.spacing2)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(isSelected ? OPSStyle.Colors.cardBackgroundDark : Color.clear)
+                    .fill(isSelected ? OPSStyle.Colors.surfaceActive : Color.clear)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(
@@ -886,14 +886,7 @@ struct SectionButton: View {
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .frame(maxWidth: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .nestedCard()
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -948,8 +941,12 @@ struct ProjectListSheet: View {
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.top, OPSStyle.Layout.spacing2_5)
 

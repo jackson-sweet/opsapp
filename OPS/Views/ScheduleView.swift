@@ -66,7 +66,7 @@ struct ScheduleView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .ignoresSafeArea()
 
                 VStack(spacing: 0) {
@@ -460,15 +460,7 @@ struct ScheduleView: View {
                 }
             }
             .padding(28)
-            .background(
-                BlurView(style: .systemUltraThinMaterialDark)
-                    .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
-            )
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             Spacer()
@@ -509,12 +501,7 @@ struct ScheduleView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
         .contentShape(Rectangle())
         .onTapGesture {
             Task { try? await mirrorService.enable() }

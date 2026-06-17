@@ -266,16 +266,11 @@ struct ActivityTabView: View {
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2)
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .glassSurface()
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(
-                    isTextFieldFocused
-                        ? OPSStyle.Colors.primaryAccent
-                        : OPSStyle.Colors.cardBorder,
-                    lineWidth: isTextFieldFocused ? 1.5 : 1
-                )
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
+                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1.5)
+                .opacity(isTextFieldFocused ? 1 : 0)
         )
         .animation(OPSStyle.Animation.panel, value: isTextFieldFocused)
         .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -304,10 +299,9 @@ struct ActivityTabView: View {
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .background(OPSStyle.Colors.cardBackground)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .nestedCard()
                         .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
                                 .stroke(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: 1)
                         )
                     }
@@ -324,12 +318,7 @@ struct ActivityTabView: View {
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .background(OPSStyle.Colors.cardBackground)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                        )
+                        .nestedCard()
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -448,7 +437,7 @@ private struct AnnotationEntryView: View {
                     TeamMemberAvatar(teamMember: member, size: 28)
                 } else {
                     Circle()
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .fill(OPSStyle.Colors.background)
                         .frame(width: 28, height: 28)
                         .overlay(
                             Text(String(authorName.prefix(1)).uppercased())
@@ -502,12 +491,7 @@ private struct AnnotationEntryView: View {
             }
         }
         .padding(14)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-        )
+        .glassSurface()
     }
 
     private var relativeTimestamp: String {

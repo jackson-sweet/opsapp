@@ -20,7 +20,7 @@ struct WizardDetailView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
+            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
 
             VStack(spacing: 0) {
                 SettingsHeader(
@@ -89,12 +89,7 @@ struct WizardDetailView: View {
                 .lineSpacing(4)
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var actionButton: some View {
@@ -177,18 +172,13 @@ struct WizardDetailView: View {
 
                     if index < wizard.steps.count - 1 {
                         Rectangle()
-                            .fill(OPSStyle.Colors.cardBorder)
+                            .fill(OPSStyle.Colors.line)
                             .frame(height: 1)
                             .padding(.leading, 58)
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
     }
 
@@ -234,12 +224,7 @@ struct WizardDetailView: View {
             .padding(.vertical, 14)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Helpers

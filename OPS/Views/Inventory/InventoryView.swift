@@ -463,11 +463,11 @@ struct InventoryView: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .padding(.vertical, 10)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(sortMode == .threshold ? OPSStyle.Colors.warningStatus.opacity(0.5) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(sortMode == .threshold ? OPSStyle.Colors.warningStatus.opacity(0.5) : OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
@@ -490,11 +490,11 @@ struct InventoryView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                 .padding(.vertical, 10)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
         .accessibilityLabel("View mode")
@@ -593,10 +593,10 @@ struct InventoryView: View {
             .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
             .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .padding(.vertical, OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
+            .cornerRadius(OPSStyle.Layout.chipRadius)
             .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                     .stroke(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.separator, lineWidth: isSelected ? 2 : 1)
             )
         }
@@ -637,12 +637,7 @@ struct InventoryView: View {
             }
             .padding(.vertical, 14)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .glassSurface()
         }
         .buttonStyle(.plain)
         .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -1030,7 +1025,7 @@ struct InventoryView: View {
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.vertical, 10)
                     }
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.surfaceInput)
                 }
 
                 VStack(spacing: OPSStyle.Layout.spacing4) {
@@ -1052,7 +1047,7 @@ struct InventoryView: View {
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .background(OPSStyle.Colors.surfaceInput)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1073,7 +1068,7 @@ struct InventoryView: View {
                             .foregroundColor(selectedItemIds.isEmpty ? OPSStyle.Colors.tertiaryText : .black)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(selectedItemIds.isEmpty ? OPSStyle.Colors.cardBackgroundDark : Color.white)
+                            .background(selectedItemIds.isEmpty ? OPSStyle.Colors.surfaceInput : Color.white)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1093,7 +1088,7 @@ struct InventoryView: View {
                             .foregroundColor(selectedItemIds.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1113,7 +1108,7 @@ struct InventoryView: View {
                             .foregroundColor(selectedItemIds.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.errorStatus)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1130,7 +1125,7 @@ struct InventoryView: View {
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                                 .padding(.vertical, 14)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .background(OPSStyle.Colors.surfaceInput)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1211,12 +1206,7 @@ struct InventoryView: View {
                                 showingSelectionTools = false
                             }
                         }
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .glassSurface()
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.top, OPSStyle.Layout.spacing3)
 
@@ -1255,11 +1245,11 @@ struct InventoryView: View {
                             }
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.vertical, 10)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
 
                             Button(action: {
@@ -1273,7 +1263,7 @@ struct InventoryView: View {
                                     .foregroundColor(selectionKeywordText.trimmingCharacters(in: .whitespaces).isEmpty ? OPSStyle.Colors.tertiaryText : .black)
                                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                                     .padding(.vertical, 10)
-                                    .background(selectionKeywordText.trimmingCharacters(in: .whitespaces).isEmpty ? OPSStyle.Colors.cardBackgroundDark : Color.white)
+                                    .background(selectionKeywordText.trimmingCharacters(in: .whitespaces).isEmpty ? OPSStyle.Colors.surfaceInput : Color.white)
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1320,12 +1310,7 @@ struct InventoryView: View {
                                     }
                                 }
                             }
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .glassSurface()
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                         }
                         .padding(.top, OPSStyle.Layout.spacing4)

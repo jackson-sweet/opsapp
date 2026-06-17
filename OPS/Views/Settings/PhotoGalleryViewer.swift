@@ -228,10 +228,8 @@ struct PhotoGalleryViewer: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.bottom, OPSStyle.Layout.spacing4)
-        .background(
-            OPSStyle.Colors.cardBackgroundDark
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius, corners: [.topLeft, .topRight])
-        )
+        .glassDense(cornerRadius: 0)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius, corners: [.topLeft, .topRight])
         .gesture(
             DragGesture(minimumDistance: 20)
                 .onEnded { value in

@@ -239,7 +239,7 @@ struct AllPhotosGalleryView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .edgesIgnoringSafeArea(.all)
 
             VStack(spacing: 0) {
@@ -385,11 +385,11 @@ struct AllPhotosGalleryView: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(hasActiveFilters ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .background(OPSStyle.Colors.surfaceInput)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
 
                     if activeFilterCount > 0 {
@@ -556,12 +556,7 @@ struct AllPhotosGalleryView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
@@ -600,14 +595,14 @@ struct AllPhotosGalleryView: View {
             } else if isDownloading {
                 // Downloading: placeholder + progress
                 ZStack {
-                    OPSStyle.Colors.cardBackgroundDark
+                    OPSStyle.Colors.background
                     ProgressView()
                         .tint(OPSStyle.Colors.secondaryText)
                 }
             } else {
                 // Remote: dark placeholder + cloud icon
                 ZStack(alignment: .bottomTrailing) {
-                    OPSStyle.Colors.cardBackgroundDark
+                    OPSStyle.Colors.background
 
                     Image(systemName: "icloud.and.arrow.down")
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
@@ -782,10 +777,10 @@ struct AllPhotosGalleryView: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.vertical, 14)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .glassDense(cornerRadius: 0)
         .overlay(
             Rectangle()
-                .fill(OPSStyle.Colors.cardBorder)
+                .fill(OPSStyle.Colors.line)
                 .frame(height: 1),
             alignment: .top
         )

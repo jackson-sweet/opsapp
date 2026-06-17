@@ -260,7 +260,7 @@ struct NotificationListView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .edgesIgnoringSafeArea(.all)
 
             VStack(spacing: 0) {
@@ -676,12 +676,7 @@ struct NotificationListView: View {
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity)
             .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .nestedCard()
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
@@ -860,16 +855,10 @@ struct NotificationListView: View {
                 .transition(collapseTransition)
             }
         }
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
-                .fill(OPSStyle.Colors.cardBackgroundDark.opacity(isExpanded ? 0.9 : 0.6))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
-                .stroke(
-                    isExpanded ? OPSStyle.Colors.primaryAccent.opacity(0.25) : OPSStyle.Colors.cardBorderSubtle,
-                    lineWidth: OPSStyle.Layout.Border.standard
-                )
+        .glassSurface(
+            borderColor: isExpanded
+                ? OPSStyle.Colors.primaryAccent.opacity(0.25)
+                : OPSStyle.Colors.glassBorder
         )
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing1)
@@ -980,7 +969,7 @@ struct NotificationListView: View {
             .font(OPSStyle.Typography.smallCaption)
             .foregroundColor(color)
             .frame(width: 28, height: 28)
-            .background(OPSStyle.Colors.subtleBackground)
+            .background(OPSStyle.Colors.fillNeutral)
             .clipShape(Circle())
     }
 

@@ -47,8 +47,7 @@ struct CalendarProjectCard: View {
                 
                 Spacer()
             }
-            .background(cardBackground)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .glassSurface()
             .contentShape(Rectangle()) // Make entire card tappable
             .onTapGesture {
                 onTap()
@@ -57,10 +56,5 @@ struct CalendarProjectCard: View {
         // stays visually consistent (8pt = 16pt total gap between cards).
         .padding(.vertical, OPSStyle.Layout.spacing2)
         .padding(.horizontal)
-    }
-    
-    // Use darker background color for card
-    private var cardBackground: some View {
-        OPSStyle.Colors.cardBackgroundDark
     }
 }

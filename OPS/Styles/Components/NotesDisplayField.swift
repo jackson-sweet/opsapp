@@ -70,12 +70,7 @@ struct NotesDisplayField: View {
             }
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .background(Color.clear)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
         .animation(OPSStyle.Animation.fast, value: isEditing)
     }
@@ -131,12 +126,12 @@ struct NotesDisplayField: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.bottom, OPSStyle.Layout.spacing4)
 
-            // Gradient fade overlay
+            // Gradient fade overlay — fades into the enclosing L1 glass surface
             LinearGradient(
                 gradient: Gradient(colors: [
                     Color.clear,
-                    OPSStyle.Colors.cardBackgroundDark.opacity(0.8),
-                    OPSStyle.Colors.cardBackgroundDark
+                    OPSStyle.Colors.glassApprox.opacity(0.8),
+                    OPSStyle.Colors.glassApprox
                 ]),
                 startPoint: .top,
                 endPoint: .bottom
@@ -212,8 +207,12 @@ struct NotesDisplayField: View {
             TextEditor(text: $editedNotes)
                 .frame(minHeight: 120)
                 .padding(OPSStyle.Layout.spacing2_5)
-                .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText.opacity(0.9))
                 .scrollContentBackground(.hidden)

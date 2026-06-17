@@ -73,7 +73,7 @@ struct OptionalSectionPill: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .padding(.vertical, OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

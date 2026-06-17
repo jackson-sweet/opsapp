@@ -40,7 +40,7 @@ struct SimplePINEntryView: View {
     
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
+            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
             
             VStack(spacing: OPSStyle.Layout.spacing5) {
                 Spacer()
@@ -260,7 +260,7 @@ struct PINDigitBox: View {
                 .frame(width: 56, height: 64)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
-                        .fill(OPSStyle.Colors.cardBackgroundDark.opacity(isActive ? 0.5 : 0.3))
+                        .fill(isActive ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
                 )
                 .animation(OPSStyle.Animation.fast, value: validationState)
                 .animation(OPSStyle.Animation.fast, value: isActive)

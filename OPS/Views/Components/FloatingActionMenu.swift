@@ -1040,12 +1040,7 @@ struct FloatingActionMenu: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: 120, height: 52)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                    )
+                    .nestedCard()
             }
         }
         .padding(.leading, OPSStyle.Layout.spacing3_5)
@@ -1277,7 +1272,7 @@ struct FloatingActionMenu: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                     .foregroundColor(isLocked ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.buttonText)
                     .frame(width: 48, height: 48)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.background)
                     .clipShape(Circle())
                     .overlay(
                         Circle()
@@ -1330,7 +1325,7 @@ struct FloatingActionMenu: View {
                 .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                 .foregroundColor(isHidden ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.buttonText)
                 .frame(width: 48, height: 48)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.background)
                 .clipShape(Circle())
                 .overlay(
                     Circle()
@@ -1443,12 +1438,7 @@ fileprivate struct FABCustomizeSheet: View {
                                     }
                                 }
                             }
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 0.5)
-                            )
+                            .glassSurface()
                             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
                     }

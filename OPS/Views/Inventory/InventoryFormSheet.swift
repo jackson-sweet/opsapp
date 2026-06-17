@@ -370,7 +370,7 @@ struct InventoryFormSheet: View {
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .background(OPSStyle.Colors.subtleBackground)
+                        .background(OPSStyle.Colors.surfaceInput)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -400,7 +400,7 @@ struct InventoryFormSheet: View {
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                        .background(newTagInput.isEmpty ? OPSStyle.Colors.subtleBackground : OPSStyle.Colors.cardBackgroundDark)
+                        .background(newTagInput.isEmpty ? OPSStyle.Colors.surfaceInput : OPSStyle.Colors.surfaceActive)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -462,7 +462,7 @@ struct InventoryFormSheet: View {
             .foregroundColor(OPSStyle.Colors.primaryText)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -535,7 +535,7 @@ struct InventoryFormSheet: View {
             let displayValue = valueBinding.wrappedValue.isEmpty ? "—" : valueBinding.wrappedValue
             ZStack {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
+                    .fill(OPSStyle.Colors.surfaceInput)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(dotColor.opacity(0.4), lineWidth: OPSStyle.Layout.Border.standard)

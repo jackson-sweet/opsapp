@@ -27,7 +27,7 @@ struct TeamMembersCard: View {
                         .padding(.vertical, OPSStyle.Layout.spacing1)
                         .background(
                             Capsule()
-                                .fill(OPSStyle.Colors.cardBackgroundDark)
+                                .fill(OPSStyle.Colors.surfaceInput)
                         )
                 }
                 .padding(.bottom, OPSStyle.Layout.spacing1)

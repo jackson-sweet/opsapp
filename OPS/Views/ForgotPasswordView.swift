@@ -93,11 +93,11 @@ struct ForgotPasswordView: View {
                     .textContentType(.emailAddress)
                     .padding(.vertical, 14)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             }
             .padding(.horizontal, 40)

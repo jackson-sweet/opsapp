@@ -58,7 +58,7 @@ struct ProjectMapHeader: View {
                 .onTapGesture { onMapTap() }
             } else {
                 Rectangle()
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
+                    .fill(OPSStyle.Colors.background)
                     .frame(height: Self.mapHeight)
                     .overlay(
                         VStack(spacing: OPSStyle.Layout.spacing2) {

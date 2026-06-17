@@ -190,8 +190,7 @@ struct TaskTypeReminderListSection: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .glassSurface()
             .contentShape(Rectangle())
             .onTapGesture { edit() }
         }
@@ -308,8 +307,12 @@ struct TaskTypeReminderEditorSheet: View {
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .padding(OPSStyle.Layout.spacing3)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                )
         }
     }
 
@@ -329,7 +332,7 @@ struct TaskTypeReminderEditorSheet: View {
                             .foregroundColor(leadTimeDays == days ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
                             .padding(.horizontal, 10)
                             .padding(.vertical, OPSStyle.Layout.spacing2)
-                            .background(leadTimeDays == days ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.cardBackgroundDark)
+                            .background(leadTimeDays == days ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                 }
@@ -339,8 +342,12 @@ struct TaskTypeReminderEditorSheet: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, OPSStyle.Layout.spacing2)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                )
         }
     }
 
@@ -364,8 +371,12 @@ struct TaskTypeReminderEditorSheet: View {
                 .datePickerStyle(.compact)
                 .labelsHidden()
                 .padding(OPSStyle.Layout.spacing3)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                )
         }
     }
 
@@ -386,8 +397,12 @@ struct TaskTypeReminderEditorSheet: View {
             }
             .tint(OPSStyle.Colors.text)
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+            )
         }
     }
 
@@ -420,8 +435,12 @@ struct TaskTypeReminderEditorSheet: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(OPSStyle.Layout.spacing3)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                    )
                 Text("// anyone with this permission key gets the reminder")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -432,8 +451,12 @@ struct TaskTypeReminderEditorSheet: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(OPSStyle.Layout.spacing3)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                    )
                 Text("// comma-separated user ids; web-side picker coming")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)

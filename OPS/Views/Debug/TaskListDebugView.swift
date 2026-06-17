@@ -20,9 +20,9 @@ struct TaskListDebugView: View {
     
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .edgesIgnoringSafeArea(.all)
-            
+
             VStack(spacing: 0) {
                 // Header
                 OPSScreenHeader(
@@ -42,8 +42,8 @@ struct TaskListDebugView: View {
                         }
                     }
                 )
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                
+                .background(OPSStyle.Colors.background)
+
                 if isLoading {
                     Spacer()
                     ProgressView("Loading tasks...")
@@ -108,7 +108,7 @@ struct TaskListDebugView: View {
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.background)
             }
         }
         .onAppear {
@@ -193,7 +193,7 @@ struct TaskDetailCard: View {
             }
             
             Divider()
-                .background(OPSStyle.Colors.tertiaryText)
+                .background(OPSStyle.Colors.separator)
             
             // Fields grid
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
@@ -218,10 +218,9 @@ struct TaskDetailCard: View {
             .font(OPSStyle.Typography.smallCaption)
         }
         .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
-    
+
     private func statusColor(for status: TaskStatus) -> Color {
         switch status {
         case .active: return .blue
@@ -257,9 +256,9 @@ struct TaskDetailSheet: View {
     var body: some View {
         NavigationView {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .edgesIgnoringSafeArea(.all)
-                
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         // Task Type Info
@@ -272,8 +271,7 @@ struct TaskDetailSheet: View {
                                     FieldRow(label: "Is Default", value: taskType.isDefault ? "Yes" : "No")
                                 }
                                 .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                                .glassSurface()
                             }
                         }
                         
@@ -287,8 +285,7 @@ struct TaskDetailSheet: View {
                                     FieldRow(label: "Address", value: project.address ?? "No address")
                                 }
                                 .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                                .glassSurface()
                             }
                         }
                         
@@ -308,8 +305,7 @@ struct TaskDetailSheet: View {
                                     }
                                 }
                                 .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                                .glassSurface()
                             }
                         }
                     }

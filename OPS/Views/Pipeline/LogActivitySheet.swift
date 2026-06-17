@@ -130,7 +130,7 @@ struct LogActivitySheet: View {
                         Circle()
                             .fill(viewModel.speechManager.state == .recording
                                   ? OPSStyle.Colors.errorStatus
-                                  : OPSStyle.Colors.cardBackgroundDark)
+                                  : OPSStyle.Colors.background)
                             .frame(width: 64, height: 64)
 
                         Image(systemName: viewModel.speechManager.state == .recording ? "stop.fill" : "mic.fill")
@@ -222,7 +222,7 @@ struct LogActivitySheet: View {
             .foregroundColor(isSelected ? .white : OPSStyle.Colors.primaryText)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(isSelected ? OPSStyle.Colors.successStatus : OPSStyle.Colors.cardBackgroundDark)
+            .background(isSelected ? OPSStyle.Colors.successStatus : OPSStyle.Colors.surfaceInput)
             .cornerRadius(20)
         }
         .buttonStyle(.plain)
@@ -297,8 +297,7 @@ struct LogActivitySheet: View {
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, 14)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .glassSurface()
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             }
             .buttonStyle(.plain)
@@ -354,8 +353,7 @@ struct LogActivitySheet: View {
                     Divider().padding(.leading, OPSStyle.Layout.spacing3)
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
@@ -387,8 +385,12 @@ struct LogActivitySheet: View {
                     .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     .padding(.vertical, OPSStyle.Layout.spacing2)
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+            )
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
@@ -448,8 +450,12 @@ struct LogActivitySheet: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                            )
                     }
 
                     // Duration (call/meeting only)
@@ -466,8 +472,12 @@ struct LogActivitySheet: View {
                             }
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.vertical, OPSStyle.Layout.spacing2)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                            )
                         }
                     }
                 }

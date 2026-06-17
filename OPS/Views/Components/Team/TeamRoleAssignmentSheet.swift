@@ -25,7 +25,7 @@ struct TeamRoleAssignmentSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .ignoresSafeArea()
 
                 VStack(spacing: 0) {
@@ -272,8 +272,7 @@ struct TeamMemberRoleRow: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
 
     @ViewBuilder
@@ -295,7 +294,7 @@ struct TeamMemberRoleRow: View {
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .fill(selectedRole == role ? OPSStyle.Colors.surfaceActive : Color.clear)
+                    .fill(selectedRole == role ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)

@@ -107,7 +107,7 @@ struct AssignMemberRoleSheet: View {
         HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
             ZStack {
                 Circle()
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
+                    .fill(OPSStyle.Colors.background)
                     .frame(width: 56, height: 56)
                 Text(firstName.prefix(1).uppercased())
                     .font(OPSStyle.Typography.title)
@@ -200,12 +200,11 @@ struct AssignMemberRoleSheet: View {
                         )
                         if role.id != roles.last?.id {
                             Divider()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .background(OPSStyle.Colors.line)
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .glassSurface()
             }
         }
     }

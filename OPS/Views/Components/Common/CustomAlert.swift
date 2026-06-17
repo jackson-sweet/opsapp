@@ -55,13 +55,10 @@ struct CustomAlertModifier: ViewModifier {
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing4)
                     .padding(.vertical, OPSStyle.Layout.spacing3_5)
-                    .background(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
-                            .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.95))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
-                                    .stroke(config.color, lineWidth: OPSStyle.Layout.Border.thick)
-                            )
+                    .glassDense(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius, style: .continuous)
+                            .stroke(config.color, lineWidth: OPSStyle.Layout.Border.thick)
                     )
                     .padding(.horizontal, 40)
                     .transition(.scale.combined(with: .opacity))

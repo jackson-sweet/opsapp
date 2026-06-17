@@ -35,8 +35,7 @@ struct TeamMemberListView: View {
             }
         }
         .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
     
     private var headerView: some View {

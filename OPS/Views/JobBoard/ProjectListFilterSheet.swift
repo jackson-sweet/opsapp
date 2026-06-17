@@ -123,14 +123,7 @@ struct ProjectListFilterSheet: View {
             }
         }
         .padding(OPSStyle.Layout.spacing1)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius + 4)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius + 4)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface(cornerRadius: OPSStyle.Layout.cornerRadius + 4)
     }
 
     // MARK: - Filter Content
@@ -159,7 +152,7 @@ struct ProjectListFilterSheet: View {
                         }
                     )
                     if index < statuses.count - 1 {
-                        Divider().background(OPSStyle.Colors.cardBackground).padding(.leading, 44)
+                        Divider().background(OPSStyle.Colors.line).padding(.leading, 44)
                     }
                 }
             }
@@ -188,7 +181,7 @@ struct ProjectListFilterSheet: View {
                             }
                         )
                         if index < availableTeamMembers.count - 1 {
-                            Divider().background(OPSStyle.Colors.cardBackground).padding(.leading, 44)
+                            Divider().background(OPSStyle.Colors.line).padding(.leading, 44)
                         }
                     }
                 }
@@ -221,16 +214,11 @@ struct ProjectListFilterSheet: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
                 if index < ProjectSortOption.allCases.count - 1 {
-                    Divider().background(OPSStyle.Colors.cardBackground).padding(.leading, OPSStyle.Layout.spacing3)
+                    Divider().background(OPSStyle.Colors.line).padding(.leading, OPSStyle.Layout.spacing3)
                 }
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Collapsible Section Shell
@@ -285,7 +273,7 @@ struct ProjectListFilterSheet: View {
             .buttonStyle(.plain)
 
             if isExpanded.wrappedValue {
-                Divider().background(OPSStyle.Colors.cardBackground)
+                Divider().background(OPSStyle.Colors.line)
                 // Wrap the content in its own ScrollView bounded to a max
                 // height so long lists (e.g. a 40-member team roster) don't
                 // take over the sheet. Native scroll indicators are on for
@@ -296,12 +284,7 @@ struct ProjectListFilterSheet: View {
                 .frame(maxHeight: expandedSectionMaxHeight)
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Row Primitives

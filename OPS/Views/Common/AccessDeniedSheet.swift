@@ -45,7 +45,7 @@ struct AccessDeniedSheet: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(maxWidth: .infinity, minHeight: 60)
-                    .background(OPSStyle.Colors.cardBackground)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing5)

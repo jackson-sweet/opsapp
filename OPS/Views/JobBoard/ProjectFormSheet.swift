@@ -982,12 +982,7 @@ struct ProjectFormSheet: View {
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
-                                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.buttonBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                )
+                                .nestedCard()
                             }
                         }
                     }
@@ -1410,12 +1405,7 @@ struct ProjectFormSheet: View {
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassDense(cornerRadius: OPSStyle.Layout.cornerRadius)
             }
         }
     }
@@ -1866,7 +1856,7 @@ struct ProjectFormSheet: View {
                 }
                 .padding(14)
                 .frame(minHeight: 44)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -2104,7 +2094,7 @@ struct ProjectFormSheet: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -2193,7 +2183,7 @@ struct ProjectFormSheet: View {
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
                             .frame(width: 100, height: 100)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -2214,7 +2204,7 @@ struct ProjectFormSheet: View {
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -2352,12 +2342,7 @@ struct ProjectFormSheet: View {
                 }
                 .padding(OPSStyle.Layout.spacing3)
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface(cornerRadius: OPSStyle.Layout.cornerRadius)
             .overlay(
                 // Badge stack - right side
                 VStack(alignment: .trailing, spacing: 0) {
@@ -2387,7 +2372,7 @@ struct ProjectFormSheet: View {
                             .padding(.vertical, OPSStyle.Layout.spacing1)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .fill(OPSStyle.Colors.cardBackground)
+                                    .fill(OPSStyle.Colors.fillNeutral)
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -2514,12 +2499,7 @@ struct ProjectFormSheet: View {
         }
         .padding(OPSStyle.Layout.spacing2_5)
         .frame(width: 160, height: 80, alignment: .topLeading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface(cornerRadius: OPSStyle.Layout.cornerRadius)
     }
 
     /// One-tap structural clone (C2 — "same shape, new job"). Copies tasks

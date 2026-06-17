@@ -49,7 +49,7 @@ struct DataActorBenchmarkView: View {
             "DataActor Benchmark",
             leading: { OPSHeaderCloseButton(action: { dismiss() }) }
         )
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.background)
     }
 
     // MARK: - Flag Card
@@ -79,10 +79,7 @@ struct DataActorBenchmarkView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
         .padding()
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
-        )
+        .glassSurface()
     }
 
     // MARK: - Actor Status Card
@@ -99,10 +96,7 @@ struct DataActorBenchmarkView: View {
             statusRow(label: "Authenticated", value: dataController.isAuthenticated ? "Yes" : "No")
         }
         .padding()
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
-        )
+        .glassSurface()
     }
 
     private func statusRow(label: String, value: String) -> some View {
@@ -150,10 +144,7 @@ struct DataActorBenchmarkView: View {
             .disabled(log.isEmpty)
         }
         .padding()
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
-        )
+        .glassSurface()
     }
 
     private func benchmarkButtonLabel(icon: String, title: String) -> some View {
@@ -209,10 +200,7 @@ struct DataActorBenchmarkView: View {
             }
         }
         .padding()
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
-        )
+        .glassSurface()
     }
 
     // MARK: - Benchmarks

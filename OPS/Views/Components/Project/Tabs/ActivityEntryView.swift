@@ -59,7 +59,7 @@ struct ActivityEntryView: View {
                     TeamMemberAvatar(teamMember: member, size: 28)
                 } else {
                     Circle()
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .fill(OPSStyle.Colors.surfaceInput)
                         .frame(width: 28, height: 28)
                         .overlay(
                             Text(String(authorName.prefix(1)).uppercased())
@@ -164,12 +164,7 @@ struct ActivityEntryView: View {
             }
         }
         .padding(14)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-        )
+        .glassSurface()
         .confirmationDialog(
             notePhotoURLs.isEmpty ? "Delete Note" : "Delete the photo too?",
             isPresented: $showDeleteConfirmation,
@@ -243,7 +238,7 @@ struct ActivityEntryView: View {
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .background(OPSStyle.Colors.cardBackground)
+                        .background(OPSStyle.Colors.surfaceInput)
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -263,7 +258,7 @@ struct ActivityEntryView: View {
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .background(OPSStyle.Colors.cardBackground)
+                        .background(OPSStyle.Colors.surfaceInput)
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)

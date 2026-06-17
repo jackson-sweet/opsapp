@@ -29,12 +29,7 @@ struct LoadingOverlayModifier: ViewModifier {
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing5)
                 .padding(.vertical, OPSStyle.Layout.spacing4)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassDense()
             }
         }
         .animation(OPSStyle.Animation.fast, value: isPresented)

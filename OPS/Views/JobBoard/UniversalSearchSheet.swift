@@ -485,11 +485,11 @@ struct UniversalSearchSheet: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, 14)
-        .background(Color.black)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -1142,12 +1142,7 @@ struct UniversalSearchSheet: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, OPSStyle.Layout.spacing2)
-            .background(Color.black)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassDense(cornerRadius: OPSStyle.Layout.cornerRadius)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.bottom, OPSStyle.Layout.spacing3)
             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -1275,12 +1270,7 @@ private struct UniversalSearchTaskSchedulePickerSheet: View {
                                     }
                                     .frame(minHeight: 52)
                                     .padding(.horizontal, 14)
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                    )
+                                    .glassSurface()
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Schedule \(task.displayTitle)")
@@ -1411,12 +1401,7 @@ private struct SearchResultRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 }
 
@@ -1462,12 +1447,7 @@ private struct QuickCreateChip: View {
             }
             .frame(minHeight: 44)
             .padding(.horizontal, 14)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .nestedCard()
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Create new \(spec.label.lowercased())")

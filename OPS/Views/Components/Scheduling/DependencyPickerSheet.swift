@@ -64,12 +64,7 @@ struct DependencyPickerSheet: View {
                             }
                         }
                     }
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                    )
+                    .glassSurface()
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.top, OPSStyle.Layout.spacing3)
                 }

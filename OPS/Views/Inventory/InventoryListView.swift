@@ -209,11 +209,13 @@ struct InventoryItemCard: View {
             .padding(.vertical, 8 * scale)
         }
         .frame(height: cardHeight)
-        .background(isSelected ? OPSStyle.Colors.text.opacity(0.15) : OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface(borderColor: isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.glassBorder)
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.cardBorder, lineWidth: isSelected ? 2 : 1)
+            isSelected
+                ? RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
+                    .fill(OPSStyle.Colors.surfaceActive)
+                    .allowsHitTesting(false)
+                : nil
         )
         .contentShape(Rectangle())
         .scaleEffect(isLongPressing ? 0.95 : 1.0)

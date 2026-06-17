@@ -183,7 +183,7 @@ struct TaskSwipeCardView: View {
         LinearGradient(
             colors: [
                 (Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent).opacity(0.4),
-                OPSStyle.Colors.cardBackgroundDark
+                OPSStyle.Colors.background
             ],
             startPoint: .topTrailing,
             endPoint: .bottomLeading

@@ -637,11 +637,7 @@ struct DayPageView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.horizontal, OPSStyle.Layout.spacing2)
                     .padding(.vertical, OPSStyle.Layout.spacing1)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                            .stroke(OPSStyle.Colors.line, lineWidth: 0.5)
-                    )
+                    .nestedCard()
             }
         }
     }
@@ -766,15 +762,7 @@ struct DayPageView: View {
                 }
             }
             .padding(28)
-            .background(
-                BlurView(style: .systemUltraThinMaterialDark)
-                    .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
-            )
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             Spacer()

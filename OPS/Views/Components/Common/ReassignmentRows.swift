@@ -50,12 +50,7 @@ struct ProjectReassignmentRow: View {
                         Spacer()
                     }
                     .padding(OPSStyle.Layout.spacing2_5)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .nestedCard()
                 }
             } else {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
@@ -78,12 +73,7 @@ struct ProjectReassignmentRow: View {
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                             .frame(width: 44, height: 44)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .nestedCard()
                     }
                 }
             }
@@ -155,12 +145,7 @@ struct TaskReassignmentRow: View {
                         Spacer()
                     }
                     .padding(OPSStyle.Layout.spacing2_5)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .nestedCard()
                 }
             } else {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
@@ -198,12 +183,7 @@ struct TaskReassignmentRow: View {
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                             .frame(width: 44, height: 44)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .nestedCard()
                     }
                 }
             }

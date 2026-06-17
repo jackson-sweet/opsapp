@@ -309,7 +309,7 @@ private struct CapturedStackThumbnail: View {
 
     private func stackTile(offsetX: CGFloat, offsetY: CGFloat, opacity: Double) -> some View {
         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-            .fill(OPSStyle.Colors.cardBackgroundDark)
+            .fill(OPSStyle.Colors.fillNeutral)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)

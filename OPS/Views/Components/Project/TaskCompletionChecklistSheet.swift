@@ -80,12 +80,7 @@ struct TaskCompletionChecklistSheet: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, OPSStyle.Layout.spacing4)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var taskChecklistSection: some View {
@@ -100,7 +95,7 @@ struct TaskCompletionChecklistSheet: View {
                     taskChecklistRow(task: task)
                     if task.id != blockingTasks.last?.id {
                         Divider()
-                            .background(OPSStyle.Colors.subtleBackground)
+                            .background(OPSStyle.Colors.line)
                     }
                 }
             }
@@ -156,7 +151,7 @@ struct TaskCompletionChecklistSheet: View {
     private var completeButtonSection: some View {
         VStack(spacing: 0) {
             Divider()
-                .background(OPSStyle.Colors.subtleBackground)
+                .background(OPSStyle.Colors.line)
 
             Button(action: {
                 completeAllTasksAndProject()

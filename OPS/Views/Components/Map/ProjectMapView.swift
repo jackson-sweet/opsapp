@@ -130,7 +130,7 @@ struct ProjectMapView: View {
                         Button(action: recenterMap) {
                             ZStack {
                                 Circle()
-                                    .fill(OPSStyle.Colors.cardBackground.opacity(0.8))
+                                    .fill(OPSStyle.Colors.background.opacity(0.8))
                                     .frame(width: 44, height: 44)
                                 
                                 Image(systemName: "location.fill")

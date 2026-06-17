@@ -162,12 +162,7 @@ struct ContactDetailView: View {
                                         }
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, OPSStyle.Layout.spacing5)
-                                        .background(OPSStyle.Colors.cardBackground.opacity(0.8))
-                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(OPSStyle.Colors.cardBorder.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
-                                        )
+                                        .nestedCard()
                                     } else {
                                         // Sub-client rows
                                         VStack(spacing: OPSStyle.Layout.spacing2) {
@@ -493,7 +488,7 @@ struct ContactDetailView: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
                 .frame(width: 44, height: 44)
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
         )
@@ -574,12 +569,7 @@ struct ContactDetailView: View {
             }
             .padding(.vertical, 14)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
     }
     
@@ -605,8 +595,7 @@ struct ContactDetailView: View {
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                     .frame(width: 65, height: 65)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .nestedCard(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.thick)
@@ -632,8 +621,7 @@ struct ContactDetailView: View {
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                     .frame(width: 65, height: 65)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .nestedCard(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.thick)
@@ -658,8 +646,7 @@ struct ContactDetailView: View {
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                     .frame(width: 65, height: 65)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .nestedCard(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.thick)

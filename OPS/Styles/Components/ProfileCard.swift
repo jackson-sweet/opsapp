@@ -71,8 +71,7 @@ struct UserProfileCard: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+        .glassSurface()
     }
     
     // Helper to get user initials

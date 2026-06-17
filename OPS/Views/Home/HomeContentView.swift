@@ -374,8 +374,8 @@ struct HomeContentView: View {
     
     private var loadingOverlay: some View {
         ZStack {
-            // Semi-transparent black background
-            OPSStyle.Colors.cardBackgroundDark
+            // Full-screen dimming scrim — canvas black over the map
+            OPSStyle.Colors.background
                 .ignoresSafeArea()
 
             VStack(spacing: OPSStyle.Layout.spacing3) {
@@ -544,17 +544,7 @@ struct HomeContentView: View {
                         .padding(.top, OPSStyle.Layout.spacing2)
                     }
                     .padding(OPSStyle.Layout.spacing5)
-                    .background(
-                        ZStack {
-                            // Blur effect
-                            BlurView(style: .systemThinMaterialDark)
-                            
-                            // Semi-transparent overlay
-                            Color(OPSStyle.Colors.cardBackgroundDark)
-                                .opacity(0.3)
-                        }
-                    )
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .glassDense()
                     .padding(.horizontal, 40)
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))

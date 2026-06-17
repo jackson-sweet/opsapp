@@ -183,7 +183,7 @@ struct PlanSelectionView: View {
         if isPollingSubscriptionStatus {
             ZStack {
                 // Pure black background with subtle opacity
-                OPSStyle.Colors.darkBackground
+                OPSStyle.Colors.modalOverlay
                     .ignoresSafeArea()
                     .transition(.opacity)
                 
@@ -312,12 +312,7 @@ struct PlanSelectionView: View {
                         .frame(height: 2)
                         .opacity(0.8)
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassDense()
                 .padding(.horizontal, OPSStyle.Layout.spacing4)
                 .scaleEffect(isPollingSubscriptionStatus ? 1.0 : 0.95)
                 .opacity(isPollingSubscriptionStatus ? 1.0 : 0)
@@ -367,9 +362,9 @@ struct PlanSelectionView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, OPSStyle.Layout.spacing2_5)
                         .background(
-                            selectedSchedule == schedule ? 
-                            Color.white : 
-                            Color.clear
+                            selectedSchedule == schedule ?
+                            Color.white :
+                            OPSStyle.Colors.surfaceInput
                         )
                     }
                 }
@@ -439,12 +434,7 @@ struct PlanSelectionView: View {
             }
             .padding(.vertical, 14)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
     }
 
@@ -496,13 +486,13 @@ struct PlanSelectionView: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .padding(.horizontal, 14)
                             .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                            .background(OPSStyle.Colors.subtleBackground)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .stroke(
                                         validatedPromoCode != nil ? OPSStyle.Colors.warningStatus.opacity(0.3) :
-                                        OPSStyle.Colors.cardBorder,
+                                        OPSStyle.Colors.inputFieldBorder,
                                         lineWidth: OPSStyle.Layout.Border.standard
                                     )
                             )
@@ -540,7 +530,7 @@ struct PlanSelectionView: View {
                                 }
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 .frame(width: 80, height: 40)
-                                .background(OPSStyle.Colors.subtleBackground)
+                                .background(OPSStyle.Colors.surfaceInput)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             } else {
                                 Text("APPLY")
@@ -548,8 +538,8 @@ struct PlanSelectionView: View {
                                     .foregroundColor(promoCode.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.invertedText)
                                     .frame(width: 80, height: 40)
                                     .background(
-                                        promoCode.isEmpty ? 
-                                        OPSStyle.Colors.cardBackgroundDark.opacity(0.8) :
+                                        promoCode.isEmpty ?
+                                        OPSStyle.Colors.surfaceInput :
                                         OPSStyle.Colors.primaryAccent
                                     )
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -1492,14 +1482,20 @@ struct PlanCard: View {
                 .padding(.vertical, isCurrentPlan ? 8 : 14)
                 .padding(.bottom, isCurrentPlan ? 14 : 0)
             }
-            .background(isSelected ? OPSStyle.Colors.subtleBackground : Color.clear)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .glassSurface(cornerRadius: OPSStyle.Layout.cornerRadius)
+            .overlay {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius, style: .continuous)
+                        .fill(OPSStyle.Colors.surfaceActive)
+                        .allowsHitTesting(false)
+                }
+            }
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(
                         isSelected ? OPSStyle.Colors.pageIndicatorInactive :
                         isCurrentPlan ? OPSStyle.Colors.pinDotNeutral :
-                        OPSStyle.Colors.cardBorder,
+                        Color.clear,
                         lineWidth: isSelected ? 2 : 1
                     )
             )

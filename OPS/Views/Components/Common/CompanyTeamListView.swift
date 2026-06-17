@@ -40,8 +40,7 @@ struct CompanyTeamListView: View {
                     }
                     .padding(.vertical, OPSStyle.Layout.spacing2)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .nestedCard()
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, OPSStyle.Layout.spacing3)
@@ -55,8 +54,7 @@ struct CompanyTeamListView: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+        .glassSurface()
     }
 }
 
@@ -110,8 +108,7 @@ struct CompanyTeamMemberRow: View {
             }
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .nestedCard()
     }
     
     private func openEmail(_ email: String) {

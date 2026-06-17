@@ -79,7 +79,7 @@ struct PhotoFilterSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .edgesIgnoringSafeArea(.all)
 
                 ScrollView {
@@ -262,7 +262,7 @@ struct PhotoFilterSheet: View {
                 .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
                 .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                 .padding(.vertical, OPSStyle.Layout.spacing2)
-                .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.cardBackgroundDark)
+                .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -354,11 +354,11 @@ struct PhotoFilterSheet: View {
             }
         }
         .padding(OPSStyle.Layout.spacing2_5)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .overlay {
             DatePicker("", selection: Binding(

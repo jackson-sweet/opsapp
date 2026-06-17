@@ -97,12 +97,7 @@ struct CascadePreviewSheet: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(maxWidth: .infinity)
                         .frame(height: OPSStyle.Layout.touchTargetStandard)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                        )
+                        .nestedCard()
                 }
 
                 Button(action: {
@@ -121,7 +116,7 @@ struct CascadePreviewSheet: View {
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.bottom, OPSStyle.Layout.spacing3)
         }
-        .background(OPSStyle.Colors.background)
+        .glassDense()
     }
 
     private var crewChanges: [SchedulingEngine.CascadeResult.TaskDateChange] {
@@ -186,8 +181,7 @@ struct CascadePreviewSheet: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(isPrimary ? 1.0 : 0.5))
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 

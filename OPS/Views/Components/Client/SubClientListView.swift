@@ -68,12 +68,7 @@ struct SubClientListView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, OPSStyle.Layout.spacing5)
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
             } else {
                 // Sub-client list
                 VStack(spacing: OPSStyle.Layout.spacing2) {
@@ -236,7 +231,6 @@ struct SubClientRow: View {
             }
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
             .contentShape(Rectangle())
             .onTapGesture {
                 if !isEditing {
@@ -252,7 +246,7 @@ struct SubClientRow: View {
                         HStack(spacing: OPSStyle.Layout.spacing3) {
                             ZStack {
                                 Circle()
-                                    .fill(OPSStyle.Colors.cardBackground)
+                                    .fill(OPSStyle.Colors.background)
                                     .frame(width: 36, height: 36)
                                 
                                 Image(systemName: OPSStyle.Icons.envelope)
@@ -292,7 +286,7 @@ struct SubClientRow: View {
                         HStack(spacing: OPSStyle.Layout.spacing3) {
                             ZStack {
                                 Circle()
-                                    .fill(OPSStyle.Colors.cardBackground)
+                                    .fill(OPSStyle.Colors.background)
                                     .frame(width: 36, height: 36)
                                 
                                 Image(systemName: OPSStyle.Icons.envelope)
@@ -321,7 +315,7 @@ struct SubClientRow: View {
                         HStack(spacing: OPSStyle.Layout.spacing3) {
                             ZStack {
                                 Circle()
-                                    .fill(OPSStyle.Colors.cardBackground)
+                                    .fill(OPSStyle.Colors.background)
                                     .frame(width: 36, height: 36)
                                 
                                 Image(systemName: OPSStyle.Icons.phone)
@@ -376,7 +370,7 @@ struct SubClientRow: View {
                         HStack(spacing: OPSStyle.Layout.spacing3) {
                             ZStack {
                                 Circle()
-                                    .fill(OPSStyle.Colors.cardBackground)
+                                    .fill(OPSStyle.Colors.background)
                                     .frame(width: 36, height: 36)
                                 
                                 Image(systemName: OPSStyle.Icons.phone)
@@ -405,7 +399,7 @@ struct SubClientRow: View {
                         HStack(spacing: OPSStyle.Layout.spacing3) {
                             ZStack {
                                 Circle()
-                                    .fill(OPSStyle.Colors.cardBackground)
+                                    .fill(OPSStyle.Colors.background)
                                     .frame(width: 36, height: 36)
                                 
                                 Image(systemName: OPSStyle.Icons.address)
@@ -519,18 +513,14 @@ struct SubClientRow: View {
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                 }
                 .padding(.vertical, OPSStyle.Layout.spacing3_5)
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                .background(OPSStyle.Colors.surfaceHover)
                 .transition(.asymmetric(
                     insertion: .move(edge: .top).combined(with: .opacity),
                     removal: .move(edge: .top).combined(with: .opacity)
                 ))
             }
         }
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .animation(OPSStyle.Animation.standard, value: isExpanded)
         .sheet(isPresented: $showingCreateContact) {
             ContactCreatorView(

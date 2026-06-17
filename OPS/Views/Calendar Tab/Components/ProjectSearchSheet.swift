@@ -260,11 +260,11 @@ struct ProjectSearchSheet: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .frame(maxWidth: .infinity)
             
@@ -299,7 +299,7 @@ struct ProjectSearchSheet: View {
                 .padding(.vertical, OPSStyle.Layout.spacing2)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(showFilters ? OPSStyle.Colors.cardBackground : Color.clear)
+                        .fill(showFilters ? OPSStyle.Colors.surfaceActive : Color.clear)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .stroke(hasActiveFilters ? OPSStyle.Colors.text.opacity(0.3) : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
@@ -347,7 +347,7 @@ struct ProjectSearchSheet: View {
                             .padding(.vertical, 10)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .fill(OPSStyle.Colors.cardBackgroundDark)
+                                    .fill(OPSStyle.Colors.surfaceInput)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                             .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
@@ -358,7 +358,7 @@ struct ProjectSearchSheet: View {
                     }
                 }
                 .padding(.vertical, OPSStyle.Layout.spacing3)
-                .background(OPSStyle.Colors.cardBackground.opacity(0.5))
+                .background(OPSStyle.Colors.surfaceInput)
                 .transition(.asymmetric(
                     insertion: .move(edge: .top).combined(with: .opacity),
                     removal: .move(edge: .top).combined(with: .opacity)
@@ -414,7 +414,7 @@ struct ProjectSearchSheet: View {
                 .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(searchInTasks ? OPSStyle.Colors.cardBackgroundDark.opacity(0.8) : OPSStyle.Colors.cardBackgroundDark)
+                        .fill(searchInTasks ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .stroke(searchInTasks ? OPSStyle.Colors.primaryAccent.opacity(0.2) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
@@ -484,7 +484,7 @@ struct ProjectSearchSheet: View {
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -550,7 +550,7 @@ struct ProjectSearchSheet: View {
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -617,7 +617,7 @@ struct ProjectSearchSheet: View {
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -843,12 +843,7 @@ struct ProjectSearchRow: View {
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, 14)
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal)
         }
     }
@@ -878,7 +873,7 @@ struct FilterChip: View {
             .padding(.vertical, OPSStyle.Layout.spacing2)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(isSelected ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.cardBackground)
+                    .fill(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

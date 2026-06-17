@@ -125,10 +125,7 @@ struct TaskDetailsView: View {
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, OPSStyle.Layout.spacing2)
-                .background(.ultraThinMaterial)
-                .background(task.status == .completed ?
-                           OPSStyle.Colors.cardBackgroundDark :
-                           OPSStyle.Colors.background)
+                .background(OPSStyle.Colors.background)
                 
                 // Color stripe at bottom of header
                 Rectangle()

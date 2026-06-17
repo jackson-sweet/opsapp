@@ -68,7 +68,7 @@ struct DayEventsSheet: View {
                 ZStack {
                     // Project count card with softer edges
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .fill(OPSStyle.Colors.surfaceInput)
                         .frame(width: 60, height: 60)
 
                     // Total event count number (new + ongoing)
@@ -152,7 +152,7 @@ struct DayEventsSheet: View {
                 }
                 }
             }
-            .background(OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all))
+            .background(OPSStyle.Colors.background.edgesIgnoringSafeArea(.all))
             .navigationBarHidden(true) // Hide the default navigation bar
         }
     }

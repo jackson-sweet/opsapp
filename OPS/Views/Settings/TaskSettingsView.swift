@@ -30,7 +30,7 @@ struct TaskSettingsView: View {
     
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
@@ -117,7 +117,7 @@ struct TaskSettingsView: View {
                     }
                 }
                 .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .glassSurface(cornerRadius: 0)
             }
         }
         .trackScreen("Settings.Tasks")
@@ -344,7 +344,7 @@ struct TaskTypeRow: View {
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .padding(.horizontal, OPSStyle.Layout.spacing2)
                                 .padding(.vertical, 2)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .background(OPSStyle.Colors.surfaceInput)
                                 .cornerRadius(OPSStyle.Layout.chipRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
@@ -368,12 +368,7 @@ struct TaskTypeRow: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
         .buttonStyle(PlainButtonStyle())
         // Defaults have no edit path — tap is disabled, but context menu stays

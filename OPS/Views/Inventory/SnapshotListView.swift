@@ -143,7 +143,7 @@ struct SnapshotListView: View {
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(OPSStyle.Colors.subtleBackground)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                     }
                 }
@@ -155,12 +155,7 @@ struct SnapshotListView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -286,12 +281,7 @@ struct SnapshotDetailView: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
@@ -324,17 +314,12 @@ struct SnapshotDetailView: View {
 
                     if item.id != items.last?.id {
                         Divider()
-                            .background(OPSStyle.Colors.cardBorder)
+                            .background(OPSStyle.Colors.line)
                             .padding(.leading, OPSStyle.Layout.spacing3)
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }

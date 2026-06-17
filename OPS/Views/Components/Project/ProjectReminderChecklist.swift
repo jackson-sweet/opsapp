@@ -98,13 +98,12 @@ private struct TaskRemindersGroup: View {
                 ForEach(Array(reminders.enumerated()), id: \.element.id) { index, reminder in
                     ReminderRow(reminder: reminder)
                     if index < reminders.count - 1 {
-                        Divider().background(OPSStyle.Colors.cardBorder)
+                        Divider().background(OPSStyle.Colors.line)
                     }
                 }
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
 }
 

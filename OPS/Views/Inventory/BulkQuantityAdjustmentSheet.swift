@@ -162,12 +162,7 @@ struct BulkQuantityAdjustmentSheet: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .padding(.vertical, 14)
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .nestedCard()
                     }
                     .buttonStyle(PlainButtonStyle())
 
@@ -282,8 +277,7 @@ struct BulkQuantityAdjustmentSheet: View {
         }
         .padding(.vertical, OPSStyle.Layout.spacing2)
         .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+        .glassSurface()
     }
 
     private func newQuantityColor(current: Double, new: Double) -> Color {

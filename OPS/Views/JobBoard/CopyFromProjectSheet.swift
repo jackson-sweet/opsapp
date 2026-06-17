@@ -130,8 +130,7 @@ struct CopyFromProjectSheet: View {
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .glassDense(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.warningStatus, lineWidth: OPSStyle.Layout.Border.standard)
@@ -167,8 +166,12 @@ struct CopyFromProjectSheet: View {
                 }
             }
             .padding()
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
             .padding()
 
             // Project list
@@ -268,12 +271,7 @@ struct CopyFromProjectSheet: View {
             .padding(OPSStyle.Layout.spacing3)
         }
         .frame(height: 80)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .overlay(
             // Status badge
             VStack(alignment: .trailing, spacing: 0) {
@@ -329,20 +327,22 @@ struct CopyFromProjectSheet: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .glassSurface()
                 .padding(.horizontal)
             }
 
             // Field checklist
             ScrollView {
-                VStack(spacing: 1) {
-                    ForEach(availableFields, id: \.id) { field in
+                VStack(spacing: 0) {
+                    ForEach(Array(availableFields.enumerated()), id: \.element.id) { index, field in
+                        if index > 0 {
+                            Divider()
+                                .background(OPSStyle.Colors.line)
+                        }
                         fieldChecklistRow(field: field)
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .glassSurface()
                 .padding()
             }
         }
@@ -388,7 +388,7 @@ struct CopyFromProjectSheet: View {
                 }
             }
             .padding()
-            .background(OPSStyle.Colors.background)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
         .disabled(!field.hasData) // Disable button for empty fields

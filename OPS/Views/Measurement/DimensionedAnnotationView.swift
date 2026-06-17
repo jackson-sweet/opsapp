@@ -220,7 +220,7 @@ public struct DimensionedAnnotationView: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .frame(height: 44)
-        .background(.ultraThinMaterial)
+        .background(OPSStyle.Colors.background)
     }
 
     // MARK: - Photo area
@@ -635,7 +635,7 @@ public struct DimensionedAnnotationView: View {
         .padding(.top, OPSStyle.Layout.spacing4)
         .padding(.bottom, 28)
         .frame(maxWidth: .infinity)
-        .background(.ultraThinMaterial)
+        .glassDense()
         .presentationDetents([.height(240)])
     }
 
@@ -880,13 +880,10 @@ private struct AnnotationSaveStateBanner: View {
         .padding(.horizontal, OPSStyle.Layout.spacing2_5)
         .padding(.vertical, OPSStyle.Layout.spacing2)
         .frame(maxWidth: .infinity)
-        .background(
+        .glassDense(cornerRadius: OPSStyle.Layout.chipRadius)
+        .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                .fill(OPSStyle.Colors.glassDenseApprox)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                        .strokeBorder(border, lineWidth: 1)
-                )
+                .strokeBorder(border, lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
     }

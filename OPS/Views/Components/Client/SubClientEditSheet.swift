@@ -91,8 +91,12 @@ struct SubClientEditSheet: View {
                                         .autocorrectionDisabled(true)
                                         .textInputAutocapitalization(.words)
                                         .padding(OPSStyle.Layout.spacing2_5)
-                                        .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                                        .background(OPSStyle.Colors.surfaceInput)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                        )
                                         .focused($focusedField, equals: .name)
                                 }
 
@@ -108,8 +112,12 @@ struct SubClientEditSheet: View {
                                         .autocorrectionDisabled(true)
                                         .textInputAutocapitalization(.words)
                                         .padding(OPSStyle.Layout.spacing2_5)
-                                        .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                                        .background(OPSStyle.Colors.surfaceInput)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                        )
                                         .focused($focusedField, equals: .title)
                                 }
 
@@ -126,8 +134,12 @@ struct SubClientEditSheet: View {
                                         .autocapitalization(.none)
                                         .autocorrectionDisabled(true)
                                         .padding(OPSStyle.Layout.spacing2_5)
-                                        .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                                        .background(OPSStyle.Colors.surfaceInput)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                        )
                                         .focused($focusedField, equals: .email)
                                 }
 
@@ -143,8 +155,12 @@ struct SubClientEditSheet: View {
                                         .keyboardType(.phonePad)
                                         .autocorrectionDisabled(true)
                                         .padding(OPSStyle.Layout.spacing2_5)
-                                        .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                                        .background(OPSStyle.Colors.surfaceInput)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                        )
                                         .focused($focusedField, equals: .phone)
                                 }
 
@@ -405,12 +421,7 @@ struct SubClientEditSheet: View {
             }
             .padding(.vertical, 14)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
     }
 

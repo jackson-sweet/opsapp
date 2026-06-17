@@ -21,8 +21,12 @@ struct ExpandableNotesView: View {
                 TextEditor(text: $editedNotes)
                     .frame(minHeight: 120)
                     .padding(OPSStyle.Layout.spacing2_5)
-                    .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                    )
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText.opacity(0.9))
                     .scrollContentBackground(.hidden)
@@ -130,8 +134,8 @@ struct ExpandableNotesView: View {
 
                                 LinearGradient(
                                     gradient: Gradient(colors: [
-                                        OPSStyle.Colors.cardBackgroundDark.opacity(0),
-                                        OPSStyle.Colors.cardBackgroundDark
+                                        OPSStyle.Colors.background.opacity(0),
+                                        OPSStyle.Colors.background
                                     ]),
                                     startPoint: .top,
                                     endPoint: .bottom

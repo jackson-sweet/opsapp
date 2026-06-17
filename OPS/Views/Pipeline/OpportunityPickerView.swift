@@ -36,8 +36,12 @@ struct OpportunityPickerView: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.top, OPSStyle.Layout.spacing2_5)
 
@@ -74,7 +78,7 @@ struct OpportunityPickerView: View {
                 // Contact initial circle
                 ZStack {
                     Circle()
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .fill(OPSStyle.Colors.background)
                         .frame(width: 40, height: 40)
                     Text(String(opp.contactName.prefix(1)).uppercased())
                         .font(OPSStyle.Typography.bodyBold)
@@ -103,7 +107,7 @@ struct OpportunityPickerView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.horizontal, OPSStyle.Layout.spacing2)
                     .padding(.vertical, OPSStyle.Layout.spacing1)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.chipRadius)
 
                 // Checkmark if selected
@@ -180,7 +184,11 @@ struct OpportunityPickerView: View {
             .foregroundColor(OPSStyle.Colors.primaryText)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
     }
 }

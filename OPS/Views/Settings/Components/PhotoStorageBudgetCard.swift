@@ -171,7 +171,7 @@ struct PhotoStorageBudgetCard: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Rectangle()
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .fill(OPSStyle.Colors.fillNeutralDim)
                     Rectangle()
                         .fill(isOverBudget ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryAccent)
                         .frame(width: geo.size.width * usagePercent)

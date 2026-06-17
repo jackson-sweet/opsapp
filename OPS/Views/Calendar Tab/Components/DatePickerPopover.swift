@@ -42,8 +42,7 @@ struct DatePickerPopover: View {
             .padding(.horizontal)
             .padding(.bottom, OPSStyle.Layout.spacing3)
         }
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+        .glassDense()
         .frame(width: 320, height: mode == .week ? 440 : 360)
     }
     

@@ -149,12 +149,7 @@ struct InventoryWizardFlow: View {
                                     .foregroundColor(OPSStyle.Colors.successStatus)
                             }
                             .padding(OPSStyle.Layout.spacing2_5)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .glassSurface()
                         }
 
                         // Add item button
@@ -170,12 +165,7 @@ struct InventoryWizardFlow: View {
                             .foregroundColor(OPSStyle.Colors.wizardAccent)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, OPSStyle.Layout.spacing3)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.wizardAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .glassSurface(borderColor: OPSStyle.Colors.wizardAccent.opacity(0.3))
                         }
 
                         // Exit option — always available

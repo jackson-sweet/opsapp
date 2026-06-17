@@ -119,20 +119,15 @@ struct ImportConfigView: View {
             VStack(spacing: 0) {
                 infoRow(label: "Name", value: spreadsheetData.sourceFileName)
                 Rectangle()
-                    .fill(OPSStyle.Colors.cardBorder)
+                    .fill(OPSStyle.Colors.line)
                     .frame(height: 1)
                 infoRow(label: "Rows", value: "\(spreadsheetData.rowCount)")
                 Rectangle()
-                    .fill(OPSStyle.Colors.cardBorder)
+                    .fill(OPSStyle.Colors.line)
                     .frame(height: 1)
                 infoRow(label: "Columns", value: "\(spreadsheetData.columnCount)")
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
@@ -177,12 +172,7 @@ struct ImportConfigView: View {
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
@@ -212,12 +202,7 @@ struct ImportConfigView: View {
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }

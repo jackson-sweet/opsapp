@@ -119,16 +119,14 @@ struct AddressAutocompleteField: View {
                             .padding(.vertical, OPSStyle.Layout.spacing2_5)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .background(OPSStyle.Colors.cardBackground)
-                        
+
                         if result != searchResults.prefix(5).last {
                             Divider()
-                                .background(OPSStyle.Colors.secondaryText.opacity(0.3))
+                                .background(OPSStyle.Colors.line)
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackground)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .glassDense()
                 .padding(.top, OPSStyle.Layout.spacing1)
             }
         }

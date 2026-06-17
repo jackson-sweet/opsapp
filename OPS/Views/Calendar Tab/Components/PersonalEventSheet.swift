@@ -47,10 +47,11 @@ struct PersonalEventSheet: View {
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                             .padding(14)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                                    .stroke(OPSStyle.Colors.line, lineWidth: 0.5)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             .padding(.bottom, OPSStyle.Layout.spacing3_5)
@@ -98,10 +99,11 @@ struct PersonalEventSheet: View {
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                             .padding(14)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                                    .stroke(OPSStyle.Colors.line, lineWidth: 0.5)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             .padding(.bottom, OPSStyle.Layout.spacing3_5)
@@ -125,10 +127,11 @@ struct PersonalEventSheet: View {
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
                             .padding(14)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                                    .stroke(OPSStyle.Colors.line, lineWidth: 0.5)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -142,10 +145,11 @@ struct PersonalEventSheet: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(minHeight: 80)
                             .padding(10)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                                    .stroke(OPSStyle.Colors.line, lineWidth: 0.5)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             .padding(.bottom, OPSStyle.Layout.spacing5)

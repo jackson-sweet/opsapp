@@ -36,7 +36,7 @@ struct ManageSubscriptionView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -256,7 +256,7 @@ struct ManageSubscriptionView: View {
 
             // Divider
             Rectangle()
-                .fill(OPSStyle.Colors.cardBorder)
+                .fill(OPSStyle.Colors.separator)
                 .frame(height: 1)
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
@@ -266,6 +266,8 @@ struct ManageSubscriptionView: View {
             // Seat usage row
             seatUsageRow(company)
         }
+        .glassSurface()
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     private func warningBanners(_ company: Company) -> some View {
@@ -340,7 +342,7 @@ struct ManageSubscriptionView: View {
                 // Progress indicator
                 ZStack {
                     Circle()
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 4)
+                        .stroke(OPSStyle.Colors.fillNeutral, lineWidth: 4)
                         .frame(width: 44, height: 44)
 
                     Circle()
@@ -432,12 +434,7 @@ struct ManageSubscriptionView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Billing Info Section
@@ -722,8 +719,12 @@ struct ManageSubscriptionView: View {
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(minHeight: 100)
                                 .padding(OPSStyle.Layout.spacing2_5)
-                                .background(OPSStyle.Colors.subtleBackground)
+                                .background(OPSStyle.Colors.surfaceInput)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                )
                                 .scrollContentBackground(.hidden)
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -783,11 +784,11 @@ struct ManageSubscriptionView: View {
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 14)
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .background(OPSStyle.Colors.surfaceInput)
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                            .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             }
                             .disabled(isCancelling)

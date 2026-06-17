@@ -29,7 +29,7 @@ struct InventoryInsightsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .ignoresSafeArea()
 
                 if viewModel.isLoading {
@@ -193,12 +193,7 @@ struct InventoryInsightsView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(OPSStyle.Layout.spacing3_5)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
     }
 

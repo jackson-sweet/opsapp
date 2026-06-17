@@ -56,9 +56,8 @@ struct NavigationLoadingBanner: View {
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(OPSStyle.Colors.cardBackground)
+            .glassSurface()
         }
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
         .onAppear {
             isAnimating = true
         }

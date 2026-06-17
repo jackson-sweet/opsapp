@@ -456,12 +456,7 @@ struct UniversalJobBoardCard: View {
         .frame(maxHeight: .infinity, alignment: .center)
         .padding(.vertical, OPSStyle.Layout.spacing2)
         .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var compactDateRange: String {
@@ -528,11 +523,10 @@ struct UniversalJobBoardCard: View {
             .frame(maxHeight: .infinity, alignment: .bottom)
             .padding(OPSStyle.Layout.spacing3)
         }
-        .background(
-            ZStack {
-                OPSStyle.Colors.cardBackgroundDark
-
-                // Tutorial shimmer effect in card background (blue/primaryAccent)
+        .glassSurface()
+        .overlay(
+            // Tutorial shimmer effect over the card surface (blue/primaryAccent)
+            Group {
                 if shouldShowTutorialSwipeShimmer {
                     GeometryReader { geo in
                         LinearGradient(
@@ -557,13 +551,19 @@ struct UniversalJobBoardCard: View {
                             }
                         }
                     }
+                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius))
+                    .allowsHitTesting(false)
                 }
             }
         )
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(shouldShowTutorialSwipeShimmer ? TutorialHighlightStyle.color : OPSStyle.Colors.cardBorder, lineWidth: shouldShowTutorialSwipeShimmer ? 2 : 1)
+            // Tutorial highlight border — emphasis state only, augments the glass edge
+            Group {
+                if shouldShowTutorialSwipeShimmer {
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
+                        .strokeBorder(TutorialHighlightStyle.color, lineWidth: 2)
+                }
+            }
         )
         .overlay(
             Group {
@@ -705,12 +705,7 @@ struct UniversalJobBoardCard: View {
             .frame(maxHeight: .infinity, alignment: .bottom)
             .padding(OPSStyle.Layout.spacing3)
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .overlay(
             Group {
                 if case .task(let task) = cardType {
@@ -1361,7 +1356,7 @@ struct UniversalJobBoardCard: View {
     private var taskPickerSheet: some View {
         NavigationView {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .edgesIgnoringSafeArea(.all)
 
                 if case .project(let project) = cardType {
@@ -1413,8 +1408,7 @@ struct UniversalJobBoardCard: View {
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     }
                                     .padding()
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                    .glassSurface()
                                 }
                                 .buttonStyle(PlainButtonStyle())
                             }

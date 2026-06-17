@@ -82,7 +82,7 @@ struct ProjectBioSheet: View {
         let photos = project.getProjectImages()
         if photos.isEmpty {
             Rectangle()
-                .fill(OPSStyle.Colors.cardBackgroundDark)
+                .fill(OPSStyle.Colors.background)
                 .frame(height: 220)
                 .overlay(
                     VStack(spacing: OPSStyle.Layout.spacing2) {

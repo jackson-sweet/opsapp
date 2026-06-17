@@ -37,12 +37,7 @@ struct ConsumptionChart: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Section Header
@@ -86,10 +81,9 @@ struct ConsumptionChart: View {
                         .padding(.vertical, OPSStyle.Layout.spacing2)
                         .background(
                             viewModel.selectedTimeRange == range
-                                ? OPSStyle.Colors.primaryAccent.opacity(0.15)
-                                : Color.clear
+                                ? OPSStyle.Colors.surfaceActive
+                                : OPSStyle.Colors.surfaceInput
                         )
-                        .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -249,12 +243,7 @@ struct ConsumptionChart: View {
         }
         .padding(10)
         .frame(width: 150)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassDense()
     }
 
     // MARK: - Legend
@@ -296,7 +285,7 @@ struct ConsumptionChart: View {
                                 ? chipColor.opacity(0.1)
                                 : Color.clear
                         )
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .background(isVisible ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

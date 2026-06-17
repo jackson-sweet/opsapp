@@ -90,7 +90,7 @@ struct LaserMeterSettingsView: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing2)
         .padding(.vertical, OPSStyle.Layout.spacing1)
-        .background(OPSStyle.Colors.cardBackground)
+        .background(OPSStyle.Colors.background)
     }
 
     // MARK: - Bluetooth Off
@@ -232,12 +232,7 @@ struct LaserMeterSettingsView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
     }
 
@@ -267,12 +262,7 @@ struct LaserMeterSettingsView: View {
                 Spacer()
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
     }
 
@@ -362,12 +352,7 @@ struct LaserMeterSettingsView: View {
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
 
             // Stop scanning button
             Button {
@@ -378,12 +363,7 @@ struct LaserMeterSettingsView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .nestedCard()
             }
         }
     }

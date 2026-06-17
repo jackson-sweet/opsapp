@@ -53,7 +53,7 @@ struct SyncStatusIndicator: View {
             .padding(.vertical, 6)
             .background(
                 Capsule()
-                    .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.95))
+                    .fill(OPSStyle.Colors.background.opacity(0.95))
             )
             .overlay(
                 Capsule()

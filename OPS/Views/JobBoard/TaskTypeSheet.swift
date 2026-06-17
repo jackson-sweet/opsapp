@@ -440,12 +440,7 @@ struct TaskTypeSheet: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, OPSStyle.Layout.spacing4)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Name Field
@@ -460,11 +455,11 @@ struct TaskTypeSheet: View {
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
     }
@@ -690,12 +685,7 @@ struct TaskTypeSheet: View {
         .padding(.vertical, OPSStyle.Layout.spacing2)
         .padding(.horizontal, OPSStyle.Layout.spacing2_5)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .nestedCard()
     }
 
     private func formatLinkedProductPrice(_ product: Product) -> String {
@@ -794,12 +784,7 @@ struct TaskTypeSheet: View {
             .padding(.vertical, OPSStyle.Layout.spacing2)
             .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .nestedCard()
         }
         .buttonStyle(PlainButtonStyle())
         .accessibilityLabel("Edit sub-task \(template.title)")
@@ -1061,12 +1046,11 @@ struct TaskTypeSheet: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .nestedCard()
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius, style: .continuous)
                 .stroke(
-                    isEditing ? OPSStyle.Colors.primaryAccent.opacity(0.3) : OPSStyle.Colors.cardBorder,
+                    isEditing ? OPSStyle.Colors.primaryAccent.opacity(0.3) : Color.clear,
                     lineWidth: 1
                 )
         )
@@ -1220,7 +1204,7 @@ struct TaskTypeSheet: View {
                         .tracking(0.3)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .padding(.horizontal, OPSStyle.Layout.spacing1)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .background(OPSStyle.Colors.background)
                 }
                 .frame(maxWidth: .infinity)
 

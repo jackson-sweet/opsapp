@@ -270,10 +270,7 @@ struct PhotoCommentViewer: View {
             .disabled(annotationIsSaving)
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(
-            Color.black.opacity(0.6)
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        )
+        .glassDense()
     }
 
     // MARK: - Annotation Actions
@@ -502,8 +499,8 @@ struct PhotoCommentViewer: View {
         }
         .background {
             ZStack {
-                Color.black.opacity(0.60)
                 Rectangle().fill(.ultraThinMaterial)
+                Rectangle().fill(OPSStyle.Colors.glassDenseApprox)
             }
             .environment(\.colorScheme, .dark)
             .ignoresSafeArea(edges: .bottom)
@@ -614,8 +611,8 @@ struct PhotoCommentViewer: View {
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .background(OPSStyle.Colors.line)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .background(OPSStyle.Colors.surfaceInput)
+                        .cornerRadius(OPSStyle.Layout.chipRadius)
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -630,8 +627,8 @@ struct PhotoCommentViewer: View {
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .background(OPSStyle.Colors.line)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .background(OPSStyle.Colors.surfaceInput)
+                        .cornerRadius(OPSStyle.Layout.chipRadius)
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -953,7 +950,7 @@ struct PhotoCommentRow: View {
                 } else {
                     ZStack {
                         Circle()
-                            .fill(OPSStyle.Colors.subtleBackground)
+                            .fill(OPSStyle.Colors.fillNeutral)
                             .frame(width: 28, height: 28)
                         Text(initials)
                             .font(OPSStyle.Typography.smallCaption)
@@ -996,8 +993,12 @@ struct PhotoCommentRow: View {
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(OPSStyle.Layout.spacing2)
-                        .background(OPSStyle.Colors.line)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .background(OPSStyle.Colors.surfaceInput)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                        )
 
                     Button(action: onSaveEdit) {
                         Text("Save")

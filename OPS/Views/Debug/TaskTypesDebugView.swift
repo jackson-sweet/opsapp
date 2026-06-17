@@ -20,7 +20,7 @@ struct TaskTypesDebugView: View {
     
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 0) {
@@ -42,8 +42,8 @@ struct TaskTypesDebugView: View {
                         }
                     }
                 )
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                
+                .background(OPSStyle.Colors.background)
+
                 if isLoading {
                     Spacer()
                     ProgressView("Loading task types...")
@@ -97,7 +97,7 @@ struct TaskTypesDebugView: View {
                     }
                 }
                 .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.background)
             }
         }
         .onAppear {
@@ -239,8 +239,7 @@ struct TaskTypeCard: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
         .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
 }
 
@@ -333,7 +332,7 @@ struct AddTaskTypeSheet: View {
                                             .frame(width: 40, height: 40)
                                             .background(
                                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                                    .fill(icon == iconName ? OPSStyle.Colors.cardBackground : OPSStyle.Colors.cardBackgroundDark)
+                                                    .fill(icon == iconName ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
                                             )
                                     }
                                 }
@@ -364,8 +363,7 @@ struct AddTaskTypeSheet: View {
                                 Spacer()
                             }
                             .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .glassSurface()
                         }
                     }
                     .padding()
@@ -419,9 +417,13 @@ struct OPSTextFieldStyle: TextFieldStyle {
     func _body(configuration: TextField<Self._Label>) -> some View {
         configuration
             .padding()
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .foregroundColor(.white)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+            )
     }
 }
 

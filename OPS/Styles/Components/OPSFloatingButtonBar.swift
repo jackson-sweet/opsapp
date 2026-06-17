@@ -84,8 +84,7 @@ struct OPSFloatingButtonBar<Content: View>: View {
                         .foregroundColor(OPSStyle.Colors.text)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding()
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .glassSurface()
                 }
             }
             .padding()

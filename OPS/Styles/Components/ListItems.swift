@@ -62,8 +62,8 @@ struct ListItem: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(isDisabled ? OPSStyle.Colors.cardBackgroundDark.opacity(0.4) : OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .glassSurface()
+            .opacity(isDisabled ? 0.55 : 1)
         }
         .disabled(isDisabled)
     }
@@ -124,8 +124,7 @@ struct UserListItem: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+            .glassSurface()
         }
     }
     
@@ -200,8 +199,7 @@ struct ProjectListItem: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+            .glassSurface()
         }
     }
     
@@ -235,7 +233,7 @@ struct ListItemsPreview: View {
             // UserListItem and ProjectListItem previews removed (commented out)
         }
         .padding()
-        .background(OPSStyle.Colors.backgroundGradient)
+        .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
     }
 }

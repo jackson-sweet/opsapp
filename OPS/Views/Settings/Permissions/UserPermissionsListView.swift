@@ -61,16 +61,11 @@ struct UserPermissionsListView: View {
 
                                     if member.id != teamMembers.last?.id {
                                         Divider()
-                                            .background(OPSStyle.Colors.cardBorder)
+                                            .background(OPSStyle.Colors.line)
                                     }
                                 }
                             }
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .glassSurface()
                             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
                         // Bug e6004ed0: cap the scroll content to the viewport

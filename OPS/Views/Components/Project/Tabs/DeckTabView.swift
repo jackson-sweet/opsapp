@@ -134,14 +134,7 @@ struct DeckTabView: View {
             .padding(.horizontal, OPSStyle.Layout.spacing2)
             .padding(.vertical, OPSStyle.Layout.spacing1)
             .frame(maxWidth: Self.chipWidth, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                    .fill(OPSStyle.Colors.cardBackground.opacity(0.9))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                            .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: 0.5)
-                    )
-            )
+            .glassDense(cornerRadius: OPSStyle.Layout.chipRadius)
     }
 
     /// One chip per deck level — or a single "DECK" chip for a single-level
@@ -193,14 +186,7 @@ struct DeckTabView: View {
         .padding(.horizontal, OPSStyle.Layout.spacing2)
         .padding(.vertical, OPSStyle.Layout.spacing1)
         .frame(width: Self.chipWidth, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                .fill(OPSStyle.Colors.cardBackground.opacity(0.9))
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                        .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: 0.5)
-                )
-        )
+        .glassDense(cornerRadius: OPSStyle.Layout.chipRadius)
     }
 
     /// A single metric: a dim uppercase micro-label butted against its mono
@@ -300,15 +286,7 @@ struct DeckTabView: View {
                 }
             }
             .padding(28)
-            .background(
-                BlurView(style: .systemUltraThinMaterialDark)
-                    .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
-            )
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             Spacer()

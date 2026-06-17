@@ -62,11 +62,17 @@ struct InventoryManageTagsSheet: View {
 
                         // Tag list
                         ScrollView {
-                            LazyVStack(spacing: 1) {
-                                ForEach(filteredTags, id: \.self) { tag in
+                            LazyVStack(spacing: 0) {
+                                ForEach(Array(filteredTags.enumerated()), id: \.element) { index, tag in
+                                    if index > 0 {
+                                        Divider()
+                                            .background(OPSStyle.Colors.line)
+                                    }
                                     tagRow(tag)
                                 }
                             }
+                            .glassSurface()
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.top, OPSStyle.Layout.spacing2)
                             .padding(.bottom, OPSStyle.Layout.spacing4)
                         }
@@ -194,11 +200,11 @@ struct InventoryManageTagsSheet: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing2_5)
         .padding(.vertical, 10)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .background(OPSStyle.Colors.surfaceInput)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -255,13 +261,6 @@ struct InventoryManageTagsSheet: View {
         }
         .padding(.vertical, 14)
         .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .overlay(
-            Rectangle()
-                .fill(OPSStyle.Colors.cardBorder)
-                .frame(height: 1),
-            alignment: .bottom
-        )
     }
 
     // MARK: - Action Button

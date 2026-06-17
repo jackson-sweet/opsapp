@@ -99,17 +99,17 @@ struct TimeFrameSelector: View {
                         .padding(.vertical, OPSStyle.Layout.spacing2_5)
                         .background(
                             selectedTimeframe == timeframe
-                                ? OPSStyle.Colors.primaryAccent.opacity(0.1)
+                                ? OPSStyle.Colors.surfaceActive
                                 : Color.clear
                         )
                 }
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 }
@@ -203,12 +203,7 @@ struct MetricCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(color.opacity(0.2), lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .nestedCard()
     }
 }
 
@@ -248,12 +243,7 @@ struct ProjectStatusChart: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 }
 
@@ -284,7 +274,7 @@ struct StatusBar: View {
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .fill(OPSStyle.Colors.cardBackground)
+                        .fill(OPSStyle.Colors.fillNeutralDim)
 
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                         .fill(status.color)
@@ -392,12 +382,7 @@ struct TaskCompletionTrend: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 }
 
@@ -468,19 +453,14 @@ struct ClientDistributionCard: View {
 
                         if item.client != topClients.last?.client {
                             Divider()
-                                .background(OPSStyle.Colors.cardBackground)
+                                .background(OPSStyle.Colors.separator)
                         }
                     }
                 }
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 }
 
@@ -540,19 +520,14 @@ struct TeamPerformanceCard: View {
 
                         if item.member.id != topPerformers.last?.member.id {
                             Divider()
-                                .background(OPSStyle.Colors.cardBackground)
+                                .background(OPSStyle.Colors.separator)
                         }
                     }
                 }
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 }
 
@@ -593,7 +568,7 @@ struct RevenueAnalysisCard: View {
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .fill(OPSStyle.Colors.cardBackground)
+                            .fill(OPSStyle.Colors.fillNeutralDim)
 
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                             .fill(OPSStyle.Colors.successStatus)
@@ -609,11 +584,6 @@ struct RevenueAnalysisCard: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 }

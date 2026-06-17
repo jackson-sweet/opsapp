@@ -88,8 +88,7 @@ struct ProjectImagesSection: View {
         }
         .frame(maxWidth: .infinity)
         .padding(OPSStyle.Layout.spacing4)
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
     
     // Message about unsynced images

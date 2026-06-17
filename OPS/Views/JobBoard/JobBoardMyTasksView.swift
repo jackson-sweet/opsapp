@@ -160,7 +160,7 @@ struct JobBoardMyTasksView: View {
             LazyVStack(spacing: 0) {
                 ForEach(0..<6, id: \.self) { _ in
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .fill(OPSStyle.Colors.fillNeutralDim)
                         .frame(height: 60)
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
@@ -209,16 +209,16 @@ private struct TaskFilterChip: View {
         Button(action: action) {
             Text(label)
                 .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(isActive ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
+                .foregroundColor(isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
+                        .fill(isActive ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(isActive ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        .stroke(isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder, lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)

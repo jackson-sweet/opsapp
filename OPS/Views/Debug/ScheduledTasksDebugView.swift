@@ -50,7 +50,7 @@ struct ScheduledTasksDebugView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .edgesIgnoringSafeArea(.all)
 
             VStack(spacing: 0) {
@@ -72,7 +72,7 @@ struct ScheduledTasksDebugView: View {
                         }
                     }
                 )
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.background)
 
                 // Search bar
                 HStack {
@@ -91,15 +91,23 @@ struct ScheduledTasksDebugView: View {
                         }
                     }
                     .padding(OPSStyle.Layout.spacing2)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .background(OPSStyle.Colors.surfaceInput)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                    )
 
                     Button(action: { showingTaskSearchSheet = true }) {
                         Image(systemName: "doc.text.magnifyingglass")
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .padding(OPSStyle.Layout.spacing2)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                            .background(OPSStyle.Colors.surfaceInput)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                            )
                     }
                 }
                 .padding(.horizontal)
@@ -199,7 +207,7 @@ struct ScheduledTasksDebugView: View {
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.background)
             }
         }
         .onAppear {
@@ -262,11 +270,15 @@ struct EventFilterChip: View {
         Button(action: action) {
             Text(title)
                 .font(OPSStyle.Typography.caption)
-                .foregroundColor(isSelected ? .black : OPSStyle.Colors.primaryText)
+                .foregroundColor(OPSStyle.Colors.primaryText)
                 .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                 .padding(.vertical, 6)
-                .background(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+                .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
+                .cornerRadius(OPSStyle.Layout.chipRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                        .stroke(isSelected ? OPSStyle.Colors.primaryText : Color.clear, lineWidth: 1)
+                )
         }
     }
 }
@@ -307,12 +319,12 @@ struct ScheduledTaskDetailCard: View {
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing2)
                 .padding(.vertical, OPSStyle.Layout.spacing1)
-                .background(OPSStyle.Colors.cardBackground)
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                .background(OPSStyle.Colors.surfaceInput)
+                .cornerRadius(OPSStyle.Layout.chipRadius)
             }
 
             Divider()
-                .background(OPSStyle.Colors.tertiaryText)
+                .background(OPSStyle.Colors.line)
 
             // Fields grid
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
@@ -333,8 +345,7 @@ struct ScheduledTaskDetailCard: View {
             .font(OPSStyle.Typography.smallCaption)
         }
         .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
 
     private func formatDate(_ date: Date) -> String {
@@ -353,7 +364,7 @@ struct ScheduledTaskDetailSheet: View {
     var body: some View {
         NavigationView {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .edgesIgnoringSafeArea(.all)
 
                 ScrollView {
@@ -379,8 +390,7 @@ struct ScheduledTaskDetailSheet: View {
                                 }
                             }
                             .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                            .glassSurface()
                         }
 
                         // Project Info
@@ -402,8 +412,7 @@ struct ScheduledTaskDetailSheet: View {
                                     }
                                 }
                                 .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                                .glassSurface()
                             }
                         }
 
@@ -425,8 +434,7 @@ struct ScheduledTaskDetailSheet: View {
                                 }
                             }
                             .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                            .glassSurface()
                         }
 
                         // Team Members
@@ -445,8 +453,7 @@ struct ScheduledTaskDetailSheet: View {
                                     }
                                 }
                                 .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                                .glassSurface()
                             }
                         }
                     }
@@ -493,7 +500,7 @@ struct TaskSearchSheet: View {
     var body: some View {
         NavigationView {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .edgesIgnoringSafeArea(.all)
 
                 ScrollView {
@@ -510,8 +517,12 @@ struct TaskSearchSheet: View {
                                     .autocorrectionDisabled()
                                     .textInputAutocapitalization(.never)
                                     .padding(OPSStyle.Layout.spacing2_5)
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                                    .background(OPSStyle.Colors.surfaceInput)
+                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                    )
 
                                 if !taskId.isEmpty {
                                     Button(action: { taskId = "" }) {
@@ -545,8 +556,7 @@ struct TaskSearchSheet: View {
                                     .foregroundColor(OPSStyle.Colors.warningStatus)
                             }
                             .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                            .glassSurface()
                         }
 
                         if isSearching {
@@ -584,8 +594,7 @@ struct TaskSearchSheet: View {
                                 .font(OPSStyle.Typography.smallCaption)
                             }
                             .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                            .glassSurface()
                         } else if !isSearching && !taskId.isEmpty {
                             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                 Label("LOCAL SWIFTDATA", systemImage: "cylinder.fill")
@@ -596,8 +605,7 @@ struct TaskSearchSheet: View {
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                             .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                            .glassSurface()
                         }
                     }
                     .padding()

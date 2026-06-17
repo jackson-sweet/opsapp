@@ -31,7 +31,7 @@ struct OrganizationSettingsView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -142,12 +142,7 @@ struct OrganizationSettingsView: View {
             VStack(spacing: 0) {
                 content()
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
     }
 
@@ -182,7 +177,7 @@ struct OrganizationSettingsView: View {
 
     private var sectionDivider: some View {
         Rectangle()
-            .fill(OPSStyle.Colors.cardBorder)
+            .fill(OPSStyle.Colors.line)
             .frame(height: 1)
             .padding(.leading, 58)
     }

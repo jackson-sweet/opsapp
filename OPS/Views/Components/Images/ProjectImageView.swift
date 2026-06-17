@@ -40,7 +40,7 @@ struct ProjectImageView: View {
         ZStack {
             // Background placeholder - shows IMMEDIATELY
             Rectangle()
-                .fill(OPSStyle.Colors.cardBackground)
+                .fill(OPSStyle.Colors.background)
                 .frame(width: size.width, height: size.height)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             

@@ -613,12 +613,11 @@ public struct DimensionedCaptureView: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing2_5)
         .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.glassDenseApprox)
+        .glassDense(cornerRadius: OPSStyle.Layout.chipRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                 .strokeBorder(OPSStyle.Colors.roseLine, lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
         .shadow(color: Color.black.opacity(0.5), radius: 4, y: 2)
         .onTapGesture { withAnimation(.opsCurve200) { errorToast = nil } }
     }

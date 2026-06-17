@@ -106,8 +106,7 @@ struct ContactDetailSheet: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(20, corners: [.topLeft, .topRight])
+        .glassDense()
         .confirmationDialog("Call \(name)?", isPresented: $showingCallConfirmation) {
             if let phone = phone {
                 Button("Call") {
@@ -158,9 +157,9 @@ struct ContactActionRow: View {
             HStack(spacing: OPSStyle.Layout.spacing3) {
                 ZStack {
                     Circle()
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .fill(OPSStyle.Colors.background)
                         .frame(width: 44, height: 44)
-                    
+
                     Image(systemName: icon)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)

@@ -42,8 +42,7 @@ struct TeamRoleManagementView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .glassSurface()
         }
         .buttonStyle(PlainButtonStyle())
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -86,7 +85,7 @@ struct TeamRoleManagementSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .ignoresSafeArea()
 
                 VStack(spacing: 0) {
@@ -104,8 +103,12 @@ struct TeamRoleManagementSheet: View {
                                 .disableAutocorrection(true)
                         }
                         .padding()
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+                        .background(OPSStyle.Colors.surfaceInput)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                        )
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .padding(.top, OPSStyle.Layout.spacing2_5)
                         .padding(.bottom, OPSStyle.Layout.spacing3)
@@ -359,14 +362,7 @@ struct TeamMemberRoleEditRow: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(OPSStyle.Layout.spacing2_5)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(hasChanged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
-            )
+            .glassSurface(borderColor: hasChanged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.glassBorder)
         }
         .buttonStyle(PlainButtonStyle())
         .sheet(isPresented: $showingRolePicker) {
@@ -410,7 +406,7 @@ struct RolePickerSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .ignoresSafeArea()
 
                 VStack(spacing: OPSStyle.Layout.spacing4) {
@@ -480,13 +476,11 @@ struct RolePickerSheet: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(currentRole == role ? OPSStyle.Colors.primaryAccent.opacity(0.1) : OPSStyle.Colors.cardBackgroundDark)
-            )
+            .glassSurface(borderColor: currentRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.glassBorder)
             .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(currentRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
+                    .fill(OPSStyle.Colors.primaryAccent.opacity(currentRole == role ? 0.1 : 0))
+                    .allowsHitTesting(false)
             )
         }
         .buttonStyle(PlainButtonStyle())

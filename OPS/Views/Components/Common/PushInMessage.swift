@@ -158,7 +158,7 @@ struct PushInMessage: View {
                         .frame(width: 24, height: 24)
                         .background(
                             Circle()
-                                .fill(OPSStyle.Colors.cardBackgroundDark)
+                                .fill(OPSStyle.Colors.fillNeutralDim)
                         )
                 }
             }
@@ -166,33 +166,27 @@ struct PushInMessage: View {
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.vertical, OPSStyle.Layout.spacing3)
         .padding(.top, max(geometry.safeAreaInsets.top + 8, 60))
-        .background(
-            Rectangle()
-                .fill(type == .info ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.background)
-                .overlay(
-                    Group {
-                        // Only show gradient for non-info types
-                        if type != .info {
-                            Rectangle()
-                                .fill(
-                                    LinearGradient(
-                                        gradient: Gradient(colors: [
-                                            type.color.opacity(0.1),
-                                            Color.clear
-                                        ]),
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                        }
-                    }
-                )
-        )
+        // Toast surface → L1 dense glass. cornerRadius 0 keeps the edge-to-edge
+        // top banner full-bleed under the status bar.
+        .glassDense(cornerRadius: 0)
         .overlay(
-            Rectangle()
-                .frame(height: 1)
-                .foregroundColor(OPSStyle.Colors.cardBorder),
-            alignment: .bottom
+            // Semantic status tint (success/error/warning) — not an elevation surface
+            Group {
+                if type != .info {
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    type.color.opacity(0.1),
+                                    Color.clear
+                                ]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .allowsHitTesting(false)
+                }
+            }
         )
         .shadow(color: OPSStyle.Colors.shadowColor, radius: 10, x: 0, y: 4)
         .offset(y: dragOffset)

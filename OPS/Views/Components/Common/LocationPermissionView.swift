@@ -129,10 +129,7 @@ struct LocationPermissionView: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing4)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(OPSStyle.Colors.cardBackground)
-            )
+            .glassDense()
             .padding(OPSStyle.Layout.spacing4)
         }
     }

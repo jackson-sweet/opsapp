@@ -115,7 +115,7 @@ struct ManageTeamView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -391,17 +391,12 @@ struct ManageTeamView: View {
 
                         if member.id != unassignedMembers.last?.id {
                             Divider()
-                                .background(OPSStyle.Colors.cardBorder)
+                                .background(OPSStyle.Colors.line)
                                 .padding(.leading, 72)
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -425,17 +420,12 @@ struct ManageTeamView: View {
 
                     if member.id != members.last?.id {
                         Divider()
-                            .background(OPSStyle.Colors.cardBorder)
+                            .background(OPSStyle.Colors.line)
                             .padding(.leading, 72) // Align with text, past avatar
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
@@ -597,17 +587,12 @@ struct ManageTeamView: View {
 
                     if invite.id != pendingInvitations.last?.id {
                         Divider()
-                            .background(OPSStyle.Colors.cardBorder)
+                            .background(OPSStyle.Colors.line)
                             .padding(.leading, 72)
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
@@ -617,7 +602,7 @@ struct ManageTeamView: View {
             // Icon avatar
             ZStack {
                 Circle()
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
+                    .fill(OPSStyle.Colors.background)
                     .frame(width: 44, height: 44)
                     .overlay(
                         Circle()
@@ -685,12 +670,7 @@ struct ManageTeamView: View {
             .foregroundColor(OPSStyle.Colors.primaryText)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.buttonBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .nestedCard()
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .wizardTarget("view_company_code")
@@ -1134,11 +1114,11 @@ struct TeamInviteSheet: View {
                     .foregroundColor(showCopiedFeedback ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent)
                 }
                 .padding(14)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(showCopiedFeedback ? OPSStyle.Colors.successStatus.opacity(0.5) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(showCopiedFeedback ? OPSStyle.Colors.successStatus.opacity(0.5) : OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
 
@@ -1201,7 +1181,7 @@ struct TeamInviteSheet: View {
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
             .padding(.vertical, 14)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1435,7 +1415,7 @@ struct EditTeamMemberSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .ignoresSafeArea()
 
                 ScrollView {
@@ -1535,7 +1515,7 @@ struct EditTeamMemberSheet: View {
                 Spacer()
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(selectedRole == role ? OPSStyle.Colors.subtleBackground : Color.clear)
+            .background(selectedRole == role ? OPSStyle.Colors.surfaceActive : Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

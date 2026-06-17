@@ -128,7 +128,7 @@ struct SwipeCardView: View {
         LinearGradient(
             colors: [
                 project.status.color.opacity(0.4),
-                OPSStyle.Colors.cardBackgroundDark
+                OPSStyle.Colors.background
             ],
             startPoint: .topTrailing,
             endPoint: .bottomLeading

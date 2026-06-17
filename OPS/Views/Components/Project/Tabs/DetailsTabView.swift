@@ -235,7 +235,7 @@ private struct ProjectTimelineSection: View {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule()
-                            .fill(OPSStyle.Colors.cardBackgroundDark)
+                            .fill(OPSStyle.Colors.fillNeutralDim)
 
                         Capsule()
                             .fill(progress >= 1.0
@@ -417,12 +417,7 @@ struct ClientSection: View {
             .buttonStyle(PlainButtonStyle())
         }
         .padding(14)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-        )
+        .glassSurface()
         .contentShape(Rectangle())
         .simultaneousGesture(
             LongPressGesture(minimumDuration: 0.5)
@@ -439,7 +434,7 @@ struct ClientSection: View {
     private var emptyCard: some View {
         HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Circle()
-                .fill(OPSStyle.Colors.cardBackgroundDark)
+                .fill(OPSStyle.Colors.background)
                 .frame(width: 36, height: 36)
                 .overlay(
                     Image(systemName: "building.2")
@@ -461,12 +456,7 @@ struct ClientSection: View {
         }
         .contentShape(Rectangle())
         .padding(14)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-        )
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 }
@@ -530,12 +520,7 @@ private struct VinylOrderMarkerSection: View {
                 .opacity(canEdit ? 1 : 0.45)
             }
             .padding(14)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
@@ -582,12 +567,7 @@ struct TeamSection: View {
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
@@ -658,7 +638,7 @@ struct TaskListSection: View {
                                         UserAvatar(user: member, size: 22)
                                             .overlay(
                                                 Circle()
-                                                    .stroke(OPSStyle.Colors.cardBackgroundDark, lineWidth: 1.5)
+                                                    .stroke(OPSStyle.Colors.background, lineWidth: 1.5)
                                             )
                                     }
                                     if assignedMembers.count > 3 {
@@ -697,7 +677,7 @@ struct TaskListSection: View {
                         .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                         .padding(.vertical, OPSStyle.Layout.spacing2_5)
                         .contentShape(Rectangle())
-                        .background(isSelected ? OPSStyle.Colors.cardBackgroundDark.opacity(0.5) : Color.clear)
+                        .background(isSelected ? OPSStyle.Colors.surfaceHover : Color.clear)
                         .opacity(isSelected || !hasSelection ? 1.0 : 0.45)
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -779,12 +759,7 @@ struct TaskListSection: View {
                     .buttonStyle(PlainButtonStyle())
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
@@ -895,12 +870,7 @@ struct DescriptionSection: View {
                 }
             }
             .padding(14)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
@@ -1038,11 +1008,8 @@ struct AddressSection: View {
                     .padding(14)
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(isEditing ? OPSStyle.Colors.primaryAccent.opacity(0.5) : OPSStyle.Colors.cardBorder, lineWidth: 1)
+            .glassSurface(
+                borderColor: isEditing ? OPSStyle.Colors.primaryAccent.opacity(0.5) : OPSStyle.Colors.glassBorder
             )
             .animation(OPSStyle.Animation.panel, value: isEditing)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -1202,12 +1169,7 @@ struct PhotosSection: View {
                         .padding(.bottom, 10)
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
@@ -1254,7 +1216,7 @@ private struct ClientVisibilityButton: View {
             ZStack {
                 Circle()
                     .fill(isSyncing
-                          ? OPSStyle.Colors.cardBackgroundDark.opacity(0.85)
+                          ? OPSStyle.Colors.background.opacity(0.85)
                           : (isVisible
                              ? OPSStyle.Colors.primaryAccent.opacity(0.9)
                              : Color.black.opacity(0.55)))

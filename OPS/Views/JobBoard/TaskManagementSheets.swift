@@ -87,12 +87,7 @@ struct TaskStatusChangeSheet: View {
                                 Spacer()
                             }
                             .padding(OPSStyle.Layout.spacing3)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .glassSurface()
                         }
 
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
@@ -112,16 +107,11 @@ struct TaskStatusChangeSheet: View {
 
                                     if status != TaskStatus.allCases.last {
                                         Divider()
-                                            .background(OPSStyle.Colors.cardBackground)
+                                            .background(OPSStyle.Colors.line)
                                     }
                                 }
                             }
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .glassSurface()
                         }
                     }
                     .padding(OPSStyle.Layout.spacing3_5)
@@ -197,7 +187,7 @@ struct TaskStatusSelectionRow: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .background(OPSStyle.Colors.fillNeutral)
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
             }
@@ -313,12 +303,7 @@ struct TaskTeamChangeSheet: View {
             Spacer()
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var currentTeamList: some View {
@@ -347,16 +332,11 @@ struct TaskTeamChangeSheet: View {
 
                 if index < task.teamMembers.count - 1 {
                     Divider()
-                        .background(OPSStyle.Colors.cardBackground)
+                        .background(OPSStyle.Colors.line)
                 }
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var teamSelectionSection: some View {
@@ -373,12 +353,7 @@ struct TaskTeamChangeSheet: View {
                     Spacer()
                 }
                 .padding(OPSStyle.Layout.spacing3)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
             } else {
                 VStack(spacing: 0) {
                     ForEach(availableMembers, id: \.id) { member in
@@ -391,16 +366,11 @@ struct TaskTeamChangeSheet: View {
 
                         if member.id != availableMembers.last?.id {
                             Divider()
-                                .background(OPSStyle.Colors.cardBackground)
+                                .background(OPSStyle.Colors.line)
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
             }
         }
     }

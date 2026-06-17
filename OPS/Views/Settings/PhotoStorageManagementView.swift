@@ -87,7 +87,7 @@ struct PhotoStorageManagementView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .edgesIgnoringSafeArea(.all)
 
                 ScrollView {
@@ -196,12 +196,7 @@ struct PhotoStorageManagementView: View {
             PhotoStorageBudgetCard()
                 .environmentObject(dataController)
                 .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
@@ -213,12 +208,7 @@ struct PhotoStorageManagementView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             PhotoPrefetchPreferencesCard()
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
@@ -270,12 +260,7 @@ struct PhotoStorageManagementView: View {
                 .padding(.vertical, 14)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
             }
             .buttonStyle(.plain)
             .disabled(isLoadingBreakdown)
@@ -288,7 +273,7 @@ struct PhotoStorageManagementView: View {
     private var projectBreakdownSheet: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .edgesIgnoringSafeArea(.all)
 
                 ScrollView {
@@ -311,12 +296,7 @@ struct PhotoStorageManagementView: View {
                                 }
                             }
                         }
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .glassSurface()
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     }
                     .padding(.vertical, OPSStyle.Layout.spacing3)
@@ -398,7 +378,7 @@ struct PhotoStorageManagementView: View {
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                             .padding(.vertical, 6)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -418,7 +398,7 @@ struct PhotoStorageManagementView: View {
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                         .padding(.vertical, 6)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .background(OPSStyle.Colors.surfaceInput)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

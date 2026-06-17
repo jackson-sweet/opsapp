@@ -45,12 +45,7 @@ struct ProjectTeamView: View {
         }
         .frame(maxWidth: .infinity)
         .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .sheet(isPresented: $showingTeamPicker) {
             ProjectTeamChangeSheet(project: project)
                 .environmentObject(dataController)
@@ -421,7 +416,7 @@ struct FullTeamListView: View {
         NavigationView {
             ZStack {
                 // Background
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .edgesIgnoringSafeArea(.all)
                 
                 ScrollView {
@@ -456,8 +451,7 @@ struct FullTeamListView: View {
                                     .font(OPSStyle.Typography.smallBody)
                             }
                             .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+                            .glassSurface()
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 selectedTeamMember = member

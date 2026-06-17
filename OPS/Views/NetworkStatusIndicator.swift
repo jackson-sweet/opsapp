@@ -45,7 +45,7 @@ struct NetworkStatusIndicator: View {
         .padding(.vertical, OPSStyle.Layout.spacing1)
         .background(
             Capsule()
-                .fill(OPSStyle.Colors.cardBackground.opacity(0.7))
+                .fill(OPSStyle.Colors.fillNeutral)
         )
         .onAppear {
             // Only animate when offline or syncing

@@ -32,8 +32,7 @@ struct UserProfileCard: View {
             Spacer()
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 }

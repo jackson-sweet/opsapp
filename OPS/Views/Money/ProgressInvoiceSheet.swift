@@ -194,15 +194,7 @@ struct ProgressInvoiceSheet: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(
-                    isSelected ? OPSStyle.Colors.text.opacity(0.4) : OPSStyle.Colors.inputFieldBorder,
-                    lineWidth: OPSStyle.Layout.Border.standard
-                )
-        )
+        .glassSurface(borderColor: isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.glassBorder)
         .animation(OPSStyle.Animation.fast, value: isSelected)
     }
 
@@ -219,7 +211,7 @@ struct ProgressInvoiceSheet: View {
 
         VStack(spacing: OPSStyle.Layout.spacing2) {
             Divider()
-                .background(OPSStyle.Colors.inputFieldBorder)
+                .background(OPSStyle.Colors.separator)
 
             HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Text("INVOICE %")
@@ -239,12 +231,7 @@ struct ProgressInvoiceSheet: View {
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: 32, height: 32)
-                            .background(OPSStyle.Colors.cardBackground)
-                            .cornerRadius(OPSStyle.Layout.buttonRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .nestedCard(cornerRadius: OPSStyle.Layout.buttonRadius)
                     }
                     .buttonStyle(PlainButtonStyle())
 
@@ -270,12 +257,7 @@ struct ProgressInvoiceSheet: View {
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: 32, height: 32)
-                            .background(OPSStyle.Colors.cardBackground)
-                            .cornerRadius(OPSStyle.Layout.buttonRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .nestedCard(cornerRadius: OPSStyle.Layout.buttonRadius)
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -359,7 +341,7 @@ struct ProgressInvoiceSheet: View {
                     .background(
                         hasSelections && !isCreating
                             ? OPSStyle.Colors.primaryAccent
-                            : OPSStyle.Colors.cardBackgroundDark
+                            : OPSStyle.Colors.surfaceInput
                     )
                     .cornerRadius(OPSStyle.Layout.buttonRadius)
                     .overlay(

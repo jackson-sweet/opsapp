@@ -621,7 +621,7 @@ struct TaskFormSheet: View {
 
                 // Divider
                 Rectangle()
-                    .fill(OPSStyle.Colors.cardBorder)
+                    .fill(OPSStyle.Colors.line)
                     .frame(height: 1)
 
                 mainContent
@@ -849,16 +849,11 @@ struct TaskFormSheet: View {
                     }
                     .padding(.trailing, OPSStyle.Layout.spacing2)
                     .padding(.vertical, OPSStyle.Layout.spacing2)
-                
+
             }
-            
+
             }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var projectField: some View {
@@ -891,7 +886,7 @@ struct TaskFormSheet: View {
                     }
                     .frame(height: selectedProject != nil && !showingProjectSuggestions ? 64 : 44)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -933,12 +928,12 @@ struct TaskFormSheet: View {
                                         }
                                         .padding(.horizontal, OPSStyle.Layout.spacing3)
                                         .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                                        .background(OPSStyle.Colors.cardBackgroundDark)
+                                        .contentShape(Rectangle())
                                     }
                                     .buttonStyle(PlainButtonStyle())
 
                                     Divider()
-                                        .background(OPSStyle.Colors.cardBorder)
+                                        .background(OPSStyle.Colors.line)
                                 }
                             }
 
@@ -969,17 +964,12 @@ struct TaskFormSheet: View {
                                     }
                                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                                     .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .contentShape(Rectangle())
                                 }
                                 .buttonStyle(PlainButtonStyle())
                             }
                         }
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .glassDense()
                         .padding(.top, OPSStyle.Layout.spacing1)
                     }
                 }
@@ -1074,7 +1064,7 @@ struct TaskFormSheet: View {
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(showingTaskTypeList ? 0 : OPSStyle.Layout.cornerRadius)
 
                 if showingTaskTypeList {
@@ -1129,15 +1119,15 @@ struct TaskFormSheet: View {
                             // Otherwise standard 1pt divider.
                             if index == recentCount - 1 && recentCount > 0 && recentCount < orderedTypes.count {
                                 Rectangle()
-                                    .fill(OPSStyle.Colors.cardBorder)
+                                    .fill(OPSStyle.Colors.line)
                                     .frame(height: 2)
                             } else if index < orderedTypes.count - 1 {
                                 Divider()
-                                    .background(OPSStyle.Colors.cardBorder)
+                                    .background(OPSStyle.Colors.line)
                             }
                         }
                     }
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
@@ -1184,7 +1174,7 @@ struct TaskFormSheet: View {
                 }
                 .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1239,7 +1229,7 @@ struct TaskFormSheet: View {
             }
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1339,7 +1329,7 @@ struct TaskFormSheet: View {
                     }
                     .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1382,8 +1372,7 @@ struct TaskFormSheet: View {
                         }
                     }
                     .padding(OPSStyle.Layout.spacing2)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .nestedCard()
                 }
 
                 Button(action: {
@@ -1434,7 +1423,7 @@ struct TaskFormSheet: View {
                             }
                         }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

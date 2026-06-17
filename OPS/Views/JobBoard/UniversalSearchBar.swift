@@ -78,8 +78,12 @@ struct UniversalSearchBar: View {
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                 .padding(.vertical, 10)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                )
 
                 if section == .projects || section == .tasks {
                     Button(action: {

@@ -69,7 +69,7 @@ struct UnassignedRolesOverlay: View {
 
                             if user.id != unassignedUsers.last?.id {
                                 Rectangle()
-                                    .fill(OPSStyle.Colors.tertiaryText.opacity(0.2))
+                                    .fill(OPSStyle.Colors.line)
                                     .frame(height: 1)
                                     .padding(.horizontal, OPSStyle.Layout.spacing4)
                             }
@@ -233,7 +233,7 @@ struct UnassignedRolesOverlay: View {
             }
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .background(isSelected ? OPSStyle.Colors.subtleBackground : Color.clear)
+            .background(isSelected ? OPSStyle.Colors.surfaceActive : Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

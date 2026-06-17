@@ -72,8 +72,7 @@ struct CalendarDaySelector: View {
                     // up against it.
                     .padding(.vertical, OPSStyle.Layout.spacing3)
                     .padding(.horizontal, 6)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .glassSurface()
                     .offset(x: isTransitioning ? transitionOffset : dragOffset)
                     .opacity(isTransitioning ? Double(1.0 - abs(transitionOffset) / geometry.size.width) : 1.0)
                     .animation(.interactiveSpring(response: 0.2, dampingFraction: 0.85), value: dragOffset)

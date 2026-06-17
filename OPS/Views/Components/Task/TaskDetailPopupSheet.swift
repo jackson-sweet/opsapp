@@ -206,12 +206,7 @@ struct TaskDetailPopupSheet: View {
                 teamMemberList
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-        )
+        .glassSurface()
     }
 
     // MARK: - Dates Row (tappable — opens scheduler)
@@ -310,7 +305,7 @@ struct TaskDetailPopupSheet: View {
                                         )
                                         .overlay(
                                             Circle()
-                                                .stroke(OPSStyle.Colors.cardBackgroundDark, lineWidth: 2)
+                                                .stroke(OPSStyle.Colors.background, lineWidth: 2)
                                         )
                                 }
                                 if selectedMembers.count > 5 {
@@ -407,11 +402,11 @@ struct TaskDetailPopupSheet: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
-                    .background(OPSStyle.Colors.cardBackground)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.buttonRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                            .stroke(OPSStyle.Colors.line, lineWidth: 1)
                     )
             }
             .buttonStyle(PlainButtonStyle())
@@ -441,7 +436,7 @@ struct TaskDetailPopupSheet: View {
                     .padding(.vertical, 10)
                     .background(teamDraftIsDirty
                         ? OPSStyle.Colors.primaryAccent
-                        : OPSStyle.Colors.cardBackground)
+                        : OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.buttonRadius)
             }
             .buttonStyle(PlainButtonStyle())

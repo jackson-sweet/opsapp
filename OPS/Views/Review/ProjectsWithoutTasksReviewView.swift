@@ -184,12 +184,7 @@ struct ProjectsWithoutTasksReviewView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .glassSurface()
         .contentShape(Rectangle())
     }
 
@@ -380,12 +375,7 @@ private struct InlineQuickTaskComposer: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .glassSurface(borderColor: OPSStyle.Colors.primaryAccent.opacity(0.5))
         .onAppear { loadTeamUsers() }
         .sheet(isPresented: $showCrewPicker, onDismiss: { handleCrewPickerDismiss() }) {
             crewPickerSheet

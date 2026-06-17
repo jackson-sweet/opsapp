@@ -164,14 +164,11 @@ struct TaskSelectorBar: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(
-                        selectedTask != nil ? Color(hex: selectedTask!.effectiveColor)?.opacity(0.3) ?? OPSStyle.Colors.cardBorder : OPSStyle.Colors.cardBorder,
-                        lineWidth: OPSStyle.Layout.Border.standard
-                    )
+            .glassSurface(
+                cornerRadius: OPSStyle.Layout.cornerRadius,
+                borderColor: selectedTask != nil
+                    ? Color(hex: selectedTask!.effectiveColor)?.opacity(0.3) ?? OPSStyle.Colors.glassBorder
+                    : OPSStyle.Colors.glassBorder
             )
         }
         .buttonStyle(PlainButtonStyle())

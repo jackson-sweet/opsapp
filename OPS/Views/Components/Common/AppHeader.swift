@@ -296,7 +296,7 @@ struct AppHeader: View {
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(width: 44, height: 44)
-                                .background(OPSStyle.Colors.cardBackground)
+                                .background(OPSStyle.Colors.fillNeutral)
                                 .clipShape(Circle())
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -311,7 +311,7 @@ struct AppHeader: View {
                                     .font(OPSStyle.Typography.bodyBold)
                                     .foregroundColor(hasActiveFilters ? OPSStyle.Colors.text : OPSStyle.Colors.primaryText)
                                     .frame(width: 44, height: 44)
-                                    .background(OPSStyle.Colors.cardBackground)
+                                    .background(OPSStyle.Colors.fillNeutral)
                                     .clipShape(Circle())
 
                                 // Show filter count badge if filters are active
@@ -337,7 +337,7 @@ struct AppHeader: View {
                                     .font(OPSStyle.Typography.bodyBold)
                                     .foregroundColor(isScopeAll ? OPSStyle.Colors.primaryText : OPSStyle.Colors.text)
                                     .frame(width: 44, height: 44)
-                                    .background(OPSStyle.Colors.cardBackground)
+                                    .background(OPSStyle.Colors.fillNeutral)
                                     .clipShape(Circle())
 
                                 // Indicator dot when MINE is selected
@@ -361,7 +361,7 @@ struct AppHeader: View {
                                         .font(OPSStyle.Typography.bodyBold)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                         .frame(width: 44, height: 44)
-                                        .background(OPSStyle.Colors.cardBackground)
+                                        .background(OPSStyle.Colors.fillNeutral)
                                         .clipShape(Circle())
 
                                     if unscheduledReviewBadgeCount > 0 {
@@ -401,7 +401,7 @@ struct AppHeader: View {
                                         .font(OPSStyle.Typography.bodyBold)
                                         .foregroundColor(isTaskReviewLocked ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
                                         .frame(width: 44, height: 44)
-                                        .background(OPSStyle.Colors.cardBackground)
+                                        .background(OPSStyle.Colors.fillNeutral)
                                         .clipShape(Circle())
 
                                     if !isTaskReviewLocked && taskReviewBadgeCount > 0 {
@@ -436,7 +436,7 @@ struct AppHeader: View {
                                         .font(OPSStyle.Typography.bodyBold)
                                         .foregroundColor(isPaymentReviewLocked ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
                                         .frame(width: 44, height: 44)
-                                        .background(OPSStyle.Colors.cardBackground)
+                                        .background(OPSStyle.Colors.fillNeutral)
                                         .clipShape(Circle())
 
                                     if !isPaymentReviewLocked && paymentReviewBadgeCount > 0 {
@@ -465,7 +465,7 @@ struct AppHeader: View {
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(width: 44, height: 44)
-                                .background(OPSStyle.Colors.cardBackground)
+                                .background(OPSStyle.Colors.fillNeutral)
                                 .clipShape(Circle())
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -497,7 +497,7 @@ struct AppHeader: View {
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: 44, height: 44)
-                            .background(OPSStyle.Colors.cardBackground)
+                            .background(OPSStyle.Colors.fillNeutral)
                             .clipShape(Circle())
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -566,7 +566,7 @@ struct AppHeader: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
         .frame(minHeight: 44)
-        .background(OPSStyle.Colors.cardBackground)
+        .background(OPSStyle.Colors.surfaceInput)
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius))
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
@@ -680,8 +680,7 @@ struct AppHeader: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+                    .nestedCard()
                 }
                 .frame(height: 44)
                 
@@ -700,8 +699,7 @@ struct AppHeader: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+                    .nestedCard()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }

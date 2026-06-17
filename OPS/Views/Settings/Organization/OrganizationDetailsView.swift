@@ -285,7 +285,7 @@ struct OrganizationDetailsView: View {
                     }
                     .padding(OPSStyle.Layout.spacing3)
                     .frame(width: 280)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .glassDense()
                     .presentationCompactAdaptation(.popover)
                 }
 
@@ -411,7 +411,7 @@ struct OrganizationDetailsView: View {
 
     private var logoPlaceholder: some View {
         Circle()
-            .fill(OPSStyle.Colors.cardBackgroundDark)
+            .fill(OPSStyle.Colors.background)
             .frame(width: 72, height: 72)
             .overlay(
                 Image(systemName: "building.2")
@@ -500,12 +500,7 @@ struct OrganizationDetailsView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .nestedCard()
             }
             .disabled(isSaving)
 

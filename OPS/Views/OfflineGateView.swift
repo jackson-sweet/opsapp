@@ -47,12 +47,7 @@ struct OfflineGateView: View {
                         .multilineTextAlignment(.center)
                 }
                 .padding(OPSStyle.Layout.spacing3_5)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.line, lineWidth: 1)
-                )
+                .glassSurface()
                 .padding(.horizontal, OPSStyle.Layout.spacing4)
 
                 Spacer().frame(height: 24)

@@ -208,7 +208,7 @@ struct SeatManagementView: View {
                 ZStack(alignment: .leading) {
                     // Background track
                     Rectangle()
-                        .fill(OPSStyle.Colors.subtleBackground)
+                        .fill(OPSStyle.Colors.fillNeutralDim)
                         .frame(height: 2)
                     
                     // Progress fill

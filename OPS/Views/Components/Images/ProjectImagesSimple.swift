@@ -23,8 +23,7 @@ struct ProjectImagesSimple: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
-                    .background(OPSStyle.Colors.cardBackground)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .glassSurface()
             } else {
                 // Super simple grid with minimal layout complexity
                 ForEach(Array(images.enumerated()), id: \.element) { index, url in
@@ -45,7 +44,7 @@ struct SimpleImageView: View {
         // Always show a background first
         ZStack {
             Rectangle()
-                .fill(OPSStyle.Colors.cardBackground)
+                .fill(OPSStyle.Colors.background)
             
             if let image = image {
                 Image(uiImage: image)

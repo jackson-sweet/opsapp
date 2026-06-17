@@ -127,7 +127,7 @@ struct SettingsSegmentedPicker<SelectionValue>: View where SelectionValue: Hasha
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .fill(
                                     !isMixed && selection == option.value
-                                        ? OPSStyle.Colors.subtleBackground
+                                        ? OPSStyle.Colors.surfaceActive
                                         : Color.clear
                                 )
                         )
@@ -138,7 +138,7 @@ struct SettingsSegmentedPicker<SelectionValue>: View where SelectionValue: Hasha
         .padding(2)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .fill(OPSStyle.Colors.subtleBackground)
+                .fill(OPSStyle.Colors.surfaceInput)
         )
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

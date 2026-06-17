@@ -70,7 +70,7 @@ struct PriorityQueueView: View {
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .padding(.horizontal, OPSStyle.Layout.spacing3).padding(.vertical, 10)
-                .background(Capsule().fill(OPSStyle.Colors.cardBackgroundDark))
+                .background(Capsule().fill(OPSStyle.Colors.glassDenseApprox))
                 .overlay(Capsule().stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard))
                 .padding(.top, OPSStyle.Layout.spacing2_5)
                 .transition(.opacity)
@@ -419,10 +419,10 @@ struct PriorityQueueView: View {
         Button(action: action) {
             Text(label)
                 .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(isOn ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
+                .foregroundColor(isOn ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
                 .padding(.horizontal, OPSStyle.Layout.spacing2_5).padding(.vertical, OPSStyle.Layout.spacing2)
-                .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius).fill(isOn ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark))
-                .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius).stroke(isOn ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard))
+                .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius).fill(isOn ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput))
+                .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius).stroke(isOn ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard))
         }
     }
 }
@@ -444,7 +444,7 @@ private struct SecondaryRunButtonStyle: ButtonStyle {
             .font(OPSStyle.Typography.button)
             .foregroundColor(OPSStyle.Colors.primaryText)
             .frame(height: OPSStyle.Layout.touchTargetStandard)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius).stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard))
             .opacity(configuration.isPressed ? 0.85 : 1)

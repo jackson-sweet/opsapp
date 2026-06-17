@@ -22,7 +22,7 @@ struct ComingSoonView: View {
     var body: some View {
         ZStack {
             // Background
-            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
+            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 0) {
                 // Header
@@ -66,12 +66,7 @@ struct ComingSoonView: View {
                             }
                         }
                         .padding(OPSStyle.Layout.spacing3_5)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .glassSurface()
                         .padding(.horizontal, OPSStyle.Layout.spacing5)
 
                         // Update timeline
@@ -101,12 +96,7 @@ struct ComingSoonView: View {
                             }
                         }
                         .padding(OPSStyle.Layout.spacing3_5)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .glassSurface()
                         .padding(.horizontal, OPSStyle.Layout.spacing5)
 
                         Spacer(minLength: 40)

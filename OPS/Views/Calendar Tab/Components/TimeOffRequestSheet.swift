@@ -130,10 +130,11 @@ struct TimeOffRequestSheet: View {
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                             .padding(14)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                                    .stroke(OPSStyle.Colors.line, lineWidth: 0.5)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
                             )
                             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             .padding(.bottom, OPSStyle.Layout.spacing5)
@@ -219,7 +220,7 @@ struct TimeOffRequestSheet: View {
                     UserAvatar(user: user, size: 28)
                         .overlay(
                             Circle()
-                                .stroke(OPSStyle.Colors.cardBackgroundDark, lineWidth: 1.5)
+                                .stroke(OPSStyle.Colors.background, lineWidth: 1.5)
                         )
                 }
                 if targets.count > 3 {
@@ -245,11 +246,7 @@ struct TimeOffRequestSheet: View {
             }
         }
         .padding(14)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                .stroke(OPSStyle.Colors.line, lineWidth: 0.5)
-        )
+        .glassSurface()
     }
 
     private func sectionLabel(_ text: String) -> some View {

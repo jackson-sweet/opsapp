@@ -34,7 +34,7 @@ struct SecuritySettingsView: View {
     var body: some View {
         ZStack {
             // Background
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Header
@@ -84,7 +84,7 @@ struct SecuritySettingsView: View {
 
                                 if pinManager.hasPINEnabled {
                                     Divider()
-                                        .background(OPSStyle.Colors.cardBorder)
+                                        .background(OPSStyle.Colors.line)
 
                                     Button(action: { showPINSetup = true }) {
                                         Text("CHANGE PIN")
@@ -95,12 +95,7 @@ struct SecuritySettingsView: View {
                                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                                 }
                             }
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .glassSurface()
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .id(AnchorID.appAccess)
@@ -122,12 +117,7 @@ struct SecuritySettingsView: View {
                                     }
                                 )
                             }
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .glassSurface()
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .id(AnchorID.accountSecurity)
@@ -192,7 +182,7 @@ struct SecuritySettingsView: View {
     // Password reset sheet view
     private var resetPasswordSheet: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .ignoresSafeArea()
 
             VStack(spacing: OPSStyle.Layout.spacing4) {
@@ -223,11 +213,11 @@ struct SecuritySettingsView: View {
                                 .autocapitalization(.none)
                                 .disableAutocorrection(true)
                                 .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .background(OPSStyle.Colors.surfaceInput)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
 
                             // Show developer mode button when secret phrase is entered
@@ -290,7 +280,7 @@ struct SecuritySettingsView: View {
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, OPSStyle.Layout.spacing3)
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .background(OPSStyle.Colors.surfaceInput)
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
 
@@ -437,7 +427,7 @@ struct PINSetupSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
 
                 VStack(spacing: OPSStyle.Layout.spacing4) {
                     if !showConfirmation {
@@ -454,11 +444,11 @@ struct PINSetupSheet: View {
                             .multilineTextAlignment(.center)
                             .padding()
                             .frame(width: 200)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                             .onChange(of: enteredPIN) { _, newValue in
                                 if newValue.count > 4 {
@@ -491,11 +481,11 @@ struct PINSetupSheet: View {
                             .multilineTextAlignment(.center)
                             .padding()
                             .frame(width: 200)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                             .onChange(of: confirmedPIN) { _, newValue in
                                 if newValue.count > 4 {

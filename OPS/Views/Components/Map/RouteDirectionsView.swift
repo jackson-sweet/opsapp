@@ -65,8 +65,6 @@ struct RouteDirectionsView: View {
                 }
             }
             .padding()
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-            .cornerRadius(OPSStyle.Layout.cornerRadius, corners: [.topLeft, .topRight])
             
             // Always show next direction first
             if let firstDirection = directions.first {
@@ -114,7 +112,6 @@ struct RouteDirectionsView: View {
                     .padding(.vertical)
                 }
                 .frame(maxHeight: 200)
-                .background(OPSStyle.Colors.cardBackground)
             }
             
             // Toggle button
@@ -132,7 +129,7 @@ struct RouteDirectionsView: View {
                 .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .frame(maxWidth: .infinity)
                 .foregroundColor(OPSStyle.Colors.primaryText)
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                .background(OPSStyle.Colors.surfaceHover)
             }
             
             // Action buttons
@@ -150,10 +147,10 @@ struct RouteDirectionsView: View {
                     .font(OPSStyle.Typography.cardSubtitle)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(OPSStyle.Colors.cardBackground)
+                    .background(OPSStyle.Colors.surfaceHover)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                
+
                 // Stop navigation button
                 Button(action: {
                     NotificationCenter.default.post(
@@ -173,10 +170,6 @@ struct RouteDirectionsView: View {
                 }
             }
         }
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .fill(OPSStyle.Colors.cardBackground.opacity(0.95))
-        )
+        .glassDense(cornerRadius: OPSStyle.Layout.cornerRadius)
     }
 }

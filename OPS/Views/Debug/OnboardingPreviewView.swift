@@ -33,7 +33,7 @@ struct OnboardingPreviewView: View {
                         }
                     }
                 )
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.background)
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
@@ -94,8 +94,7 @@ struct OnboardingPreviewView: View {
                                 }
                             }
                             .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .glassSurface()
                         }
 
                         Spacer()

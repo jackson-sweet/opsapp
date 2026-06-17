@@ -145,7 +145,7 @@ struct CalendarEventCard: View {
 
                 }
                 .frame(width: totalWidth, height: 64)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.glassApprox)
                 // Top colored stripe for all multi-day events
                 .overlay(alignment: .top) {
                     if isMultiDay {
@@ -168,7 +168,7 @@ struct CalendarEventCard: View {
                             HStack {
                                 Spacer()
                                 LinearGradient(
-                                    colors: [.clear, OPSStyle.Colors.cardBackgroundDark],
+                                    colors: [.clear, OPSStyle.Colors.glassApprox],
                                     startPoint: .leading,
                                     endPoint: .trailing
                                 )
@@ -183,7 +183,7 @@ struct CalendarEventCard: View {
                         if bleedsLeft {
                             HStack {
                                 LinearGradient(
-                                    colors: [OPSStyle.Colors.cardBackgroundDark, .clear],
+                                    colors: [OPSStyle.Colors.glassApprox, .clear],
                                     startPoint: .leading,
                                     endPoint: .trailing
                                 )

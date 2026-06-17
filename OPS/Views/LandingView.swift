@@ -634,7 +634,7 @@ struct LoginSuccessView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.darkBackground
+            OPSStyle.Colors.background
                 .edgesIgnoringSafeArea(.all)
 
             VStack(spacing: 0) {
@@ -698,12 +698,7 @@ struct LoginSuccessView: View {
                     .frame(height: 2)
                     .opacity(0.8)
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorderSubtle, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, 60)
             .scaleEffect(showCheckmark ? 1 : 0.95)
             .opacity(showCheckmark ? 1 : 0)

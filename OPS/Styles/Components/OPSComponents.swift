@@ -107,7 +107,7 @@ public struct OPSSecondaryButton: View {
             .foregroundColor(OPSStyle.Colors.primaryAccent)
             .frame(maxWidth: .infinity)
             .padding(.vertical, OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)

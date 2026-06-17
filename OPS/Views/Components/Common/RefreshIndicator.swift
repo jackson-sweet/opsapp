@@ -49,15 +49,7 @@ struct RefreshIndicator: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
                 .padding(OPSStyle.Layout.spacing4)
-                .background(
-                    ZStack {
-                        BlurView(style: .systemUltraThinMaterialDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.85))
-                    }
-                )
+                .glassDense()
                 .scaleEffect(isPresented ? 1 : 0.8)
                 .opacity(isPresented ? 1 : 0)
                 .animation(OPSStyle.Animation.standard, value: isPresented)

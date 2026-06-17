@@ -302,7 +302,7 @@ struct MainTabView: View {
                     width: OPSStyle.Layout.touchTargetMin,
                     height: OPSStyle.Layout.touchTargetMin
                 )
-                .background(OPSStyle.Colors.cardBackground)
+                .background(OPSStyle.Colors.fillNeutral)
                 .clipShape(Circle())
         }
         .buttonStyle(PlainButtonStyle())

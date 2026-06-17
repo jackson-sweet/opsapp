@@ -129,8 +129,7 @@ struct SharePhotoToProjectSheet: View {
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .nestedCard()
                 }
             }
         }
@@ -155,12 +154,7 @@ struct SharePhotoToProjectSheet: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, OPSStyle.Layout.spacing5)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
+            .glassSurface()
         }
     }
 
@@ -223,8 +217,12 @@ struct SharePhotoToProjectSheet: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+            )
 
             // Project list
             VStack(spacing: 0) {
@@ -232,7 +230,7 @@ struct SharePhotoToProjectSheet: View {
                     projectRow(project)
                     if project.id != visibleProjects.prefix(20).last?.id {
                         Rectangle()
-                            .fill(OPSStyle.Colors.cardBorderSubtle)
+                            .fill(OPSStyle.Colors.separator)
                             .frame(height: 1)
                             .padding(.horizontal, 14)
                     }
@@ -245,8 +243,7 @@ struct SharePhotoToProjectSheet: View {
                         .padding(.vertical, OPSStyle.Layout.spacing4)
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .glassSurface()
         }
     }
 

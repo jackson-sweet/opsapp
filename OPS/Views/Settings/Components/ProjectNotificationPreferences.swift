@@ -45,12 +45,7 @@ struct ProjectNotificationPreferences: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 }
 
@@ -106,12 +101,7 @@ struct AdvanceNoticePreferences: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private func reminderDaySelector(dayBinding: Binding<Int>, label: String) -> some View {
@@ -137,9 +127,13 @@ struct AdvanceNoticePreferences: View {
                     .font(OPSStyle.Typography.captionBold)
                     .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     .padding(.vertical, 6)
-                    .background(OPSStyle.Colors.cardBackground)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .background(OPSStyle.Colors.surfaceInput)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                    )
                 
                 Image(systemName: OPSStyle.Icons.chevronDown)
                     .font(OPSStyle.Typography.smallCaption)

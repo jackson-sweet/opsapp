@@ -110,8 +110,8 @@ struct DeveloperDashboard: View {
                         }
                     }
                 )
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                
+                .background(OPSStyle.Colors.background)
+
                 // Tools Grid
                 ScrollView {
                     VStack(spacing: OPSStyle.Layout.spacing3) {
@@ -276,8 +276,7 @@ struct ToolCard: View {
             }
             .frame(maxWidth: .infinity)
             .padding()
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .nestedCard()
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -312,8 +311,7 @@ struct InfoCard: View {
             Spacer()
         }
         .padding()
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
 }
 
@@ -342,8 +340,7 @@ struct DatabaseStatsCard: View {
             }
         }
         .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
         .onAppear {
             fetchCounts()
         }

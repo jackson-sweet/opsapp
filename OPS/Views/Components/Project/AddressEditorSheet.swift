@@ -34,10 +34,10 @@ struct AddressEditorSheet: View {
                     .lineLimit(3...6)
                     .focused($isFieldFocused)
                     .padding(14)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .background(OPSStyle.Colors.surfaceInput)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(isFieldFocused
                                     ? OPSStyle.Colors.primaryAccent
                                     : OPSStyle.Colors.inputFieldBorder,
@@ -89,12 +89,7 @@ struct AddressEditorSheet: View {
                             }
                         }
                     }
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                    )
+                    .glassDense()
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.top, OPSStyle.Layout.spacing2)
                     .transition(.opacity)

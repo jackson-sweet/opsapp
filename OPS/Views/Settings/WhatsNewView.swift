@@ -47,7 +47,7 @@ struct WhatsNewView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .edgesIgnoringSafeArea(.all)
 
             VStack(spacing: 0) {
@@ -423,7 +423,7 @@ private struct StatusSection: View {
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .padding(.horizontal, OPSStyle.Layout.spacing2)
                                 .padding(.vertical, OPSStyle.Layout.spacing1)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .background(OPSStyle.Colors.fillNeutral)
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
 
                             Image(systemName: OPSStyle.Icons.chevronRight)
@@ -432,8 +432,7 @@ private struct StatusSection: View {
                                 .rotationEffect(.degrees(expandedCategories.contains("\(status.rawValue)_\(group.categoryName)") ? 90 : 0))
                         }
                         .padding(OPSStyle.Layout.spacing2_5)
-                        .background(OPSStyle.Colors.cardBackground)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .glassSurface()
                     }
                     .buttonStyle(PlainButtonStyle())
 
@@ -479,7 +478,7 @@ private struct WhatsNewFeatureCard: View {
             // Icon
             ZStack {
                 Circle()
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
+                    .fill(OPSStyle.Colors.background)
                     .frame(width: 36, height: 36)
 
                 Image(systemName: item.icon)
@@ -551,7 +550,7 @@ private struct WhatsNewFeatureCard: View {
                             .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                             .padding(.vertical, 6)
                             .background(
-                                hasVoted ? OPSStyle.Colors.successStatus.opacity(0.2) : OPSStyle.Colors.cardBackgroundDark
+                                hasVoted ? OPSStyle.Colors.successStatus.opacity(0.2) : OPSStyle.Colors.surfaceInput
                             )
                             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                             .overlay(
@@ -569,12 +568,7 @@ private struct WhatsNewFeatureCard: View {
             }
         }
         .padding(OPSStyle.Layout.spacing2_5)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 }
 

@@ -62,17 +62,7 @@ struct ImageSyncProgressView: View {
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                .background(
-                    ZStack {
-                        // Background blur
-                        BlurView(style: .systemThinMaterialDark)
-                        
-                        // Overlay color
-                        Color(OPSStyle.Colors.cardBackgroundDark)
-                            .opacity(0.5)
-                    }
-                )
-                
+
                 // Expanded details (if showing)
                 if showingDetails {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
@@ -108,9 +98,9 @@ struct ImageSyncProgressView: View {
                         }
                     }
                     .padding(.bottom, OPSStyle.Layout.spacing2)
-                    .background(Color(OPSStyle.Colors.cardBackgroundDark).opacity(0.9))
                 }
             }
+            .glassDense()
             .transition(.move(edge: .top).combined(with: .opacity))
             .animation(OPSStyle.Animation.standard, value: syncManager.isVisible)
         }

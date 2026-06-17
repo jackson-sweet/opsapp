@@ -113,7 +113,7 @@ struct NotificationSettingsView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
+            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
 
             VStack(spacing: 0) {
                 SettingsHeader(
@@ -289,12 +289,7 @@ struct NotificationSettingsView: View {
             VStack(spacing: 0) {
                 content()
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
     }
 
@@ -310,12 +305,7 @@ struct NotificationSettingsView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, OPSStyle.Layout.spacing4)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private func errorCard(_ message: String) -> some View {
@@ -347,12 +337,7 @@ struct NotificationSettingsView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, OPSStyle.Layout.spacing4)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Notification Status Card
@@ -410,12 +395,7 @@ struct NotificationSettingsView: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Channel Mode Enum
@@ -478,7 +458,7 @@ struct NotificationSettingsView: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 14)
-            .background(OPSStyle.Colors.subtleBackground)
+            .background(OPSStyle.Colors.surfaceActive)
 
             // Individual event type rows (darker background)
             ForEach(eventTypes, id: \.self) { eventType in
@@ -650,7 +630,7 @@ struct NotificationSettingsView: View {
                                 }
                                 .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                                 .padding(.vertical, OPSStyle.Layout.spacing2)
-                                .background(OPSStyle.Colors.cardBackground)
+                                .background(OPSStyle.Colors.surfaceInput)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
                         }
@@ -684,7 +664,7 @@ struct NotificationSettingsView: View {
                                 }
                                 .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                                 .padding(.vertical, OPSStyle.Layout.spacing2)
-                                .background(OPSStyle.Colors.cardBackground)
+                                .background(OPSStyle.Colors.surfaceInput)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
                         }
@@ -943,7 +923,7 @@ struct NotificationSettingsView: View {
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                                     .background(muteHours == hours ?
-                                                OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackground)
+                                                OPSStyle.Colors.primaryText : OPSStyle.Colors.surfaceInput)
                                     .foregroundColor(muteHours == hours ? OPSStyle.Colors.invertedText : OPSStyle.Colors.primaryText)
                                     .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                             }
@@ -1076,7 +1056,7 @@ struct DaySelector: View {
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, OPSStyle.Layout.spacing2)
-                .background(OPSStyle.Colors.cardBackground)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
             .frame(maxWidth: .infinity)

@@ -16,7 +16,7 @@ struct IntegrationsSettingsView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 SettingsHeader(
@@ -124,7 +124,7 @@ struct IntegrationsSettingsView: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(width: 40, height: 40)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.background)
                     .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
@@ -167,19 +167,14 @@ struct IntegrationsSettingsView: View {
         }
         .padding(.vertical, 14)
         .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - OAuth Placeholder
 
     private func oauthPlaceholder(provider: String) -> some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             VStack(spacing: OPSStyle.Layout.spacing4) {
                 Spacer()

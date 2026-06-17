@@ -343,12 +343,7 @@ struct ClientSheet: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.buttonBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .nestedCard()
                         }
                     }
                     .padding()
@@ -479,7 +474,7 @@ struct ClientSheet: View {
                             .overlay(Circle().stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.thick))
                     } else {
                         Circle()
-                            .fill(OPSStyle.Colors.cardBackgroundDark)
+                            .fill(OPSStyle.Colors.background)
                             .frame(width: 80, height: 80)
                             .overlay(
                                 Image(systemName: "building.2")
@@ -915,7 +910,7 @@ struct ClientSheet: View {
                     } else {
                         // Placeholder
                         Circle()
-                            .fill(OPSStyle.Colors.cardBackgroundDark)
+                            .fill(OPSStyle.Colors.background)
                             .frame(width: 56, height: 56)
                             .overlay(
                                 Image(systemName: "building.2")
@@ -928,12 +923,7 @@ struct ClientSheet: View {
             }
             .padding(.vertical, 14)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
     }
 }

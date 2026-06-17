@@ -619,12 +619,7 @@ struct MonthGridView: View {
                             }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.line, lineWidth: 0.5)
-                            )
+                            .nestedCard()
                         }
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing1)
@@ -981,7 +976,7 @@ private struct MonthJumpPicker: View {
                             .frame(height: OPSStyle.Layout.touchTargetMin)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .fill(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
+                                    .fill(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.surfaceInput)
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1013,7 +1008,7 @@ private struct MonthJumpPicker: View {
                     .padding(.horizontal, OPSStyle.Layout.spacing4)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(OPSStyle.Colors.cardBackgroundDark)
+                            .fill(OPSStyle.Colors.surfaceInput)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1751,12 +1746,7 @@ struct EventDetailCard: View {
             }
         }
         .padding(OPSStyle.Layout.spacing2_5)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     var body: some View {

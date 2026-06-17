@@ -327,7 +327,7 @@ struct DeckTab2DView: View {
         let cr: CGFloat = 4
         let pillRect = CGRect(x: cx - pillW / 2, y: cy - pillH / 2, width: pillW, height: pillH)
         context.fill(Path(roundedRect: pillRect, cornerRadius: cr),
-                     with: .color(OPSStyle.Colors.cardBackground.opacity(0.85)))
+                     with: .color(OPSStyle.Colors.glassDenseApprox))
         context.draw(Text(label).font(.system(size: 10, weight: .semibold, design: .monospaced))
             .foregroundColor(Color.white.opacity(0.9)),
                      at: CGPoint(x: cx, y: cy))

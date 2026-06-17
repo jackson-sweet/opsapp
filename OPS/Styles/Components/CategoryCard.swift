@@ -61,8 +61,8 @@ struct CategoryCard: View {
                 .foregroundColor(isDisabled ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
         }
         .padding(OPSStyle.Layout.spacing4)
-        .background(isDisabled ? OPSStyle.Colors.cardBackgroundDark.opacity(0.3) : OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
+        .opacity(isDisabled ? 0.3 : 1)
     }
 }
 
@@ -103,8 +103,7 @@ struct OrganizationProfileCard: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
 }
 
@@ -133,7 +132,7 @@ struct CategoryCardPreview: View {
                 .padding(OPSStyle.Layout.spacing3_5)
         }
         .padding()
-        .background(OPSStyle.Colors.backgroundGradient)
+        .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
     }
 }

@@ -47,10 +47,10 @@ struct PrioritySchedulePreviewSheet: View {
                 }
             }
 
-            Divider().background(OPSStyle.Colors.cardBorder)
+            Divider().background(OPSStyle.Colors.line)
             footer
         }
-        .background(OPSStyle.Colors.background)
+        .glassDense()
         .onAppear(perform: buildRows)
     }
 
@@ -131,8 +131,7 @@ struct PrioritySchedulePreviewSheet: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
@@ -165,8 +164,14 @@ struct PrioritySchedulePreviewSheet: View {
                     .frame(maxWidth: .infinity)
             }
             .frame(height: OPSStyle.Layout.touchTargetStandard)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .fill(OPSStyle.Colors.surfaceInput)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .stroke(OPSStyle.Colors.line, lineWidth: 1)
+            )
 
             if !plan.placements.isEmpty {
                 Button { onConfirm(); dismiss() } label: {
@@ -177,7 +182,7 @@ struct PrioritySchedulePreviewSheet: View {
                 }
                 .frame(height: OPSStyle.Layout.touchTargetStandard)
                 .background(OPSStyle.Colors.primaryAccent)
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                .cornerRadius(OPSStyle.Layout.buttonRadius)
             }
         }
         .padding(OPSStyle.Layout.spacing3)

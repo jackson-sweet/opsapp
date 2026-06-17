@@ -44,7 +44,7 @@ struct ClearDataView: View {
     
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 0) {
@@ -53,8 +53,8 @@ struct ClearDataView: View {
                     "Clear Local Data",
                     leading: { OPSHeaderCloseButton(action: { dismiss() }) }
                 )
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                
+                .background(OPSStyle.Colors.background)
+
                 ScrollView {
                     VStack(spacing: OPSStyle.Layout.spacing3_5) {
                         // Warning card
@@ -73,9 +73,8 @@ struct ClearDataView: View {
                                 .multilineTextAlignment(.center)
                         }
                         .padding()
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        
+                        .glassSurface()
+
                         // Clear options
                         VStack(spacing: OPSStyle.Layout.spacing2_5) {
                             ForEach(DataType.allCases, id: \.self) { dataType in
@@ -96,8 +95,7 @@ struct ClearDataView: View {
                                 .foregroundColor(OPSStyle.Colors.successStatus)
                                 .padding()
                                 .frame(maxWidth: .infinity)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .glassSurface()
                         }
                     }
                     .padding()
@@ -225,8 +223,7 @@ struct ClearDataButton: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding()
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .glassSurface()
             .opacity(isDisabled ? 0.5 : 1.0)
         }
         .disabled(isDisabled)

@@ -54,7 +54,7 @@ struct UserPermissionDetailView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .ignoresSafeArea()
 
                 VStack(spacing: 0) {
@@ -188,12 +188,7 @@ struct UserPermissionDetailView: View {
                 }
                 .padding(.vertical, 14)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             } else {
                 VStack(spacing: 0) {
@@ -204,12 +199,7 @@ struct UserPermissionDetailView: View {
                         roleOption(role, title: role.displayName, description: role.roleDescription)
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                 // Save role button (only when changed)
@@ -273,7 +263,7 @@ struct UserPermissionDetailView: View {
             }
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .background(selectedRole == role ? OPSStyle.Colors.subtleBackground : Color.clear)
+            .background(selectedRole == role ? OPSStyle.Colors.surfaceActive : Color.clear)
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
@@ -334,19 +324,14 @@ struct UserPermissionDetailView: View {
                     .padding(.vertical, 3)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(OPSStyle.Colors.subtleBackground)
+                            .fill(OPSStyle.Colors.surfaceInput)
                     )
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 14)
         }
         .buttonStyle(PlainButtonStyle())
-        .background(OPSStyle.Colors.background)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .opacity(0.4)
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
@@ -388,7 +373,7 @@ struct UserPermissionDetailView: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 14)
-            .background(OPSStyle.Colors.subtleBackground)
+            .background(OPSStyle.Colors.surfaceHover)
 
             // Individual permission rows (darker)
             ForEach(permissions) { perm in
@@ -399,12 +384,7 @@ struct UserPermissionDetailView: View {
                 overrideRow(perm)
             }
         }
-        .background(OPSStyle.Colors.background)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 

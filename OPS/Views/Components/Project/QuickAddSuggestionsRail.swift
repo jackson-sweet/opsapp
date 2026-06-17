@@ -160,12 +160,7 @@ struct QuickAddSuggestionsRail: View {
                 .padding(.vertical, OPSStyle.Layout.spacing2)
             }
             .frame(width: 168, height: 56, alignment: .leading)
-            .background(OPSStyle.Colors.cardBackground)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+            .nestedCard()
         }
         .buttonStyle(PlainButtonStyle())
         .contextMenu {
@@ -196,7 +191,7 @@ struct QuickAddSuggestionsRail: View {
                         UserAvatar(user: member, size: 16)
                             .overlay(
                                 Circle()
-                                    .stroke(OPSStyle.Colors.cardBackgroundDark, lineWidth: 1.5)
+                                    .stroke(OPSStyle.Colors.background, lineWidth: 1.5)
                             )
                     }
                 }

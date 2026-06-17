@@ -50,12 +50,7 @@ struct SyncStatusSection: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.line, lineWidth: 1)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.top, OPSStyle.Layout.spacing2)
         }
@@ -219,7 +214,7 @@ struct SyncStatusSection: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 28, height: 28)
-                        .background(OPSStyle.Colors.cardBackground)
+                        .background(OPSStyle.Colors.surfaceActive)
                         .clipShape(Circle())
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -236,7 +231,7 @@ struct SyncStatusSection: View {
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .frame(width: 24, height: 24)
-                        .background(OPSStyle.Colors.cardBackground)
+                        .background(OPSStyle.Colors.surfaceActive)
                         .clipShape(Circle())
                 }
                 .buttonStyle(PlainButtonStyle())

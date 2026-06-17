@@ -44,8 +44,7 @@ struct StorageOptionSlider: View {
                 Spacer()
             }
             .padding()
-            .background(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackground.opacity(0.1) : OPSStyle.Colors.cardBackground)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .glassSurface()
             
             // Slider
             VStack(spacing: OPSStyle.Layout.spacing3) {
@@ -106,7 +105,7 @@ struct StorageOptionSlider: View {
                         
                         // Thumb (larger circle)
                         Circle()
-                            .fill(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.Light.cardBackgroundDark)
+                            .fill(OPSStyle.Colors.fillNeutral)
                             .frame(width: 30, height: 30)
                             .overlay(
                                 Circle()

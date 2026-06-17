@@ -315,7 +315,7 @@ struct JobBoardView: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .padding(.horizontal, 10)
                             .padding(.vertical, OPSStyle.Layout.spacing2)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -724,12 +724,12 @@ struct JobBoardView: View {
         Button(action: action) {
             Text(label)
                 .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(isActive ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
+                .foregroundColor(isActive ? OPSStyle.Colors.background : OPSStyle.Colors.secondaryText)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
+                        .fill(isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.surfaceInput)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -758,7 +758,7 @@ struct JobBoardView: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 8)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -916,8 +916,8 @@ private struct JobBoardFilterPill: View {
     let isOn: Bool
 
     var body: some View {
-        let fg: Color = isOn ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText
-        let bg: Color = isOn ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark
+        let fg: Color = isOn ? OPSStyle.Colors.background : OPSStyle.Colors.secondaryText
+        let bg: Color = isOn ? OPSStyle.Colors.primaryText : OPSStyle.Colors.surfaceInput
         let stroke: Color = isOn ? Color.clear : OPSStyle.Colors.cardBorder
         Text(title)
             .font(OPSStyle.Typography.smallCaption)
@@ -954,7 +954,7 @@ struct JobBoardSectionSelector: View {
                         .font(OPSStyle.Typography.cardBody)
                         .foregroundColor(
                             selectedSection == section
-                                ? OPSStyle.Colors.cardBackgroundDark
+                                ? OPSStyle.Colors.background
                                 : OPSStyle.Colors.secondaryText
                         )
                         .frame(maxWidth: .infinity)
@@ -1325,7 +1325,7 @@ struct JobBoardTasksView: View {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
+                    .fill(OPSStyle.Colors.surfaceInput)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(hasActiveFilters ? OPSStyle.Colors.primaryAccent.opacity(0.3) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
@@ -1455,8 +1455,7 @@ struct ClientRowView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
 }
 
@@ -1486,8 +1485,7 @@ struct ProjectRowView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
 }
 
@@ -1519,8 +1517,7 @@ struct TaskTypeRowView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .glassSurface()
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -1578,8 +1575,7 @@ struct JobBoardCreateMenu: View {
                             }
                         )
                     }
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .glassSurface()
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                     Spacer()
@@ -1666,7 +1662,7 @@ struct TaskFilterBadge: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
+                .fill(OPSStyle.Colors.surfaceInput)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
@@ -1724,8 +1720,12 @@ struct TaskListSheet: View {
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.top, OPSStyle.Layout.spacing2_5)
 

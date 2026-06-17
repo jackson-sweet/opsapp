@@ -314,12 +314,7 @@ struct TaskRescheduleSheet: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .glassSurface()
         .contentShape(Rectangle())
         // Pinch-out anywhere on the card zooms into the day detail
         // (Transition beat). The tap path lives on the inspect affordance
@@ -390,7 +385,7 @@ struct TaskRescheduleSheet: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(maxWidth: .infinity)
                 .frame(height: OPSStyle.Layout.touchTargetMin)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)

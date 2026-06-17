@@ -45,7 +45,7 @@ struct ProfileSettingsView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -150,12 +150,7 @@ struct ProfileSettingsView: View {
                                 }
                                 .padding(.vertical, 14)
                                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                )
+                                .glassSurface()
                             }
                             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
@@ -218,12 +213,7 @@ struct ProfileSettingsView: View {
                                     }
                                 }
                                 .padding(OPSStyle.Layout.spacing3)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                )
+                                .glassSurface()
                             }
                             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
@@ -244,7 +234,7 @@ struct ProfileSettingsView: View {
                                     )
 
                                     Divider()
-                                        .background(OPSStyle.Colors.cardBorder)
+                                        .background(OPSStyle.Colors.line)
 
                                     SettingsCategoryButton(
                                         title: "Delete Account",
@@ -255,12 +245,7 @@ struct ProfileSettingsView: View {
                                         }
                                     )
                                 }
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                )
+                                .glassSurface()
                             }
                             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
@@ -309,7 +294,7 @@ struct ProfileSettingsView: View {
     // Password reset sheet view (unchanged)
     private var resetPasswordSheet: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .ignoresSafeArea()
 
             VStack(spacing: OPSStyle.Layout.spacing4) {
@@ -340,11 +325,11 @@ struct ProfileSettingsView: View {
                                 .autocapitalization(.none)
                                 .disableAutocorrection(true)
                                 .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .background(OPSStyle.Colors.surfaceInput)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -370,7 +355,7 @@ struct ProfileSettingsView: View {
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, OPSStyle.Layout.spacing3)
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .background(OPSStyle.Colors.surfaceInput)
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
 
@@ -444,7 +429,7 @@ struct ProfileSettingsView: View {
     // Delete account sheet view
     private var deleteAccountSheet: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .ignoresSafeArea()
 
             VStack(spacing: OPSStyle.Layout.spacing4) {
@@ -506,13 +491,13 @@ struct ProfileSettingsView: View {
                             .autocapitalization(.none)
                             .disableAutocorrection(true)
                             .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .stroke(deleteConfirmationText.lowercased() == "confirm delete" ?
                                             OPSStyle.Colors.errorStatus :
-                                                OPSStyle.Colors.cardBorder,
+                                                OPSStyle.Colors.inputFieldBorder,
                                             lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
@@ -566,7 +551,7 @@ struct ProfileSettingsView: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, OPSStyle.Layout.spacing3)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                 }

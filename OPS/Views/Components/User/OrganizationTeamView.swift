@@ -53,8 +53,12 @@ struct OrganizationTeamView: View {
                     }
                     .padding(.vertical, OPSStyle.Layout.spacing2)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .background(OPSStyle.Colors.surfaceInput)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                    )
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, OPSStyle.Layout.spacing3)
@@ -135,7 +139,7 @@ struct OrganizationFullTeamView: View {
         NavigationView {
             ZStack {
                 // Background
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .edgesIgnoringSafeArea(.all)
                 
                 // Team member grid
@@ -151,8 +155,12 @@ struct OrganizationFullTeamView: View {
                             .disableAutocorrection(true)
                     }
                     .padding()
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+                    .background(OPSStyle.Colors.surfaceInput)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                    )
                     .padding(.horizontal)
                     .padding(.top, OPSStyle.Layout.spacing2)
                     
@@ -251,8 +259,7 @@ struct TeamMemberCard: View {
         }
         .frame(minWidth: 110, minHeight: 130)
         .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+        .glassSurface()
     }
 }
 

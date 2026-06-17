@@ -258,9 +258,7 @@ struct LeadsTabView: View {
 
             Spacer()
 
-            // No filter icon (plan §2.1 Q4 = delete entirely). Search is
-            // provided by the persistent overlay button in MainTabView
-            // (Bug 706a4d32), so we don't render one here either.
+            // Create new lead. No filter icon (plan §2.1 Q4 = delete entirely).
             // Gated on pipeline.manage — read-only operators get no create
             // affordance, matching the FAB's gating and design-intent §14 #11.
             // (review C-8 / W-12)
@@ -277,6 +275,14 @@ struct LeadsTabView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
                 .accessibilityLabel("New lead")
+            }
+
+            // Universal search — rightmost trailing action, identical on every
+            // tab via the shared UniversalSearchButton. LEADS previously relied
+            // on the global MainTabView search overlay (Bug 706a4d32); that
+            // overlay was removed, so the tab now owns its own search control.
+            UniversalSearchButton {
+                appState.showingUniversalSearch = true
             }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)

@@ -480,9 +480,11 @@ struct AppHeader: View {
                     // tapping the icon flips appState.isSettingsSearchActive
                     // so the header re-renders as the full-width input (see
                     // the `.settings && isSettingsSearchActive` branch above).
-                    Button(action: {
+                    UniversalSearchButton {
                         if headerType == .settings {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            // Settings searches in place — flip the active flag
+                            // so the header re-renders as the full-width input,
+                            // then drop focus onto the field.
                             withAnimation(OPSStyle.Animation.spring) {
                                 appState.isSettingsSearchActive = true
                             }
@@ -492,16 +494,7 @@ struct AppHeader: View {
                         } else {
                             appState.showingUniversalSearch = true
                         }
-                    }) {
-                        Image(systemName: "magnifyingglass")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .frame(width: 44, height: 44)
-                            .background(OPSStyle.Colors.fillNeutral)
-                            .clipShape(Circle())
                     }
-                    .buttonStyle(PlainButtonStyle())
-                    .accessibilityLabel("Search")
                 }
 
             }

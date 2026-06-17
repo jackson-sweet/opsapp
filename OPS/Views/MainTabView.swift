@@ -278,44 +278,6 @@ struct MainTabView: View {
         return false
     }
 
-    /// Bug 706a4d32 — single search button rendered outside the sliding tab
-    /// content so it stays visually stationary during tab swaps. Behavior
-    /// branches on the current tab so Settings still gets its expand-in-place
-    /// input while every other tab opens the universal search sheet.
-    @ViewBuilder
-    private var persistentSearchButton: some View {
-        Button {
-            let onSettings = isSettingsTab
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            if onSettings {
-                withAnimation(OPSStyle.Animation.spring) {
-                    appState.isSettingsSearchActive = true
-                }
-            } else {
-                appState.showingUniversalSearch = true
-            }
-        } label: {
-            Image(systemName: "magnifyingglass")
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .frame(
-                    width: OPSStyle.Layout.touchTargetMin,
-                    height: OPSStyle.Layout.touchTargetMin
-                )
-                .background(OPSStyle.Colors.fillNeutral)
-                .clipShape(Circle())
-        }
-        .buttonStyle(PlainButtonStyle())
-        .accessibilityLabel("Search")
-    }
-
-    /// Catalog owns the top-trailing menu lane, so Search shifts left by one
-    /// minimum target plus spacing to keep hit and accessibility frames separate.
-    private var persistentSearchTrailingInset: CGFloat {
-        guard let catalogTabIndex = catalogTabIndex, selectedTab == catalogTabIndex else { return 0 }
-        return OPSStyle.Layout.touchTargetMin + OPSStyle.Layout.spacing2
-    }
-
     private var slideTransition: AnyTransition {
         if selectedTab > previousTab {
             return .asymmetric(
@@ -421,26 +383,6 @@ struct MainTabView: View {
             .environment(\.tabBarVisibility, tabBarVisibility)
             .transition(slideTransition)
             .animation(OPSStyle.Animation.standard, value: selectedTab)
-
-            // Persistent search button overlay — rendered OUTSIDE the sliding
-            // .transition above so it stays visually still while tab content
-            // slides. Position matches AppHeader's right-aligned button slot
-            // (20pt horizontal padding, 12pt vertical padding). Hidden on
-            // the home tab where AppHeader doesn't show a search button.
-            VStack(spacing: 0) {
-                HStack {
-                    Spacer()
-                    if selectedTab != 0 {
-                        persistentSearchButton
-                            .padding(.trailing, persistentSearchTrailingInset)
-                    }
-                }
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                .padding(.top, OPSStyle.Layout.spacing2_5)
-                Spacer()
-            }
-            .allowsHitTesting(selectedTab != 0)
-            .zIndex(3)
 
             // Image sync progress bar and sync status at top
             VStack(spacing: OPSStyle.Layout.spacing2) {

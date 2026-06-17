@@ -515,9 +515,9 @@ enum OPSStyle {
         enum SearchField {
             // Input field styling
             static let inputPadding: CGFloat = 12
-            static let inputBackground = OPSStyle.Colors.cardBackgroundDark
+            static let inputBackground = OPSStyle.Colors.surfaceInput
             static let inputCornerRadius = OPSStyle.Layout.cornerRadius
-            static let inputBorderColor = OPSStyle.Colors.cardBorder
+            static let inputBorderColor = OPSStyle.Colors.inputFieldBorder
             static let inputBorderWidth: CGFloat = 1
 
             // Icon styling
@@ -532,9 +532,9 @@ enum OPSStyle {
             static let placeholderColor = OPSStyle.Colors.placeholderText
 
             // Suggestions dropdown styling
-            static let dropdownBackground = OPSStyle.Colors.cardBackgroundDark
+            static let dropdownBackground = OPSStyle.Colors.surfaceInput
             static let dropdownCornerRadius = OPSStyle.Layout.cornerRadius
-            static let dropdownBorderColor = OPSStyle.Colors.cardBorder
+            static let dropdownBorderColor = OPSStyle.Colors.inputFieldBorder
             static let dropdownBorderWidth: CGFloat = 1
             static let dropdownShadowColor = OPSStyle.Colors.shadowColor
             static let dropdownShadowRadius: CGFloat = 8

@@ -183,8 +183,7 @@ struct ContactActionRow: View {
             }
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.background.opacity(0.5))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .nestedCard()
         }
     }
 }

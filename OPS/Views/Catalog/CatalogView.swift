@@ -312,9 +312,11 @@ struct CatalogView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.title3)
+                    .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                    .background(OPSStyle.Colors.fillNeutral)
+                    .clipShape(Circle())
             }
             .accessibilityLabel("Catalog menu")
         }

@@ -327,14 +327,21 @@ struct JobBoardView: View {
                     .buttonStyle(.plain)
                     .wizardTarget("open_filters")
 
-                    Button(action: {
-                        withAnimation(OPSStyle.Animation.panel) { activeOnly.toggle() }
-                    }) {
-                        JobBoardFilterPill(title: "ACTIVE ONLY", isOn: activeOnly)
-                            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                            .contentShape(Rectangle())
+                    // ACTIVE ONLY is redundant on the tasks list: that list
+                    // already shows only active tasks, with completed/cancelled
+                    // behind their own section button (JobBoardTasksView doesn't
+                    // even take activeOnly). Keep it for the project + kanban
+                    // lists, where activeOnly genuinely filters.
+                    if selectedSection != .tasks {
+                        Button(action: {
+                            withAnimation(OPSStyle.Animation.panel) { activeOnly.toggle() }
+                        }) {
+                            JobBoardFilterPill(title: "ACTIVE ONLY", isOn: activeOnly)
+                                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
 
                     Button(action: {
                         withAnimation(OPSStyle.Animation.panel) { assignedToMe.toggle() }

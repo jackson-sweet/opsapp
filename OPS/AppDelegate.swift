@@ -37,6 +37,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
             }
         }
 
+        // Install the global navigation-bar appearance so every native
+        // `.navigationTitle` renders in the OPS screen-title voice (Cake Mono
+        // Light, text color, transparent→glass on scroll). MOBILE.md §2.1/§13.
+        OPSStyle.configureNavigationBarAppearance()
+
         // Configure Firebase (must be first)
         FirebaseApp.configure()
 

@@ -71,7 +71,7 @@ struct StockQuickAdjustSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         header
@@ -171,12 +171,7 @@ struct StockQuickAdjustSheet: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var presetGrid: some View {
@@ -189,12 +184,7 @@ struct StockQuickAdjustSheet: View {
                         .font(OPSStyle.Typography.metadata)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin)
-                        .background(OPSStyle.Colors.subtleBackground)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .nestedCard(cornerRadius: OPSStyle.Layout.cornerRadius)
                 }
                 .disabled(isAdjusting || !canAdjustStock || StockQuantityAdjustment.targetQuantity(current: localQuantity, delta: delta) == nil)
                 .opacity(canAdjustStock ? 1.0 : 0.4)
@@ -216,12 +206,7 @@ struct StockQuickAdjustSheet: View {
                         .font(OPSStyle.Typography.buttonLabel)
                         .foregroundColor(canApplyExactQuantity ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                         .frame(width: 64, height: OPSStyle.Layout.touchTargetMin)
-                        .background(OPSStyle.Colors.subtleBackground)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .nestedCard(cornerRadius: OPSStyle.Layout.cornerRadius)
                 }
                 .disabled(!canApplyExactQuantity)
             }
@@ -240,12 +225,7 @@ struct StockQuickAdjustSheet: View {
                         .font(OPSStyle.Typography.buttonLabel)
                         .foregroundColor(canApplyCustomDelta(sign: 1) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                         .frame(width: 64, height: OPSStyle.Layout.touchTargetMin)
-                        .background(OPSStyle.Colors.subtleBackground)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .nestedCard(cornerRadius: OPSStyle.Layout.cornerRadius)
                 }
                 .disabled(!canApplyCustomDelta(sign: 1))
 
@@ -254,12 +234,7 @@ struct StockQuickAdjustSheet: View {
                         .font(OPSStyle.Typography.buttonLabel)
                         .foregroundColor(canApplyCustomDelta(sign: -1) ? OPSStyle.Colors.errorText : OPSStyle.Colors.tertiaryText)
                         .frame(width: 64, height: OPSStyle.Layout.touchTargetMin)
-                        .background(OPSStyle.Colors.subtleBackground)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .nestedCard(cornerRadius: OPSStyle.Layout.cornerRadius)
                 }
                 .disabled(!canApplyCustomDelta(sign: -1))
             }
@@ -272,11 +247,9 @@ struct StockQuickAdjustSheet: View {
             .foregroundColor(OPSStyle.Colors.errorText)
             .padding(OPSStyle.Layout.spacing2)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.errorText.opacity(0.45), lineWidth: OPSStyle.Layout.Border.standard)
+            .glassSurface(
+                cornerRadius: OPSStyle.Layout.cornerRadius,
+                borderColor: OPSStyle.Colors.errorText.opacity(0.45)
             )
     }
 

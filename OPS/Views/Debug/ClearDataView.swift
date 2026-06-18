@@ -44,37 +44,21 @@ struct ClearDataView: View {
     
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 0) {
                 // Header
-                HStack {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: OPSStyle.Icons.close)
-                            .font(.system(size: 20))
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-                    
-                    Spacer()
-                    
-                    Text("Clear Local Data")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(.white)
-                    
-                    Spacer()
-                    
-                    // Placeholder for symmetry
-                    Color.clear
-                        .frame(width: 20, height: 20)
-                }
-                .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                
+                OPSScreenHeader(
+                    "Clear Local Data",
+                    leading: { OPSHeaderCloseButton(action: { dismiss() }) }
+                )
+                .background(OPSStyle.Colors.background)
+
                 ScrollView {
-                    VStack(spacing: 20) {
+                    VStack(spacing: OPSStyle.Layout.spacing3_5) {
                         // Warning card
-                        VStack(spacing: 12) {
+                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
                             Image(systemName: OPSStyle.Icons.alert)
                                 .font(.system(size: 40))
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -89,11 +73,10 @@ struct ClearDataView: View {
                                 .multilineTextAlignment(.center)
                         }
                         .padding()
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        
+                        .glassSurface()
+
                         // Clear options
-                        VStack(spacing: 12) {
+                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
                             ForEach(DataType.allCases, id: \.self) { dataType in
                                 ClearDataButton(
                                     dataType: dataType,
@@ -112,8 +95,7 @@ struct ClearDataView: View {
                                 .foregroundColor(OPSStyle.Colors.successStatus)
                                 .padding()
                                 .frame(maxWidth: .infinity)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .glassSurface()
                         }
                     }
                     .padding()
@@ -241,8 +223,7 @@ struct ClearDataButton: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding()
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .glassSurface()
             .opacity(isDisabled ? 0.5 : 1.0)
         }
         .disabled(isDisabled)

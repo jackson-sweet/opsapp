@@ -62,7 +62,7 @@ struct AssignMemberRoleSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                     memberHeader
 
                     if !isCurrentlySeated {
@@ -77,7 +77,7 @@ struct AssignMemberRoleSheet: View {
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                     }
                 }
-                .padding(16)
+                .padding(OPSStyle.Layout.spacing3)
             }
             .background(OPSStyle.Colors.background)
             .navigationTitle("Assign role")
@@ -104,10 +104,10 @@ struct AssignMemberRoleSheet: View {
     // MARK: - Sections
 
     private var memberHeader: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
             ZStack {
                 Circle()
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
+                    .fill(OPSStyle.Colors.background)
                     .frame(width: 56, height: 56)
                 Text(firstName.prefix(1).uppercased())
                     .font(OPSStyle.Typography.title)
@@ -129,7 +129,7 @@ struct AssignMemberRoleSheet: View {
     }
 
     private var seatBanner: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 12, weight: .semibold))
@@ -147,15 +147,15 @@ struct AssignMemberRoleSheet: View {
             Button {
                 openWebSeats()
             } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Text("Manage seats on web")
                         .font(OPSStyle.Typography.smallCaption.weight(.semibold))
                     Image(systemName: "arrow.right")
                         .font(.system(size: 10, weight: .semibold))
                 }
                 .foregroundColor(OPSStyle.Colors.warningStatus)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(OPSStyle.Colors.warningStatus.opacity(0.4), lineWidth: 1)
@@ -163,7 +163,7 @@ struct AssignMemberRoleSheet: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(12)
+        .padding(OPSStyle.Layout.spacing2_5)
         .background(OPSStyle.Colors.warningStatus.opacity(0.1))
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -173,7 +173,7 @@ struct AssignMemberRoleSheet: View {
     }
 
     private var roleSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("ROLE")
                 .font(OPSStyle.Typography.smallCaption.weight(.semibold))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -185,7 +185,7 @@ struct AssignMemberRoleSheet: View {
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
-                .padding(12)
+                .padding(OPSStyle.Layout.spacing2_5)
             } else {
                 VStack(spacing: 0) {
                     ForEach(roles) { role in
@@ -200,12 +200,11 @@ struct AssignMemberRoleSheet: View {
                         )
                         if role.id != roles.last?.id {
                             Divider()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .background(OPSStyle.Colors.line)
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .glassSurface()
             }
         }
     }
@@ -291,12 +290,12 @@ private struct RoleRow: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 18, weight: .regular))
                     .foregroundColor(
                         isSelected
-                            ? OPSStyle.Colors.primaryAccent
+                            ? OPSStyle.Colors.text
                             : OPSStyle.Colors.secondaryText
                     )
 
@@ -306,7 +305,7 @@ private struct RoleRow: View {
 
                 Spacer()
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .padding(.vertical, 14)
             .contentShape(Rectangle())
         }

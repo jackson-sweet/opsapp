@@ -21,7 +21,7 @@ struct PriorityQueueRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Text(rankNumber.map(String.init) ?? "—")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(rankNumber == nil ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent)
@@ -52,13 +52,12 @@ struct PriorityQueueRow: View {
         .padding(.horizontal, 14)
         .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .glassSurface()
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
                 .stroke(lifted ? OPSStyle.Colors.primaryAccent : Color.clear,
                         lineWidth: OPSStyle.Layout.Border.standard)
         )
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .shadow(color: Color.black.opacity(lifted ? 0.35 : 0),
                 radius: lifted ? 12 : 0, x: 0, y: lifted ? 6 : 0)
         .scaleEffect(lifted ? 1.03 : 1.0)

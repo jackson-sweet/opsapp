@@ -26,7 +26,7 @@ struct ProductKindPickerSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                     Text("// CREATE SELLABLE")
                         .font(OPSStyle.Typography.panelTitle)
@@ -64,7 +64,7 @@ struct ProductKindPickerSheet: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .regular))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: 40, height: 40)
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("// \(category.displayLabel)")
                         .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -80,12 +80,7 @@ struct ProductKindPickerSheet: View {
             }
             .padding(OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, minHeight: 80, alignment: .leading)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Create \(category.displayLabel.lowercased())")

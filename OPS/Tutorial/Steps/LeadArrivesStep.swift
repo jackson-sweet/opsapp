@@ -64,12 +64,12 @@ struct LeadArrivesStep: View {
                 cardView
                     .offset(y: phase == .waiting ? -280 : 0)
                     .opacity(phase == .waiting ? 0 : 1)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
             } else {
                 cardView
                     .offset(x: exitProgress * 420)
                     .opacity(1 - exitProgress)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -88,16 +88,16 @@ struct LeadArrivesStep: View {
             // Reserve full height with invisible layout
             ZStack(alignment: .topLeading) {
                 // Invisible spacer — full card content at final size
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     badgeRow
                     Text(clientText).font(.headingLarge).tracking(0.8)
                     Text(projectText).font(.body)
-                    sourceRow.padding(.top, 4)
+                    sourceRow.padding(.top, OPSStyle.Layout.spacing1)
                 }
                 .opacity(0)
 
                 // Visible content — types in over the reserved space
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     // Badge — always visible once card enters
                     badgeRow
                         .opacity(phase != .waiting ? 1 : 0)
@@ -117,12 +117,12 @@ struct LeadArrivesStep: View {
 
                     // Source badge — fades in after typewriter
                     sourceRow
-                        .padding(.top, 4)
+                        .padding(.top, OPSStyle.Layout.spacing1)
                         .opacity(showSource ? 1 : 0)
                 }
             }
         }
-        .padding(20)
+        .padding(OPSStyle.Layout.spacing3_5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -188,7 +188,7 @@ struct LeadArrivesStep: View {
 
         // 0.6s — Card drops in. Sharp ease-out. Lands and stops.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            withAnimation(.easeOut(duration: 0.35)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 // dampingFraction not needed — ease-out lands without bounce
                 phase = .entering
             }
@@ -235,7 +235,7 @@ struct LeadArrivesStep: View {
 
     private func finishTypewriter() {
         // Source badge fades in
-        withAnimation(.easeOut(duration: 0.25)) {
+        withAnimation(OPSStyle.Animation.standard) {
             showSource = true
         }
 
@@ -258,7 +258,7 @@ struct LeadArrivesStep: View {
         phase = .exiting
 
         // Card exits right — decisive, 250ms
-        withAnimation(.easeIn(duration: 0.25)) {
+        withAnimation(OPSStyle.Animation.standard) {
             exitProgress = 1.0
         }
 

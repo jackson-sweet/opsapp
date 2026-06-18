@@ -50,7 +50,7 @@ struct ProfileScreen: View {
                 onSignOut: { manager.signOut() }
             )
             .padding(.horizontal, 40)
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
 
             // Title section with phased typing animation
             PhasedOnboardingHeader(
@@ -60,7 +60,7 @@ struct ProfileScreen: View {
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 40)
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
 
             Spacer()
                 .frame(height: 48)
@@ -69,7 +69,7 @@ struct ProfileScreen: View {
             PhasedContent(coordinator: animationCoordinator) {
                 VStack(spacing: 0) {
                     // Centered avatar
-                    VStack(spacing: 12) {
+                    VStack(spacing: OPSStyle.Layout.spacing2_5) {
                         ProfileImageUploader(
                             config: ImageUploaderConfig(
                                 currentImageData: avatarData,
@@ -100,9 +100,9 @@ struct ProfileScreen: View {
                         .frame(height: 40)
 
                     // Form fields
-                    VStack(spacing: 20) {
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 8) {
+                    VStack(spacing: OPSStyle.Layout.spacing3_5) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                 PhasedLabel("FIRST NAME", index: 1, coordinator: animationCoordinator)
 
                                 TextField("", text: $firstName)
@@ -110,7 +110,7 @@ struct ProfileScreen: View {
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .autocapitalization(.words)
                                     .padding(.vertical, 14)
-                                    .padding(.horizontal, 16)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
@@ -119,7 +119,7 @@ struct ProfileScreen: View {
                                     )
                             }
 
-                            VStack(alignment: .leading, spacing: 8) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                 PhasedLabel("LAST NAME", index: 2, coordinator: animationCoordinator)
 
                                 TextField("", text: $lastName)
@@ -127,7 +127,7 @@ struct ProfileScreen: View {
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .autocapitalization(.words)
                                     .padding(.vertical, 14)
-                                    .padding(.horizontal, 16)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
@@ -137,7 +137,7 @@ struct ProfileScreen: View {
                             }
                         }
 
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             PhasedLabel(isEmployeeFlow ? "PHONE" : "PHONE (optional)", index: 3, isLast: true, coordinator: animationCoordinator)
 
                             TextField("", text: $phone)
@@ -146,7 +146,7 @@ struct ProfileScreen: View {
                                 .keyboardType(.phonePad)
                                 .focused($isPhoneFocused)
                                 .padding(.vertical, 14)
-                                .padding(.horizontal, 16)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
                                 .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
@@ -160,7 +160,7 @@ struct ProfileScreen: View {
                                             Button {
                                                 isPhoneFocused = false
                                             } label: {
-                                                HStack(spacing: 4) {
+                                                HStack(spacing: OPSStyle.Layout.spacing1) {
                                                     Text("Enter")
                                                     Image(systemName: "return")
                                                 }

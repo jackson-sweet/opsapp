@@ -192,7 +192,7 @@ struct ProjectSearchSheet: View {
                     Button(action: {
                         dismiss()
                     }) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: OPSStyle.Icons.xmark)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                             Text("CLOSE")
@@ -237,7 +237,7 @@ struct ProjectSearchSheet: View {
     private var searchBarSection: some View {
         HStack(spacing: 0) {
             // Search field
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: OPSStyle.Icons.search)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -258,13 +258,13 @@ struct ProjectSearchSheet: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .frame(maxWidth: .infinity)
             
@@ -277,12 +277,12 @@ struct ProjectSearchSheet: View {
                 HStack(spacing: 6) {
                     Text("FILTERS")
                         .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
-                    
+                        .foregroundColor(hasActiveFilters ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
+
                     ZStack {
                         Image(systemName: OPSStyle.Icons.filter)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                            .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                            .foregroundColor(hasActiveFilters ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
                         
                         if activeFilterCount > 0 {
                             Text("\(activeFilterCount)")
@@ -295,20 +295,20 @@ struct ProjectSearchSheet: View {
                         }
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(showFilters ? OPSStyle.Colors.cardBackground : Color.clear)
+                        .fill(showFilters ? OPSStyle.Colors.surfaceActive : Color.clear)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(hasActiveFilters ? OPSStyle.Colors.primaryAccent.opacity(0.3) : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
+                                .stroke(hasActiveFilters ? OPSStyle.Colors.text.opacity(0.3) : Color.clear, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 )
             }
         }
         .padding(.horizontal)
-        .padding(.vertical, 12)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
     }
     
     /*
@@ -316,7 +316,7 @@ struct ProjectSearchSheet: View {
     private var filterSection: some View {
         Group {
             if false {
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     taskSearchToggleSection
                     statusFilterSection
                     if !availableTaskTypes.isEmpty {
@@ -343,11 +343,11 @@ struct ProjectSearchSheet: View {
                                     .font(OPSStyle.Typography.captionBold)
                             }
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.vertical, 10)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .fill(OPSStyle.Colors.cardBackgroundDark)
+                                    .fill(OPSStyle.Colors.surfaceInput)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                             .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
@@ -357,8 +357,8 @@ struct ProjectSearchSheet: View {
                         .padding(.horizontal)
                     }
                 }
-                .padding(.vertical, 16)
-                .background(OPSStyle.Colors.cardBackground.opacity(0.5))
+                .padding(.vertical, OPSStyle.Layout.spacing3)
+                .background(OPSStyle.Colors.surfaceInput)
                 .transition(.asymmetric(
                     insertion: .move(edge: .top).combined(with: .opacity),
                     removal: .move(edge: .top).combined(with: .opacity)
@@ -368,7 +368,7 @@ struct ProjectSearchSheet: View {
     }
     
     private var taskSearchToggleSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             HStack {
                 Image(systemName: "checklist")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -410,11 +410,11 @@ struct ProjectSearchSheet: View {
                     
                     Spacer()
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(searchInTasks ? OPSStyle.Colors.cardBackgroundDark.opacity(0.8) : OPSStyle.Colors.cardBackgroundDark)
+                        .fill(searchInTasks ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .stroke(searchInTasks ? OPSStyle.Colors.primaryAccent.opacity(0.2) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
@@ -426,7 +426,7 @@ struct ProjectSearchSheet: View {
     }
     
     private var statusFilterSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             HStack {
                 Image(systemName: OPSStyle.Icons.alert)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -482,9 +482,9 @@ struct ProjectSearchSheet: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -496,7 +496,7 @@ struct ProjectSearchSheet: View {
     }
 
     private var taskTypeFilterSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             HStack {
                 Image(systemName: "hammer.fill")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -548,9 +548,9 @@ struct ProjectSearchSheet: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -563,7 +563,7 @@ struct ProjectSearchSheet: View {
 
     @ViewBuilder
     private var teamMemberFilterSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             HStack {
                 Image(systemName: OPSStyle.Icons.crew)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -615,9 +615,9 @@ struct ProjectSearchSheet: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -639,7 +639,7 @@ struct ProjectSearchSheet: View {
                 Spacer()
             } else if filteredProjects.isEmpty {
                 Spacer()
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     Image(systemName: searchText.isEmpty ? OPSStyle.Icons.project : OPSStyle.Icons.search)
                         .font(OPSStyle.Typography.largeTitle)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -658,9 +658,9 @@ struct ProjectSearchSheet: View {
             } else {
                 // Project list grouped by status
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         ForEach(groupedProjects, id: \.0) { status, projects in
-                            VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                                 // Status header
                                 HStack {
                                     Circle()
@@ -689,7 +689,7 @@ struct ProjectSearchSheet: View {
                             }
                         }
                     }
-                    .padding(.vertical, 8)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
                 }
             }
         }
@@ -805,9 +805,9 @@ struct ProjectSearchRow: View {
                         }
                         
                         // Date and address info
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             if let startDate = project.startDate {
-                                HStack(spacing: 4) {
+                                HStack(spacing: OPSStyle.Layout.spacing1) {
                                     Image(systemName: OPSStyle.Icons.calendar)
                                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -819,7 +819,7 @@ struct ProjectSearchRow: View {
                             }
                             
                             if let address = project.address, !address.isEmpty {
-                                HStack(spacing: 4) {
+                                HStack(spacing: OPSStyle.Layout.spacing1) {
                                     Image(systemName: OPSStyle.Icons.jobSite)
                                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -840,15 +840,10 @@ struct ProjectSearchRow: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, 14)
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal)
         }
     }
@@ -863,7 +858,7 @@ struct FilterChip: View {
     
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 if isSelected {
                     Circle()
                         .fill(color)
@@ -874,11 +869,11 @@ struct FilterChip: View {
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(isSelected ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.cardBackground)
+                    .fill(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

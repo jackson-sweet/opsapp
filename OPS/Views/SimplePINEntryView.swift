@@ -40,9 +40,9 @@ struct SimplePINEntryView: View {
     
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
+            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
             
-            VStack(spacing: 32) {
+            VStack(spacing: OPSStyle.Layout.spacing5) {
                 Spacer()
                 
                 // App Logo
@@ -88,7 +88,7 @@ struct SimplePINEntryView: View {
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 .padding(.bottom, 40)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
             }
             .padding()
         }
@@ -194,7 +194,7 @@ struct PINDigitBoxes: View {
                 .opacity(0)
             
             // Visual digit boxes
-            HStack(spacing: 16) {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
                 ForEach(0..<4) { index in
                     PINDigitBox(
                         digit: getDigit(at: index),
@@ -260,7 +260,7 @@ struct PINDigitBox: View {
                 .frame(width: 56, height: 64)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
-                        .fill(OPSStyle.Colors.cardBackgroundDark.opacity(isActive ? 0.5 : 0.3))
+                        .fill(isActive ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
                 )
                 .animation(OPSStyle.Animation.fast, value: validationState)
                 .animation(OPSStyle.Animation.fast, value: isActive)

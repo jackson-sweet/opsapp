@@ -33,7 +33,7 @@ struct TimelineView: View {
             ZStack(alignment: .topLeading) {
                 // Hour lines
                 ForEach(startHour..<endHour, id: \.self) { hour in
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         Text(hourLabel(hour))
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -53,7 +53,7 @@ struct TimelineView: View {
                 }
             }
             .frame(height: totalHeight)
-            .padding(.leading, 4)
+            .padding(.leading, OPSStyle.Layout.spacing1)
         }
     }
 
@@ -82,7 +82,7 @@ struct TimelineView: View {
             }
             .frame(height: max(height, 30))
             .padding(.leading, 52)
-            .padding(.trailing, 8)
+            .padding(.trailing, OPSStyle.Layout.spacing2)
             .offset(y: yOffset + (draggedTaskId == task.id ? dragOffset : 0))
             .gesture(task.canEditSchedule ? timeDragGesture(for: task, yOffset: yOffset) : nil)
     }

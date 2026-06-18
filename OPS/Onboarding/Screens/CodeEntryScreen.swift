@@ -38,7 +38,7 @@ struct CodeEntryScreen: View {
                 onSignOut: { manager.signOut() }
             )
             .padding(.horizontal, 40)
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
 
             // Title area with phased typing animation
             PhasedOnboardingHeader(
@@ -48,7 +48,7 @@ struct CodeEntryScreen: View {
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 40)
-            .padding(.top, 32)
+            .padding(.top, OPSStyle.Layout.spacing5)
 
             Spacer()
 
@@ -67,7 +67,7 @@ struct CodeEntryScreen: View {
                         Text(error)
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.errorStatus)
-                            .padding(.top, 16)
+                            .padding(.top, OPSStyle.Layout.spacing3)
                     }
                 }
             }
@@ -76,7 +76,7 @@ struct CodeEntryScreen: View {
             Spacer()
 
             // Bottom section: Help button + Join button
-            VStack(spacing: 16) {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
                 // Help button - trigger button phase when this appears
                 PhasedHelpButton(coordinator: animationCoordinator) {
                     showHelpSheet = true
@@ -289,8 +289,8 @@ struct ExpandingBracketInput: View {
                 .frame(width: currentSpacing, height: 2)
                 .offset(y: -8)
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: isFocused)
-        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: text)
+        .animation(OPSStyle.Animation.standard, value: isFocused)
+        .animation(OPSStyle.Animation.standard, value: text)
         .contentShape(Rectangle())
         .onTapGesture {
             isFocused = true

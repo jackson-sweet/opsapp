@@ -104,7 +104,7 @@ struct LeadDetailView: View {
                         DetailHero(opportunity: opportunity)
 
                         ContactCard(opportunity: opportunity)
-                            .padding(.top, 4)
+                            .padding(.top, OPSStyle.Layout.spacing1)
 
                         if canManage && showWonNotConverted {
                             WonNotConvertedCard(onConvert: onMarkWon)
@@ -200,7 +200,7 @@ private struct DetailNavBar: View {
                         .textCase(.uppercase)
                 }
                 .foregroundColor(OPSStyle.Colors.text2)
-                .padding(.leading, 4)
+                .padding(.leading, OPSStyle.Layout.spacing1)
                 .padding(.trailing, 10)
                 .padding(.vertical, 6)
                 .frame(minHeight: 44)   // meet the 44pt touch floor (review W-10)
@@ -211,7 +211,7 @@ private struct DetailNavBar: View {
 
             Spacer()
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .frame(height: 52)
     }
 }
@@ -226,7 +226,7 @@ private struct WonNotConvertedCard: View {
     let onConvert: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: 0) {
                 Text("// ")
                     .foregroundColor(OPSStyle.Colors.textMute)
@@ -259,16 +259,16 @@ private struct WonNotConvertedCard: View {
                     )
             }
             .buttonStyle(PlainButtonStyle())
-            .padding(.top, 4)
+            .padding(.top, OPSStyle.Layout.spacing1)
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassSurface()
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
                 .strokeBorder(OPSStyle.Colors.oliveLineM, lineWidth: 1)
         )
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 }
 

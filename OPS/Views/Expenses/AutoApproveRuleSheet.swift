@@ -100,14 +100,13 @@ struct AutoApproveRuleSheet: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .nestedCard()
             .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
                     .stroke(
                         selectedType == type
-                        ? OPSStyle.Colors.primaryAccent
-                        : OPSStyle.Colors.cardBorder,
+                        ? OPSStyle.Colors.text
+                        : Color.clear,
                         lineWidth: OPSStyle.Layout.Border.standard
                     )
             )
@@ -129,11 +128,11 @@ struct AutoApproveRuleSheet: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
@@ -159,7 +158,7 @@ struct AutoApproveRuleSheet: View {
 
             // Individual member selection placeholder
             if !appliesToAll {
-                Divider().background(OPSStyle.Colors.cardBorder)
+                Divider().background(OPSStyle.Colors.line)
 
                 Text("Select individual crew members below")
                     .font(OPSStyle.Typography.caption)
@@ -169,12 +168,7 @@ struct AutoApproveRuleSheet: View {
                     .padding(.vertical, OPSStyle.Layout.spacing2)
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 

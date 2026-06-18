@@ -48,13 +48,14 @@ struct DayEventsSheet: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 16) {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
             // Header with day info and dismiss button
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(dayOfWeek)
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .font(OPSStyle.Typography.pageTitle)
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
                     
                     Text(monthDayText)
                         .font(OPSStyle.Typography.caption)
@@ -67,7 +68,7 @@ struct DayEventsSheet: View {
                 ZStack {
                     // Project count card with softer edges
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .fill(OPSStyle.Colors.surfaceInput)
                         .frame(width: 60, height: 60)
 
                     // Total event count number (new + ongoing)
@@ -79,7 +80,7 @@ struct DayEventsSheet: View {
                 .segmentedEventBorder(
                     events: scheduledTasks,
                     isSelected: false,
-                    cornerRadius: 10
+                    cornerRadius: OPSStyle.Layout.panelRadius
                 )
                 
                 Button(action: { dismiss() }) {
@@ -87,18 +88,18 @@ struct DayEventsSheet: View {
                         .font(OPSStyle.Typography.title)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
-                .padding(.leading, 16)
+                .padding(.leading, OPSStyle.Layout.spacing3)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.top, OPSStyle.Layout.spacing3_5)
+            .padding(.bottom, OPSStyle.Layout.spacing2)
             
             // Task list
             if scheduledTasks.isEmpty {
                 emptyStateView
             } else {
                 ScrollView {
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         // New tasks section
                         ForEach(Array(newTasks.enumerated()), id: \.element.id) { index, task in
                             CalendarEventCard(
@@ -115,7 +116,7 @@ struct DayEventsSheet: View {
                         // Ongoing section divider and tasks
                         if !ongoingTasks.isEmpty {
                             // Divider with count
-                            HStack(spacing: 8) {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
                                 Text("ONGOING")
                                     .font(OPSStyle.Typography.captionBold)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -130,8 +131,8 @@ struct DayEventsSheet: View {
                                     .font(OPSStyle.Typography.captionBold)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 8)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
 
                             // Ongoing tasks
                             ForEach(Array(ongoingTasks.enumerated()), id: \.element.id) { index, task in
@@ -147,11 +148,11 @@ struct DayEventsSheet: View {
                             }
                         }
                     }
-                    .padding(.bottom, 20)
+                    .padding(.bottom, OPSStyle.Layout.spacing3_5)
                 }
                 }
             }
-            .background(OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all))
+            .background(OPSStyle.Colors.background.edgesIgnoringSafeArea(.all))
             .navigationBarHidden(true) // Hide the default navigation bar
         }
     }
@@ -169,7 +170,7 @@ struct DayEventsSheet: View {
     }
     
     private var emptyStateView: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             Text("[ No events scheduled ]".uppercased())
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)

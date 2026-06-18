@@ -66,13 +66,13 @@ public struct AccuracyBadge: View {
                 .foregroundColor(textColor)
                 .monospacedDigit()
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
         .background(
-            RoundedRectangle(cornerRadius: 4)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                 .fill(fillColor.opacity(fillOpacity))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .strokeBorder(borderColor, lineWidth: 0.5)
                 )
         )
@@ -153,13 +153,13 @@ public struct CoplanarOnlyChip: View {
             .font(.custom("JetBrainsMono-Regular", size: 10))
             .tracking(1)
             .foregroundColor(.black)
-            .padding(.horizontal, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
             .padding(.vertical, 3)
             .background(
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                     .fill(OPSStyle.Colors.tan.opacity(0.85))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 4)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                             .strokeBorder(OPSStyle.Colors.tanLine, lineWidth: 0.5)
                     )
             )

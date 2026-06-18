@@ -880,26 +880,26 @@ private struct MeasurementOptionRow: View {
             HStack {
                 Text(label)
                     .font(OPSStyle.Typography.buttonLabel)
-                    .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
+                    .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.primaryText)
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.text)
                 }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .frame(minHeight: 48)
             .background(
                 isSelected
-                    ? OPSStyle.Colors.primaryAccent.opacity(0.10)
+                    ? OPSStyle.Colors.surfaceActive
                     : OPSStyle.Colors.surfaceInput
             )
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                     .stroke(
-                        isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.40) : OPSStyle.Colors.line,
+                        isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.line,
                         lineWidth: OPSStyle.Layout.Border.standard
                     )
             )
@@ -1444,7 +1444,7 @@ private struct ProductsCard: View {
 // MARK: - SellModeRow
 //
 // ≥48pt option row shared by Q1 and Q2 inside ProductsCard.
-// Selected: primaryAccent fill + checkmark. Unselected: surfaceInput outline.
+// Selected: white-on-surfaceActive + checkmark. Unselected: surfaceInput outline.
 
 private struct SellModeRow: View {
 
@@ -1457,26 +1457,26 @@ private struct SellModeRow: View {
             HStack {
                 Text(label)
                     .font(OPSStyle.Typography.buttonLabel)
-                    .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
+                    .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.primaryText)
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.text)
                 }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .frame(minHeight: 48)
             .background(
                 isSelected
-                    ? OPSStyle.Colors.primaryAccent.opacity(0.10)
+                    ? OPSStyle.Colors.surfaceActive
                     : OPSStyle.Colors.surfaceInput
             )
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                     .stroke(
-                        isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.40) : OPSStyle.Colors.line,
+                        isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.line,
                         lineWidth: OPSStyle.Layout.Border.standard
                     )
             )
@@ -1531,14 +1531,14 @@ private struct BundleChildRow: View {
                     if isSelected {
                         Image(systemName: "checkmark")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .foregroundColor(OPSStyle.Colors.text)
                     }
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .frame(minHeight: 48)
                 .background(
                     isSelected
-                        ? OPSStyle.Colors.primaryAccent.opacity(0.08)
+                        ? OPSStyle.Colors.surfaceActive
                         : OPSStyle.Colors.surfaceInput
                 )
             }
@@ -1571,7 +1571,7 @@ private struct BundleChildRow: View {
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, OPSStyle.Layout.spacing2)
-                .background(OPSStyle.Colors.primaryAccent.opacity(0.05))
+                .background(OPSStyle.Colors.surfaceActive)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -1579,7 +1579,7 @@ private struct BundleChildRow: View {
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                 .stroke(
-                    isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.30) : OPSStyle.Colors.line,
+                    isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.line,
                     lineWidth: OPSStyle.Layout.Border.standard
                 )
         )
@@ -1606,19 +1606,19 @@ private struct RequiredChip: View {
         Button(action: onTap) {
             Text(label)
                 .font(OPSStyle.Typography.metadata)
-                .foregroundColor(isActive ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                .foregroundColor(isActive ? OPSStyle.Colors.text : OPSStyle.Colors.tertiaryText)
                 .padding(.horizontal, OPSStyle.Layout.spacing2)
                 .frame(height: 32)
                 .background(
                     isActive
-                        ? OPSStyle.Colors.primaryAccent.opacity(0.14)
+                        ? OPSStyle.Colors.line
                         : OPSStyle.Colors.surfaceInput
                 )
                 .cornerRadius(OPSStyle.Layout.chipRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .stroke(
-                            isActive ? OPSStyle.Colors.primaryAccent.opacity(0.40) : OPSStyle.Colors.line,
+                            isActive ? Color.white.opacity(0.20) : OPSStyle.Colors.line,
                             lineWidth: OPSStyle.Layout.Border.standard
                         )
                 )
@@ -1764,23 +1764,23 @@ private struct ChipButton: View {
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.text)
                 }
                 Text(label)
                     .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                    .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing2)
             .frame(height: 36)
             .background(isSelected
-                ? OPSStyle.Colors.primaryAccent.opacity(0.12)
+                ? OPSStyle.Colors.line
                 : OPSStyle.Colors.surfaceInput
             )
             .cornerRadius(OPSStyle.Layout.chipRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                     .stroke(
-                        isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.40) : OPSStyle.Colors.line,
+                        isSelected ? Color.white.opacity(0.20) : OPSStyle.Colors.line,
                         lineWidth: OPSStyle.Layout.Border.standard
                     )
             )
@@ -1929,7 +1929,7 @@ private struct StructureCTAButtonStyle: ButtonStyle {
             .background(
                 isEnabled
                     ? OPSStyle.Colors.primaryAccent.opacity(configuration.isPressed ? 0.80 : 1.0)
-                    : OPSStyle.Colors.cardBackground
+                    : OPSStyle.Colors.fillNeutralDim
             )
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(

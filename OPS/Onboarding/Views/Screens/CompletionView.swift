@@ -90,7 +90,7 @@ struct CompletionView: View {
                             }
                         }
                         .buttonStyle(.borderedProminent)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
                     }
                     .padding()
                     .background(Color.gray.opacity(0.2))

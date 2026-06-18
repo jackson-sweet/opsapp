@@ -125,7 +125,7 @@ struct PhotoCommentViewer: View {
                 // Annotation toolbar
                 VStack(spacing: 0) {
                     annotationToolbar
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                     Spacer()
 
@@ -144,7 +144,7 @@ struct PhotoCommentViewer: View {
                 // Normal viewer overlay
                 VStack(spacing: 0) {
                     topBar
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.top, 48)
 
                     Spacer()
@@ -270,10 +270,7 @@ struct PhotoCommentViewer: View {
             .disabled(annotationIsSaving)
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(
-            Color.black.opacity(0.6)
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        )
+        .glassDense()
     }
 
     // MARK: - Annotation Actions
@@ -470,7 +467,7 @@ struct PhotoCommentViewer: View {
                 Image(systemName: OPSStyle.Icons.xmark)
                     .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(12)
+                    .padding(OPSStyle.Layout.spacing2_5)
             }
 
             Spacer()
@@ -502,8 +499,8 @@ struct PhotoCommentViewer: View {
         }
         .background {
             ZStack {
-                Color.black.opacity(0.60)
                 Rectangle().fill(.ultraThinMaterial)
+                Rectangle().fill(OPSStyle.Colors.glassDenseApprox)
             }
             .environment(\.colorScheme, .dark)
             .ignoresSafeArea(edges: .bottom)
@@ -538,7 +535,7 @@ struct PhotoCommentViewer: View {
         .buttonStyle(PlainButtonStyle())
         .overlay(
             Rectangle()
-                .fill(Color.white.opacity(0.1))
+                .fill(OPSStyle.Colors.line)
                 .frame(height: 1),
             alignment: .top
         )
@@ -567,7 +564,7 @@ struct PhotoCommentViewer: View {
 
                         if comment.id != viewModel.comments.last?.id {
                             Rectangle()
-                                .fill(Color.white.opacity(0.1))
+                                .fill(OPSStyle.Colors.line)
                                 .frame(height: 1)
                         }
                     }
@@ -614,8 +611,8 @@ struct PhotoCommentViewer: View {
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .background(Color.white.opacity(0.1))
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .background(OPSStyle.Colors.surfaceInput)
+                        .cornerRadius(OPSStyle.Layout.chipRadius)
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -630,8 +627,8 @@ struct PhotoCommentViewer: View {
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .background(Color.white.opacity(0.1))
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .background(OPSStyle.Colors.surfaceInput)
+                        .cornerRadius(OPSStyle.Layout.chipRadius)
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -694,7 +691,7 @@ struct PhotoCommentViewer: View {
         .padding(.vertical, OPSStyle.Layout.spacing2)
         .overlay(
             Rectangle()
-                .fill(Color.white.opacity(0.1))
+                .fill(OPSStyle.Colors.line)
                 .frame(height: 1),
             alignment: .top
         )
@@ -953,7 +950,7 @@ struct PhotoCommentRow: View {
                 } else {
                     ZStack {
                         Circle()
-                            .fill(OPSStyle.Colors.subtleBackground)
+                            .fill(OPSStyle.Colors.fillNeutral)
                             .frame(width: 28, height: 28)
                         Text(initials)
                             .font(OPSStyle.Typography.smallCaption)
@@ -996,8 +993,12 @@ struct PhotoCommentRow: View {
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(OPSStyle.Layout.spacing2)
-                        .background(Color.white.opacity(0.1))
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .background(OPSStyle.Colors.surfaceInput)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                        )
 
                     Button(action: onSaveEdit) {
                         Text("Save")

@@ -124,12 +124,7 @@ struct RescheduleDayDetailView: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .glassSurface()
     }
 
     // MARK: - Events Section
@@ -185,12 +180,7 @@ struct RescheduleDayDetailView: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorderSubtle, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Event Row
@@ -273,14 +263,7 @@ struct RescheduleDayDetailView: View {
         }
         .padding(.vertical, OPSStyle.Layout.spacing2)
         .padding(.horizontal, OPSStyle.Layout.spacing2)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorderSubtle, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Confirm Footer

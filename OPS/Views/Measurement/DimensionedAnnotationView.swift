@@ -153,7 +153,7 @@ public struct DimensionedAnnotationView: View {
                         }
                     )
                     .padding(.top, 56)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     Spacer()
                 }
                 .transition(
@@ -166,7 +166,6 @@ public struct DimensionedAnnotationView: View {
                 )
                 .zIndex(11)
             }
-
         }
         .preferredColorScheme(.dark)
         .task {
@@ -219,9 +218,9 @@ public struct DimensionedAnnotationView: View {
             }
             .accessibilityLabel("Close")
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .frame(height: 44)
-        .background(.ultraThinMaterial)
+        .background(OPSStyle.Colors.background)
     }
 
     // MARK: - Photo area
@@ -284,8 +283,8 @@ public struct DimensionedAnnotationView: View {
                     unit: $primaryUnit,
                     saveAsDefault: $saveUnitAsDefault
                 )
-                .padding(.top, 8)
-                .padding(.trailing, 12)
+                .padding(.top, OPSStyle.Layout.spacing2)
+                .padding(.trailing, OPSStyle.Layout.spacing2_5)
 
                 // Accuracy badge stack (bottom-right)
                 VStack(alignment: .trailing, spacing: 6) {
@@ -296,8 +295,8 @@ public struct DimensionedAnnotationView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity,
                        alignment: .bottomTrailing)
-                .padding(.trailing, 12)
-                .padding(.bottom, 12)
+                .padding(.trailing, OPSStyle.Layout.spacing2_5)
+                .padding(.bottom, OPSStyle.Layout.spacing2_5)
             }
             .contentShape(Rectangle())
             .gesture(measurementGesture(fit: fit))
@@ -403,7 +402,7 @@ public struct DimensionedAnnotationView: View {
     }
 
     private var failedPhotoState: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: "photo")
                 .font(.system(size: 36, weight: .light))
                 .foregroundColor(OPSStyle.Colors.text3)
@@ -591,7 +590,7 @@ public struct DimensionedAnnotationView: View {
     // MARK: - Calibration
 
     private var calibrateConfirmationSheet: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             Text("// CALIBRATE")
                 .font(.custom("CakeMono-Light", size: 14))
                 .tracking(1)
@@ -600,7 +599,7 @@ public struct DimensionedAnnotationView: View {
                 .font(.custom("JetBrainsMono-Regular", size: 12))
                 .foregroundColor(OPSStyle.Colors.text2)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Button {
                     showingCalibrateConfirmation = false
                 } label: {
@@ -611,7 +610,7 @@ public struct DimensionedAnnotationView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(
-                            RoundedRectangle(cornerRadius: 5)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                                 .fill(OPSStyle.Colors.surfaceActive)
                         )
                 }
@@ -626,17 +625,17 @@ public struct DimensionedAnnotationView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(
-                            RoundedRectangle(cornerRadius: 5)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                                 .fill(OPSStyle.Colors.opsAccent)
                         )
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 24)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing4)
         .padding(.bottom, 28)
         .frame(maxWidth: .infinity)
-        .background(.ultraThinMaterial)
+        .glassDense()
         .presentationDetents([.height(240)])
     }
 
@@ -878,16 +877,13 @@ private struct AnnotationSaveStateBanner: View {
                 .accessibilityLabel("Retry save")
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
         .frame(maxWidth: .infinity)
-        .background(
+        .glassDense(cornerRadius: OPSStyle.Layout.chipRadius)
+        .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                .fill(OPSStyle.Colors.glassDenseApprox)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                        .strokeBorder(border, lineWidth: 1)
-                )
+                .strokeBorder(border, lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
     }

@@ -56,7 +56,7 @@ struct TacticalInitialLoadingView: View {
         ZStack {
             OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
 
-            VStack(spacing: 32) {
+            VStack(spacing: OPSStyle.Layout.spacing5) {
                 Spacer()
 
                 // Logo
@@ -77,15 +77,15 @@ struct TacticalInitialLoadingView: View {
                 )
 
                 // Console output
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     ForEach(Array(visibleLines.enumerated()), id: \.offset) { index, line in
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             Text(">")
-                                .font(.system(size: 12, design: .monospaced))
+                                .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
 
                             Text(line)
-                                .font(.system(size: 12, design: .monospaced))
+                                .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                         .opacity(index == visibleLines.count - 1 ? 1.0 : 0.5)
@@ -158,10 +158,10 @@ struct LoadingView: View {
                 if !message.isEmpty {
                     Text(message)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(.top, 12)
+                        .padding(.top, OPSStyle.Layout.spacing2_5)
                 }
             }
-            .padding(24)
+            .padding(OPSStyle.Layout.spacing4)
             .background(Color(white: 0.1))
             .cornerRadius(OPSStyle.Layout.largeCornerRadius)
         }

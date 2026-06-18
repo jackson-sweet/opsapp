@@ -68,15 +68,15 @@ struct TaskDetailsView: View {
             // Main content
             VStack(spacing: 0) {
                 // Modern header with frosted glass effect (matching ProjectDetailsView)
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     // Top row with status and buttons
                     HStack {
                         // Status badge
                         Text(task.status.displayName.uppercased())
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(task.status.color)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .fill(task.status.color.opacity(0.1))
@@ -92,7 +92,7 @@ struct TaskDetailsView: View {
                         Button("Done") {
                             dismiss()
                         }
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                         .padding(.vertical, 6)
                         .background(OPSStyle.Colors.primaryText)
                         .foregroundColor(OPSStyle.Colors.invertedText)
@@ -123,12 +123,9 @@ struct TaskDetailsView: View {
                         Spacer()
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial)
-                .background(task.status == .completed ?
-                           OPSStyle.Colors.cardBackgroundDark :
-                           OPSStyle.Colors.background)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
+                .background(OPSStyle.Colors.background)
                 
                 // Color stripe at bottom of header
                 Rectangle()
@@ -137,7 +134,7 @@ struct TaskDetailsView: View {
                 
                 // Main scrollable content
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
 
                         // Task type header
                         Text("TASK: \(task.taskType?.display.uppercased() ?? "TASK")")
@@ -192,7 +189,7 @@ struct TaskDetailsView: View {
                         Spacer()
                             .frame(height: 80)
                     }
-                    .padding(.top, 16)
+                    .padding(.top, OPSStyle.Layout.spacing3)
                 }
             }
         }
@@ -293,7 +290,7 @@ struct TaskDetailsView: View {
             actionLabel: "Navigate",
             onAction: { openInMaps() }
         ) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 // Address
                 Text(project.address ?? "No address")
                     .font(OPSStyle.Typography.body)
@@ -343,7 +340,7 @@ struct TaskDetailsView: View {
             icon: "doc.text",
             title: "Task Details"
         ) {
-            VStack(spacing: 16) {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
                 // Client field
                 clientField
 
@@ -475,13 +472,13 @@ struct TaskDetailsView: View {
     }
 
     private var clientField: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("CLIENT")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             Button(action: { showingClientContact = true }) {
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: OPSStyle.Icons.client)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: 24)
@@ -493,7 +490,7 @@ struct TaskDetailsView: View {
                     Spacer()
 
                     // Contact indicators
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         Image(systemName: OPSStyle.Icons.phoneFill)
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -509,8 +506,8 @@ struct TaskDetailsView: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .background(Color.clear)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
@@ -523,7 +520,7 @@ struct TaskDetailsView: View {
     }
 
     private var datesField: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("SCHEDULE")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -535,14 +532,14 @@ struct TaskDetailsView: View {
                     showingScheduler = true
                 }
             }) {
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     // Scheduled date
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Image(systemName: OPSStyle.Icons.calendar)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: 24)
 
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                             Text("SCHEDULED")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -577,12 +574,12 @@ struct TaskDetailsView: View {
                         Divider()
                             .background(OPSStyle.Colors.inputFieldBorder)
 
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             Image(systemName: OPSStyle.Icons.calendarBadgeCheckmark)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(width: 24)
 
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                 Text("COMPLETED")
                                     .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -596,8 +593,8 @@ struct TaskDetailsView: View {
                         }
                     }
                 }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .background(Color.clear)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
@@ -773,7 +770,7 @@ struct TaskDetailsView: View {
         ) {
             // Horizontal scrolling status chips
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach(availableStatuses, id: \.self) { status in
                         StatusChip(
                             status: status,
@@ -794,7 +791,7 @@ struct TaskDetailsView: View {
     // MARK: - Navigation Section
 
     private var navigationSection: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             // Sort tasks and find current position
             let sortedTasks = project.tasks.sorted { $0.displayOrder < $1.displayOrder }
 
@@ -813,7 +810,7 @@ struct TaskDetailsView: View {
             }?.flatMap { $0 }
 
             // Task navigation row - Previous / Next pills
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Previous task pill
                 if let prevTask = previousTask ?? fallbackPrevious {
                     navigationPill(
@@ -848,7 +845,7 @@ struct TaskDetailsView: View {
             Button(action: {
                 showingProjectDetails = true
             }) {
-                VStack(spacing: 4) {
+                VStack(spacing: OPSStyle.Layout.spacing1) {
                     Text("VIEW PROJECT")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -885,7 +882,7 @@ struct TaskDetailsView: View {
                 loadMaterialHistory()
             }
         }) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 if iconPosition == .leading {
                     Image(systemName: icon)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
@@ -911,7 +908,7 @@ struct TaskDetailsView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .fill(Color.clear)
@@ -924,7 +921,7 @@ struct TaskDetailsView: View {
     }
 
     private func emptyNavigationPill(caption: String, iconPosition: IconPosition) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             if iconPosition == .leading {
                 Image(systemName: OPSStyle.Icons.chevronLeft)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
@@ -949,7 +946,7 @@ struct TaskDetailsView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .fill(Color.clear)
@@ -966,14 +963,14 @@ struct TaskDetailsView: View {
         Button(action: {
             showingDeleteConfirmation = true
         }) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: OPSStyle.Icons.delete)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 Text("DELETE TASK")
                     .font(OPSStyle.Typography.captionBold)
             }
             .foregroundColor(OPSStyle.Colors.errorStatus.opacity(0.7))
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.vertical, 14)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -984,7 +981,7 @@ struct TaskDetailsView: View {
                     .strokeBorder(OPSStyle.Colors.errorStatus.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
-        .padding(.top, 8)
+        .padding(.top, OPSStyle.Layout.spacing2)
     }
 
     private func deleteTask() {
@@ -1498,8 +1495,8 @@ private struct StatusChip: View {
             Text(status.displayName.uppercased())
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(isSelected ? OPSStyle.Colors.invertedText : status.color)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .fill(isSelected ? status.color : Color.clear)

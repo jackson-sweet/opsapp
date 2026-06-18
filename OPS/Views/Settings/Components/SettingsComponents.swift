@@ -55,8 +55,8 @@ struct SettingsHeader: View {
                     .frame(width: 44)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing2_5)
     }
 }
 
@@ -72,7 +72,7 @@ struct SettingsTabSelector: View {
     
     var body: some View {
         SegmentedControl(selection: $selectedTab)
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 }
 
@@ -100,23 +100,23 @@ private struct LegacySettingsTabSelector: View {
                         }
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                     } else {
                         Text(tab.rawValue)
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 4)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
                     }
                     
                 }
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing2_5)
+        .padding(.bottom, OPSStyle.Layout.spacing2)
     }
 }
 
@@ -134,7 +134,7 @@ struct SettingsCard<Content: View>: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             if showTitle {
                 Text(title)
                     .font(OPSStyle.Typography.smallCaption)
@@ -143,14 +143,9 @@ struct SettingsCard<Content: View>: View {
             
             content
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .padding(.horizontal, 20)
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 }
 
@@ -162,9 +157,9 @@ struct SettingsSectionHeader: View {
             Text(title.uppercased())
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, 20)
-                .padding(.top, 24)
-                .padding(.bottom, 8)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.top, OPSStyle.Layout.spacing4)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
             Spacer()
         }
     }
@@ -180,7 +175,7 @@ struct SettingsToggle: View {
     
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(title)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -203,7 +198,7 @@ struct SettingsToggle: View {
             .labelsHidden()
             .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 }
@@ -235,7 +230,7 @@ struct SettingsButton: View {
             case .primary:
                 return OPSStyle.Colors.primaryAccent
             case .secondary:
-                return OPSStyle.Colors.cardBackgroundDark
+                return OPSStyle.Colors.surfaceInput
             case .destructive:
                 return OPSStyle.Colors.errorStatus
             }
@@ -256,7 +251,7 @@ struct SettingsButton: View {
                     .foregroundColor(style.textColor)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing3)
             .background(style.backgroundColor)
             .cornerRadius(OPSStyle.Layout.buttonRadius)
         }
@@ -288,7 +283,7 @@ struct SettingsField: View {
     var isSecure: Bool = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text(title.uppercased())
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -299,11 +294,11 @@ struct SettingsField: View {
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding()
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .background(OPSStyle.Colors.surfaceInput)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 } else {
                     TextField(placeholder, text: $text)
@@ -311,11 +306,11 @@ struct SettingsField: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .autocorrectionDisabled(true)
                         .padding()
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .background(OPSStyle.Colors.surfaceInput)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 }
             } else {
@@ -324,7 +319,7 @@ struct SettingsField: View {
                     .foregroundColor(text.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
         }
@@ -342,7 +337,7 @@ struct SecurityPINOption: View {
     var body: some View {
         Button(action: action) {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(title)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -357,27 +352,22 @@ struct SecurityPINOption: View {
                 
                 ZStack {
                     Circle()
-                        .stroke(isSelected ? 
-                                OPSStyle.Colors.primaryAccent : 
+                        .stroke(isSelected ?
+                                OPSStyle.Colors.text :
                                 OPSStyle.Colors.secondaryText.opacity(0.5),
                                 lineWidth: OPSStyle.Layout.Border.thick)
                         .frame(width: 24, height: 24)
-                    
+
                     if isSelected {
                         Circle()
-                            .fill(OPSStyle.Colors.primaryAccent)
+                            .fill(OPSStyle.Colors.text)
                             .frame(width: 16, height: 16)
                     }
                 }
             }
             .contentShape(Rectangle())
-            .padding(16)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .padding(OPSStyle.Layout.spacing3)
+            .glassSurface()
         }
     }
 }

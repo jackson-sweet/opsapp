@@ -37,7 +37,7 @@ public struct CloseConfirmationSheet: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             Text(CloseConfirmationSheetCopy.title(
                 measurementCount: measurementCount,
                 includesCalibrationChange: includesCalibrationChange
@@ -54,7 +54,7 @@ public struct CloseConfirmationSheet: View {
                 .foregroundColor(OPSStyle.Colors.text2)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Button {
                     UINotificationFeedbackGenerator().notificationOccurred(.warning)
                     onDiscard()
@@ -66,10 +66,10 @@ public struct CloseConfirmationSheet: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(
-                            RoundedRectangle(cornerRadius: 5)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                                 .strokeBorder(OPSStyle.Colors.rose.opacity(0.5), lineWidth: 1)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 5)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                                         .fill(OPSStyle.Colors.roseSoft)
                                 )
                         )
@@ -87,15 +87,15 @@ public struct CloseConfirmationSheet: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(
-                            RoundedRectangle(cornerRadius: 5)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                                 .fill(OPSStyle.Colors.surfaceActive)
                         )
                 }
                 .accessibilityIdentifier("close.keepEditing")
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 24)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing4)
         .padding(.bottom, 28)
         .frame(maxWidth: .infinity)
         .background(.ultraThinMaterial)

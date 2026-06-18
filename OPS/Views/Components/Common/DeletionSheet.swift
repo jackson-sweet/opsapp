@@ -144,7 +144,7 @@ struct DeletionSheet<Item, ChildItem, ReassignmentItem>: View {
 
                 VStack(spacing: 0) {
                     // Header section
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                         Text("DELETE \(itemType.uppercased())")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -156,9 +156,9 @@ struct DeletionSheet<Item, ChildItem, ReassignmentItem>: View {
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 20)
-                    .padding(.bottom, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.top, OPSStyle.Layout.spacing3_5)
+                    .padding(.bottom, OPSStyle.Layout.spacing3)
 
                     if !childItems.isEmpty {
                         // Segmented control for mode selection
@@ -169,19 +169,19 @@ struct DeletionSheet<Item, ChildItem, ReassignmentItem>: View {
                                 (.individual, "Individual")
                             ]
                         )
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.bottom, OPSStyle.Layout.spacing3)
 
                         // Content based on mode
                         ScrollView {
-                            VStack(spacing: 16) {
+                            VStack(spacing: OPSStyle.Layout.spacing3) {
                                 if reassignmentMode == .bulk {
                                     bulkReassignmentView
                                 } else {
                                     individualReassignmentView
                                 }
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             .padding(.bottom, 100)
                         }
                     } else {
@@ -221,8 +221,8 @@ struct DeletionSheet<Item, ChildItem, ReassignmentItem>: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
                 .disabled(!canDelete || isDeleting)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.bottom, OPSStyle.Layout.spacing3_5)
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
@@ -243,7 +243,7 @@ struct DeletionSheet<Item, ChildItem, ReassignmentItem>: View {
     // MARK: - Bulk Reassignment View
 
     private var bulkReassignmentView: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             if !bulkDeleteAll {
                 Text("Reassign all \(childItems.count) \(childType.lowercased())\(childItems.count == 1 ? "" : "s") to:")
                     .font(OPSStyle.Typography.body)
@@ -274,7 +274,7 @@ struct DeletionSheet<Item, ChildItem, ReassignmentItem>: View {
                 }
                 .foregroundColor(bulkDeleteAll ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.errorStatus)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .background(Color.clear)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -288,7 +288,7 @@ struct DeletionSheet<Item, ChildItem, ReassignmentItem>: View {
     // MARK: - Individual Reassignment View
 
     private var individualReassignmentView: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             ForEach(Array(childItems.enumerated()), id: \.offset) { index, child in
                 let childId = getChildId(child)
                 renderReassignmentRow(

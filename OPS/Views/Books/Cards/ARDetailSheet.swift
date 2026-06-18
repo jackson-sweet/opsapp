@@ -66,7 +66,7 @@ struct ARDetailSheet: View {
 
     private var topOutstandingSection: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Text("//").foregroundColor(OPSStyle.Colors.textMute)
                 Text("TOP OUTSTANDING").foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -112,7 +112,7 @@ struct ARDetailSheet: View {
                         }
                     }
                 }
-                .background(Color.white.opacity(0.04))
+                .background(OPSStyle.Colors.surfaceInput)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
                         .stroke(OPSStyle.Colors.glassBorder, lineWidth: OPSStyle.Layout.Border.standard)

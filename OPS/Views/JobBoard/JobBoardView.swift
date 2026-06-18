@@ -270,7 +270,7 @@ struct JobBoardView: View {
             } : nil,
             unscheduledReviewBadgeCount: permissionStore.can("tasks.edit") ? unscheduledTaskCount : 0
         )
-        .padding(.bottom, 8)
+        .padding(.bottom, OPSStyle.Layout.spacing2)
     }
 
     // Section selector — shown whenever the role has more than one section.
@@ -283,13 +283,13 @@ struct JobBoardView: View {
                 }
                 .onChange(of: tutorialPhase) { oldPhase, newPhase in
                     if tutorialMode && newPhase == .projectListStatusDemo {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(OPSStyle.Animation.panel) {
                             selectedSection = .projects
                         }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
                 .opacity(tutorialMode && tutorialPhase == .dragToAccepted ? 0.4 : 1.0)
                 .allowsHitTesting(!(tutorialMode && tutorialPhase == .dragToAccepted))
         }
@@ -299,7 +299,7 @@ struct JobBoardView: View {
     @ViewBuilder private var actionRowSection: some View {
         if !tutorialMode && (selectedSection == .projects || selectedSection == .myProjects || selectedSection == .tasks || selectedSection == .kanban) {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Button(action: {
                         switch selectedSection {
                         case .tasks:
@@ -314,8 +314,8 @@ struct JobBoardView: View {
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -327,17 +327,24 @@ struct JobBoardView: View {
                     .buttonStyle(.plain)
                     .wizardTarget("open_filters")
 
-                    Button(action: {
-                        withAnimation(.easeInOut(duration: 0.2)) { activeOnly.toggle() }
-                    }) {
-                        JobBoardFilterPill(title: "ACTIVE ONLY", isOn: activeOnly)
-                            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                            .contentShape(Rectangle())
+                    // ACTIVE ONLY is redundant on the tasks list: that list
+                    // already shows only active tasks, with completed/cancelled
+                    // behind their own section button (JobBoardTasksView doesn't
+                    // even take activeOnly). Keep it for the project + kanban
+                    // lists, where activeOnly genuinely filters.
+                    if selectedSection != .tasks {
+                        Button(action: {
+                            withAnimation(OPSStyle.Animation.panel) { activeOnly.toggle() }
+                        }) {
+                            JobBoardFilterPill(title: "ACTIVE ONLY", isOn: activeOnly)
+                                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
 
                     Button(action: {
-                        withAnimation(.easeInOut(duration: 0.2)) { assignedToMe.toggle() }
+                        withAnimation(OPSStyle.Animation.panel) { assignedToMe.toggle() }
                     }) {
                         JobBoardFilterPill(title: "ASSIGNED TO ME", isOn: assignedToMe)
                             .frame(minHeight: OPSStyle.Layout.touchTargetMin)
@@ -347,7 +354,7 @@ struct JobBoardView: View {
 
                     if selectedSection == .projects && permissionStore.can("projects.edit") {
                         Button(action: {
-                            withAnimation(.easeInOut(duration: 0.2)) { prioritizeMode.toggle() }
+                            withAnimation(OPSStyle.Animation.panel) { prioritizeMode.toggle() }
                         }) {
                             JobBoardFilterPill(title: "PRIORITIZE", isOn: prioritizeMode)
                                 .frame(minHeight: OPSStyle.Layout.touchTargetMin)
@@ -358,10 +365,10 @@ struct JobBoardView: View {
 
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
-            .padding(.top, 8)
-            .padding(.bottom, 12)
+            .padding(.top, OPSStyle.Layout.spacing2)
+            .padding(.bottom, OPSStyle.Layout.spacing2_5)
         }
     }
 
@@ -378,7 +385,7 @@ struct JobBoardView: View {
                     activeOnly: activeOnly,
                     assignedToMe: assignedToMe
                 )
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             } else {
                 switch selectedSection {
                 case .myTasks:
@@ -391,11 +398,11 @@ struct JobBoardView: View {
                         activeOnly: activeOnly,
                         assignedToMe: assignedToMe
                     )
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                 case .projects:
                     if prioritizeMode {
                         PriorityQueueView(displayMode: .inline, dataController: dataController)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                     } else {
                         JobBoardProjectListView(
                             searchText: searchText,
@@ -404,7 +411,7 @@ struct JobBoardView: View {
                             activeOnly: activeOnly,
                             assignedToMe: assignedToMe
                         )
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                     }
                 case .tasks:
                     JobBoardTasksView(
@@ -413,7 +420,7 @@ struct JobBoardView: View {
                         showingFilterSheet: $showingTaskFilterSheet,
                         assignedToMe: assignedToMe
                     )
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                 case .kanban:
                     JobBoardKanbanView(
                         activeOnly: activeOnly,
@@ -532,262 +539,6 @@ struct JobBoardView: View {
 
     // MARK: - Unscheduled Task Review
 
-    /// The section selector row (shown when the role has more than one section).
-    /// Extracted from `body` to keep the main VStack within the type-checker budget.
-    @ViewBuilder
-    private var sectionSelector: some View {
-        if sections.count > 1 {
-            JobBoardSectionSelector(sections: sections, selectedSection: $selectedSection)
-                .onChange(of: selectedSection) { oldValue, newValue in
-                    previousSection = oldValue
-                    searchText = ""
-                }
-                .onChange(of: tutorialPhase) { oldPhase, newPhase in
-                    if tutorialMode && newPhase == .projectListStatusDemo {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            selectedSection = .projects
-                        }
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
-                .opacity(tutorialMode && tutorialPhase == .dragToAccepted ? 0.4 : 1.0)
-                .allowsHitTesting(!(tutorialMode && tutorialPhase == .dragToAccepted))
-        }
-    }
-
-    /// The section content area (per-section list/board) plus its lifecycle hooks
-    /// (slide transition, screen-view analytics, badge-count tasks, wizard
-    /// navigation). Extracted from `body` so its switch and chain of modifiers are
-    /// type-checked in isolation — the main VStack was exceeding the Swift
-    /// type-checker's budget as one expression.
-    private var mainContent: some View {
-        Group {
-            if shouldShowProjectsList {
-                // Force show projects list during tutorial
-                projectList
-            } else {
-                switch selectedSection {
-                case .myTasks:
-                    JobBoardMyTasksView()
-                case .myProjects:
-                    projectList
-                case .projects:
-                    if prioritizeMode {
-                        PriorityQueueView(displayMode: .inline, dataController: dataController)
-                            .padding(.horizontal, 16)
-                    } else {
-                        projectList
-                    }
-                case .tasks:
-                    JobBoardTasksView(
-                        searchText: searchText,
-                        showingFilters: $showingFilters,
-                        showingFilterSheet: $showingTaskFilterSheet,
-                        assignedToMe: assignedToMe
-                    )
-                    .padding(.horizontal, 16)
-                case .kanban:
-                    // JobBoardKanbanView self-derives its status buckets and only
-                    // accepts `assignedToMe` now; the prior extra args were a stale
-                    // call site (see projectList note).
-                    JobBoardKanbanView(assignedToMe: assignedToMe)
-                }
-            }
-        }
-        .id(selectedSection)
-        .transition(slideTransition)
-        .animation(.accessibleEaseInOut(duration: 0.2), value: selectedSection)
-        .onChange(of: selectedSection) { oldValue, newSection in
-            previousSection = oldValue
-            // Track section changes within Job Board
-            let screenName: ScreenName? = {
-                switch newSection {
-                case .projects, .myProjects: return .jobBoardProjects
-                case .tasks, .myTasks:       return .jobBoardTasks
-                default: return nil
-                }
-            }()
-            if let screenName = screenName {
-                AnalyticsManager.shared.trackScreenView(screenName: screenName, screenClass: "JobBoardView")
-            }
-        }
-        .task {
-            // Wizard system: evaluate job board wizard trigger (requires ≥1 project)
-            if let wizard = WizardRegistry.contextualWizard(for: "job_board") {
-                let projectCount = await MainActor.run { dataController.getProjects().count }
-                await MainActor.run {
-                    wizardTriggerService?.evaluateTrigger(for: wizard, context: "job_board_tab_visit", projectCount: projectCount)
-                }
-            }
-        }
-        .task {
-            // Compute overdue count for badge
-            computeReviewProjects()
-        }
-        .task {
-            // Compute reviewable task count for badge
-            computeReviewableTasks()
-        }
-        .task {
-            // Compute unscheduled/unassigned task count for badge
-            computeUnscheduledTasks()
-        }
-        .onAppear {
-            selectedSection = defaultSection(for: dataController.currentUser)
-            AnalyticsManager.shared.trackScreenView(screenName: .jobBoard, screenClass: "JobBoardView")
-            AnalyticsService.shared.trackScreenView(screenName: "job_board")
-        }
-        .onDisappear {
-            AnalyticsService.shared.endScreenView(screenName: "job_board")
-        }
-        // Wizard: listen for section-level navigation requests
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardNavigateToSection"))) { notification in
-            guard let sectionRaw = notification.userInfo?["section"] as? String,
-                  let target = JobBoardSection(rawValue: sectionRaw),
-                  sections.contains(target) else { return }
-            withAnimation(.accessibleEaseInOut(duration: 0.2)) {
-                selectedSection = target
-            }
-        }
-    }
-
-    /// The project list (shared by the tutorial-forced list, .myProjects, and
-    /// .projects sections). Extracted to a single computed so its seven-argument
-    /// initializer is type-checked once in isolation — three inline copies were a
-    /// large part of what pushed `body` past the Swift type-checker's budget — and
-    /// to DRY up three identical call sites.
-    private var projectList: some View {
-        // NOTE: JobBoardProjectListView was refactored (commit 9b7742ff and
-        // siblings) to self-manage status/team filters (@State) and sort order
-        // (@AppStorage) — its initializer now takes only the binding pair below.
-        // JobBoardView's call sites were not updated then; recompiling this file
-        // surfaced the mismatch. Matched to the current initializer.
-        JobBoardProjectListView(
-            searchText: searchText,
-            showingFilters: $showingFilters,
-            showingFilterSheet: $showingProjectFilterSheet,
-            activeOnly: activeOnly,
-            assignedToMe: assignedToMe
-        )
-        .padding(.horizontal, 16)
-    }
-
-    /// The job-board header (review entry points + badges). Extracted from `body`
-    /// so its 11-argument initializer and inline closures are type-checked in
-    /// isolation, keeping the main VStack within the Swift type-checker's budget.
-    private var jobBoardHeader: some View {
-        AppHeader(
-            headerType: .jobBoard,
-            onPaymentReviewTapped: (permissionStore.can("projects.edit") || permissionStore.hasFullAccess("projects.view")) ? {
-                if !UserDefaults.standard.bool(forKey: "review_payment_intro_shown") {
-                    UserDefaults.standard.set(true, forKey: "review_payment_intro_shown")
-                    showPaymentReviewIntro = true
-                } else {
-                    computeReviewProjects()
-                    showPaymentReview = true
-                }
-            } : nil,
-            paymentReviewBadgeCount: overdueCount,
-            isPaymentReviewLocked: isPaymentReviewLocked,
-            paymentReviewLockedMessage: "Complete \(Self.paymentReviewThreshold) projects to unlock payment review. You've completed \(completedProjectCount) so far.",
-            onTaskReviewTapped: {
-                // When a wizard is guiding the user to open task review,
-                // bypass the first-open intro alert to avoid an unexpected
-                // intermediate step that the wizard doesn't account for.
-                let wizardActive = wizardStateManager?.isActive == true
-                    && wizardStateManager?.currentStep?.id == "open_task_review"
-                if !wizardActive && !UserDefaults.standard.bool(forKey: "review_task_intro_shown") {
-                    UserDefaults.standard.set(true, forKey: "review_task_intro_shown")
-                    showTaskReviewIntro = true
-                } else {
-                    UserDefaults.standard.set(true, forKey: "review_task_intro_shown")
-                    computeReviewableTasks()
-                    showTaskReview = true
-                }
-            },
-            taskReviewBadgeCount: reviewableTaskCount,
-            isTaskReviewLocked: isTaskReviewLocked,
-            taskReviewLockedMessage: "Complete \(Self.taskReviewThreshold) tasks to unlock task review. You've completed \(completedTaskCount) so far.",
-            onUnscheduledReviewTapped: unscheduledReviewTapped,
-            unscheduledReviewBadgeCount: unscheduledReviewBadge
-        )
-        .padding(.bottom, 8)
-    }
-
-    /// A pill-style filter toggle (ACTIVE ONLY / ASSIGNED TO ME / PRIORITIZE).
-    /// Extracted from the filter row so its ternary-heavy styling doesn't push the
-    /// header view-builder past the Swift type-checker's budget — and to DRY up
-    /// three byte-identical button bodies.
-    @ViewBuilder
-    private func filterChip(_ label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(isActive ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(isActive ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
-        }
-    }
-
-    /// The horizontal filter/sort action row (filter sheet + ACTIVE ONLY /
-    /// ASSIGNED TO ME / PRIORITIZE toggles). Extracted from `body` so the VStack
-    /// stays within the Swift type-checker's budget.
-    @ViewBuilder
-    private var filterControls: some View {
-        if !tutorialMode && (selectedSection == .projects || selectedSection == .myProjects || selectedSection == .tasks || selectedSection == .kanban) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    Button(action: {
-                        if selectedSection == .tasks {
-                            showingTaskFilterSheet = true
-                        } else {
-                            showingProjectFilterSheet = true
-                        }
-                    }) {
-                        Image(systemName: "line.3.horizontal.decrease")
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
-                    }
-                    .wizardTarget("open_filters")
-
-                    filterChip("ACTIVE ONLY", isActive: activeOnly) {
-                        withAnimation(.easeInOut(duration: 0.2)) { activeOnly.toggle() }
-                    }
-
-                    filterChip("ASSIGNED TO ME", isActive: assignedToMe) {
-                        withAnimation(.easeInOut(duration: 0.2)) { assignedToMe.toggle() }
-                    }
-
-                    if selectedSection == .projects && permissionStore.can("projects.edit") {
-                        filterChip("PRIORITIZE", isActive: prioritizeMode) {
-                            withAnimation(.easeInOut(duration: 0.2)) { prioritizeMode.toggle() }
-                        }
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-            .padding(.top, 8)
-            .padding(.bottom, 12)
-        }
-    }
-
     /// Tap handler for the unscheduled-review entry. Nil when the user holds no
     /// calendar.edit grant (scheduling is gated on calendar.edit), which hides the
     /// entry — Crew / Unassigned can't schedule. Extracted from the header
@@ -841,7 +592,7 @@ struct FloatingActionItem: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 
                 Text(label.uppercased())
                     .font(OPSStyle.Typography.bodyBold)
@@ -916,8 +667,8 @@ private struct JobBoardFilterPill: View {
     let isOn: Bool
 
     var body: some View {
-        let fg: Color = isOn ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText
-        let bg: Color = isOn ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark
+        let fg: Color = isOn ? OPSStyle.Colors.background : OPSStyle.Colors.secondaryText
+        let bg: Color = isOn ? OPSStyle.Colors.primaryText : OPSStyle.Colors.surfaceInput
         let stroke: Color = isOn ? Color.clear : OPSStyle.Colors.cardBorder
         Text(title)
             .font(OPSStyle.Typography.smallCaption)
@@ -954,7 +705,7 @@ struct JobBoardSectionSelector: View {
                         .font(OPSStyle.Typography.cardBody)
                         .foregroundColor(
                             selectedSection == section
-                                ? OPSStyle.Colors.cardBackgroundDark
+                                ? OPSStyle.Colors.background
                                 : OPSStyle.Colors.secondaryText
                         )
                         .frame(maxWidth: .infinity)
@@ -1194,8 +945,8 @@ struct JobBoardTasksView: View {
         VStack(spacing: 0) {
             if showingFilters && hasActiveFilters {
                 activeFilterBadges
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
+                    .padding(.top, OPSStyle.Layout.spacing2)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
             }
 
             if allTasks.isEmpty {
@@ -1207,7 +958,7 @@ struct JobBoardTasksView: View {
                 .frame(maxHeight: .infinity)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 12) {
+                    LazyVStack(spacing: OPSStyle.Layout.spacing2_5) {
                         ForEach(activeTasks) { task in
                             UniversalJobBoardCard(cardType: .task(task))
                                 .environmentObject(dataController)
@@ -1216,7 +967,7 @@ struct JobBoardTasksView: View {
 
                         // Completed and Cancelled section buttons
                         if !completedTasks.isEmpty || !cancelledTasks.isEmpty {
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 if !completedTasks.isEmpty {
                                     SectionButton(
                                         title: "COMPLETED",
@@ -1237,10 +988,10 @@ struct JobBoardTasksView: View {
                                     }
                                 }
                             }
-                            .padding(.top, 8)
+                            .padding(.top, OPSStyle.Layout.spacing2)
                         }
                     }
-                    .padding(.top, 12)
+                    .padding(.top, OPSStyle.Layout.spacing2_5)
                     .padding(.bottom, 120)
                 }
             }
@@ -1293,7 +1044,7 @@ struct JobBoardTasksView: View {
         Button(action: {
             showingFilterSheet = true
         }) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -1321,18 +1072,18 @@ struct JobBoardTasksView: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
+                    .fill(OPSStyle.Colors.surfaceInput)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(hasActiveFilters ? OPSStyle.Colors.primaryAccent.opacity(0.3) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             )
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .sheet(isPresented: $showingFilterSheet) {
             TaskListFilterSheet(
                 selectedStatuses: $selectedStatuses,
@@ -1348,7 +1099,7 @@ struct JobBoardTasksView: View {
 
     private var activeFilterBadges: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(Array(selectedStatuses), id: \.self) { status in
                     TaskFilterBadge(
                         text: status.displayName,
@@ -1383,7 +1134,7 @@ struct JobBoardTasksView: View {
                     }
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 
@@ -1436,7 +1187,7 @@ struct ClientRowView: View {
     
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(client.name)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -1455,8 +1206,7 @@ struct ClientRowView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
 }
 
@@ -1469,7 +1219,7 @@ struct ProjectRowView: View {
                 .fill(project.status.color)
                 .frame(width: 10, height: 10)
             
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(project.title)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -1486,8 +1236,7 @@ struct ProjectRowView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
 }
 
@@ -1502,7 +1251,7 @@ struct TaskTypeRowView: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(taskType.display)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -1519,8 +1268,7 @@ struct TaskTypeRowView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .glassSurface()
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -1578,8 +1326,7 @@ struct JobBoardCreateMenu: View {
                             }
                         )
                     }
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .glassSurface()
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                     Spacer()
@@ -1661,15 +1408,15 @@ struct TaskFilterBadge: View {
                     .frame(width: 20, height: 20)
             }
         }
-        .padding(.leading, 8)
-        .padding(.trailing, 4)
+        .padding(.leading, OPSStyle.Layout.spacing2)
+        .padding(.trailing, OPSStyle.Layout.spacing1)
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
+                .fill(OPSStyle.Colors.surfaceInput)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         )
     }
@@ -1704,7 +1451,7 @@ struct TaskListSheet: View {
 
                 VStack(spacing: 0) {
                     // Search bar
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Image(systemName: OPSStyle.Icons.search)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -1722,15 +1469,19 @@ struct TaskListSheet: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.top, OPSStyle.Layout.spacing2_5)
 
                     if filteredTasks.isEmpty {
-                        VStack(spacing: 16) {
+                        VStack(spacing: OPSStyle.Layout.spacing3) {
                             Image(systemName: OPSStyle.Icons.task)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -1741,15 +1492,15 @@ struct TaskListSheet: View {
                         .frame(maxHeight: .infinity)
                     } else {
                         ScrollView {
-                            LazyVStack(spacing: 12) {
+                            LazyVStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 ForEach(filteredTasks) { task in
                                     UniversalJobBoardCard(cardType: .task(task), disableSwipe: true)
                                         .environmentObject(dataController)
                                         .environment(\.modelContext, dataController.modelContext!)
                                 }
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
                         }
                     }
                 }

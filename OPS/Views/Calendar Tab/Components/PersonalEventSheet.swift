@@ -47,20 +47,21 @@ struct PersonalEventSheet: View {
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                             .padding(14)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 2)
-                                    .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.bottom, OPSStyle.Layout.spacing3_5)
 
                         // All day toggle
                         sectionLabel("ALL DAY")
                         Toggle("", isOn: $allDay)
                             .tint(OPSStyle.Colors.text)
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.bottom, OPSStyle.Layout.spacing3_5)
 
                         // Start date
                         sectionLabel("START")
@@ -71,8 +72,8 @@ struct PersonalEventSheet: View {
                         )
                         .datePickerStyle(.compact)
                         .colorScheme(.dark)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 12)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                         // End date
                         sectionLabel("END")
@@ -84,8 +85,8 @@ struct PersonalEventSheet: View {
                         )
                         .datePickerStyle(.compact)
                         .colorScheme(.dark)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.bottom, OPSStyle.Layout.spacing3_5)
 
                         // Address
                         sectionLabel("ADDRESS (OPTIONAL)")
@@ -98,13 +99,14 @@ struct PersonalEventSheet: View {
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                             .padding(14)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 2)
-                                    .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.bottom, OPSStyle.Layout.spacing3_5)
 
                         // Team assignment
                         sectionLabel("TEAM (OPTIONAL)")
@@ -125,15 +127,16 @@ struct PersonalEventSheet: View {
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
                             .padding(14)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 2)
-                                    .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
                         .buttonStyle(PlainButtonStyle())
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.bottom, OPSStyle.Layout.spacing3_5)
 
                         // Notes
                         sectionLabel("NOTES (OPTIONAL)")
@@ -142,13 +145,14 @@ struct PersonalEventSheet: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(minHeight: 80)
                             .padding(10)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 2)
-                                    .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 32)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.bottom, OPSStyle.Layout.spacing5)
 
                         // Save button
                         Button(action: save) {
@@ -165,12 +169,12 @@ struct PersonalEventSheet: View {
                             }
                             .frame(height: 52)
                             .background(OPSStyle.Colors.primaryText)
-                            .cornerRadius(2)
+                            .cornerRadius(OPSStyle.Layout.progressBarRadius)
                         }
                         .disabled(title.isEmpty || isSaving)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     }
-                    .padding(.top, 20)
+                    .padding(.top, OPSStyle.Layout.spacing3_5)
                 }
             }
             .navigationTitle("[ PERSONAL EVENT ]")
@@ -201,7 +205,7 @@ struct PersonalEventSheet: View {
         Text(text)
             .font(OPSStyle.Typography.microLabel)
             .foregroundColor(OPSStyle.Colors.secondaryText)
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.bottom, 6)
     }
 

@@ -87,7 +87,7 @@ struct PhotoStorageManagementView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .edgesIgnoringSafeArea(.all)
 
                 ScrollView {
@@ -184,7 +184,7 @@ struct PhotoStorageManagementView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     private var budgetSection: some View {
@@ -196,14 +196,9 @@ struct PhotoStorageManagementView: View {
             PhotoStorageBudgetCard()
                 .environmentObject(dataController)
                 .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     private var prefetchPreferencesSection: some View {
@@ -213,14 +208,9 @@ struct PhotoStorageManagementView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             PhotoPrefetchPreferencesCard()
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // Summary tile that opens the full breakdown list in a sheet. The inline
@@ -238,7 +228,7 @@ struct PhotoStorageManagementView: View {
                 showProjectBreakdown = true
             }) {
                 HStack(spacing: 14) {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                         Text("MANAGE BY PROJECT")
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -268,19 +258,14 @@ struct PhotoStorageManagementView: View {
                     }
                 }
                 .padding(.vertical, 14)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
             }
             .buttonStyle(.plain)
             .disabled(isLoadingBreakdown)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Project Breakdown Sheet
@@ -288,7 +273,7 @@ struct PhotoStorageManagementView: View {
     private var projectBreakdownSheet: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .edgesIgnoringSafeArea(.all)
 
                 ScrollView {
@@ -298,7 +283,7 @@ struct PhotoStorageManagementView: View {
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         VStack(spacing: 0) {
                             ForEach(cachedBreakdown) { item in
@@ -307,17 +292,12 @@ struct PhotoStorageManagementView: View {
                                 if item.id != cachedBreakdown.last?.id {
                                     OPSStyle.Colors.separator
                                         .frame(height: 1)
-                                        .padding(.leading, 16)
+                                        .padding(.leading, OPSStyle.Layout.spacing3)
                                 }
                             }
                         }
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
-                        .padding(.horizontal, 20)
+                        .glassSurface()
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     }
                     .padding(.vertical, OPSStyle.Layout.spacing3)
                 }
@@ -343,7 +323,7 @@ struct PhotoStorageManagementView: View {
 
     private func projectBreakdownRow(item: ProjectSummary) -> some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(item.title)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -374,7 +354,7 @@ struct PhotoStorageManagementView: View {
                 .accessibilityLabel("Remove \(item.title) photos from device")
             } else if item.onDeviceCount > 0 {
                 // Partial on device — offer both complete download and remove
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Button(action: {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         projectPendingLocalRemoval = item
@@ -396,9 +376,9 @@ struct PhotoStorageManagementView: View {
                         Text("Download")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            .padding(.horizontal, 12)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                             .padding(.vertical, 6)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -416,9 +396,9 @@ struct PhotoStorageManagementView: View {
                     Text("Download")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                         .padding(.vertical, 6)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .background(OPSStyle.Colors.surfaceInput)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -427,12 +407,12 @@ struct PhotoStorageManagementView: View {
                 }
             }
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
     private var actionsSection: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             Button(action: { showFreeUpConfirmation = true }) {
                 Text("Free Up Space (Delete Oldest)")
                     .font(OPSStyle.Typography.bodyBold)
@@ -457,7 +437,7 @@ struct PhotoStorageManagementView: View {
                     )
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Actions

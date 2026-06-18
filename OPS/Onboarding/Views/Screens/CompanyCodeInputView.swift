@@ -49,7 +49,7 @@ struct CompanyCodeInputView: View {
                     Button(action: {
                         viewModel.moveToPreviousStep()
                     }) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "chevron.left")
                                 .font(OPSStyle.Typography.caption.weight(.semibold))
                             Text("Back")
@@ -70,7 +70,7 @@ struct CompanyCodeInputView: View {
                 }
 
                 // Step indicator bars
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     ForEach(0..<totalSteps, id: \.self) { step in
                         Rectangle()
                             .fill(step < currentStepNumber ?
@@ -79,14 +79,14 @@ struct CompanyCodeInputView: View {
                             .frame(height: 2)
                     }
                 }
-                .padding(.top, 16)
+                .padding(.top, OPSStyle.Layout.spacing3)
                 
                 Spacer()
 
                 // Main content
                 if showWelcomePhase {
                     // Welcome phase after successful join
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         Image(systemName: "checkmark.circle")
                             .font(OPSStyle.Typography.displayXL)
                             .foregroundColor(OPSStyle.Colors.successStatus)
@@ -103,9 +103,9 @@ struct CompanyCodeInputView: View {
                     .opacity(welcomeOpacity)
                 } else {
                     // Input form
-                    VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                         // Header
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("ENTER COMPANY")
                                 .font(OPSStyle.Typography.largeTitle.weight(.bold))
                                 .foregroundColor(primaryTextColor)
@@ -113,14 +113,14 @@ struct CompanyCodeInputView: View {
                                 .font(OPSStyle.Typography.largeTitle.weight(.bold))
                                 .foregroundColor(primaryTextColor)
                         }
-                        .padding(.bottom, 8)
+                        .padding(.bottom, OPSStyle.Layout.spacing2)
 
                         Text("Connects you to your company.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(secondaryTextColor)
 
                         // Company code input
-                        VStack(spacing: 12) {
+                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
                             ZStack(alignment: .leading) {
                                 if viewModel.companyCode.isEmpty {
                                     Text("Company code")
@@ -161,7 +161,7 @@ struct CompanyCodeInputView: View {
                 Spacer()
 
                 // Bottom button section
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     if showWelcomePhase {
                         StandardContinueButton(
                             onTap: {
@@ -186,7 +186,7 @@ struct CompanyCodeInputView: View {
                         }
                     }
                 }
-                .padding(.bottom, 20)
+                .padding(.bottom, OPSStyle.Layout.spacing3_5)
             }
             .padding(40)
         }

@@ -61,7 +61,7 @@ struct RoleListView: View {
     var body: some View {
         Group {
             if isLoading {
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                         .scaleEffect(1.2)
@@ -71,7 +71,7 @@ struct RoleListView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = errorMessage {
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: OPSStyle.Icons.alert)
                         .font(.system(size: OPSStyle.Layout.IconSize.xl))
                         .foregroundColor(OPSStyle.Colors.errorStatus)
@@ -85,7 +85,7 @@ struct RoleListView: View {
             } else {
                 ScrollView {
                     ScrollViewReader { proxy in
-                        VStack(alignment: .leading, spacing: 20) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                             // Preset roles section
                             if !presetRoles.isEmpty {
                                 roleSection(title: "PRESET ROLES", icon: "shield.fill", roles: presetRoles, isPreset: true)
@@ -102,7 +102,7 @@ struct RoleListView: View {
                                 roleFormName = ""
                                 showingRoleForm = true
                             }) {
-                                HStack(spacing: 8) {
+                                HStack(spacing: OPSStyle.Layout.spacing2) {
                                     Image(systemName: "plus")
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                                     Text("NEW ROLE")
@@ -117,7 +117,7 @@ struct RoleListView: View {
                                 )
                             }
                             .buttonStyle(PlainButtonStyle())
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
                         // Bug e6004ed0: cap the scroll content to the viewport
                         // width so no descendant row can report an intrinsic
@@ -125,7 +125,7 @@ struct RoleListView: View {
                         // scroll. Belt-and-suspenders on top of per-row
                         // truncation (be2b9e23 / 45a9c534).
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 16)
+                        .padding(.vertical, OPSStyle.Layout.spacing3)
                         .tabBarPadding()
                         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
                             if let stepId = notification.userInfo?["stepId"] as? String {
@@ -172,7 +172,7 @@ struct RoleListView: View {
     // MARK: - Role Section
 
     private func roleSection(title: String, icon: String, roles: [AdminRoleRow], isPreset: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
@@ -181,7 +181,7 @@ struct RoleListView: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             VStack(spacing: 0) {
                 ForEach(roles) { role in
@@ -189,19 +189,14 @@ struct RoleListView: View {
 
                     if role.id != roles.last?.id {
                         Rectangle()
-                            .fill(OPSStyle.Colors.cardBorder)
+                            .fill(OPSStyle.Colors.separator)
                             .frame(height: 1)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .padding(.horizontal, 20)
+            .glassSurface()
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 
@@ -222,7 +217,7 @@ struct RoleListView: View {
                 // truncates instead of forcing horizontal overflow, and the
                 // VStack claims the full available width so Spacer has room
                 // to compress instead of pushing the chevron off-screen.
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     HStack(spacing: 6) {
                         Text(PermissionRegistry.displayName(for: role.name).uppercased())
                             .font(OPSStyle.Typography.bodyBold)
@@ -238,14 +233,14 @@ struct RoleListView: View {
                                 .padding(.vertical, 2)
                                 .background(
                                     RoundedRectangle(cornerRadius: 3)
-                                        .fill(OPSStyle.Colors.subtleBackground)
+                                        .fill(OPSStyle.Colors.fillNeutral)
                                 )
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
                         }
                     }
 
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         let permCount = rolePermissionCounts[role.id] ?? 0
                         Text("\(permCount) permission\(permCount == 1 ? "" : "s")")
                             .font(OPSStyle.Typography.smallCaption)
@@ -268,7 +263,7 @@ struct RoleListView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
@@ -305,10 +300,10 @@ struct RoleListView: View {
     private var roleFormSheet: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
 
-                VStack(spacing: 20) {
-                    VStack(alignment: .leading, spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing3_5) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         Text("ROLE NAME")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -316,21 +311,21 @@ struct RoleListView: View {
                         TextField("Enter role name", text: $roleFormName)
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.vertical, 14)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                             .autocorrectionDisabled()
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                     Spacer()
                 }
-                .padding(.top, 20)
+                .padding(.top, OPSStyle.Layout.spacing3_5)
             }
             .navigationTitle(roleFormTitle)
             .navigationBarTitleDisplayMode(.inline)

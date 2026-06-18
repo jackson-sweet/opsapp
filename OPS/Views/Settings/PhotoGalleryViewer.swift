@@ -149,12 +149,12 @@ struct PhotoGalleryViewer: View {
             // Drag handle
             HStack {
                 Spacer()
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                     .fill(OPSStyle.Colors.tertiaryText)
                     .frame(width: 36, height: 4)
                 Spacer()
             }
-            .padding(.top, 8)
+            .padding(.top, OPSStyle.Layout.spacing2)
             .onTapGesture {
                 withAnimation(OPSStyle.Animation.standard) {
                     showMetadata = false
@@ -187,7 +187,7 @@ struct PhotoGalleryViewer: View {
             // Divider
             OPSStyle.Colors.separator
                 .frame(height: 1)
-                .padding(.vertical, 4)
+                .padding(.vertical, OPSStyle.Layout.spacing1)
 
             // Share row
             Button(action: shareCurrentPhoto) {
@@ -226,12 +226,10 @@ struct PhotoGalleryViewer: View {
             }
             .buttonStyle(PlainButtonStyle())
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.bottom, OPSStyle.Layout.spacing4)
-        .background(
-            OPSStyle.Colors.cardBackgroundDark
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius, corners: [.topLeft, .topRight])
-        )
+        .glassDense(cornerRadius: 0)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius, corners: [.topLeft, .topRight])
         .gesture(
             DragGesture(minimumDistance: 20)
                 .onEnded { value in

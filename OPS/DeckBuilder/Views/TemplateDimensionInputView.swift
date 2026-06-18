@@ -135,46 +135,41 @@ struct TemplateDimensionInputView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-            }
-
-            Spacer()
-
-            Text(templateType.displayName)
-                .font(OPSStyle.Typography.heading)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-
-            Spacer()
-
-            // Mic button
-            Button {
-                // Dismiss keyboard before activating mic
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                withAnimation(OPSStyle.Animation.spring) {
-                    if voiceInput.isListening {
-                        voiceInput.stopListening()
-                        showingVoiceOverlay = false
-                    } else {
-                        showingVoiceOverlay = true
-                        voiceInput.startListening()
-                    }
+        OPSScreenHeader(
+            templateType.displayName,
+            leading: {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                 }
-            } label: {
-                Image(systemName: voiceInput.isListening ? "mic.fill" : "mic")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(voiceInput.isListening ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent)
-                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            },
+            trailing: {
+                // Mic button
+                Button {
+                    // Dismiss keyboard before activating mic
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    withAnimation(OPSStyle.Animation.spring) {
+                        if voiceInput.isListening {
+                            voiceInput.stopListening()
+                            showingVoiceOverlay = false
+                        } else {
+                            showingVoiceOverlay = true
+                            voiceInput.startListening()
+                        }
+                    }
+                } label: {
+                    Image(systemName: voiceInput.isListening ? "mic.fill" : "mic")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(voiceInput.isListening ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                }
+                .disabled(!voiceInput.isAuthorized && voiceInput.authorizationStatus != .notDetermined)
             }
-            .disabled(!voiceInput.isAuthorized && voiceInput.authorizationStatus != .notDetermined)
-        }
-        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        )
         .background(OPSStyle.Colors.cardBackground)
     }
 
@@ -412,7 +407,8 @@ struct TemplateDimensionInputView: View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             // Letter badge
             Text(label.letter)
-                .font(.system(size: 16, weight: .bold, design: .monospaced))
+                .font(OPSStyle.Typography.dataValue)
+                .fontWeight(.bold)
                 .foregroundColor(.white)
                 .frame(width: 32, height: 32)
                 .background(label.color.opacity(0.8))
@@ -558,7 +554,8 @@ struct TemplateDimensionInputView: View {
 
             if !voiceInput.recognizedText.isEmpty {
                 Text(voiceInput.recognizedText)
-                    .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                    .font(OPSStyle.Typography.dataValue)
+                    .fontWeight(.semibold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)

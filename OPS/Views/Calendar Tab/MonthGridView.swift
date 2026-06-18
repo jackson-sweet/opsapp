@@ -609,7 +609,7 @@ struct MonthGridView: View {
                         Button {
                             showMonthPicker = true
                         } label: {
-                            HStack(spacing: 4) {
+                            HStack(spacing: OPSStyle.Layout.spacing1) {
                                 Text("JUMP TO")
                                     .font(OPSStyle.Typography.microLabel)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -619,22 +619,17 @@ struct MonthGridView: View {
                             }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
-                            )
+                            .nestedCard()
                         }
                     }
-                    .padding(.horizontal, 4)
+                    .padding(.horizontal, OPSStyle.Layout.spacing1)
                     .padding(.bottom, 6)
 
                     // Separator line
                     Rectangle()
                         .fill(OPSStyle.Colors.secondaryText.opacity(0.3))
                         .frame(height: 0.5)
-                        .padding(.horizontal, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing1)
 
                     // Weekday labels
                     HStack(spacing: 0) {
@@ -647,7 +642,7 @@ struct MonthGridView: View {
                     }
                     .padding(.top, 6)
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
                 .clipped()
                 .background(OPSStyle.Colors.background)
 
@@ -663,9 +658,9 @@ struct MonthGridView: View {
                                     Text(monthYearString(from: monthStart))
                                         .font(OPSStyle.Typography.caption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
-                                        .padding(.leading, 4)
+                                        .padding(.leading, OPSStyle.Layout.spacing1)
                                         .padding(.top, monthIndex == 0 ? 0 : 16)
-                                        .padding(.bottom, 8)
+                                        .padding(.bottom, OPSStyle.Layout.spacing2)
                                     Spacer()
                                 }
 
@@ -717,7 +712,7 @@ struct MonthGridView: View {
                                         }
                                         .frame(height: cellHeight)
                                     }
-                                    .padding(.horizontal, 4)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing1)
                                     .background(
                                         GeometryReader { geo in
                                             let offset = geo.frame(in: .named("scroll")).minY
@@ -929,9 +924,9 @@ private struct MonthJumpPicker: View {
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.top, OPSStyle.Layout.spacing3_5)
+            .padding(.bottom, OPSStyle.Layout.spacing4)
 
             // Year navigation
             HStack {
@@ -962,11 +957,11 @@ private struct MonthJumpPicker: View {
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.bottom, OPSStyle.Layout.spacing3_5)
 
             // Month grid (3x4)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 12) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2_5), count: 3), spacing: OPSStyle.Layout.spacing2_5) {
                 ForEach(1...12, id: \.self) { month in
                     let isSelected = month == currentMonth && displayYear == currentYear
                     let isCurrentMonth = month == calendar.component(.month, from: Date()) && displayYear == calendar.component(.year, from: Date())
@@ -981,7 +976,7 @@ private struct MonthJumpPicker: View {
                             .frame(height: OPSStyle.Layout.touchTargetMin)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .fill(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
+                                    .fill(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.surfaceInput)
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -993,7 +988,7 @@ private struct MonthJumpPicker: View {
                     }
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             Spacer().frame(height: 24)
 
@@ -1010,17 +1005,17 @@ private struct MonthJumpPicker: View {
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .tracking(1)
                     .padding(.vertical, 10)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(OPSStyle.Colors.cardBackgroundDark)
+                            .fill(OPSStyle.Colors.surfaceInput)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 0.5)
                     )
             }
-            .padding(.bottom, 20)
+            .padding(.bottom, OPSStyle.Layout.spacing3_5)
         }
         .background(OPSStyle.Colors.background)
     }
@@ -1082,13 +1077,13 @@ struct MonthDayCell: View {
                         .foregroundColor(OPSStyle.Colors.invertedText)
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 4)
+                .padding(.top, OPSStyle.Layout.spacing1)
             } else {
                 Text(DateHelper.dayString(from: date))
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(textColor)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.top, 4)
+                    .padding(.top, OPSStyle.Layout.spacing1)
             }
 
             Spacer(minLength: 0)
@@ -1208,7 +1203,7 @@ struct EventBadge: View {
                                 .font(fontSize)
                                 .foregroundColor(badgeColor)
                                 .lineLimit(1)
-                                .padding(.horizontal, 4)
+                                .padding(.horizontal, OPSStyle.Layout.spacing1)
                                 .padding(.vertical, 2)
                                 .fixedSize(horizontal: event.isMultiDay, vertical: false)
                                 .allowsHitTesting(false)
@@ -1222,7 +1217,7 @@ struct EventBadge: View {
                             .font(fontSize)
                             .foregroundColor(badgeColor)
                             .lineLimit(allowTextWrap ? nil : 1)
-                            .padding(.horizontal, 4)
+                            .padding(.horizontal, OPSStyle.Layout.spacing1)
                             .padding(.vertical, 2)
                             .fixedSize(horizontal: event.isMultiDay, vertical: false)
                             .allowsHitTesting(false)
@@ -1385,7 +1380,7 @@ struct EventBar: View {
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(eventColor)
                     .lineLimit(1)
-                    .padding(.horizontal, 4)
+                    .padding(.horizontal, OPSStyle.Layout.spacing1)
                     .padding(.vertical, 2)
             }
             Spacer(minLength: 0)
@@ -1402,7 +1397,7 @@ struct EventBar: View {
                     .foregroundColor(eventColor)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 4)
+                    .padding(.horizontal, OPSStyle.Layout.spacing1)
                     .padding(.top, 2)
             }
 
@@ -1414,7 +1409,7 @@ struct EventBar: View {
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineLimit(1)
-                    .padding(.horizontal, 4)
+                    .padding(.horizontal, OPSStyle.Layout.spacing1)
                     .padding(.bottom, 2)
             }
         }
@@ -1454,7 +1449,7 @@ struct MoreEventsIndicatorView: View {
                 .font(fontSize)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .lineLimit(1)
-                .padding(.horizontal, 4)
+                .padding(.horizontal, OPSStyle.Layout.spacing1)
                 .padding(.vertical, 2)
             Spacer(minLength: 0)
         }
@@ -1546,12 +1541,12 @@ struct DayDetailsSheet: View {
     var body: some View {
         ScrollViewReader { proxy in
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                 Text(date.formatted(date: .complete, time: .omitted))
                     .font(OPSStyle.Typography.subtitle)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.horizontal)
-                    .padding(.top, 8)
+                    .padding(.top, OPSStyle.Layout.spacing2)
 
                 Text("\(totalEventCount) event\(totalEventCount == 1 ? "" : "s")")
                     .font(OPSStyle.Typography.caption)
@@ -1559,7 +1554,7 @@ struct DayDetailsSheet: View {
                     .padding(.horizontal)
 
                 if scheduledTasks.isEmpty && dayUserEvents.isEmpty {
-                    VStack(spacing: 12) {
+                    VStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Image(systemName: OPSStyle.Icons.calendar)
                             .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -1572,7 +1567,7 @@ struct DayDetailsSheet: View {
                     .padding(.top, 60)
                 } else {
                     // New tasks section (matching week view template)
-                    VStack(spacing: 8) {
+                    VStack(spacing: OPSStyle.Layout.spacing2) {
                         ForEach(Array(newTasks.enumerated()), id: \.element.id) { index, task in
                             CalendarEventCard(
                                 task: task,
@@ -1589,7 +1584,7 @@ struct DayDetailsSheet: View {
 
                     // Ongoing section divider and tasks (matching week view template)
                     if !ongoingTasks.isEmpty {
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             Text("ONGOING")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -1602,10 +1597,10 @@ struct DayDetailsSheet: View {
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 24)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
+                        .padding(.horizontal, OPSStyle.Layout.spacing4)
 
-                        VStack(spacing: 8) {
+                        VStack(spacing: OPSStyle.Layout.spacing2) {
                             ForEach(Array(ongoingTasks.enumerated()), id: \.element.id) { index, task in
                                 CalendarEventCard(
                                     task: task,
@@ -1624,7 +1619,7 @@ struct DayDetailsSheet: View {
 
                 // Bug 1 — User events (time off + personal) for this date.
                 if !dayUserEvents.isEmpty {
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         Text("PERSONAL")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -1637,10 +1632,10 @@ struct DayDetailsSheet: View {
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 24)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
 
-                    VStack(spacing: 8) {
+                    VStack(spacing: OPSStyle.Layout.spacing2) {
                         ForEach(dayUserEvents) { event in
                             CalendarUserEventCard(
                                 event: event,
@@ -1659,7 +1654,7 @@ struct DayDetailsSheet: View {
         // Wizard: scroll to the active target when a new step activates
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
             if let stepId = notification.userInfo?["stepId"] as? String {
-                withAnimation(.easeInOut(duration: 0.3)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     proxy.scrollTo("wizard_active_\(stepId)", anchor: .top)
                 }
             }
@@ -1716,14 +1711,14 @@ struct EventDetailCard: View {
     }
 
     private var cardContent: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Rectangle()
                     .fill(eventColor)
                     .frame(width: 4)
                     .cornerRadius(OPSStyle.Layout.smallCornerRadius)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(task.displayTitle)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -1734,7 +1729,7 @@ struct EventDetailCard: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
 
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: OPSStyle.Icons.calendar)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         Text(dateRangeText)
@@ -1750,27 +1745,22 @@ struct EventDetailCard: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
         }
-        .padding(12)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(OPSStyle.Layout.spacing2_5)
+        .glassSurface()
     }
 
     var body: some View {
         cardContent
         .contentShape(Rectangle())
         .scaleEffect(isLongPressing ? 0.95 : (isPressed ? 0.98 : 1.0))
-        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)
-        .animation(.spring(response: 0.1, dampingFraction: 0.8), value: isPressed)
+        .animation(OPSStyle.Animation.quick, value: isLongPressing)
+        .animation(OPSStyle.Animation.quick, value: isPressed)
         .onTapGesture {
-            withAnimation(.easeInOut(duration: 0.1)) {
+            withAnimation(OPSStyle.Animation.hover) {
                 isPressed = true
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(.easeInOut(duration: 0.1)) {
+                withAnimation(OPSStyle.Animation.hover) {
                     isPressed = false
                 }
                 showingDetailView = true

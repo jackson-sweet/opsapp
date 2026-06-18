@@ -108,7 +108,7 @@ struct CreateOrderSheet: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .glassSurface()
     }
 
     private func summaryStat(label: String, value: String) -> some View {
@@ -159,7 +159,7 @@ struct CreateOrderSheet: View {
             .buttonStyle(.plain)
             .accessibilityLabel(included ? "Exclude \(item.name)" : "Include \(item.name)")
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 HStack(spacing: OPSStyle.Layout.spacing1) {
                     if let badge = status.label {
                         Text(badge)
@@ -168,7 +168,7 @@ struct CreateOrderSheet: View {
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 4)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                     .stroke(status.color, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
@@ -194,8 +194,8 @@ struct CreateOrderSheet: View {
                         .font(.system(size: 14, weight: .bold))
                         .frame(width: 28, height: 28)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                        .background(OPSStyle.Colors.subtleBackground)
-                        .cornerRadius(6)
+                        .background(OPSStyle.Colors.surfaceActive)
+                        .cornerRadius(OPSStyle.Layout.cardRadius)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Decrease order quantity")
@@ -213,8 +213,8 @@ struct CreateOrderSheet: View {
                         .font(.system(size: 14, weight: .bold))
                         .frame(width: 28, height: 28)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                        .background(OPSStyle.Colors.subtleBackground)
-                        .cornerRadius(6)
+                        .background(OPSStyle.Colors.surfaceActive)
+                        .cornerRadius(OPSStyle.Layout.cardRadius)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Increase order quantity")
@@ -222,12 +222,7 @@ struct CreateOrderSheet: View {
             .opacity(included ? 1.0 : 0.5)
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var actionBar: some View {
@@ -242,11 +237,11 @@ struct CreateOrderSheet: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.vertical, 14)
                     .frame(maxWidth: .infinity)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             }
             .buttonStyle(.plain)

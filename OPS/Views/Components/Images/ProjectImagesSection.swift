@@ -32,7 +32,7 @@ struct ProjectImagesSection: View {
                 // Empty state - shown immediately if no images
                 emptyState
             } else {
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     // Image grid - images load independently
                     imageGrid(items: imageItems)
 
@@ -61,7 +61,7 @@ struct ProjectImagesSection: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: OPSStyle.Layout.IconSize.xl))
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(20)
+                        .padding(OPSStyle.Layout.spacing3_5)
                 }
             }
         }
@@ -88,8 +88,7 @@ struct ProjectImagesSection: View {
         }
         .frame(maxWidth: .infinity)
         .padding(OPSStyle.Layout.spacing4)
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
     
     // Message about unsynced images

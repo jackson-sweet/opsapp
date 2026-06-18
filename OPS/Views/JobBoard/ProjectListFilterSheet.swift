@@ -42,12 +42,12 @@ struct ProjectListFilterSheet: View {
 
                 VStack(spacing: 0) {
                     segmentedHeader
-                        .padding(.horizontal, 20)
-                        .padding(.top, 16)
-                        .padding(.bottom, 12)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.top, OPSStyle.Layout.spacing3)
+                        .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                     ScrollView {
-                        VStack(spacing: 16) {
+                        VStack(spacing: OPSStyle.Layout.spacing3) {
                             switch segment {
                             case .filter:
                                 filterSectionsContent
@@ -55,8 +55,8 @@ struct ProjectListFilterSheet: View {
                                 sortSectionContent
                             }
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 32)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.bottom, OPSStyle.Layout.spacing5)
                     }
                 }
             }
@@ -103,30 +103,27 @@ struct ProjectListFilterSheet: View {
                                 .foregroundColor(OPSStyle.Colors.background)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(segment == .filter ? OPSStyle.Colors.background : OPSStyle.Colors.primaryAccent)
+                                .background(OPSStyle.Colors.text)
                                 .clipShape(Capsule())
                         }
                     }
-                    .foregroundColor(segment == option ? OPSStyle.Colors.background : OPSStyle.Colors.primaryText)
+                    .foregroundColor(segment == option ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(segment == option ? OPSStyle.Colors.primaryAccent : Color.clear)
+                            .fill(segment == option ? OPSStyle.Colors.surfaceActive : Color.clear)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .strokeBorder(segment == option ? OPSStyle.Colors.text : Color.clear, lineWidth: 1)
                     )
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(4)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius + 4)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius + 4)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(OPSStyle.Layout.spacing1)
+        .glassSurface(cornerRadius: OPSStyle.Layout.cornerRadius + 4)
     }
 
     // MARK: - Filter Content
@@ -155,7 +152,7 @@ struct ProjectListFilterSheet: View {
                         }
                     )
                     if index < statuses.count - 1 {
-                        Divider().background(OPSStyle.Colors.cardBackground).padding(.leading, 44)
+                        Divider().background(OPSStyle.Colors.line).padding(.leading, 44)
                     }
                 }
             }
@@ -184,7 +181,7 @@ struct ProjectListFilterSheet: View {
                             }
                         )
                         if index < availableTeamMembers.count - 1 {
-                            Divider().background(OPSStyle.Colors.cardBackground).padding(.leading, 44)
+                            Divider().background(OPSStyle.Colors.line).padding(.leading, 44)
                         }
                     }
                 }
@@ -206,27 +203,22 @@ struct ProjectListFilterSheet: View {
                     if sortOption == option {
                         Image(systemName: OPSStyle.Icons.checkmark)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .foregroundColor(OPSStyle.Colors.text)
                     }
                 }
                 .padding(.vertical, 14)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     sortOption = option
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
                 if index < ProjectSortOption.allCases.count - 1 {
-                    Divider().background(OPSStyle.Colors.cardBackground).padding(.leading, 16)
+                    Divider().background(OPSStyle.Colors.line).padding(.leading, OPSStyle.Layout.spacing3)
                 }
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Collapsible Section Shell
@@ -246,7 +238,7 @@ struct ProjectListFilterSheet: View {
                 }
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: icon)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -261,7 +253,7 @@ struct ProjectListFilterSheet: View {
                         Text("\(badgeCount)")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.background)
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2)
                             .padding(.vertical, 2)
                             .background(OPSStyle.Colors.primaryAccent)
                             .clipShape(Capsule())
@@ -274,14 +266,14 @@ struct ProjectListFilterSheet: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .rotationEffect(.degrees(isExpanded.wrappedValue ? 0 : -90))
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, 14)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
             if isExpanded.wrappedValue {
-                Divider().background(OPSStyle.Colors.cardBackground)
+                Divider().background(OPSStyle.Colors.line)
                 // Wrap the content in its own ScrollView bounded to a max
                 // height so long lists (e.g. a 40-member team roster) don't
                 // take over the sheet. Native scroll indicators are on for
@@ -292,12 +284,7 @@ struct ProjectListFilterSheet: View {
                 .frame(maxHeight: expandedSectionMaxHeight)
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Row Primitives
@@ -310,7 +297,7 @@ struct ProjectListFilterSheet: View {
         colorIndicator: Color?,
         onTap: @escaping () -> Void
     ) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             if let colorIndicator = colorIndicator {
                 RoundedRectangle(cornerRadius: 3)
                     .fill(colorIndicator)
@@ -332,10 +319,10 @@ struct ProjectListFilterSheet: View {
 
             Image(systemName: isSelected ? "checkmark.square.fill" : "square")
                 .font(.system(size: OPSStyle.Layout.IconSize.md))
-                .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.tertiaryText)
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .contentShape(Rectangle())
         .onTapGesture { onTap() }
     }

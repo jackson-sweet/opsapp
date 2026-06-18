@@ -24,7 +24,7 @@ struct SplashScreen: View {
                 Spacer()
                 
                 // Animated logo section
-                VStack(spacing: 24) {
+                VStack(spacing: OPSStyle.Layout.spacing4) {
                     // OPS logo with animation
                     ZStack {
                         // Logo with scale animation
@@ -36,7 +36,7 @@ struct SplashScreen: View {
                     }
                     
                     // App name with delayed fade in
-                    VStack(spacing: 4) {
+                    VStack(spacing: OPSStyle.Layout.spacing1) {
                         Text("OPS")
                             .font(OPSStyle.Typography.largeTitle)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -51,7 +51,7 @@ struct SplashScreen: View {
                 Spacer()
                 
             }
-            .padding(.horizontal, 32)
+            .padding(.horizontal, OPSStyle.Layout.spacing5)
         }
         .onAppear {
             // Sequence of animations
@@ -62,7 +62,7 @@ struct SplashScreen: View {
             }
             
             // Then animate logo
-            withAnimation(Animation.spring(response: 0.8, dampingFraction: 0.6).delay(0.3)) {
+            withAnimation(OPSStyle.Animation.curve(0.5).delay(0.3)) {
                 logoScale = 1.0
                 logoOpacity = 1.0
             }

@@ -15,14 +15,18 @@ struct ExpandableNotesView: View {
     let onSave: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             if isEditing {
                 // Editable notes
                 TextEditor(text: $editedNotes)
                     .frame(minHeight: 120)
-                    .padding(12)
-                    .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                    .padding(OPSStyle.Layout.spacing2_5)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                    )
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText.opacity(0.9))
                     .scrollContentBackground(.hidden)
@@ -45,8 +49,8 @@ struct ExpandableNotesView: View {
                     }) {
                         Text("CANCEL")
                             .font(OPSStyle.Typography.smallCaption)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
 
@@ -59,8 +63,8 @@ struct ExpandableNotesView: View {
                     }) {
                         Text("SAVE")
                             .font(OPSStyle.Typography.smallCaption)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
                             .background(OPSStyle.Colors.primaryAccent)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -74,7 +78,7 @@ struct ExpandableNotesView: View {
                         Text("No notes added yet")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
-                            .padding(.vertical, 8)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
 
                         Spacer()
 
@@ -92,14 +96,14 @@ struct ExpandableNotesView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 } else {
                     // Notes content
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         if isExpanded {
                             // Full text
                             Text(notes)
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .fixedSize(horizontal: false, vertical: true)
-                                .padding(.vertical, 4)
+                                .padding(.vertical, OPSStyle.Layout.spacing1)
 
                             // Edit button
                             HStack {
@@ -112,7 +116,7 @@ struct ExpandableNotesView: View {
                                 }) {
                                     Text("EDIT")
                                         .font(OPSStyle.Typography.smallCaption)
-                                        .padding(.horizontal, 16)
+                                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                                         .padding(.vertical, 6)
                                         .background(OPSStyle.Colors.primaryAccent)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -126,12 +130,12 @@ struct ExpandableNotesView: View {
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .lineLimit(3)
-                                    .padding(.bottom, 24)
+                                    .padding(.bottom, OPSStyle.Layout.spacing4)
 
                                 LinearGradient(
                                     gradient: Gradient(colors: [
-                                        OPSStyle.Colors.cardBackgroundDark.opacity(0),
-                                        OPSStyle.Colors.cardBackgroundDark
+                                        OPSStyle.Colors.background.opacity(0),
+                                        OPSStyle.Colors.background
                                     ]),
                                     startPoint: .top,
                                     endPoint: .bottom

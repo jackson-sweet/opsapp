@@ -374,7 +374,7 @@ struct StockView: View {
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .fill(viewMode == mode
-                                      ? OPSStyle.Colors.subtleBackground
+                                      ? OPSStyle.Colors.surfaceActive
                                       : Color.clear)
                         )
                         .overlay(
@@ -723,12 +723,12 @@ struct ChipLabel: View {
         .frame(height: 32)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                .fill(isActive ? OPSStyle.Colors.subtleBackground : Color.clear)
+                .fill(isActive ? OPSStyle.Colors.surfaceActive : Color.clear)
         )
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                 .stroke(
-                    isActive ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
+                    isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder,
                     lineWidth: OPSStyle.Layout.Border.standard
                 )
         )

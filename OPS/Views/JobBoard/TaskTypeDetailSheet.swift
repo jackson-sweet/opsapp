@@ -31,7 +31,7 @@ struct TaskTypeDetailSheet: View {
                             icon: taskType.icon ?? "checklist",
                             title: "Task Type"
                         ) {
-                            VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                                 Text(taskType.display)
                                     .font(OPSStyle.Typography.title)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -102,7 +102,7 @@ struct TaskTypeDetailSheet: View {
                             title: "Usage"
                         ) {
                             HStack {
-                                VStack(alignment: .leading, spacing: 4) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                     Text("Used in Projects")
                                         .font(OPSStyle.Typography.caption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -113,7 +113,7 @@ struct TaskTypeDetailSheet: View {
 
                                 Spacer()
 
-                                VStack(alignment: .trailing, spacing: 4) {
+                                VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing1) {
                                     Text("Total Tasks")
                                         .font(OPSStyle.Typography.caption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -196,7 +196,7 @@ struct TaskTypeDetailSheet: View {
                 availableReassignments: allTaskTypes,
                 getItemDisplay: { taskType in
                     AnyView(
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             Circle()
                                 .fill(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
                                 .frame(width: 12, height: 12)
@@ -245,7 +245,7 @@ struct TaskTypeDetailSheet: View {
                             },
                             getLeadingAccessory: { taskType in
                                 AnyView(
-                                    HStack(spacing: 8) {
+                                    HStack(spacing: OPSStyle.Layout.spacing2) {
                                         Circle()
                                             .fill(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
                                             .frame(width: 8, height: 8)

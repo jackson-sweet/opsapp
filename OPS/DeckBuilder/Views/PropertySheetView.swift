@@ -20,7 +20,7 @@ struct PropertySheetView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     if viewModel.selection.hasEdges {
                         edgeProperties
                     }
@@ -33,7 +33,7 @@ struct PropertySheetView: View {
                         footprintProperties
                     }
                 }
-                .padding(20)
+                .padding(OPSStyle.Layout.spacing3_5)
             }
             .background(OPSStyle.Colors.background)
             .navigationTitle("Properties")
@@ -104,7 +104,7 @@ struct PropertySheetView: View {
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 Spacer()
                                 Text(DimensionEngine.format(dim, system: viewModel.drawingData.config.measurementSystem))
-                                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                                    .font(OPSStyle.Typography.dataValue)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                             }
                         }
@@ -230,7 +230,7 @@ struct PropertySheetView: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Spacer()
                         Text(DimensionEngine.formatImperial(railing.maxPostSpacing))
-                            .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                            .font(OPSStyle.Typography.dataValue)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
 
@@ -372,7 +372,7 @@ struct PropertySheetView: View {
                 get: { edge.label ?? "" },
                 set: { viewModel.setEdgeLabel(edgeId, label: $0) }
             ))
-            .font(.system(size: 14, weight: .medium, design: .monospaced))
+            .font(OPSStyle.Typography.caption)
             .foregroundColor(OPSStyle.Colors.primaryText)
             .textInputAutocapitalization(.words)
             .submitLabel(.done)
@@ -399,15 +399,15 @@ struct PropertySheetView: View {
                     Button {
                         viewModel.setRailingWallMaterial(edgeIds, material: material)
                     } label: {
-                        VStack(spacing: 4) {
-                            RoundedRectangle(cornerRadius: 4)
+                        VStack(spacing: OPSStyle.Layout.spacing1) {
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                 .fill(Color(hex: material.fillHex) ?? .gray)
                                 .frame(height: 28)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                         .stroke(
                                             activeMaterial == material
-                                                ? OPSStyle.Colors.primaryAccent
+                                                ? OPSStyle.Colors.text
                                                 : Color.white.opacity(0.15),
                                             lineWidth: activeMaterial == material ? 2 : 1
                                         )
@@ -450,15 +450,15 @@ struct PropertySheetView: View {
                             viewModel.setHouseEdgeMaterial(edgeIds, material: material)
                         }
                     } label: {
-                        VStack(spacing: 4) {
-                            RoundedRectangle(cornerRadius: 4)
+                        VStack(spacing: OPSStyle.Layout.spacing1) {
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                 .fill(Color(hex: material.fillHex) ?? .gray)
                                 .frame(height: 28)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                         .stroke(
                                             activeMaterial == material
-                                                ? OPSStyle.Colors.primaryAccent
+                                                ? OPSStyle.Colors.text
                                                 : Color.white.opacity(0.15),
                                             lineWidth: activeMaterial == material ? 2 : 1
                                         )
@@ -504,7 +504,7 @@ struct PropertySheetView: View {
                             Spacer()
                             if let elev = vertex.elevation {
                                 Text(String(format: "%.1f'", elev))
-                                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                                    .font(OPSStyle.Typography.dataValue)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                             } else {
                                 Text("Not set")
@@ -571,7 +571,7 @@ struct PropertySheetView: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Spacer()
                         Text(DimensionEngine.formatArea(summary.areaSquareInches, system: viewModel.drawingData.config.measurementSystem))
-                            .font(.system(size: 20, weight: .bold, design: .monospaced))
+                            .font(OPSStyle.Typography.dataValueLg)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                     HStack {
@@ -580,7 +580,7 @@ struct PropertySheetView: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Spacer()
                         Text(DimensionEngine.format(summary.perimeterInches, system: viewModel.drawingData.config.measurementSystem))
-                            .font(.system(size: 16, weight: .bold, design: .monospaced))
+                            .font(OPSStyle.Typography.dataValue)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
                 }
@@ -669,7 +669,7 @@ struct PropertySheetView: View {
                         }
                     }
                 ))
-                .font(.system(size: 15, weight: .medium, design: .monospaced))
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .textInputAutocapitalization(.words)
                 .submitLabel(.done)
@@ -788,7 +788,7 @@ struct PropertySheetView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             Spacer()
             Text(value)
-                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                .font(OPSStyle.Typography.dataValue)
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }
     }
@@ -831,14 +831,14 @@ struct PropertySheetView: View {
                     }
                 }
                 .pickerStyle(.menu)
-                .tint(OPSStyle.Colors.primaryAccent)
+                .tint(OPSStyle.Colors.text)
             } else {
                 TextField(label, text: Binding(
                     get: { value },
                     set: { onChange($0) }
                 ))
                 .multilineTextAlignment(.trailing)
-                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(maxWidth: 180)
                 .textFieldStyle(.roundedBorder)
@@ -862,12 +862,12 @@ struct PropertySheetView: View {
                 step: 2
             ) {
                 Text(DimensionEngine.formatImperial(current))
-                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                    .font(OPSStyle.Typography.dataValue)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
             .labelsHidden()
             Text(DimensionEngine.formatImperial(current))
-                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                .font(OPSStyle.Typography.dataValue)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(width: 60, alignment: .trailing)
         }

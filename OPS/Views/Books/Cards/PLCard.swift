@@ -209,7 +209,7 @@ struct PLCard: View {
 
     private var inOutRow: some View {
         HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text("PAYMENTS IN")
                     .font(.custom("JetBrainsMono-Medium", size: 9.5))
                     .tracking(1.71)  // 0.18em at 9.5pt
@@ -221,7 +221,7 @@ struct PLCard: View {
                     .booksNumericContentTransition(reduceMotion: reduceMotion)
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: 4) {
+            VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing1) {
                 Text("EXPENSES OUT")
                     .font(.custom("JetBrainsMono-Medium", size: 9.5))
                     .tracking(1.71)
@@ -319,14 +319,14 @@ struct PLCard: View {
 #if DEBUG
 #Preview("PLCard — seeded") {
     PLCard(viewModel: .previewStub(), onTapOutstanding: {}, onTapForecast: {})
-        .padding(.vertical, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing4)
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
 }
 
 #Preview("PLCard — empty") {
     PLCard(viewModel: .previewEmpty(), onTapOutstanding: {}, onTapForecast: {})
-        .padding(.vertical, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing4)
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
 }

@@ -84,7 +84,7 @@ struct LeadActionCard: View {
             row2
             row3
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassSurface()
@@ -142,7 +142,7 @@ struct LeadActionCard: View {
     }
 
     private var row2: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
             if let secondaryTitle {
                 Text(secondaryTitle)
                     .font(.custom("Mohave-Regular", size: 13.5))
@@ -165,7 +165,7 @@ struct LeadActionCard: View {
     private var row3: some View {
         HStack(spacing: 10) {
             if let dueText {
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Image(systemName: "clock")
                         .font(.system(size: 11, weight: .regular))
                     Text(dueText)
@@ -187,7 +187,7 @@ struct LeadActionCard: View {
             Spacer(minLength: 0)
 
             if showsLog || showsMore || showsAdvance {
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     if showsLog {
                         QuickGlyph(icon: "note.text", label: "LOG", emphasis: false, action: onLog)
                     }
@@ -273,7 +273,7 @@ extension PipelineStage {
 #if DEBUG
 #Preview("LeadActionCard / states") {
     ScrollView {
-        VStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
             LeadActionCard(
                 opportunity: .preview(
                     title: "Roof tear-off — 28 sq",
@@ -338,7 +338,7 @@ extension PipelineStage {
                 tone: .neutral
             )
         }
-        .padding(20)
+        .padding(OPSStyle.Layout.spacing3_5)
     }
     .background(OPSStyle.Colors.background)
     .preferredColorScheme(.dark)

@@ -31,7 +31,7 @@ struct TagsManageSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
                 if companyTags.isEmpty {
                     emptyState
                 } else {
@@ -102,12 +102,7 @@ private struct TagRow: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 }
 
@@ -129,7 +124,7 @@ struct TagFormSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         CatalogSectionHeader("DETAILS")
@@ -146,7 +141,7 @@ struct TagFormSheet: View {
                                     .foregroundColor(OPSStyle.Colors.errorText)
                                     .frame(maxWidth: .infinity)
                                     .frame(height: OPSStyle.Layout.touchTargetMin)
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .background(OPSStyle.Colors.surfaceInput)
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

@@ -14,18 +14,19 @@ struct EstimatePreviewSheet: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     // Header
-                    VStack(spacing: 4) {
+                    VStack(spacing: OPSStyle.Layout.spacing1) {
                         Text("GENERATE ESTIMATE")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .font(OPSStyle.Typography.pageTitle)
+                            .textCase(.uppercase)
+                            .foregroundColor(OPSStyle.Colors.text)
 
                         Text("\(lineItems.count) line items from deck design")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
-                    .padding(.top, 8)
+                    .padding(.top, OPSStyle.Layout.spacing2)
 
                     // AR accuracy warning
                     if let note = arNote {
@@ -53,10 +54,10 @@ struct EstimatePreviewSheet: View {
                     }
                     .background(OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                     // Totals
-                    VStack(spacing: 8) {
+                    VStack(spacing: OPSStyle.Layout.spacing2) {
                         if areaSqFt > 0 {
                             totalRow("Total Area", value: "\(Int(areaSqFt.rounded())) sq ft")
                         }
@@ -64,7 +65,7 @@ struct EstimatePreviewSheet: View {
                             totalRow("Total Perimeter", value: "\(Int(perimeterFt.rounded())) lin ft")
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                     Spacer(minLength: 20)
 
@@ -100,7 +101,7 @@ struct EstimatePreviewSheet: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                     .disabled(viewModel.isGeneratingEstimate)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                     // Cancel
                     Button("Cancel") {
@@ -109,7 +110,7 @@ struct EstimatePreviewSheet: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(height: OPSStyle.Layout.touchTargetMin)
-                    .padding(.bottom, 16)
+                    .padding(.bottom, OPSStyle.Layout.spacing3)
                 }
             }
             .background(OPSStyle.Colors.background)
@@ -153,8 +154,8 @@ struct EstimatePreviewSheet: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .background(OPSStyle.Colors.cardBackground)
 
             Divider()
@@ -174,8 +175,8 @@ struct EstimatePreviewSheet: View {
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
         .background(OPSStyle.Colors.cardBackground)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }

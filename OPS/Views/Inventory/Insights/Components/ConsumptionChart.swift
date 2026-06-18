@@ -36,19 +36,14 @@ struct ConsumptionChart: View {
                 emptyState
             }
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
     }
 
     // MARK: - Section Header
 
     private var sectionHeader: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             Image(systemName: "chart.xyaxis.line")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -64,7 +59,7 @@ struct ConsumptionChart: View {
     // MARK: - Time Range Pills
 
     private var timeRangePills: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             ForEach(InsightsTimeRange.allCases, id: \.self) { range in
                 Button {
                     withAnimation(OPSStyle.Animation.fast) {
@@ -82,14 +77,13 @@ struct ConsumptionChart: View {
                                 ? OPSStyle.Colors.primaryText
                                 : OPSStyle.Colors.secondaryText
                         )
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
                         .background(
                             viewModel.selectedTimeRange == range
-                                ? OPSStyle.Colors.primaryAccent.opacity(0.15)
-                                : Color.clear
+                                ? OPSStyle.Colors.surfaceActive
+                                : OPSStyle.Colors.surfaceInput
                         )
-                        .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -146,7 +140,7 @@ struct ConsumptionChart: View {
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                     .foregroundStyle(Color.white.opacity(0.06))
                 AxisValueLabel()
-                    .font(.custom("Kosugi-Regular", size: 10))
+                    .font(.custom("JetBrainsMono-Regular", size: 10))
                     .foregroundStyle(OPSStyle.Colors.tertiaryText)
             }
         }
@@ -155,7 +149,7 @@ struct ConsumptionChart: View {
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                     .foregroundStyle(Color.white.opacity(0.06))
                 AxisValueLabel()
-                    .font(.custom("Kosugi-Regular", size: 10))
+                    .font(.custom("JetBrainsMono-Regular", size: 10))
                     .foregroundStyle(OPSStyle.Colors.tertiaryText)
             }
         }
@@ -249,20 +243,14 @@ struct ConsumptionChart: View {
         }
         .padding(10)
         .frame(width: 150)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .shadow(color: Color.black.opacity(0.4), radius: 4, x: 0, y: 2)
+        .glassDense()
     }
 
     // MARK: - Legend
 
     private var legendView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(viewModel.trendData) { trend in
                     let isVisible = viewModel.visibleItemIds.contains(trend.id)
                     let chipColor = Color(hex: trend.colorHex) ?? OPSStyle.Colors.primaryAccent
@@ -297,7 +285,7 @@ struct ConsumptionChart: View {
                                 ? chipColor.opacity(0.1)
                                 : Color.clear
                         )
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .background(isVisible ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -334,7 +322,7 @@ struct ConsumptionChart: View {
     // MARK: - Empty State
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: "chart.xyaxis.line")
                 .font(.system(size: OPSStyle.Layout.IconSize.xl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)

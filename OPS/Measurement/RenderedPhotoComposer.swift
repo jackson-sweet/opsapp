@@ -276,7 +276,7 @@ public enum RenderedPhotoComposer {
 
         // Chip background (dark 0A0A0A at 85% alpha, 0.5 px white hairline).
         context.saveGState()
-        let path = UIBezierPath(roundedRect: chipRect, cornerRadius: 4)
+        let path = UIBezierPath(roundedRect: chipRect, cornerRadius: OPSStyle.Layout.chipRadius)
         context.setFillColor(UIColor(red: 10/255, green: 10/255, blue: 10/255, alpha: 0.85).cgColor)
         path.fill()
         context.setStrokeColor(UIColor.white.withAlphaComponent(0.15).cgColor)
@@ -340,7 +340,7 @@ public enum RenderedPhotoComposer {
         let pillRect = CGRect(x: pillX, y: pillY, width: pillWidth, height: pillHeight)
 
         context.saveGState()
-        let pillPath = UIBezierPath(roundedRect: pillRect, cornerRadius: 4)
+        let pillPath = UIBezierPath(roundedRect: pillRect, cornerRadius: OPSStyle.Layout.chipRadius)
         context.setFillColor(badgeFillUIColor(for: state).cgColor)
         pillPath.fill()
         context.setStrokeColor(UIColor.white.withAlphaComponent(0.15).cgColor)
@@ -372,7 +372,7 @@ public enum RenderedPhotoComposer {
             height: coplanarPillHeight
         )
         context.saveGState()
-        let coplanarPath = UIBezierPath(roundedRect: coplanarRect, cornerRadius: 4)
+        let coplanarPath = UIBezierPath(roundedRect: coplanarRect, cornerRadius: OPSStyle.Layout.chipRadius)
         context.setFillColor(UIColor(red: 196/255, green: 168/255, blue: 104/255, alpha: 0.85).cgColor)
         coplanarPath.fill()
         context.restoreGState()

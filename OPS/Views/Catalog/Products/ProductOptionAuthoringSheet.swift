@@ -63,7 +63,7 @@ struct ProductOptionAuthoringSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         if !canManageProductOptions {
@@ -287,12 +287,7 @@ struct ProductOptionAuthoringSheet: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .nestedCard()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Product option \(option.name)")
         .accessibilityValue(optionAccessibilityValue(option, values: values))
@@ -338,12 +333,7 @@ struct ProductOptionAuthoringSheet: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .nestedCard()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Price rule")
         .accessibilityValue(triggerSentence(modifier))
@@ -566,13 +556,13 @@ struct ProductOptionAuthoringSheet: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(isError ? OPSStyle.Colors.errorText : OPSStyle.Colors.cardBorder,
-                        lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .nestedCard()
+        .overlay {
+            if isError {
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
+                    .stroke(OPSStyle.Colors.errorText, lineWidth: OPSStyle.Layout.Border.standard)
+            }
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
         .accessibilityValue(message)
@@ -645,7 +635,7 @@ private struct ProductOptionEditorSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         if !canManageProductOptions {
@@ -705,7 +695,7 @@ private struct ProductOptionEditorSheet: View {
                 }
             }
             .pickerStyle(.segmented)
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
             .accessibilityLabel("Option kind")
             .accessibilityValue(labelForKind(kind))
             .onChange(of: kind) { _, next in
@@ -818,12 +808,7 @@ private struct ProductOptionEditorSheet: View {
             .accessibilityValue(canManageProductOptions ? "Ready" : "Locked")
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .nestedCard()
         .accessibilityElement(children: .contain)
     }
 
@@ -1026,13 +1011,13 @@ private struct ProductOptionEditorSheet: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(isError ? OPSStyle.Colors.errorText : OPSStyle.Colors.cardBorder,
-                        lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .nestedCard()
+        .overlay {
+            if isError {
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
+                    .stroke(OPSStyle.Colors.errorText, lineWidth: OPSStyle.Layout.Border.standard)
+            }
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
         .accessibilityValue(message)
@@ -1102,7 +1087,7 @@ private struct ProductPricingModifierEditorSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         if !canManageProductOptions {
@@ -1174,7 +1159,7 @@ private struct ProductPricingModifierEditorSheet: View {
                 }
             }
             .pickerStyle(.segmented)
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
             .accessibilityLabel("Modifier kind")
             .accessibilityValue(labelForModifierKind(modifierKind))
 
@@ -1393,11 +1378,11 @@ private struct ProductPricingModifierEditorSheet: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(minHeight: OPSStyle.Layout.touchTargetMin)
             .padding(OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
     }
 
@@ -1413,13 +1398,13 @@ private struct ProductPricingModifierEditorSheet: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(isError ? OPSStyle.Colors.errorText : OPSStyle.Colors.cardBorder,
-                        lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .nestedCard()
+        .overlay {
+            if isError {
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
+                    .stroke(OPSStyle.Colors.errorText, lineWidth: OPSStyle.Layout.Border.standard)
+            }
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
         .accessibilityValue(message)
@@ -1656,11 +1641,6 @@ private extension View {
         self
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackground)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
     }
 }

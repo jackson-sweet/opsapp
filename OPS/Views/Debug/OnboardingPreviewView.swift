@@ -23,33 +23,27 @@ struct OnboardingPreviewView: View {
 
             VStack(spacing: 0) {
                 // Header
-                ZStack {
-                    HStack {
+                OPSScreenHeader(
+                    "Onboarding Preview",
+                    leading: {
                         Button(action: { dismiss() }) {
                             Image(systemName: OPSStyle.Icons.close)
                                 .font(.system(size: 20))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
-
-                        Spacer()
                     }
-
-                    Text("Onboarding Preview")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(.white)
-                }
-                .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                )
+                .background(OPSStyle.Colors.background)
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                         // Flow Selection
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                             Text("FLOW TYPE")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 FlowButton(
                                     title: "COMPANY",
                                     isSelected: selectedFlow == .companyCreator,
@@ -65,7 +59,7 @@ struct OnboardingPreviewView: View {
                         }
 
                         // Starting Screen Selection
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                             Text("STARTING SCREEN")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -82,12 +76,12 @@ struct OnboardingPreviewView: View {
                         }
 
                         // Prefilled Data Info
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                             Text("PREFILLED DATA")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                            VStack(alignment: .leading, spacing: 8) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                 if let user = dataController.currentUser {
                                     PrefilledRow(label: "Name", value: user.fullName)
                                     PrefilledRow(label: "Email", value: user.email ?? "—")
@@ -100,15 +94,14 @@ struct OnboardingPreviewView: View {
                                 }
                             }
                             .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .glassSurface()
                         }
 
                         Spacer()
                             .frame(height: 40)
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.top, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
+                    .padding(.top, OPSStyle.Layout.spacing4)
                 }
 
                 // Launch Button
@@ -121,8 +114,8 @@ struct OnboardingPreviewView: View {
                         .background(OPSStyle.Colors.primaryText)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
+                .padding(.bottom, OPSStyle.Layout.spacing4)
             }
         }
         .fullScreenCover(isPresented: $showOnboarding) {
@@ -207,7 +200,7 @@ private struct ScreenRow: View {
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
                     .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
         }
         .buttonStyle(PlainButtonStyle())
     }

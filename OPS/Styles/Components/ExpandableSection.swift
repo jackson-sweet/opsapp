@@ -66,7 +66,7 @@ struct ExpandableSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // MARK: - Header (Tappable)
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: icon)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -93,12 +93,12 @@ struct ExpandableSection<Content: View>: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .contentShape(Rectangle())  // Make entire header tappable
             .onTapGesture {
                 guard collapsible else { return }
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     isExpanded.toggle()
                 }
             }
@@ -112,15 +112,10 @@ struct ExpandableSection<Content: View>: View {
                     content()
                 }
                 .padding(.vertical, 14)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 }

@@ -33,13 +33,8 @@ struct TopMoversSection: View {
                 }
             }
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .glassSurface()
         }
     }
 
@@ -107,9 +102,9 @@ struct TopMoversSection: View {
         return Text(formatted)
             .font(OPSStyle.Typography.smallCaption)
             .foregroundColor(OPSStyle.Colors.primaryText)
-            .padding(.horizontal, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
             .padding(.vertical, 3)
-            .background(OPSStyle.Colors.subtleBackground)
+            .background(OPSStyle.Colors.fillNeutral)
             .cornerRadius(OPSStyle.Layout.smallCornerRadius)
     }
 

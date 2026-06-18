@@ -151,37 +151,32 @@ struct SketchCleanupView: View {
     // MARK: - Top Bar
 
     private var topBar: some View {
-        HStack {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+        OPSScreenHeader(
+            "Review Scan",
+            leading: {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                }
+            },
+            trailing: {
+                // Import as-is (skip cleanup)
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    importToCanvas()
+                } label: {
+                    Text("Import")
+                        .font(OPSStyle.Typography.button)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .frame(height: OPSStyle.Layout.touchTargetMin)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                }
             }
-
-            Spacer()
-
-            Text("Review Scan")
-                .font(OPSStyle.Typography.heading)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-
-            Spacer()
-
-            // Import as-is (skip cleanup)
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                importToCanvas()
-            } label: {
-                Text("Import")
-                    .font(OPSStyle.Typography.button)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .frame(height: OPSStyle.Layout.touchTargetMin)
-                    .padding(.horizontal, OPSStyle.Layout.spacing2)
-            }
-        }
-        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        )
         .background(OPSStyle.Colors.cardBackground)
     }
 
@@ -349,7 +344,7 @@ struct SketchCleanupView: View {
     @ViewBuilder
     private func dimensionLabel(_ label: DimensionLabelData) -> some View {
         if !label.isRejected {
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Text(label.text)
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(labelColor(for: label))
@@ -385,7 +380,7 @@ struct SketchCleanupView: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .background(
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                     .fill(OPSStyle.Colors.cardBackground.opacity(0.85))
             )
         }
@@ -432,7 +427,7 @@ struct SketchCleanupView: View {
                         .font(OPSStyle.Typography.smallButton)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                                 .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
@@ -508,8 +503,8 @@ struct SketchCleanupView: View {
                             if sanitized != newValue { customScaleText = sanitized }
                         }
                         .frame(width: 120)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                                 .fill(OPSStyle.Colors.background)

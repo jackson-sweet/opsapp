@@ -76,7 +76,7 @@ struct GuidedSetupSurveyView: View {
             }
             .padding(OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .nestedCard()
+            .glassSurface()
         }
         .buttonStyle(.plain)
         .accessibilityLabel(option.label)
@@ -133,7 +133,7 @@ struct GuidedSetupSurveyView: View {
 
 #Preview {
     ZStack {
-        OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+        OPSStyle.Colors.background.ignoresSafeArea()
         GuidedSetupSurveyView(model: GuidedCatalogSetupModel(companyId: "preview", userId: "preview"))
     }
 }

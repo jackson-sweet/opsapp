@@ -43,7 +43,7 @@ struct CompanyCreationLoadingView: View {
             OPSStyle.Colors.background
                 .ignoresSafeArea()
 
-            VStack(spacing: 32) {
+            VStack(spacing: OPSStyle.Layout.spacing5) {
                 Spacer()
 
                 // Tactical loading animation

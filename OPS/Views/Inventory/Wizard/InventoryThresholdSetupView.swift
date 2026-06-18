@@ -138,7 +138,7 @@ struct InventoryThresholdSetupView: View {
         return Button {
             guard activeTab != tab else { return }
             TutorialHaptics.lightTap()
-            withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.3, dampingFraction: 0.85)) {
+            withAnimation(reduceMotion ? OPSStyle.Animation.panel : OPSStyle.Animation.standard) {
                 activeTab = tab
             }
         } label: {
@@ -160,8 +160,8 @@ struct InventoryThresholdSetupView: View {
             .frame(height: OPSStyle.Layout.touchTargetMin)
             .background(
                 isActive
-                    ? OPSStyle.Colors.cardBackgroundDark
-                    : Color.clear
+                    ? OPSStyle.Colors.surfaceActive
+                    : OPSStyle.Colors.surfaceInput
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -173,7 +173,7 @@ struct InventoryThresholdSetupView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
         .buttonStyle(PlainButtonStyle())
-        .padding(.horizontal, 4)
+        .padding(.horizontal, OPSStyle.Layout.spacing1)
     }
 
     // MARK: - Item List
@@ -186,12 +186,14 @@ struct InventoryThresholdSetupView: View {
 
                     if index < sortedItems.count - 1 {
                         Rectangle()
-                            .fill(OPSStyle.Colors.cardBorderSubtle)
+                            .fill(OPSStyle.Colors.line)
                             .frame(height: 1)
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                     }
                 }
             }
+            .glassSurface()
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.bottom, OPSStyle.Layout.spacing3)
         }
     }
@@ -320,12 +322,7 @@ struct InventoryThresholdSetupView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             .padding(OPSStyle.Layout.spacing4)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorderSubtle, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassDense()
         }
     }
 
@@ -472,8 +469,7 @@ private struct ThresholdStepperRow: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(value > 0 ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
                     .frame(width: 28, height: 28)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .nestedCard()
             }
             .disabled(value <= 0)
 
@@ -489,8 +485,7 @@ private struct ThresholdStepperRow: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: 28, height: 28)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .nestedCard()
             }
         }
     }
@@ -525,7 +520,7 @@ private struct ThresholdStepperRow: View {
             // Spring lands without bounce — controlled feel, matches OPS
             // tactical-minimalist motion language (no playful overshoot).
             .animation(
-                reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.25, dampingFraction: 0.85),
+                reduceMotion ? OPSStyle.Animation.panel : OPSStyle.Animation.quick,
                 value: isDragging
             )
             .contentShape(Rectangle())

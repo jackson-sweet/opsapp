@@ -156,11 +156,7 @@ private struct BlueprintFamilyCard: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
-                .stroke(OPSStyle.Colors.glassBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Structure line
@@ -184,7 +180,7 @@ private struct BlueprintFamilyCard: View {
                         .font(OPSStyle.Typography.panelTitle)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Spacer()
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing1) {
                         Text(axes.joined(separator: " × "))
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)

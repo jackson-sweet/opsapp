@@ -30,7 +30,7 @@ struct TaskSettingsView: View {
     
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
@@ -39,7 +39,7 @@ struct TaskSettingsView: View {
                     title: "Task Types",
                     onBackTapped: { dismiss() }
                 )
-                .padding(.bottom, 8)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
                 
                 if isLoading {
                     Spacer()
@@ -49,7 +49,7 @@ struct TaskSettingsView: View {
                 } else if taskTypes.isEmpty {
                     // Empty state
                     Spacer()
-                    VStack(spacing: 20) {
+                    VStack(spacing: OPSStyle.Layout.spacing3_5) {
                         Image(systemName: "square.grid.2x2")
                             .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -66,8 +66,8 @@ struct TaskSettingsView: View {
                             Text("CREATE DEFAULT TYPES")
                                 .font(OPSStyle.Typography.smallButton)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
-                                .padding(.horizontal, 24)
-                                .padding(.vertical, 12)
+                                .padding(.horizontal, OPSStyle.Layout.spacing4)
+                                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                                 .background(OPSStyle.Colors.primaryAccent)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
@@ -76,7 +76,7 @@ struct TaskSettingsView: View {
                 } else {
                     // Task types list
                     ScrollView {
-                        VStack(spacing: 12) {
+                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
                             ForEach(sortedTaskTypes) { taskType in
                                 TaskTypeRow(
                                     taskType: taskType,
@@ -97,8 +97,8 @@ struct TaskSettingsView: View {
                                 )
                             }
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     }
                 }
                 
@@ -117,7 +117,7 @@ struct TaskSettingsView: View {
                     }
                 }
                 .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .glassSurface(cornerRadius: 0)
             }
         }
         .trackScreen("Settings.Tasks")
@@ -321,7 +321,7 @@ struct TaskTypeRow: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 16) {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                     .fill(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
                     .frame(width: 8, height: 52)
@@ -344,7 +344,7 @@ struct TaskTypeRow: View {
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .padding(.horizontal, OPSStyle.Layout.spacing2)
                                 .padding(.vertical, 2)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .background(OPSStyle.Colors.surfaceInput)
                                 .cornerRadius(OPSStyle.Layout.chipRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
@@ -367,13 +367,8 @@ struct TaskTypeRow: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
             }
-            .padding(16)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .padding(OPSStyle.Layout.spacing3)
+            .glassSurface()
         }
         .buttonStyle(PlainButtonStyle())
         // Defaults have no edit path — tap is disabled, but context menu stays

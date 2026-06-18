@@ -75,10 +75,10 @@ struct HeroWidget: View {
                 .padding(.top, 14)
 
             metaRow
-                .padding(.top, 12)
+                .padding(.top, OPSStyle.Layout.spacing2_5)
         }
         .padding(.horizontal, 18)
-        .padding(.vertical, 16)
+        .padding(.vertical, OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassSurface()
     }
@@ -131,7 +131,7 @@ struct HeroWidget: View {
         let color: Color = isFlat
             ? OPSStyle.Colors.text3
             : (isUp ? OPSStyle.Colors.oliveTextM : OPSStyle.Colors.roseTextM)
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             Image(systemName: isFlat ? "minus" : (isUp ? "arrow.up" : "arrow.down"))
                 .font(.system(size: 9, weight: .semibold))
             Text("\(abs(pct))% VS PRIOR")
@@ -196,7 +196,7 @@ struct HeroWidget: View {
 #Preview("HeroWidget / loaded") {
     ZStack {
         OPSStyle.Colors.background.ignoresSafeArea()
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             // Full data: delta + 4th velocity column.
             HeroWidget(
                 forecastValue: 184_240,
@@ -230,7 +230,7 @@ struct HeroWidget: View {
                 avgVelocityDays: nil
             )
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
     .preferredColorScheme(.dark)
 }

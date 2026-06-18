@@ -105,19 +105,14 @@ struct SectionCard<Content: View>: View {
             }
             .padding(contentPadding)
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Header
 
     @ViewBuilder
     private var header: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Icon
             if let icon = icon {
                 Image(systemName: icon)
@@ -137,13 +132,13 @@ struct SectionCard<Content: View>: View {
                 Text("\(count)")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
                     .padding(.vertical, 2)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .background(OPSStyle.Colors.surfaceInput)
+                    .cornerRadius(OPSStyle.Layout.chipRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             }
 
@@ -154,7 +149,7 @@ struct SectionCard<Content: View>: View {
                let actionLabel = actionLabel,
                let onAction = onAction {
                 Button(action: onAction) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: actionIcon)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text(actionLabel)
@@ -164,8 +159,8 @@ struct SectionCard<Content: View>: View {
                 }
             }
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 }
 

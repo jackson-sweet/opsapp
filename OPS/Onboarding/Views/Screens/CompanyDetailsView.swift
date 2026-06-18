@@ -53,7 +53,7 @@ struct CompanyDetailsView: View {
                             }
                         }
                     }) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "chevron.left")
                                 .font(OPSStyle.Typography.button)
                             Text("Back")
@@ -72,24 +72,24 @@ struct CompanyDetailsView: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                 }
-                .padding(.top, 8)
-                .padding(.bottom, 8)
+                .padding(.top, OPSStyle.Layout.spacing2)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                 // Step indicator bars
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     ForEach(0..<totalSteps, id: \.self) { step in
                         Rectangle()
                             .fill(step < currentStepNumber ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText.opacity(0.3))
                             .frame(height: 2)
                     }
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Content area with phases - top-justified
                 VStack(spacing: 0) {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         // Phase content
                         Group {
                         switch currentPhase {
@@ -167,9 +167,9 @@ struct IndustryPhaseView: View {
     let onContinue: () -> Void
     
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: OPSStyle.Layout.spacing4) {
             // Header
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("WHAT'S YOUR")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -177,7 +177,7 @@ struct IndustryPhaseView: View {
                 Text("INDUSTRY?")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
                 
                 Text("Helps us prioritize what to build next.")
                     .font(OPSStyle.Typography.body)
@@ -188,7 +188,7 @@ struct IndustryPhaseView: View {
             .padding(.bottom, 30)
             
             // Industry Selection
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Button(action: {
                     showingIndustryPicker = true
                 }) {
@@ -204,7 +204,7 @@ struct IndustryPhaseView: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .padding(.vertical, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing3)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
@@ -226,7 +226,7 @@ struct IndustryPhaseView: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.invertedText)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing3)
                     .background(selectedIndustry != nil ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
@@ -240,9 +240,9 @@ struct SizePhaseView: View {
     let onContinue: () -> Void
     
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: OPSStyle.Layout.spacing4) {
             // Header
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("HOW BIG")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -250,7 +250,7 @@ struct SizePhaseView: View {
                 Text("IS YOUR CREW?")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
                 
                 Text("Helps us understand your crew size.")
                     .font(OPSStyle.Typography.body)
@@ -261,7 +261,7 @@ struct SizePhaseView: View {
             .padding(.bottom, 30)
             
             // Size Selection
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 ForEach(CompanySize.allCases, id: \.self) { size in
                     Button(action: {
                         selectedSize = size
@@ -284,7 +284,7 @@ struct SizePhaseView: View {
                             }
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
-                        .padding(.vertical, 16)
+                        .padding(.vertical, OPSStyle.Layout.spacing3)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .fill(selectedSize == size ? OPSStyle.Colors.primaryAccent.opacity(0.1) : OPSStyle.Colors.cardBackground)
@@ -308,7 +308,7 @@ struct SizePhaseView: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.invertedText)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing3)
                     .background(selectedSize != nil ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
@@ -323,9 +323,9 @@ struct AgePhaseView: View {
     let onContinue: () -> Void
     
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: OPSStyle.Layout.spacing4) {
             // Header
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("HOW LONG HAVE")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -333,7 +333,7 @@ struct AgePhaseView: View {
                 Text("YOU BEEN RUNNING?")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
                 
                 Text("Tells us about your experience.")
                     .font(OPSStyle.Typography.body)
@@ -344,7 +344,7 @@ struct AgePhaseView: View {
             .padding(.bottom, 30)
             
             // Age Selection
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 ForEach(CompanyAge.allCases, id: \.self) { age in
                     Button(action: {
                         selectedAge = age
@@ -367,7 +367,7 @@ struct AgePhaseView: View {
                             }
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
-                        .padding(.vertical, 16)
+                        .padding(.vertical, OPSStyle.Layout.spacing3)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .fill(selectedAge == age ? OPSStyle.Colors.primaryAccent.opacity(0.1) : OPSStyle.Colors.cardBackground)
@@ -406,7 +406,7 @@ struct AgePhaseView: View {
                             .foregroundColor(OPSStyle.Colors.invertedText)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing3)
                     .background(OPSStyle.Colors.primaryAccent)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 } else {
@@ -414,7 +414,7 @@ struct AgePhaseView: View {
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.invertedText)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .padding(.vertical, OPSStyle.Layout.spacing3)
                         .background(selectedAge != nil ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
@@ -443,7 +443,7 @@ struct IndustryPickerView: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .padding(.vertical, 12)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .fill(OPSStyle.Colors.cardBackground)
@@ -453,7 +453,7 @@ struct IndustryPickerView: View {
                         )
                 )
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .padding(.top, 16)
+                .padding(.top, OPSStyle.Layout.spacing3)
                 
                 // Industry List
                 List(filteredIndustries, id: \.self) { industry in
@@ -470,7 +470,7 @@ struct IndustryPickerView: View {
                                 .font(OPSStyle.Typography.bodyBold)
                         }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
                     .contentShape(Rectangle())
                     .onTapGesture {
                         selectedIndustry = industry

@@ -83,11 +83,11 @@ struct ClientListView: View {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach(ClientFilter.allCases, id: \.self) { filter in
                         Button(action: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(OPSStyle.Animation.panel) {
                                 activeFilter = filter
                             }
                         }) {
-                            HStack(spacing: 4) {
+                            HStack(spacing: OPSStyle.Layout.spacing1) {
                                 Text(filter.rawValue)
                                     .font(OPSStyle.Typography.captionBold)
                                 if filter == .new && newClientsCount > 0 {
@@ -104,16 +104,16 @@ struct ClientListView: View {
                                         )
                                 }
                             }
-                            .foregroundColor(activeFilter == filter ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
+                            .foregroundColor(activeFilter == filter ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
                             .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                    .fill(activeFilter == filter ? OPSStyle.Colors.primaryText : .clear)
+                                    .fill(activeFilter == filter ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                    .stroke(activeFilter == filter ? .clear : OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                    .stroke(activeFilter == filter ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder, lineWidth: 1)
                             )
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -151,8 +151,8 @@ struct ClientListView: View {
                                 .id(letter)
                             }
                         }
-                        .padding(.trailing, 32)
-                        .padding(.top, 12)
+                        .padding(.trailing, OPSStyle.Layout.spacing5)
+                        .padding(.top, OPSStyle.Layout.spacing2_5)
                         .padding(.bottom, 120)
                     }
                     .overlay(alignment: .trailing) {
@@ -167,7 +167,7 @@ struct ClientListView: View {
     }
 
     private func sectionHeader(letter: String) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             Text("[ \(letter) ]")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -176,7 +176,7 @@ struct ClientListView: View {
                 .fill(OPSStyle.Colors.tertiaryText.opacity(0.3))
                 .frame(height: 1)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
         .background(Gradient(colors: [.clear, OPSStyle.Colors.background, .clear]))
     }
     private func alphabetIndex(proxy: ScrollViewProxy) -> some View {
@@ -203,7 +203,7 @@ struct ClientListView: View {
                     .buttonStyle(PlainButtonStyle())
                 }
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .padding(.bottom, 120)
             .gesture(
                 DragGesture(minimumDistance: 0)

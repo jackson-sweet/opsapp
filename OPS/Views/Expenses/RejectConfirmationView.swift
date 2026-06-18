@@ -115,11 +115,11 @@ struct RejectConfirmationView: View {
             .font(OPSStyle.Typography.caption)
             .foregroundColor(OPSStyle.Colors.primaryText)
             .padding(OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.background)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
 
             // Unflag button
@@ -137,12 +137,7 @@ struct RejectConfirmationView: View {
             .buttonStyle(PlainButtonStyle())
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.warningStatus, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface(borderColor: OPSStyle.Colors.warningStatus)
     }
 
     // MARK: - Context Line
@@ -174,11 +169,11 @@ struct RejectConfirmationView: View {
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 60, maxHeight: 120)
                 .padding(OPSStyle.Layout.spacing2)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
     }

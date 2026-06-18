@@ -207,7 +207,7 @@ struct ProductDetailView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                     thumbnailSection
@@ -439,7 +439,7 @@ struct ProductDetailView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.background)
     }
 
     // MARK: - Thumbnail upload
@@ -581,12 +581,7 @@ struct ProductDetailView: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Task type card (required when product type is LABOR)
@@ -625,12 +620,7 @@ struct ProductDetailView: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var taskTypeMenuLabel: some View {
@@ -662,14 +652,14 @@ struct ProductDetailView: View {
         .padding(OPSStyle.Layout.spacing2)
         .frame(maxWidth: .infinity, alignment: .leading)
         .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(
                     (requiresTaskType && selectedTaskTypeId == nil)
                         ? OPSStyle.Colors.errorText
-                        : OPSStyle.Colors.cardBorder,
+                        : OPSStyle.Colors.inputFieldBorder,
                     lineWidth: OPSStyle.Layout.Border.standard
                 )
         )
@@ -707,12 +697,7 @@ struct ProductDetailView: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Unit picker (CatalogUnit-backed, with inline "+ NEW UNIT")
@@ -815,11 +800,11 @@ struct ProductDetailView: View {
         }
         .padding(OPSStyle.Layout.spacing2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -837,11 +822,11 @@ struct ProductDetailView: View {
         }
         .padding(OPSStyle.Layout.spacing2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -856,12 +841,7 @@ struct ProductDetailView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .padding(OPSStyle.Layout.spacing3)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .glassSurface()
             } else {
                 OptionsReadOnlyView(
                     options: productOptions,
@@ -880,12 +860,7 @@ struct ProductDetailView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .padding(OPSStyle.Layout.spacing3)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .glassSurface()
             } else {
                 ModifiersReadOnlyView(
                     modifiers: productModifiers,
@@ -905,12 +880,7 @@ struct ProductDetailView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .padding(OPSStyle.Layout.spacing3)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .glassSurface()
             } else {
                 RecipeReadOnlyView(
                     materials: productMaterials,
@@ -977,7 +947,7 @@ struct ProductDetailView: View {
                         .font(OPSStyle.Typography.metadata)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .frame(minHeight: OPSStyle.Layout.touchTargetMin / 2)
                 }
                 .accessibilityLabel("Edit bundle composition")
@@ -1004,7 +974,7 @@ struct ProductDetailView: View {
                         .font(OPSStyle.Typography.metadata)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .frame(minHeight: OPSStyle.Layout.touchTargetMin / 2)
                 }
                 .accessibilityLabel("Edit recipe")
@@ -1040,7 +1010,7 @@ struct ProductDetailView: View {
                         .font(OPSStyle.Typography.metadata)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .frame(minHeight: OPSStyle.Layout.touchTargetMin / 2)
                 }
                 .accessibilityLabel("Edit product options and pricing modifiers")
@@ -1056,7 +1026,7 @@ struct ProductDetailView: View {
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .padding(.horizontal, OPSStyle.Layout.spacing2)
-                .padding(.vertical, 4)
+                .padding(.vertical, OPSStyle.Layout.spacing1)
                 .frame(minHeight: OPSStyle.Layout.touchTargetMin / 2)
         }
         .accessibilityHint("Opens this product in the OPS web app")

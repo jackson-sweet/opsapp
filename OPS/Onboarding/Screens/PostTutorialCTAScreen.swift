@@ -76,7 +76,7 @@ struct PostTutorialCTAScreen: View {
                             typingSpeed: 40
                         ) {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                withAnimation(OPSStyle.Animation.standard) {
                                     showButton = true
                                 }
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
@@ -86,7 +86,7 @@ struct PostTutorialCTAScreen: View {
                         }
                     }
                 }
-                .padding(.top, 12)
+                .padding(.top, OPSStyle.Layout.spacing2_5)
                 .padding(.horizontal, 40)
 
                 Spacer()
@@ -132,7 +132,7 @@ struct PostTutorialCTAScreen: View {
                                 .opacity(showButtonIcon ? 1 : 0)
                                 .offset(x: showButtonIcon ? 0 : -10)
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     }
                     .frame(height: 56)
                 }

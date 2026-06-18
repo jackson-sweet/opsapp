@@ -71,7 +71,7 @@ struct ProfileCompanyScreen: View {
             showBackButton: true,
             onBack: { manager.goBack() }
         ) {
-            VStack(spacing: 32) {
+            VStack(spacing: OPSStyle.Layout.spacing5) {
                 // Profile section
                 profileSection
 
@@ -105,7 +105,7 @@ struct ProfileCompanyScreen: View {
     // MARK: - Profile Section
 
     private var profileSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             // Section header
             Text("YOUR PROFILE")
                 .font(OPSStyle.Typography.captionBold)
@@ -131,7 +131,7 @@ struct ProfileCompanyScreen: View {
                     }
                 )
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("Profile Photo")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -144,7 +144,7 @@ struct ProfileCompanyScreen: View {
             }
 
             // Name fields
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 FormField(
                     title: "First Name",
                     placeholder: "First",
@@ -171,7 +171,7 @@ struct ProfileCompanyScreen: View {
     // MARK: - Company Section
 
     private var companySection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             // Section header
             Text("YOUR COMPANY")
                 .font(OPSStyle.Typography.captionBold)
@@ -219,7 +219,7 @@ struct ProfileCompanyScreen: View {
                         currentImageData: logoData,
                         placeholderText: companyInitials,
                         size: 56,
-                        shape: .roundedSquare(cornerRadius: 12),
+                        shape: .roundedSquare(cornerRadius: OPSStyle.Layout.modalRadius),
                         allowDelete: true,
                         backgroundColor: OPSStyle.Colors.cardBackgroundDark
                     ),
@@ -232,7 +232,7 @@ struct ProfileCompanyScreen: View {
                     }
                 )
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("Company Logo")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -249,7 +249,7 @@ struct ProfileCompanyScreen: View {
     // MARK: - Industry Picker
 
     private var industryPickerField: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("INDUSTRY")
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -291,7 +291,7 @@ struct ProfileCompanyScreen: View {
         VStack {
             Spacer()
 
-            VStack(spacing: 24) {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
                 ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                     .scaleEffect(1.5)
@@ -311,11 +311,11 @@ struct ProfileCompanyScreen: View {
 
     private var successView: some View {
         OnboardingScaffold(
-            title: "COMPANY CREATED!",
+            title: "COMPANY CREATED",
             subtitle: "Share this code with your team",
             showBackButton: false
         ) {
-            VStack(spacing: 32) {
+            VStack(spacing: OPSStyle.Layout.spacing5) {
                 // Success icon
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: OPSStyle.Layout.IconSize.xxl))
@@ -323,7 +323,7 @@ struct ProfileCompanyScreen: View {
 
                 // Company code display
                 if let code = manager.state.companyData.companyCode {
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         Text("YOUR COMPANY CODE")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)

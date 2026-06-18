@@ -19,7 +19,7 @@ struct ListItem: View {
     
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 16) {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
                 // Icon if provided
                 if let icon = iconName {
                     ZStack {
@@ -39,7 +39,7 @@ struct ListItem: View {
                 }
                 
                 // Title and description
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(title.uppercased())
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(isDisabled ? OPSStyle.Colors.tertiaryText : .white)
@@ -61,9 +61,9 @@ struct ListItem: View {
                         .foregroundColor(isDisabled ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
                 }
             }
-            .padding(16)
-            .background(isDisabled ? OPSStyle.Colors.cardBackgroundDark.opacity(0.4) : OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .padding(OPSStyle.Layout.spacing3)
+            .glassSurface()
+            .opacity(isDisabled ? 0.55 : 1)
         }
         .disabled(isDisabled)
     }
@@ -80,7 +80,7 @@ struct UserListItem: View {
     
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 16) {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
                 // User avatar
                 ZStack {
                     if let profileURL = user.profileImageURL, 
@@ -104,7 +104,7 @@ struct UserListItem: View {
                 }
 
                 // Name and role
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(user.fullName)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -123,9 +123,8 @@ struct UserListItem: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
             }
-            .padding(16)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+            .padding(OPSStyle.Layout.spacing3)
+            .glassSurface()
         }
     }
     
@@ -150,7 +149,7 @@ struct ProjectListItem: View {
     
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 // Header with title and status
                 HStack {
                     Text(project.title)
@@ -187,7 +186,7 @@ struct ProjectListItem: View {
                     HStack {
                         Spacer()
                         
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Text("View Details")
                                 .font(OPSStyle.Typography.captionBold)
                             
@@ -195,13 +194,12 @@ struct ProjectListItem: View {
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         }
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.top, 4)
+                        .padding(.top, OPSStyle.Layout.spacing1)
                     }
                 }
             }
-            .padding(16)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+            .padding(OPSStyle.Layout.spacing3)
+            .glassSurface()
         }
     }
     
@@ -216,7 +214,7 @@ struct ProjectListItem: View {
 
 struct ListItemsPreview: View {
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             ListItem(
                 title: "App Settings",
                 description: "Manage app preferences",
@@ -235,7 +233,7 @@ struct ListItemsPreview: View {
             // UserListItem and ProjectListItem previews removed (commented out)
         }
         .padding()
-        .background(OPSStyle.Colors.backgroundGradient)
+        .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
     }
 }

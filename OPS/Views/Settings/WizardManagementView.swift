@@ -92,7 +92,7 @@ struct WizardManagementView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
+            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
 
             VStack(spacing: 0) {
                 SettingsHeader(
@@ -101,13 +101,13 @@ struct WizardManagementView: View {
                 )
 
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         ForEach(Array(availableWizards.enumerated()), id: \.element.wizardId) { _, wizard in
                             wizardRow(wizard: wizard)
                         }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.top, OPSStyle.Layout.spacing3)
                     .padding(.bottom, 100)
                 }
             }
@@ -133,7 +133,7 @@ struct WizardManagementView: View {
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: "lock.fill")
                             .font(.system(size: 10))
                         Text(locked)
@@ -145,13 +145,8 @@ struct WizardManagementView: View {
                 Spacer()
             }
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .glassSurface()
         } else {
             // Unlocked row — tappable
             NavigationLink {
@@ -180,15 +175,10 @@ struct WizardManagementView: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
                 .padding(.vertical, 14)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
             .buttonStyle(PlainButtonStyle())
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
     }
 
@@ -197,7 +187,7 @@ struct WizardManagementView: View {
         if let state {
             switch state.status {
             case .completed:
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 12))
                         .foregroundColor(OPSStyle.Colors.successStatus)

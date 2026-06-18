@@ -173,7 +173,7 @@ struct JobsCard: View {
 
     private func jobRow(_ job: MoneyDashboardViewModel.JobNet) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
                 Text(job.title)
                     .font(.custom("Mohave-Medium", size: 14))
                     .tracking(0.56)  // 0.04em at 14pt
@@ -306,14 +306,14 @@ struct JobsCard: View {
 #if DEBUG
 #Preview("JobsCard — seeded") {
     JobsCard(viewModel: .previewStub())
-        .padding(.vertical, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing4)
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
 }
 
 #Preview("JobsCard — empty") {
     JobsCard(viewModel: .previewEmpty())
-        .padding(.vertical, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing4)
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
 }

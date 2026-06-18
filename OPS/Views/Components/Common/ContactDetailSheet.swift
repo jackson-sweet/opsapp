@@ -24,11 +24,11 @@ struct ContactDetailSheet: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                 .fill(OPSStyle.Colors.secondaryText.opacity(0.5))
                 .frame(width: 36, height: 5)
-                .padding(.top, 8)
-                .padding(.bottom, 20)
+                .padding(.top, OPSStyle.Layout.spacing2)
+                .padding(.bottom, OPSStyle.Layout.spacing3_5)
             
             // Profile section
-            VStack(spacing: 16) {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
                 // Icon
                 ZStack {
                     Circle()
@@ -41,10 +41,11 @@ struct ContactDetailSheet: View {
                 }
                 
                 // Name and role
-                VStack(spacing: 4) {
+                VStack(spacing: OPSStyle.Layout.spacing1) {
                     Text(name)
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .font(OPSStyle.Typography.pageTitle)
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
                     
                     Text(role)
                         .font(OPSStyle.Typography.subtitle)
@@ -53,7 +54,7 @@ struct ContactDetailSheet: View {
             }
             
             // Contact actions
-            VStack(spacing: 16) {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
                 if let phone = phone {
                     ContactActionRow(
                         icon: "phone.fill",
@@ -87,7 +88,7 @@ struct ContactDetailSheet: View {
                     )
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             
             Spacer()
             
@@ -105,8 +106,7 @@ struct ContactDetailSheet: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(20, corners: [.topLeft, .topRight])
+        .glassDense()
         .confirmationDialog("Call \(name)?", isPresented: $showingCallConfirmation) {
             if let phone = phone {
                 Button("Call") {
@@ -154,12 +154,12 @@ struct ContactActionRow: View {
     
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 16) {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
                 ZStack {
                     Circle()
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .fill(OPSStyle.Colors.background)
                         .frame(width: 44, height: 44)
-                    
+
                     Image(systemName: icon)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -181,10 +181,9 @@ struct ContactActionRow: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
-            .background(OPSStyle.Colors.background.opacity(0.5))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .nestedCard()
         }
     }
 }

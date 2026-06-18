@@ -156,12 +156,7 @@ struct ExpenseBatchDetailView: View {
             }
             .padding(.vertical, OPSStyle.Layout.spacing2)
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
@@ -189,21 +184,21 @@ struct ExpenseBatchDetailView: View {
             GeometryReader { geometry in
                 HStack(spacing: 1) {
                     if cleanCount > 0 {
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .fill(OPSStyle.Colors.successStatus)
                             .frame(width: geometry.size.width * cleanFraction)
                     }
                     if flaggedCount > 0 {
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .fill(OPSStyle.Colors.warningStatus)
                             .frame(width: geometry.size.width * flaggedFraction)
                     }
                     if cleanCount == 0 && flaggedCount == 0 {
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                             .fill(OPSStyle.Colors.cardBorder)
                     }
                 }
-                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: flaggedCount)
+                .animation(OPSStyle.Animation.standard, value: flaggedCount)
             }
             .frame(height: 4)
 
@@ -264,7 +259,7 @@ struct ExpenseBatchDetailView: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
 
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Text(expense.category?.name ?? "Uncategorized")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -280,7 +275,7 @@ struct ExpenseBatchDetailView: View {
 
                     // Status line
                     if isFlagged {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "flag.fill")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             Text("FLAGGED")
@@ -288,7 +283,7 @@ struct ExpenseBatchDetailView: View {
                         }
                         .foregroundColor(OPSStyle.Colors.warningStatus)
                     } else {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Circle()
                                 .fill(expStatus.reviewColor)
                                 .frame(width: OPSStyle.Layout.Indicator.dotSM, height: OPSStyle.Layout.Indicator.dotSM)
@@ -343,14 +338,8 @@ struct ExpenseBatchDetailView: View {
                 expandedSection(expense, isFlagged: isFlagged)
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(
-                    isFlagged ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.cardBorder,
-                    lineWidth: OPSStyle.Layout.Border.standard
-                )
+        .glassSurface(
+            borderColor: isFlagged ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.glassBorder
         )
         .animation(OPSStyle.Animation.fast, value: isFlagged)
     }
@@ -469,7 +458,7 @@ struct ExpenseBatchDetailView: View {
             .buttonStyle(PlainButtonStyle())
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.background)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

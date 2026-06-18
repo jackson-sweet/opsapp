@@ -25,23 +25,23 @@ struct CrewCodeShareView: View {
             VStack(spacing: 0) {
                 // Main scrollable content
                 ScrollView {
-                    VStack(spacing: 32) {
+                    VStack(spacing: OPSStyle.Layout.spacing5) {
                         // 1. Logo + brand
                         HStack(alignment: .bottom) {
                             Image("LogoWhite")
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
                                 .frame(width: 44, height: 44)
-                                .padding(.bottom, 8)
+                                .padding(.bottom, OPSStyle.Layout.spacing2)
                             Text("OPS")
                                 .font(OPSStyle.Typography.largeTitle.weight(.bold))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 24)
+                        .padding(.top, OPSStyle.Layout.spacing4)
 
                         // 2. Headline
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("YOU'RE SET UP.")
                                 .font(OPSStyle.Typography.title)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -53,7 +53,7 @@ struct CrewCodeShareView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                         // 3. Code display box
-                        VStack(spacing: 24) {
+                        VStack(spacing: OPSStyle.Layout.spacing4) {
                             // Label row with inline copy button
                             HStack {
                                 Text("CREW CODE")
@@ -63,7 +63,7 @@ struct CrewCodeShareView: View {
                                 Spacer()
 
                                 Button(action: copyCode) {
-                                    HStack(spacing: 4) {
+                                    HStack(spacing: OPSStyle.Layout.spacing1) {
                                         Image(systemName: showCopyFeedback ? "checkmark" : "doc.on.doc")
                                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         Text(showCopyFeedback ? "COPIED!" : "COPY")
@@ -84,13 +84,13 @@ struct CrewCodeShareView: View {
 
                                 Spacer()
                             }
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 16)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.line, lineWidth: 1)
                             )
                         }
 
@@ -104,7 +104,7 @@ struct CrewCodeShareView: View {
                         Button {
                             showInviteSheet = true
                         } label: {
-                            HStack(spacing: 8) {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
                                 Image(systemName: "person.2")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                                 Text("INVITE CREW")
@@ -132,7 +132,7 @@ struct CrewCodeShareView: View {
                 }
 
                 // 7. Continue button pinned at bottom
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     Button(action: handleContinue) {
                         Text("CONTINUE")
                             .font(OPSStyle.Typography.button)
@@ -147,7 +147,7 @@ struct CrewCodeShareView: View {
                                     Image(systemName: "arrow.right")
                                         .foregroundColor(OPSStyle.Colors.invertedText)
                                         .font(OPSStyle.Typography.caption.weight(.semibold))
-                                        .padding(.trailing, 20)
+                                        .padding(.trailing, OPSStyle.Layout.spacing3_5)
                                 }
                             )
                     }

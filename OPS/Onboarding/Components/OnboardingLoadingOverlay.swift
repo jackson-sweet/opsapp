@@ -18,7 +18,7 @@ struct OnboardingLoadingOverlay: View {
                 .ignoresSafeArea()
 
             // Loading card
-            VStack(spacing: 20) {
+            VStack(spacing: OPSStyle.Layout.spacing3_5) {
                 ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
                     .scaleEffect(1.5)
@@ -28,7 +28,7 @@ struct OnboardingLoadingOverlay: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .multilineTextAlignment(.center)
             }
-            .padding(32)
+            .padding(OPSStyle.Layout.spacing5)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .fill(OPSStyle.Colors.cardBackgroundDark)
@@ -56,7 +56,7 @@ struct OnboardingLoadingOverlayWithProgress: View {
                 .ignoresSafeArea()
 
             // Loading card
-            VStack(spacing: 20) {
+            VStack(spacing: OPSStyle.Layout.spacing3_5) {
                 if let progress = progress {
                     // Determinate progress
                     ProgressView(value: progress)
@@ -80,7 +80,7 @@ struct OnboardingLoadingOverlayWithProgress: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
-            .padding(32)
+            .padding(OPSStyle.Layout.spacing5)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .fill(OPSStyle.Colors.cardBackgroundDark)

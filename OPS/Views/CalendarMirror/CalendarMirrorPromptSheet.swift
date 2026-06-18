@@ -14,11 +14,11 @@ struct CalendarMirrorPromptSheet: View {
     @State private var isWorking = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
             Text("// MIRROR TO iPHONE CALENDAR")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.top, 32)
+                .padding(.top, OPSStyle.Layout.spacing5)
 
             Text("See your OPS schedule alongside your personal calendar. One-way: edits in OPS, sync to your phone.")
                 .font(OPSStyle.Typography.body)
@@ -27,7 +27,7 @@ struct CalendarMirrorPromptSheet: View {
 
             Spacer()
 
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Button {
                     Task { await dismissNotNow() }
                 } label: {
@@ -54,9 +54,9 @@ struct CalendarMirrorPromptSheet: View {
                 }
                 .disabled(isWorking)
             }
-            .padding(.bottom, 24)
+            .padding(.bottom, OPSStyle.Layout.spacing4)
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, OPSStyle.Layout.spacing4)
         .background(OPSStyle.Colors.backgroundGradient.ignoresSafeArea())
         .presentationDetents([.height(280)])
         .presentationDragIndicator(.visible)

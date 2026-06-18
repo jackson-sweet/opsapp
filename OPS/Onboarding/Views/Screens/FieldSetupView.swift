@@ -37,7 +37,7 @@ struct FieldSetupView: View {
                     Button(action: {
                         viewModel.moveToPreviousStep()
                     }) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "chevron.left")
                                 .font(OPSStyle.Typography.button)
                             Text("Back")
@@ -56,12 +56,12 @@ struct FieldSetupView: View {
                             .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                     }
                 }
-                .padding(.top, 8)
-                .padding(.bottom, 8)
+                .padding(.top, OPSStyle.Layout.spacing2)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                 // Step indicator bars
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     ForEach(0..<totalSteps, id: \.self) { step in
                         Rectangle()
                             .fill(step < currentStepNumber ?
@@ -70,14 +70,14 @@ struct FieldSetupView: View {
                             .frame(height: 2)
                     }
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Main content area wrapped in ScrollView
                 ScrollView {
                     VStack(spacing: 0) {
                         // Header
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("FIELD SETUP")
                                 .font(OPSStyle.Typography.largeTitle.weight(.bold))
                                 .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
@@ -91,7 +91,7 @@ struct FieldSetupView: View {
                         .padding(.bottom, 30)
                         
                         // Field settings
-                        VStack(spacing: 24) {
+                        VStack(spacing: OPSStyle.Layout.spacing4) {
                             // Offline data settings with storage slider
                             SettingsSection(
                                 title: "Offline Storage",
@@ -115,7 +115,7 @@ struct FieldSetupView: View {
                     }
                 )
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .padding(.vertical, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing3)
             }
         }
     }
@@ -163,7 +163,7 @@ struct SettingsSection<Content: View>: View {
     @EnvironmentObject var viewModel: OnboardingViewModel
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text(title.uppercased())
                 .font(OPSStyle.Typography.cardSubtitle)
                 .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : .white)
@@ -171,7 +171,7 @@ struct SettingsSection<Content: View>: View {
             Text(description)
                 .font(OPSStyle.Typography.cardBody)
                 .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : Color.gray)
-                .padding(.bottom, 4)
+                .padding(.bottom, OPSStyle.Layout.spacing1)
             
             content
         }

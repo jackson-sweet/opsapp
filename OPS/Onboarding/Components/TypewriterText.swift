@@ -185,7 +185,7 @@ struct AnimatedOnboardingHeader: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             // Title - always reserves space
             ZStack(alignment: .leading) {
                 // Space reservation
@@ -261,7 +261,7 @@ struct PhasedOnboardingHeader: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             // Title - always reserves space
             ZStack(alignment: .leading) {
                 Text(title)
@@ -436,7 +436,7 @@ struct PhasedPrimaryButton: View {
 
                 // Content
                 if isLoading {
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .black))
 
@@ -482,7 +482,7 @@ struct PhasedPrimaryButton: View {
                             .opacity(iconVisible ? 1 : 0)
                             .offset(x: iconVisible ? 0 : -10)
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .opacity(containerVisible ? 1 : 0)
                 }
             }
@@ -491,7 +491,7 @@ struct PhasedPrimaryButton: View {
         .disabled(!isEnabled || isLoading || !containerVisible)
         .onChange(of: coordinator.phase) { _, newPhase in
             if newPhase >= .buttonContainerFadeIn && !containerVisible {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     containerVisible = true
                 }
                 // Start text typing after container appears
@@ -542,22 +542,22 @@ struct PhasedAnimationPreview: View {
 
             // Content
             PhasedContent(coordinator: coordinator) {
-                VStack(spacing: 20) {
+                VStack(spacing: OPSStyle.Layout.spacing3_5) {
                     // Avatar placeholder
                     Circle()
                         .fill(OPSStyle.Colors.cardBackgroundDark)
                         .frame(width: 120, height: 120)
 
                     // Form fields
-                    VStack(spacing: 16) {
-                        VStack(alignment: .leading, spacing: 8) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             PhasedLabel("FIRST NAME", index: 0, coordinator: coordinator)
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .fill(OPSStyle.Colors.cardBackgroundDark)
                                 .frame(height: 56)
                         }
 
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             PhasedLabel("LAST NAME", index: 1, coordinator: coordinator)
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .fill(OPSStyle.Colors.cardBackgroundDark)

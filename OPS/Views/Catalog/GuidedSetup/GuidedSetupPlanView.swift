@@ -74,7 +74,7 @@ struct GuidedSetupPlanView: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .nestedCard()
+        .glassSurface()
     }
 
     static func info(for kind: SetupModuleKind) -> (title: String, subtitle: String, time: String) {
@@ -92,7 +92,7 @@ struct GuidedSetupPlanView: View {
     model.profile = BusinessProfile(sells: .mix, pricing: .fixedJob,
                                     materialUse: .heavy, inventory: .tracked, trackCost: true)
     return ZStack {
-        OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+        OPSStyle.Colors.background.ignoresSafeArea()
         GuidedSetupPlanView(model: model)
     }
 }

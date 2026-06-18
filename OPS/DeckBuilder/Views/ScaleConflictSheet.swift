@@ -22,7 +22,7 @@ struct ScaleConflictSheet: View {
     // MARK: - Drag Indicator
 
     private var dragIndicator: some View {
-        RoundedRectangle(cornerRadius: 2)
+        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
             .fill(OPSStyle.Colors.tertiaryText)
             .frame(width: 36, height: 4)
             .padding(.top, OPSStyle.Layout.spacing2)
@@ -49,8 +49,9 @@ struct ScaleConflictSheet: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("Dimension Mismatch")
-                .font(OPSStyle.Typography.heading)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+                .font(OPSStyle.Typography.pageTitle)
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.text)
 
             Text("Some handwritten dimensions don't match the drawn proportions.")
                 .font(OPSStyle.Typography.body)
@@ -77,7 +78,8 @@ struct ScaleConflictSheet: View {
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Text(DimensionEngine.formatImperial(conflict.annotatedInches))
-                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                        .font(OPSStyle.Typography.dataValue)
+                        .fontWeight(.bold)
                         .foregroundColor(OPSStyle.Colors.warningStatus)
                 }
 
@@ -100,7 +102,8 @@ struct ScaleConflictSheet: View {
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Text(DimensionEngine.formatImperial(conflict.scaleDerivedInches))
-                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                        .font(OPSStyle.Typography.dataValue)
+                        .fontWeight(.bold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }

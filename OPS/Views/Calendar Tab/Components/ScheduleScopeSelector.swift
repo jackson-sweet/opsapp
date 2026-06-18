@@ -13,7 +13,7 @@ struct ScheduleScopeSelector: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 // Team member chips with avatar + initials
                 ForEach(viewModel.availableTeamMembers, id: \.id) { member in
                     let isSelected: Bool = {
@@ -28,7 +28,7 @@ struct ScheduleScopeSelector: View {
                     }
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 
@@ -46,19 +46,19 @@ struct ScheduleScopeSelector: View {
                     .font(OPSStyle.Typography.cardBody)
                     .foregroundColor(
                         isSelected
-                            ? OPSStyle.Colors.cardBackgroundDark
-                            : OPSStyle.Colors.primaryText
+                            ? OPSStyle.Colors.primaryText
+                            : OPSStyle.Colors.tertiaryText
                     )
             }
             .padding(.vertical, 6)
             .padding(.leading, 6)
             .padding(.trailing, 10)
             .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .fill(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                    .fill(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                     .stroke(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }

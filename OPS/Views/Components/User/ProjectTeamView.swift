@@ -31,7 +31,7 @@ struct ProjectTeamView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             let activeProject = refreshedProject ?? project
 
             if !teamsRefreshed && activeProject.getTeamMemberIds().count > 0 && activeProject.teamMembers.isEmpty {
@@ -45,12 +45,7 @@ struct ProjectTeamView: View {
         }
         .frame(maxWidth: .infinity)
         .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .sheet(isPresented: $showingTeamPicker) {
             ProjectTeamChangeSheet(project: project)
                 .environmentObject(dataController)
@@ -143,13 +138,13 @@ struct ProjectTeamView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
     }
 
     private func emptyStateView(_ activeProject: Project) -> some View {
         HStack {
             Spacer()
-            VStack(spacing: 8) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: OPSStyle.Icons.crew)
                     .font(.system(size: OPSStyle.Layout.IconSize.xl))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -169,7 +164,7 @@ struct ProjectTeamView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
+        .padding(.vertical, OPSStyle.Layout.spacing3)
     }
 
     private func teamMembersView(_ activeProject: Project) -> some View {
@@ -195,7 +190,7 @@ struct ProjectTeamView: View {
     }
 
     private func teamMemberRow(_ member: User) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             UserAvatar(user: member, size: 40)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -259,7 +254,7 @@ struct ProjectTeamView: View {
         Group {
             Divider()
                 .background(OPSStyle.Colors.cardBorder)
-                .padding(.vertical, 8)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
 
             Text("ADD TEAM MEMBERS")
                 .font(OPSStyle.Typography.captionBold)
@@ -273,7 +268,7 @@ struct ProjectTeamView: View {
     }
 
     private func availableMemberRow(_ member: TeamMember) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Circle()
                 .fill(OPSStyle.Colors.primaryAccent)
                 .frame(width: 40, height: 40)
@@ -421,18 +416,18 @@ struct FullTeamListView: View {
         NavigationView {
             ZStack {
                 // Background
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .edgesIgnoringSafeArea(.all)
                 
                 ScrollView {
-                    VStack(spacing: 12) {
+                    VStack(spacing: OPSStyle.Layout.spacing2_5) {
                         ForEach(project.teamMembers) { member in
-                            HStack(spacing: 16) {
+                            HStack(spacing: OPSStyle.Layout.spacing3) {
                                 // Avatar
                                 UserAvatar(user: member, size: 50)
                                 
                                 // Details
-                                VStack(alignment: .leading, spacing: 4) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                     Text("\(member.firstName) \(member.lastName)")
                                         .font(OPSStyle.Typography.body.weight(.medium))
                                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -456,8 +451,7 @@ struct FullTeamListView: View {
                                     .font(OPSStyle.Typography.smallBody)
                             }
                             .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+                            .glassSurface()
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 selectedTeamMember = member
@@ -476,8 +470,9 @@ struct FullTeamListView: View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("PROJECT TEAM")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .font(OPSStyle.Typography.screenTitle(for: "PROJECT TEAM"))
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {

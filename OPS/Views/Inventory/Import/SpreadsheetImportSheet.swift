@@ -331,12 +331,7 @@ struct SpreadsheetImportSheet: View {
                         }
                     }
                     .padding(OPSStyle.Layout.spacing3)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .glassSurface()
                     .padding(.horizontal, OPSStyle.Layout.spacing4)
                 }
             }

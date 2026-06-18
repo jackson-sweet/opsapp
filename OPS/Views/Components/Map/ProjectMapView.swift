@@ -130,7 +130,7 @@ struct ProjectMapView: View {
                         Button(action: recenterMap) {
                             ZStack {
                                 Circle()
-                                    .fill(OPSStyle.Colors.cardBackground.opacity(0.8))
+                                    .fill(OPSStyle.Colors.background.opacity(0.8))
                                     .frame(width: 44, height: 44)
                                 
                                 Image(systemName: "location.fill")
@@ -138,7 +138,7 @@ struct ProjectMapView: View {
                                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                             }
                         }
-                        .padding(.trailing, 16)
+                        .padding(.trailing, OPSStyle.Layout.spacing3)
                         .padding(.bottom, isInProjectMode ? 220 : 120)
                     }
                 }
@@ -164,7 +164,7 @@ struct ProjectMapView: View {
                     hasIncludedUserLocationInInitialRegion = true
                 }
                 let newRegion = idealMapRegion
-                withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+                withAnimation(OPSStyle.Animation.curve(0.5)) {
                     region = newRegion
                 }
             }
@@ -204,7 +204,7 @@ struct ProjectMapView: View {
                         print("[MAP] ⚠️ Projects loaded but user location NOT available yet")
                     }
                     let newRegion = idealMapRegion
-                    withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+                    withAnimation(OPSStyle.Animation.curve(0.5)) {
                         region = newRegion
                     }
                 }
@@ -235,7 +235,7 @@ struct ProjectMapView: View {
                     print("[MAP] 📍 Rebuilt map with user location only")
                 }
 
-                withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+                withAnimation(OPSStyle.Animation.curve(0.5)) {
                     region = newRegion
                 }
             } else {
@@ -248,7 +248,7 @@ struct ProjectMapView: View {
                 // NEVER during routing - user has complete control
                 if !InProgressManager.shared.isRouting {
                     let newRegion = idealMapRegion
-                    withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+                    withAnimation(OPSStyle.Animation.curve(0.5)) {
                         region = newRegion
                     }
                 } else {
@@ -279,7 +279,7 @@ struct ProjectMapView: View {
             // NEVER apply zoom changes during routing - user has complete control
             if !InProgressManager.shared.isRouting {
                 let newRegion = idealMapRegion
-                withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+                withAnimation(OPSStyle.Animation.curve(0.5)) {
                     region = newRegion
                 }
             } else {
@@ -302,7 +302,7 @@ struct ProjectMapView: View {
         // If there was no recent user interaction, auto-zoom immediately
         if shouldAutoZoom {
             let newRegion = idealMapRegion
-            withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+            withAnimation(OPSStyle.Animation.curve(0.5)) {
                 region = newRegion
             }
         } else if userHasMovedMap {
@@ -338,7 +338,7 @@ struct ProjectMapView: View {
         autoZoomTimer?.invalidate()
         autoZoomTimer = nil
         
-        withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+        withAnimation(OPSStyle.Animation.curve(0.5)) {
             region = idealMapRegion
         }
         
@@ -385,7 +385,7 @@ struct ProjectMapView: View {
         guard mapAutoCenter && mapAutoCenterTime != "off" else { return }
         
         let newRegion = idealMapRegion
-        withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+        withAnimation(OPSStyle.Animation.curve(0.5)) {
             region = newRegion
         }
         

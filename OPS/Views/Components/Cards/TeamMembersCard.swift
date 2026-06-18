@@ -16,31 +16,31 @@ struct TeamMembersCard: View {
             icon: OPSStyle.Icons.crew,
             title: title
         ) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 // Team count badge
                 HStack {
                     Spacer()
                     Text("\(teamMembers.count) \(teamMembers.count == 1 ? "Member" : "Members")")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .background(
                             Capsule()
-                                .fill(OPSStyle.Colors.cardBackgroundDark)
+                                .fill(OPSStyle.Colors.surfaceInput)
                         )
                 }
-                .padding(.bottom, 4)
+                .padding(.bottom, OPSStyle.Layout.spacing1)
 
                 // Team member list
                 if teamMembers.isEmpty {
                     Text("No team members assigned")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
                 } else {
                     ForEach(teamMembers, id: \.id) { member in
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             // Avatar
                             UserAvatar(user: member, size: 40)
 
@@ -50,7 +50,7 @@ struct TeamMembersCard: View {
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
 
-                                HStack(spacing: 8) {
+                                HStack(spacing: OPSStyle.Layout.spacing2) {
                                     // Role
                                     Text(member.role.displayName)
                                         .font(OPSStyle.Typography.caption)
@@ -70,7 +70,7 @@ struct TeamMembersCard: View {
 
                             Spacer()
                         }
-                        .padding(.vertical, 4)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                     }
                 }
             }

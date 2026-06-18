@@ -44,7 +44,7 @@ struct PermissionsView: View {
                     Button(action: {
                         viewModel.moveToPreviousStep()
                     }) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "chevron.left")
                                 .font(OPSStyle.Typography.button)
                             Text("Back")
@@ -63,12 +63,12 @@ struct PermissionsView: View {
                             .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                     }
                 }
-                .padding(.top, 8)
-                .padding(.bottom, 8)
+                .padding(.top, OPSStyle.Layout.spacing2)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                 // Step indicator bars
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     ForEach(0..<totalSteps, id: \.self) { step in
                         Rectangle()
                             .fill(step < currentStepNumber ?
@@ -77,7 +77,7 @@ struct PermissionsView: View {
                             .frame(height: 2)
                     }
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 // Two-phase permissions content
@@ -149,15 +149,15 @@ struct LocationPermissionPhase: View {
     let onContinue: () -> Void
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
             // Header
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("LOCATION ACCESS")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
             
             Spacer()
             
@@ -186,13 +186,13 @@ struct LocationPermissionPhase: View {
             Spacer()
             
             // Info box
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+                HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: OPSStyle.Icons.info)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .font(OPSStyle.Typography.body)
                     
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         Text("Why we need this:".uppercased())
                             .font(OPSStyle.Typography.cardTitle)
                             .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
@@ -275,15 +275,15 @@ struct NotificationPermissionPhase: View {
     let onContinue: () -> Void
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
             // Header
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("STAY UPDATED")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
                     .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
             
             Spacer()
             
@@ -315,13 +315,13 @@ struct NotificationPermissionPhase: View {
             Spacer()
             
             // Info box
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+                HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: OPSStyle.Icons.info)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .font(OPSStyle.Typography.body)
                     
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         Text("Why we need this:".uppercased())
                             .font(OPSStyle.Typography.cardTitle)
                             .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)

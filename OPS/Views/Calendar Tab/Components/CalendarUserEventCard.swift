@@ -44,11 +44,11 @@ struct CalendarUserEventCard: View {
         }
         .frame(minHeight: 64)
         .background(cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 2))
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius))
         .overlay(cardBorder)
         // Bug 3 — Match CalendarEventCard / CalendarProjectCard for consistent
         // vertical breathing room in week and day views.
-        .padding(.vertical, 8)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
         .padding(.horizontal)
         .onTapGesture {
             // Tap opens the editor when one's wired up (DayCanvasView), and
@@ -78,11 +78,11 @@ struct CalendarUserEventCard: View {
                 .padding(.horizontal, 7)
                 .padding(.vertical, 3)
                 .background(
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                         .fill(statusColor.opacity(0.12))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                         .stroke(statusColor.opacity(0.35), lineWidth: 0.5)
                 )
         } else {
@@ -92,7 +92,7 @@ struct CalendarUserEventCard: View {
                 .padding(.horizontal, 7)
                 .padding(.vertical, 3)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                         .stroke(OPSStyle.Colors.secondaryText.opacity(0.4),
                                 style: StrokeStyle(lineWidth: 0.5, dash: [3, 2]))
                 )
@@ -113,12 +113,12 @@ struct CalendarUserEventCard: View {
     @ViewBuilder
     private var cardBorder: some View {
         if event.isTimeOff {
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                 .stroke(Color(red: 196/255, green: 168/255, blue: 104/255).opacity(0.35),
                         lineWidth: 0.5)
         } else {
             // Dashed border for personal events
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                 .stroke(Color.white.opacity(0.25),
                         style: StrokeStyle(lineWidth: 0.5, dash: [4, 3]))
         }

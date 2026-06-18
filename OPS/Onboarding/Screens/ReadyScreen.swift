@@ -25,7 +25,7 @@ struct ReadyScreen: View {
                 )
 
                 // Navigation Button
-                VStack(spacing: 24) {
+                VStack(spacing: OPSStyle.Layout.spacing4) {
                     let buttonText = manager.state.flow == .companyCreator ? "START TRIAL" : "CONTINUE"
                     OnboardingPrimaryButton(buttonText) {
                         let generator = UIImpactFeedbackGenerator(style: .medium)

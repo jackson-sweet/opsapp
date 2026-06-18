@@ -61,12 +61,7 @@ struct EstimateFormSheet: View {
                             VStack(spacing: 0) {
                                 formField("Title", text: $title, placeholder: "Estimate title")
                             }
-                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .glassSurface()
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                         }
 
@@ -177,12 +172,7 @@ struct EstimateFormSheet: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, OPSStyle.Layout.spacing4)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .glassSurface()
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
             } else {
                 VStack(spacing: 0) {
@@ -197,16 +187,11 @@ struct EstimateFormSheet: View {
                         .buttonStyle(PlainButtonStyle())
 
                         if item.id != lineItems.last?.id {
-                            Divider().background(OPSStyle.Colors.cardBorder)
+                            Divider().background(OPSStyle.Colors.line)
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
 
@@ -261,7 +246,7 @@ struct EstimateFormSheet: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Text(item.type.rawValue.uppercased())
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)

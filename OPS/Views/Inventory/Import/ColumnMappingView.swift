@@ -42,14 +42,16 @@ struct ColumnMappingView: View {
 
             // Mappings list + bulk-tag picker
             ScrollView {
-                LazyVStack(spacing: 1) {
+                LazyVStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach($mappings) { $mapping in
                         columnMappingRow(mapping: $mapping)
                     }
                 }
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.top, OPSStyle.Layout.spacing2)
 
                 bulkTagsSection
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.top, OPSStyle.Layout.spacing3)
                     .padding(.bottom, 120)
             }
@@ -92,7 +94,7 @@ struct ColumnMappingView: View {
         let isNameField = mapping.wrappedValue.field == .name
         let isSkipped = mapping.wrappedValue.field == .skip
 
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             // Header and sample
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -146,25 +148,19 @@ struct ColumnMappingView: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                 .padding(.vertical, 10)
-                .background(OPSStyle.Colors.background)
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                .background(OPSStyle.Colors.surfaceInput)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(isNameField ? OPSStyle.Colors.successStatus.opacity(0.5) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(isNameField ? OPSStyle.Colors.successStatus.opacity(0.5) : OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, 12)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .overlay(
-            Rectangle()
-                .fill(OPSStyle.Colors.cardBorder)
-                .frame(height: 1),
-            alignment: .bottom
-        )
+        .padding(OPSStyle.Layout.spacing3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassSurface()
     }
 
     // MARK: - Bulk Tags Section
@@ -200,7 +196,7 @@ struct ColumnMappingView: View {
             }
 
             // New-tag input
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 TextField("New tag…", text: $newTagDraft)
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -208,13 +204,13 @@ struct ColumnMappingView: View {
                     .textInputAutocapitalization(.never)
                     .focused($newTagFocused)
                     .onSubmit { addDraftTag() }
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     .padding(.vertical, 10)
-                    .background(OPSStyle.Colors.background)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .background(OPSStyle.Colors.surfaceInput)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(newTagFocused ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(newTagFocused ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
 
                 Button(action: addDraftTag) {
@@ -224,11 +220,11 @@ struct ColumnMappingView: View {
                         .tracking(1.1)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
-                        .background(canAddDraftTag ? Color.white : OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .background(canAddDraftTag ? Color.white : OPSStyle.Colors.surfaceInput)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(canAddDraftTag ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(canAddDraftTag ? Color.clear : OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 }
                 .disabled(!canAddDraftTag)
@@ -240,7 +236,7 @@ struct ColumnMappingView: View {
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .tracking(1.0)
-                    .padding(.top, 4)
+                    .padding(.top, OPSStyle.Layout.spacing1)
 
                 FlowLayout(spacing: 6) {
                     ForEach(unpickedAvailableTags) { tag in
@@ -249,15 +245,9 @@ struct ColumnMappingView: View {
                 }
             }
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .overlay(
-            Rectangle()
-                .fill(OPSStyle.Colors.cardBorder)
-                .frame(height: 1),
-            alignment: .top
-        )
+        .padding(OPSStyle.Layout.spacing3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassSurface()
     }
 
     private var canAddDraftTag: Bool {
@@ -295,8 +285,12 @@ struct ColumnMappingView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(OPSStyle.Colors.primaryAccent)
-            .cornerRadius(12)
+            .background(OPSStyle.Colors.surfaceActive)
+            .cornerRadius(OPSStyle.Layout.modalRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.modalRadius)
+                    .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.standard)
+            )
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Remove \(name) from bulk tags")
@@ -316,10 +310,10 @@ struct ColumnMappingView: View {
             .foregroundColor(OPSStyle.Colors.secondaryText)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(OPSStyle.Colors.background)
-            .cornerRadius(12)
+            .background(OPSStyle.Colors.surfaceInput)
+            .cornerRadius(OPSStyle.Layout.modalRadius)
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.modalRadius)
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
@@ -358,11 +352,11 @@ struct ColumnMappingView: View {
                 .foregroundColor(hasNameMapping ? .black : OPSStyle.Colors.tertiaryText)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(hasNameMapping ? Color.white : OPSStyle.Colors.cardBackgroundDark)
+                .background(hasNameMapping ? Color.white : OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(hasNameMapping ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(hasNameMapping ? Color.clear : OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
             .disabled(!hasNameMapping)

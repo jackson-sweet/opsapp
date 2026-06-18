@@ -100,7 +100,7 @@ struct JobBoardMyTasksView: View {
 
     private var filterChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(MyTasksFilter.allCases, id: \.self) { filter in
                     TaskFilterChip(
                         label: filter.rawValue,
@@ -112,8 +112,8 @@ struct JobBoardMyTasksView: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
         }
     }
 
@@ -125,12 +125,12 @@ struct JobBoardMyTasksView: View {
             emptyState
         } else {
             ScrollView {
-                LazyVStack(spacing: 12) {
+                LazyVStack(spacing: OPSStyle.Layout.spacing2_5) {
                     ForEach(sortedTasks) { task in
                         UniversalJobBoardCard(cardType: .task(task))
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.bottom, 100)
             }
         }
@@ -139,7 +139,7 @@ struct JobBoardMyTasksView: View {
     // MARK: - Empty State
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             Spacer()
             Image(systemName: "checkmark.circle")
                 .font(.system(size: 36))
@@ -150,7 +150,7 @@ struct JobBoardMyTasksView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 24)
+        .padding(.horizontal, OPSStyle.Layout.spacing4)
     }
 
     // MARK: - Loading State
@@ -160,10 +160,10 @@ struct JobBoardMyTasksView: View {
             LazyVStack(spacing: 0) {
                 ForEach(0..<6, id: \.self) { _ in
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .fill(OPSStyle.Colors.fillNeutralDim)
                         .frame(height: 60)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                 }
             }
             .padding(.bottom, 100)
@@ -173,7 +173,7 @@ struct JobBoardMyTasksView: View {
     // MARK: - Error State
 
     private var errorState: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
             Text("Couldn't load tasks")
                 .font(OPSStyle.Typography.body)
@@ -209,16 +209,16 @@ private struct TaskFilterChip: View {
         Button(action: action) {
             Text(label)
                 .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(isActive ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
+                .foregroundColor(isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
+                        .fill(isActive ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(isActive ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        .stroke(isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder, lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
@@ -241,8 +241,8 @@ struct ProjectTaskGroup: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.top, OPSStyle.Layout.spacing2)
     }
 
     // MARK: Group Header
@@ -264,7 +264,7 @@ struct ProjectTaskGroup: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

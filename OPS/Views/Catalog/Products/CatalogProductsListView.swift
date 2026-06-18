@@ -107,7 +107,7 @@ struct CatalogProductsListView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 searchBar
@@ -145,11 +145,11 @@ struct CatalogProductsListView: View {
             }
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .background(OPSStyle.Colors.surfaceInput)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.top, OPSStyle.Layout.spacing2)
@@ -171,7 +171,7 @@ struct CatalogProductsListView: View {
         let isSelected = selectedFilter == filter
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(.easeInOut(duration: 0.18)) {
+            withAnimation(OPSStyle.Animation.panel) {
                 selectedFilter = filter
             }
         } label: {
@@ -182,8 +182,8 @@ struct CatalogProductsListView: View {
                 .padding(.vertical, OPSStyle.Layout.spacing2)
                 .background(
                     isSelected
-                        ? OPSStyle.Colors.cardBackground
-                        : OPSStyle.Colors.cardBackgroundDark
+                        ? OPSStyle.Colors.surfaceActive
+                        : OPSStyle.Colors.surfaceInput
                 )
                 .cornerRadius(OPSStyle.Layout.chipRadius)
                 .overlay(
@@ -367,12 +367,7 @@ private struct ProductRow: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     /// Leading 40x40 slot. Materials with a thumbnail render the image;

@@ -38,12 +38,7 @@ struct PaymentRecordSheet: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                     .padding(OPSStyle.Layout.spacing3)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .glassSurface()
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                     // Amount
@@ -54,11 +49,11 @@ struct PaymentRecordSheet: View {
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.center)
                         .padding(OPSStyle.Layout.spacing3)
-                        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .background(OPSStyle.Colors.surfaceInput)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
 
@@ -86,16 +81,11 @@ struct PaymentRecordSheet: View {
                             .buttonStyle(PlainButtonStyle())
 
                             if m != PaymentMethod.allCases.last {
-                                Divider().background(OPSStyle.Colors.cardBorder)
+                                Divider().background(OPSStyle.Colors.line)
                             }
                         }
                     }
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .glassSurface()
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                     // Notes
@@ -105,11 +95,11 @@ struct PaymentRecordSheet: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(3...6)
                         .padding(OPSStyle.Layout.spacing2)
-                        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .background(OPSStyle.Colors.surfaceInput)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
 

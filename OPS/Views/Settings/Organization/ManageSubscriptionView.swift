@@ -36,7 +36,7 @@ struct ManageSubscriptionView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -45,10 +45,10 @@ struct ManageSubscriptionView: View {
                     title: "Subscription",
                     onBackTapped: { dismiss() }
                 )
-                .padding(.bottom, 8)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                         if let company = company {
                             // Tactical dashboard header
                             subscriptionDashboard(company)
@@ -66,7 +66,7 @@ struct ManageSubscriptionView: View {
 
                             // Error message
                             if let error = errorMessage {
-                                HStack(spacing: 8) {
+                                HStack(spacing: OPSStyle.Layout.spacing2) {
                                     Image(systemName: "exclamationmark.triangle.fill")
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.errorStatus)
@@ -75,7 +75,7 @@ struct ManageSubscriptionView: View {
                                         .font(OPSStyle.Typography.caption)
                                         .foregroundColor(OPSStyle.Colors.errorStatus)
                                 }
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             }
                         } else {
                             // No company
@@ -84,10 +84,10 @@ struct ManageSubscriptionView: View {
                                 title: "No subscription",
                                 message: "Subscription information is not available."
                             )
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
                     }
-                    .padding(.vertical, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing3)
                     .tabBarPadding()
                 }
             }
@@ -203,9 +203,9 @@ struct ManageSubscriptionView: View {
             // Status row
             HStack(alignment: .center) {
                 // Plan name and status
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     if isLoadingStripeInfo && resolvedPlan == nil {
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                                 .scaleEffect(0.7)
@@ -251,14 +251,14 @@ struct ManageSubscriptionView: View {
                     }
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.vertical, OPSStyle.Layout.spacing3)
 
             // Divider
             Rectangle()
-                .fill(OPSStyle.Colors.cardBorder)
+                .fill(OPSStyle.Colors.separator)
                 .frame(height: 1)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             // Warning banners
             warningBanners(company)
@@ -266,6 +266,8 @@ struct ManageSubscriptionView: View {
             // Seat usage row
             seatUsageRow(company)
         }
+        .glassSurface()
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     private func warningBanners(_ company: Company) -> some View {
@@ -291,7 +293,7 @@ struct ManageSubscriptionView: View {
     }
 
     private func warningBanner(icon: String, message: String, color: Color) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             Image(systemName: icon)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(color)
@@ -302,10 +304,10 @@ struct ManageSubscriptionView: View {
 
             Spacer()
         }
-        .padding(12)
+        .padding(OPSStyle.Layout.spacing2_5)
         .background(color.opacity(0.1))
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing2_5)
     }
 
     private func seatUsageRow(_ company: Company) -> some View {
@@ -317,14 +319,14 @@ struct ManageSubscriptionView: View {
         let percentage = Double(seatedCount) / Double(maxSeats)
         let isAtLimit = seatedCount >= maxSeats
 
-        return VStack(spacing: 12) {
+        return VStack(spacing: OPSStyle.Layout.spacing2_5) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("SEATS")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing1) {
                         Text("\(seatedCount)")
                             .font(OPSStyle.Typography.title)
                             .foregroundColor(isAtLimit ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryText)
@@ -340,7 +342,7 @@ struct ManageSubscriptionView: View {
                 // Progress indicator
                 ZStack {
                     Circle()
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 4)
+                        .stroke(OPSStyle.Colors.fillNeutral, lineWidth: 4)
                         .frame(width: 44, height: 44)
 
                     Circle()
@@ -373,14 +375,14 @@ struct ManageSubscriptionView: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.vertical, OPSStyle.Layout.spacing3)
     }
 
     // MARK: - Action Cards Section
 
     private var actionCardsSection: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Manage Seats button
             Button(action: {
                 showSeatManagement = true
@@ -405,11 +407,11 @@ struct ManageSubscriptionView: View {
             }
             .buttonStyle(PlainButtonStyle())
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     private func actionRow(icon: String, title: String, subtitle: String) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: icon)
                 .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -431,13 +433,8 @@ struct ManageSubscriptionView: View {
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
     }
 
     // MARK: - Billing Info Section
@@ -447,7 +444,7 @@ struct ManageSubscriptionView: View {
             icon: "doc.text.fill",
             title: "Billing"
         ) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 // Loading state
                 if isLoadingStripeInfo {
                     HStack {
@@ -460,7 +457,7 @@ struct ManageSubscriptionView: View {
                     }
                 } else if let error = stripeInfoError {
                     // Error state - show cached data with error indicator
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -468,7 +465,7 @@ struct ManageSubscriptionView: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.warningStatus)
                     }
-                    .padding(.bottom, 4)
+                    .padding(.bottom, OPSStyle.Layout.spacing1)
 
                     // Show cached company data when Stripe fetch fails
                     billingInfoRows(
@@ -502,7 +499,7 @@ struct ManageSubscriptionView: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     @ViewBuilder
@@ -546,7 +543,7 @@ struct ManageSubscriptionView: View {
 
         // Cancellation pending warning
         if cancelAtPeriodEnd {
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(systemName: "exclamationmark.circle.fill")
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -566,7 +563,7 @@ struct ManageSubscriptionView: View {
 
                 Spacer()
 
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.successStatus)
@@ -612,8 +609,8 @@ struct ManageSubscriptionView: View {
 
     @ViewBuilder
     private func noActiveSubscriptionView(_ company: Company) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: "info.circle.fill")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -647,7 +644,7 @@ struct ManageSubscriptionView: View {
 
                     Spacer()
 
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.successStatus)
@@ -664,11 +661,11 @@ struct ManageSubscriptionView: View {
     // MARK: - Cancel Subscription Section
 
     private var cancelSubscriptionSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Button(action: {
                 showCancelConfirmation = true
             }) {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: "xmark.circle")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
@@ -677,8 +674,8 @@ struct ManageSubscriptionView: View {
                 }
                 .foregroundColor(OPSStyle.Colors.errorStatus)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.top, OPSStyle.Layout.spacing2)
         }
     }
 
@@ -692,10 +689,10 @@ struct ManageSubscriptionView: View {
                     .ignoresSafeArea()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                         // Warning header
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                                     .foregroundColor(OPSStyle.Colors.errorStatus)
@@ -709,10 +706,10 @@ struct ManageSubscriptionView: View {
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         // Reason input
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("REASON FOR CANCELLATION")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -721,16 +718,20 @@ struct ManageSubscriptionView: View {
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(minHeight: 100)
-                                .padding(12)
-                                .background(OPSStyle.Colors.subtleBackground)
+                                .padding(OPSStyle.Layout.spacing2_5)
+                                .background(OPSStyle.Colors.surfaceInput)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                )
                                 .scrollContentBackground(.hidden)
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         // Priority support toggle (if applicable)
                         if company?.hasPrioritySupport == true {
-                            VStack(alignment: .leading, spacing: 8) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                 Toggle(isOn: $cancelPriorityToo) {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text("Also cancel priority support")
@@ -744,20 +745,20 @@ struct ManageSubscriptionView: View {
                                 }
                                 .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
 
                         Spacer()
 
                         // Action buttons
-                        VStack(spacing: 12) {
+                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
                             // Cancel subscription button
                             Button(action: {
                                 Task {
                                     await cancelSubscription()
                                 }
                             }) {
-                                HStack(spacing: 8) {
+                                HStack(spacing: OPSStyle.Layout.spacing2) {
                                     if isCancelling {
                                         ProgressView()
                                             .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
@@ -783,19 +784,19 @@ struct ManageSubscriptionView: View {
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 14)
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .background(OPSStyle.Colors.surfaceInput)
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                            .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             }
                             .disabled(isCancelling)
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 24)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.bottom, OPSStyle.Layout.spacing4)
                     }
-                    .padding(.vertical, 20)
+                    .padding(.vertical, OPSStyle.Layout.spacing3_5)
                 }
             }
             .navigationTitle("Cancel Subscription")

@@ -138,7 +138,7 @@ struct EventCardView: View {
 
                     // Hairline stroke for edge definition over the blur.
                     Rectangle()
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        .stroke(OPSStyle.Colors.surfaceActive, lineWidth: 1)
 
                     // Subtle background for completed tasks
                     if task.status == .completed {
@@ -176,7 +176,7 @@ struct EventCardView: View {
                             }
                             
                             // Address with event type badge inline
-                            HStack(spacing: 8) {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
                                 if let address = project?.address {
                                     Text(extractAddressComponents(address))
                                         .font(OPSStyle.Typography.cardBody)
@@ -191,8 +191,8 @@ struct EventCardView: View {
                                     Text(taskType.uppercased())
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(displayColor)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
+                                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                        .padding(.vertical, OPSStyle.Layout.spacing1)
                                         .background(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                                 .fill(displayColor.opacity(0.1))
@@ -205,8 +205,8 @@ struct EventCardView: View {
                                     Text("TASK")
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(displayColor)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
+                                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                        .padding(.vertical, OPSStyle.Layout.spacing1)
                                         .background(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                                 .fill(displayColor.opacity(0.1))
@@ -218,16 +218,16 @@ struct EventCardView: View {
                                 }
                             }
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
                         .frame(width: 358, alignment: .leading)
 
                         // Page indicators - only show if there's more than one event
                         if totalCount > 1 {
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 ForEach(0..<totalCount, id: \.self) { index in
                                     Circle()
-                                        .fill(index == currentIndex ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder)
+                                        .fill(index == currentIndex ? OPSStyle.Colors.text : OPSStyle.Colors.inputFieldBorder)
                                         .frame(width: 13, height: 13)
                                 }
                             }
@@ -242,7 +242,7 @@ struct EventCardView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(isActiveProject ? OPSStyle.Colors.primaryAccent : Color.clear, lineWidth: OPSStyle.Layout.Border.thick)
+                    .stroke(isActiveProject ? OPSStyle.Colors.text : Color.clear, lineWidth: OPSStyle.Layout.Border.thick)
             )
             .tutorialHighlight(for: .tapProject, cornerRadius: OPSStyle.Layout.cornerRadius)
 
@@ -263,13 +263,13 @@ struct EventCardView: View {
                     Text("COMPLETED")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .fill(OPSStyle.Colors.statusColor(for: .completed))
                         )
-                        .padding(8)
+                        .padding(OPSStyle.Layout.spacing2)
                 }
             }
 
@@ -285,13 +285,13 @@ struct EventCardView: View {
                     Text("CANCELLED")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .fill(OPSStyle.Colors.inactiveStatus)
                         )
-                        .padding(8)
+                        .padding(OPSStyle.Layout.spacing2)
                 }
             }
         }
@@ -303,7 +303,7 @@ struct EventCardView: View {
             minimumDuration: 0.6,
             maximumDistance: .infinity,
             pressing: { pressing in
-                withAnimation(.easeInOut(duration: 0.1)) {
+                withAnimation(OPSStyle.Animation.hover) {
                     isLongPressing = pressing
                 }
 
@@ -350,7 +350,7 @@ struct EventCardView: View {
     }
     
     private var confirmationOverlay: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
             Text("START TASK")  // All events are task events now
                 .font(OPSStyle.Typography.button)
                 .foregroundColor(OPSStyle.Colors.primaryText)

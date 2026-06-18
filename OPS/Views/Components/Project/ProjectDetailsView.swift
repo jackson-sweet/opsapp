@@ -460,7 +460,7 @@ struct ProjectDetailsView: View {
                         projectIsActive: project.status != .completed && project.status != .closed && project.status != .archived,
                         onCompleteProject: { viewModel.handleProjectCompletion() }
                     )
-                    .padding(.bottom, 16)
+                    .padding(.bottom, OPSStyle.Layout.spacing3)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 .zIndex(5)
@@ -486,7 +486,7 @@ struct ProjectDetailsView: View {
                 .onEnded { value in
                     guard value.startLocation.y < 120 else { return }
                     if value.translation.height > 150 {
-                        withAnimation(.easeOut(duration: 0.25)) {
+                        withAnimation(OPSStyle.Animation.standard) {
                             dismissDragOffset = UIScreen.main.bounds.height
                         }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
@@ -529,7 +529,7 @@ struct ProjectDetailsView: View {
                 Text("DONE")
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.invertedText)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     .padding(.vertical, 6)
                     .background(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.buttonRadius)
@@ -541,7 +541,7 @@ struct ProjectDetailsView: View {
             if showingTaskPicker {
                 // When picker is open, badge becomes CANCEL button
                 Button(action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         showingTaskPicker = false
                     }
                 }) {
@@ -557,7 +557,7 @@ struct ProjectDetailsView: View {
                 let isComplete = task.status == .completed
                 let isCancelled = task.status == .cancelled
                 Button(action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         showingTaskPicker = true
                     }
                 }) {
@@ -599,7 +599,7 @@ struct ProjectDetailsView: View {
             } else {
                 // Has tasks but none selected — tappable
                 Button(action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         showingTaskPicker = true
                     }
                 }) {
@@ -612,8 +612,8 @@ struct ProjectDetailsView: View {
                 .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.top, OPSStyle.Layout.spacing2)
     }
 
     /// Pinned section header: title + tab bar with solid background.
@@ -637,8 +637,8 @@ struct ProjectDetailsView: View {
                 onClientLongPress: { showingClientPicker = true }
             )
             ProjectDetailsTabBar(selectedTab: $viewModel.selectedTab, visibleTabs: visibleTabs)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 4)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.bottom, OPSStyle.Layout.spacing1)
         }
         .background(OPSStyle.Colors.background)
     }
@@ -896,7 +896,7 @@ struct ProjectDetailsView: View {
             .ignoresSafeArea()
             .transition(.opacity)
             .onTapGesture {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     showingTaskPicker = false
                 }
             }
@@ -918,11 +918,11 @@ struct ProjectDetailsView: View {
                                 withAnimation(OPSStyle.Animation.fast) {
                                     viewModel.selectedTask = task
                                 }
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                withAnimation(OPSStyle.Animation.standard) {
                                     showingTaskPicker = false
                                 }
                             }) {
-                                HStack(spacing: 8) {
+                                HStack(spacing: OPSStyle.Layout.spacing2) {
                                     // Status badge for non-active tasks
                                     if task.status == .completed {
                                         StatusBadgePill(
@@ -949,7 +949,7 @@ struct ProjectDetailsView: View {
                                     if isSelected {
                                         Image(systemName: "checkmark")
                                             .font(.system(size: 10, weight: .bold))
-                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                            .foregroundColor(OPSStyle.Colors.text)
                                     }
                                 }
                             }
@@ -976,14 +976,14 @@ struct ProjectDetailsView: View {
                             Rectangle()
                                 .fill(OPSStyle.Colors.separator)
                                 .frame(width: 120, height: 1)
-                                .padding(.vertical, 4)
+                                .padding(.vertical, OPSStyle.Layout.spacing1)
 
                             Button(action: {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 withAnimation(OPSStyle.Animation.fast) {
                                     viewModel.selectedTask = nil
                                 }
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                withAnimation(OPSStyle.Animation.standard) {
                                     showingTaskPicker = false
                                 }
                             }) {
@@ -1003,8 +1003,8 @@ struct ProjectDetailsView: View {
                         }
                     }
                     .scrollTargetLayout()
-                    .padding(.top, 8)
-                    .padding(.bottom, 16)
+                    .padding(.top, OPSStyle.Layout.spacing2)
+                    .padding(.bottom, OPSStyle.Layout.spacing3)
                 }
                 .frame(maxHeight: 400)
                 .scrollTargetBehavior(.viewAligned)
@@ -1035,7 +1035,7 @@ struct ProjectDetailsView: View {
                     .opacity.combined(with: .scale(scale: 0.8, anchor: .topTrailing))
                 )
             }
-            .padding(.trailing, 16)
+            .padding(.trailing, OPSStyle.Layout.spacing3)
         }
     }
 

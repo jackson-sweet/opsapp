@@ -20,7 +20,7 @@ struct TaskTestView: View {
     @State private var isSyncing = false
 
     private var statusSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("Test Status")
                 .font(OPSStyle.Typography.bodyEmphasis)
             Text(statusMessage)
@@ -33,7 +33,7 @@ struct TaskTestView: View {
     }
 
     private var testActionsSection: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             Button(action: createTestData) {
                 Label("Create Test Data", systemImage: "plus.circle.fill")
                     .frame(maxWidth: .infinity)
@@ -63,7 +63,7 @@ struct TaskTestView: View {
             .disabled(testProject == nil)
 
             Divider()
-                .padding(.vertical, 8)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
 
             // API Sync Testing
             Text("API Sync Testing")
@@ -103,11 +103,11 @@ struct TaskTestView: View {
     }
 
     private func projectDataSection(_ project: Project) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("Test Project")
                 .font(OPSStyle.Typography.bodyEmphasis)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text("Title: \(project.title)")
                 Text("Status: \(project.status.displayName)")
                 Text("Computed Status: \(project.computedStatus.displayName)")
@@ -123,7 +123,7 @@ struct TaskTestView: View {
     }
 
     private var taskTypesDataSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("Task Types")
                 .font(OPSStyle.Typography.bodyEmphasis)
 
@@ -139,7 +139,7 @@ struct TaskTestView: View {
                         .fill(Color(hex: taskType.color) ?? .gray)
                         .frame(width: 20, height: 20)
                 }
-                .padding(8)
+                .padding(OPSStyle.Layout.spacing2)
                 .background(Color.gray.opacity(0.1))
                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             }
@@ -148,12 +148,12 @@ struct TaskTestView: View {
     }
 
     private var tasksDataSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("Tasks")
                 .font(OPSStyle.Typography.bodyEmphasis)
 
             ForEach(testTasks, id: \.id) { task in
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     HStack {
                         Text(task.displayTitle)
                             .font(OPSStyle.Typography.caption)
@@ -161,7 +161,7 @@ struct TaskTestView: View {
                         Spacer()
                         Text(task.status.displayName)
                             .font(.caption2)
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2)
                             .padding(.vertical, 2)
                             .background(statusColor(for: task.status))
                             .foregroundColor(.white)
@@ -176,7 +176,7 @@ struct TaskTestView: View {
                     Text("Duration: \(task.duration) days")
                         .font(.caption2)
                 }
-                .padding(8)
+                .padding(OPSStyle.Layout.spacing2)
                 .background(Color.gray.opacity(0.1))
                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             }
@@ -188,7 +188,7 @@ struct TaskTestView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                     statusSection
                     testActionsSection
                     testDataSection

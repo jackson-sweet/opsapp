@@ -99,7 +99,7 @@ enum ProjectAnnotationRenderer {
         let globalAlpha: CGFloat = dimmed ? 0.5 : 1.0
 
         // -- Label --
-        let labelFont = UIFont(name: "Kosugi-Regular", size: labelFontSize)
+        let labelFont = UIFont(name: "JetBrainsMono-Regular", size: labelFontSize)
             ?? UIFont.systemFont(ofSize: labelFontSize)
         let labelAlpha: CGFloat = (isSelected ? 1.0 : 0.8) * globalAlpha
         let labelAttributes: [NSAttributedString.Key: Any] = [
@@ -168,7 +168,7 @@ enum ProjectAnnotationRenderer {
         let primaryColor = taskColors.first ?? UIColor.white
 
         // -- Title label --
-        let titleFont = UIFont(name: "Kosugi-Regular", size: labelFontSize)
+        let titleFont = UIFont(name: "JetBrainsMono-Regular", size: labelFontSize)
             ?? UIFont.systemFont(ofSize: labelFontSize)
         let titleAlpha: CGFloat = isSelected ? 1.0 : 0.9
         let titleAttributes: [NSAttributedString.Key: Any] = [
@@ -179,7 +179,7 @@ enum ProjectAnnotationRenderer {
         let titleSize = titleString.size()
 
         // -- Subtitle label --
-        let subtitleFont = UIFont(name: "Kosugi-Regular", size: subtitleFontSize)
+        let subtitleFont = UIFont(name: "JetBrainsMono-Regular", size: subtitleFontSize)
             ?? UIFont.systemFont(ofSize: subtitleFontSize)
         let subtitleAttributes: [NSAttributedString.Key: Any] = [
             .font: subtitleFont,
@@ -306,11 +306,11 @@ enum ProjectAnnotationRenderer {
         }
 
         let maxLabels = 4
-        let labelFont = UIFont(name: "Kosugi-Regular", size: labelFontSize)
+        let labelFont = UIFont(name: "JetBrainsMono-Regular", size: labelFontSize)
             ?? UIFont.systemFont(ofSize: labelFontSize)
-        let smallFont = UIFont(name: "Kosugi-Regular", size: subtitleFontSize)
+        let smallFont = UIFont(name: "JetBrainsMono-Regular", size: subtitleFontSize)
             ?? UIFont.systemFont(ofSize: subtitleFontSize)
-        let countFont = UIFont(name: "Kosugi-Regular", size: 10)
+        let countFont = UIFont(name: "JetBrainsMono-Regular", size: 10)
             ?? UIFont.boldSystemFont(ofSize: 10)
         let labelAlpha: CGFloat = isSelected ? 1.0 : 0.8
 

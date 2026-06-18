@@ -39,7 +39,7 @@ struct ForgotPasswordView: View {
                     }
                 }
                 .padding(.horizontal, 28)
-                .padding(.top, 16)
+                .padding(.top, OPSStyle.Layout.spacing3)
 
                 if !showSuccess {
                     inputState
@@ -61,10 +61,11 @@ struct ForgotPasswordView: View {
     private var inputState: some View {
         VStack(spacing: 0) {
             // Header
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("RESET PASSWORD")
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .font(OPSStyle.Typography.pageTitle)
+                    .textCase(.uppercase)
+                    .foregroundColor(OPSStyle.Colors.text)
 
                 Text("Enter your email and we'll send instructions to reset your password.")
                     .font(OPSStyle.Typography.body)
@@ -72,13 +73,13 @@ struct ForgotPasswordView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 40)
-            .padding(.top, 24)
+            .padding(.top, OPSStyle.Layout.spacing4)
 
             Spacer()
                 .frame(height: 40)
 
             // Email field
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("EMAIL")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -91,19 +92,19 @@ struct ForgotPasswordView: View {
                     .keyboardType(.emailAddress)
                     .textContentType(.emailAddress)
                     .padding(.vertical, 14)
-                    .padding(.horizontal, 16)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
             }
             .padding(.horizontal, 40)
 
             // Error message
             if let error = errorMessage {
-                HStack(alignment: .top, spacing: 8) {
+                HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: "exclamationmark.circle.fill")
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                         .font(OPSStyle.Typography.caption)
@@ -115,7 +116,7 @@ struct ForgotPasswordView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 40)
-                .padding(.top, 12)
+                .padding(.top, OPSStyle.Layout.spacing2_5)
             }
 
             // Send button
@@ -133,7 +134,7 @@ struct ForgotPasswordView: View {
                         Image(systemName: "arrow.right")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -143,7 +144,7 @@ struct ForgotPasswordView: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .disabled(!canSend)
             .padding(.horizontal, 40)
-            .padding(.top, 32)
+            .padding(.top, OPSStyle.Layout.spacing5)
 
             Spacer()
         }
@@ -155,12 +156,12 @@ struct ForgotPasswordView: View {
         VStack(spacing: 0) {
             Spacer()
 
-            VStack(spacing: 24) {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 56))
                     .foregroundColor(OPSStyle.Colors.successStatus)
 
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Text("CHECK YOUR EMAIL")
                         .font(OPSStyle.Typography.title)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -188,7 +189,7 @@ struct ForgotPasswordView: View {
                     Image(systemName: "checkmark")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             }
             .frame(maxWidth: .infinity)
             .frame(height: 56)
@@ -219,7 +220,7 @@ struct ForgotPasswordView: View {
                 isLoading = false
 
                 if success {
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         showSuccess = true
                     }
                 } else {

@@ -120,8 +120,9 @@ struct CompanySetupPromptView: View {
                 // Header
                 HStack {
                     Text(headerTitle)
-                        .font(OPSStyle.Typography.headingBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .font(OPSStyle.Typography.pageTitle)
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
 
                     Spacer()
 
@@ -386,12 +387,7 @@ struct CompanySetupPromptView: View {
                 .padding(.vertical, OPSStyle.Layout.spacing3)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorderSubtle, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     /// Input field card — label, inset text field, optional USE MINE button
@@ -482,8 +478,7 @@ struct CompanySetupPromptView: View {
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
         }
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .glassSurface()
     }
 
     // MARK: - Pre-filled Data

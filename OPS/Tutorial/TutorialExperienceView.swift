@@ -46,7 +46,7 @@ struct TutorialExperienceView: View {
             // Show context label after a short delay on each step
             showContextLabel = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                withAnimation(.easeOut(duration: 0.3)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     showContextLabel = true
                 }
             }
@@ -67,7 +67,7 @@ struct TutorialExperienceView: View {
 
     private var chrome: some View {
         HStack {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(0..<TutorialPhase.totalSteps, id: \.self) { i in
                     Circle()
                         .fill(dotColor(for: i))
@@ -89,14 +89,14 @@ struct TutorialExperienceView: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing3)
     }
 
     private func dotColor(for index: Int) -> Color {
         let current = state.currentPhase.rawValue
         if index == current {
-            return OPSStyle.Colors.primaryAccent
+            return OPSStyle.Colors.text
         } else if index < current {
             return Color.white.opacity(0.4)
         } else {
@@ -146,13 +146,13 @@ struct TutorialExperienceView: View {
     private func advance() {
         showContextLabel = false
 
-        withAnimation(.easeIn(duration: 0.15)) {
+        withAnimation(OPSStyle.Animation.hover) {
             stepOpacity = 0
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             state.advancePhase()
-            withAnimation(.easeOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.panel) {
                 stepOpacity = 1.0
             }
         }

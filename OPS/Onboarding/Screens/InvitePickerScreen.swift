@@ -23,7 +23,7 @@ struct InvitePickerScreen: View {
                 onSignOut: { manager.signOut() }
             )
             .padding(.horizontal, 40)
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
 
             // Title
             PhasedOnboardingHeader(
@@ -33,21 +33,21 @@ struct InvitePickerScreen: View {
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 40)
-            .padding(.top, 32)
+            .padding(.top, OPSStyle.Layout.spacing5)
 
             // Invite cards
             PhasedContent(coordinator: animationCoordinator) {
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 12) {
+                    VStack(spacing: OPSStyle.Layout.spacing2_5) {
                         ForEach(manager.pendingInvites) { invite in
                             inviteCard(invite: invite)
                         }
                     }
-                    .padding(.top, 8)
+                    .padding(.top, OPSStyle.Layout.spacing2)
                 }
             }
             .padding(.horizontal, 40)
-            .padding(.top, 24)
+            .padding(.top, OPSStyle.Layout.spacing4)
 
             Spacer()
 
@@ -76,9 +76,9 @@ struct InvitePickerScreen: View {
             manager.confirmationSource = .pickerSelection
             manager.goToScreen(.companyConfirmation)
         } label: {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 // Top row: logo + company info
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     // Company logo (40x40)
                     cardLogoView(logoUrl: invite.companyLogoUrl, name: invite.companyName)
 
@@ -107,7 +107,7 @@ struct InvitePickerScreen: View {
 
                 // Team avatars + count
                 if invite.teamSize > 0 {
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         cardAvatarStack(members: invite.teamMembers, teamSize: invite.teamSize)
 
                         Text("\(invite.teamSize) member\(invite.teamSize == 1 ? "" : "s")")
@@ -119,13 +119,13 @@ struct InvitePickerScreen: View {
                 }
 
                 // Bottom row: role badge + inviter
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     if let role = invite.roleName {
                         Text(role)
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
                             .background(
                                 Capsule()
                                     .fill(OPSStyle.Colors.primaryAccent.opacity(0.15))
@@ -142,7 +142,7 @@ struct InvitePickerScreen: View {
                     Spacer()
                 }
             }
-            .padding(16)
+            .padding(OPSStyle.Layout.spacing3)
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(OPSStyle.Colors.cardBackgroundDark)

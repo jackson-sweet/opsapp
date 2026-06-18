@@ -26,7 +26,7 @@ struct SubClientListView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             // Section header with count and add button
             HStack {
                 Text("SUB CONTACTS (\(client.subClients.count))")
@@ -37,15 +37,15 @@ struct SubClientListView: View {
 
                 if canAddSubContacts {
                     Button(action: onCreateSubClient) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "plus")
                                 .font(OPSStyle.Typography.smallCaption)
                             Text("Add")
                                 .font(OPSStyle.Typography.smallCaption)
                         }
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
@@ -57,7 +57,7 @@ struct SubClientListView: View {
             // Sub-client list or empty state
             if client.subClients.isEmpty {
                 // Empty state
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: OPSStyle.Icons.subClient)
                         .font(.system(size: OPSStyle.Layout.IconSize.xl))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -67,16 +67,11 @@ struct SubClientListView: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 32)
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .padding(.vertical, OPSStyle.Layout.spacing5)
+                .glassSurface()
             } else {
                 // Sub-client list
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach(client.subClients, id: \.id) { subClient in
                         SubClientRow(
                             subClient: subClient,
@@ -156,7 +151,7 @@ struct SubClientRow: View {
     var body: some View {
         VStack(spacing: 0) {
             // Main row - always visible
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Avatar with initials
                 ZStack {
                     Circle()
@@ -184,7 +179,7 @@ struct SubClientRow: View {
                 Spacer()
                 
                 // Contact availability icons
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     if subClient.phoneNumber != nil {
                         Image(systemName: OPSStyle.Icons.phone)
                             .font(OPSStyle.Typography.smallBody)
@@ -209,15 +204,15 @@ struct SubClientRow: View {
                 // Edit button when expanded (only for admin/office crew, not in parent edit mode)
                 if isExpanded && !isEditing && canEditSubContacts {
                     Button(action: onEdit) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "pencil")
                                 .font(OPSStyle.Typography.smallCaption)
                             Text("Edit")
                                 .font(OPSStyle.Typography.smallCaption)
                         }
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
@@ -234,9 +229,8 @@ struct SubClientRow: View {
                         .animation(OPSStyle.Animation.standard, value: isExpanded)
                 }
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .contentShape(Rectangle())
             .onTapGesture {
                 if !isEditing {
@@ -246,13 +240,13 @@ struct SubClientRow: View {
             
             // Expanded content - match parent contact layout
             if isExpanded {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                     // Email row
                     if let email = subClient.email, !email.isEmpty {
-                        HStack(spacing: 16) {
+                        HStack(spacing: OPSStyle.Layout.spacing3) {
                             ZStack {
                                 Circle()
-                                    .fill(OPSStyle.Colors.cardBackground)
+                                    .fill(OPSStyle.Colors.background)
                                     .frame(width: 36, height: 36)
                                 
                                 Image(systemName: OPSStyle.Icons.envelope)
@@ -286,13 +280,13 @@ struct SubClientRow: View {
                                     )
                             }
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                     } else {
                         // No email available
-                        HStack(spacing: 16) {
+                        HStack(spacing: OPSStyle.Layout.spacing3) {
                             ZStack {
                                 Circle()
-                                    .fill(OPSStyle.Colors.cardBackground)
+                                    .fill(OPSStyle.Colors.background)
                                     .frame(width: 36, height: 36)
                                 
                                 Image(systemName: OPSStyle.Icons.envelope)
@@ -313,15 +307,15 @@ struct SubClientRow: View {
                             
                             Spacer()
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                     }
                     
                     // Phone row
                     if let phone = subClient.phoneNumber, !phone.isEmpty {
-                        HStack(spacing: 16) {
+                        HStack(spacing: OPSStyle.Layout.spacing3) {
                             ZStack {
                                 Circle()
-                                    .fill(OPSStyle.Colors.cardBackground)
+                                    .fill(OPSStyle.Colors.background)
                                     .frame(width: 36, height: 36)
                                 
                                 Image(systemName: OPSStyle.Icons.phone)
@@ -342,7 +336,7 @@ struct SubClientRow: View {
                             
                             Spacer()
                             
-                            HStack(spacing: 8) {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
                                 // Call button
                                 Button(action: onCall) {
                                     Image(systemName: OPSStyle.Icons.phoneFill)
@@ -370,13 +364,13 @@ struct SubClientRow: View {
                                 }
                             }
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                     } else {
                         // No phone available
-                        HStack(spacing: 16) {
+                        HStack(spacing: OPSStyle.Layout.spacing3) {
                             ZStack {
                                 Circle()
-                                    .fill(OPSStyle.Colors.cardBackground)
+                                    .fill(OPSStyle.Colors.background)
                                     .frame(width: 36, height: 36)
                                 
                                 Image(systemName: OPSStyle.Icons.phone)
@@ -397,15 +391,15 @@ struct SubClientRow: View {
                             
                             Spacer()
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                     }
                     
                     // Address row (if available)
                     if let address = subClient.address, !address.isEmpty {
-                        HStack(spacing: 16) {
+                        HStack(spacing: OPSStyle.Layout.spacing3) {
                             ZStack {
                                 Circle()
-                                    .fill(OPSStyle.Colors.cardBackground)
+                                    .fill(OPSStyle.Colors.background)
                                     .frame(width: 36, height: 36)
                                 
                                 Image(systemName: OPSStyle.Icons.address)
@@ -445,11 +439,11 @@ struct SubClientRow: View {
                                     )
                             }
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                     }
                     
                     
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         // Save to Contacts button
                         Button(action: {
                             showingContactExportOptions = true
@@ -501,7 +495,7 @@ struct SubClientRow: View {
                                 topController?.present(activityVC, animated: true)
                             }
                         }) {
-                            VStack(spacing: 4) {
+                            VStack(spacing: OPSStyle.Layout.spacing1) {
                                 Image(systemName: "square.and.arrow.up")
                                     .font(OPSStyle.Typography.body)
                                 Text("Share")
@@ -516,21 +510,17 @@ struct SubClientRow: View {
                             )
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                 }
-                .padding(.vertical, 20)
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                .padding(.vertical, OPSStyle.Layout.spacing3_5)
+                .background(OPSStyle.Colors.surfaceHover)
                 .transition(.asymmetric(
                     insertion: .move(edge: .top).combined(with: .opacity),
                     removal: .move(edge: .top).combined(with: .opacity)
                 ))
             }
         }
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .animation(OPSStyle.Animation.standard, value: isExpanded)
         .sheet(isPresented: $showingCreateContact) {
             ContactCreatorView(

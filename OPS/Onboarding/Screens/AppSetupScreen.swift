@@ -43,7 +43,7 @@ struct AppSetupScreen: View {
 
                 if syncFailed {
                     // Error state
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         Text("SYNC FAILED")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -57,7 +57,7 @@ struct AppSetupScreen: View {
                                 .font(OPSStyle.Typography.button)
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
+                                .padding(.vertical, OPSStyle.Layout.spacing3)
                                 .background(OPSStyle.Colors.primaryAccent)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
@@ -208,7 +208,7 @@ private struct SyncSweepBar: View {
         ZStack(alignment: .leading) {
             // Base track — ultra-thin, barely visible
             RoundedRectangle(cornerRadius: 1)
-                .fill(Color.white.opacity(0.08))
+                .fill(OPSStyle.Colors.surfaceActive)
                 .frame(width: trackWidth, height: trackHeight)
 
             // Sweep segment — accent color

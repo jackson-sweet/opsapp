@@ -22,14 +22,14 @@ struct StorageOptionSlider: View {
     ]
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
             // Current selection display
             HStack {
                 Image(systemName: selectedStorageIndex == 0 ? "icloud" : "internaldrive")
                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(storageOptions[selectedStorageIndex].value)
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
@@ -44,11 +44,10 @@ struct StorageOptionSlider: View {
                 Spacer()
             }
             .padding()
-            .background(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackground.opacity(0.1) : OPSStyle.Colors.cardBackground)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .glassSurface()
             
             // Slider
-            VStack(spacing: 16) {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
                 // Value labels above slider
                 HStack(alignment: .bottom, spacing: 0) {
                     ForEach(0..<storageOptions.count, id: \.self) { index in
@@ -71,7 +70,7 @@ struct StorageOptionSlider: View {
                         */
                     }
                 }
-                .padding(.horizontal, 4)
+                .padding(.horizontal, OPSStyle.Layout.spacing1)
                 
                 // Custom slider with snap points
                 GeometryReader { geometry in
@@ -106,7 +105,7 @@ struct StorageOptionSlider: View {
                         
                         // Thumb (larger circle)
                         Circle()
-                            .fill(viewModel.shouldUseLightTheme ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.Light.cardBackgroundDark)
+                            .fill(OPSStyle.Colors.fillNeutral)
                             .frame(width: 30, height: 30)
                             .overlay(
                                 Circle()

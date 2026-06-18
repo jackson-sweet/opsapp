@@ -60,8 +60,9 @@ struct BugReportSheet: View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("Report a Bug")
-                        .font(OPSStyle.Typography.heading)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .font(OPSStyle.Typography.pageTitle)
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -115,12 +116,7 @@ struct BugReportSheet: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
+            .glassSurface()
         }
         .buttonStyle(.plain)
     }
@@ -139,7 +135,7 @@ struct BugReportSheet: View {
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 80, maxHeight: 120)
                 .padding(OPSStyle.Layout.spacing2)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -189,7 +185,7 @@ struct BugReportSheet: View {
                 .background(
                     selectedCategory == category
                         ? OPSStyle.Colors.primaryAccent
-                        : OPSStyle.Colors.cardBackgroundDark
+                        : OPSStyle.Colors.surfaceInput
                 )
                 .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
                 .overlay(

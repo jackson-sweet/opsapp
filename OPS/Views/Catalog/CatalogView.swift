@@ -71,7 +71,7 @@ struct CatalogView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 header
@@ -101,7 +101,7 @@ struct CatalogView: View {
                         .transition(.opacity)
                     }
                 }
-                .animation(.easeInOut(duration: 0.18), value: selectedSegment)
+                .animation(OPSStyle.Animation.panel, value: selectedSegment)
             }
         }
         .sheet(isPresented: $showOrders) {
@@ -189,20 +189,13 @@ struct CatalogView: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
             Spacer()
             kebabButton
-            // Universal search — always the right-most trailing action, matching
-            // AppHeader's convention that search is the rightmost button on every
-            // header. Catalog uses a bespoke header, so this matches the kebab's
-            // bare-icon styling rather than AppHeader's circle.
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            // Universal search — always the right-most trailing action. Uses the
+            // shared UniversalSearchButton so the search icon is identical on
+            // every tab (Catalog has a bespoke header but the search control is
+            // the same universal one).
+            UniversalSearchButton {
                 appState.showingUniversalSearch = true
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.title3)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
             }
-            .accessibilityLabel("Search")
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.top, OPSStyle.Layout.spacing2)
@@ -230,7 +223,7 @@ struct CatalogView: View {
                                 Color.clear
                                 if selectedSegment == segment {
                                     Rectangle()
-                                        .fill(OPSStyle.Colors.primaryAccent)
+                                        .fill(OPSStyle.Colors.text)
                                         .frame(height: 2)
                                 }
                             }
@@ -319,9 +312,11 @@ struct CatalogView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.title3)
+                    .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                    .background(OPSStyle.Colors.fillNeutral)
+                    .clipShape(Circle())
             }
             .accessibilityLabel("Catalog menu")
         }

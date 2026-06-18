@@ -34,8 +34,8 @@ struct DetailHero: View {
             kpiStrip
                 .padding(.top, 18)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 4)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing1)
         .padding(.bottom, 18)
     }
 
@@ -48,13 +48,14 @@ struct DetailHero: View {
                 .padding(.bottom, 10)
 
             stageRow
-                .padding(.bottom, 12)
+                .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
             // Hero name — falls back to title if contactName is missing,
             // then to "Unnamed lead". The detail view never renders blank.
             Text(displayName)
-                .font(OPSStyle.Typography.display)
+                .font(OPSStyle.Typography.screenTitle(for: displayName))
                 .foregroundColor(OPSStyle.Colors.text)
+                .textCase(.uppercase)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
@@ -317,7 +318,7 @@ private struct KvCell: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
-        .padding(.vertical, 12)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .padding(.horizontal, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -338,7 +339,7 @@ private struct KpiDivider: View {
 #if DEBUG
 #Preview("DetailHero / states") {
     ScrollView {
-        VStack(spacing: 24) {
+        VStack(spacing: OPSStyle.Layout.spacing4) {
             DetailHero(opportunity: .preview(
                 title: "Roof tear-off, 28 sq",
                 contactName: "Helen Calloway",

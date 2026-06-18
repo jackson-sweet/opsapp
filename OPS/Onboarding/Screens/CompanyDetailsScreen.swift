@@ -65,7 +65,7 @@ struct CompanyDetailsScreen: View {
                 onSignOut: { manager.signOut() }
             )
             .padding(.horizontal, 40)
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
 
             // Title section with phased typing animation
             PhasedOnboardingHeader(
@@ -75,7 +75,7 @@ struct CompanyDetailsScreen: View {
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 40)
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
 
             Spacer()
                 .frame(height: 32)
@@ -84,7 +84,7 @@ struct CompanyDetailsScreen: View {
             PhasedContent(coordinator: animationCoordinator) {
                 VStack(spacing: 0) {
                     // Industry picker
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         PhasedLabel("WHAT DO YOU DO?", index: 0, coordinator: animationCoordinator)
 
                         Button {
@@ -102,7 +102,7 @@ struct CompanyDetailsScreen: View {
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                             .padding(.vertical, 14)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
@@ -118,7 +118,7 @@ struct CompanyDetailsScreen: View {
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .focused($isCustomIndustryFocused)
                                 .padding(.vertical, 14)
-                                .padding(.horizontal, 16)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
                                 .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
@@ -139,11 +139,11 @@ struct CompanyDetailsScreen: View {
                     PhasedLabel("HOW MANY ON YOUR CREW?", index: 1, coordinator: animationCoordinator)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 40)
-                        .padding(.top, 24)
+                        .padding(.top, OPSStyle.Layout.spacing4)
 
                     // Company Size pills
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             ForEach(CompanySize.allCases, id: \.self) { size in
                                 PillButton(
                                     title: size.rawValue,
@@ -155,17 +155,17 @@ struct CompanyDetailsScreen: View {
                         }
                         .padding(.horizontal, 40)
                     }
-                    .padding(.top, 8)
+                    .padding(.top, OPSStyle.Layout.spacing2)
 
                     // Company Age section
                     PhasedLabel("HOW LONG IN BUSINESS?", index: 2, isLast: true, coordinator: animationCoordinator)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 40)
-                        .padding(.top, 24)
+                        .padding(.top, OPSStyle.Layout.spacing4)
 
                     // Company Age pills
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             ForEach(CompanyAge.allCases, id: \.self) { age in
                                 PillButton(
                                     title: age.rawValue,
@@ -177,7 +177,7 @@ struct CompanyDetailsScreen: View {
                         }
                         .padding(.horizontal, 40)
                     }
-                    .padding(.top, 8)
+                    .padding(.top, OPSStyle.Layout.spacing2)
 
                     // Error message
                     if let error = errorMessage {
@@ -186,7 +186,7 @@ struct CompanyDetailsScreen: View {
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 40)
-                            .padding(.top, 16)
+                            .padding(.top, OPSStyle.Layout.spacing3)
                     }
                 }
             }
@@ -376,10 +376,10 @@ private struct IndustryRow: View {
 
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.text)
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.vertical, 14)
         }
 

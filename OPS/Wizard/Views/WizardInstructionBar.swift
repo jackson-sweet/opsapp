@@ -24,7 +24,7 @@ struct WizardInstructionBar: View {
                     Rectangle()
                         .fill(OPSStyle.Colors.wizardAccent)
                         .frame(width: geo.size.width * stateManager.progressFraction)
-                        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: stateManager.progressFraction)
+                        .animation(OPSStyle.Animation.standard, value: stateManager.progressFraction)
                 }
             }
             .frame(height: 3)
@@ -35,7 +35,7 @@ struct WizardInstructionBar: View {
                 // Paused: entire bar is one big tappable area
                 VStack(spacing: 6) {
                     HStack(alignment: .top) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             Image(systemName: "arrow.uturn.backward.circle.fill")
                                 .font(.system(size: 14))
                                 .foregroundColor(OPSStyle.Colors.wizardAccent)
@@ -52,8 +52,8 @@ struct WizardInstructionBar: View {
                             .monospacedDigit()
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     onPausedBarTapped?()
@@ -62,7 +62,7 @@ struct WizardInstructionBar: View {
                 // Active: skip and exit are individual buttons — no parent tap gesture
                 VStack(spacing: 6) {
                     HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                             Text(stateManager.currentInstruction)
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -84,7 +84,7 @@ struct WizardInstructionBar: View {
                     }
 
                     // Action buttons
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         // Skip button (hidden for welcome tour — NEXT replaces it)
                         if let step = stateManager.currentStep, step.canSkip {
                             Button {
@@ -94,8 +94,8 @@ struct WizardInstructionBar: View {
                                 Text("SKIP")
                                     .font(OPSStyle.Typography.captionBold)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                                    .padding(.vertical, OPSStyle.Layout.spacing2)
                                     .background(OPSStyle.Colors.background.opacity(0.5))
                                     .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                             }
@@ -135,8 +135,8 @@ struct WizardInstructionBar: View {
                                     .font(OPSStyle.Typography.captionBold)
                                     .foregroundColor(OPSStyle.Colors.invertedText)
                                     .tracking(1.2)
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 8)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                                    .padding(.vertical, OPSStyle.Layout.spacing2)
                                     .background(OPSStyle.Colors.wizardAccent)
                                     .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                             }
@@ -156,15 +156,15 @@ struct WizardInstructionBar: View {
                                     .font(OPSStyle.Typography.captionBold)
                             }
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
                             .background(OPSStyle.Colors.background.opacity(0.5))
                             .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                         }
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
             }
         }
         .background(

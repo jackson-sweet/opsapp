@@ -30,7 +30,7 @@ struct GuidedStockSetupFlow: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
             content
         }
         .onAppear {
@@ -190,7 +190,7 @@ struct GuidedStockSetupFlow: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackground)
+        .background(OPSStyle.Colors.fillNeutral)
         .overlay(
             Rectangle()
                 .frame(height: OPSStyle.Layout.Border.standard)
@@ -511,7 +511,7 @@ private struct GuidedFlowCTAButtonStyle: ButtonStyle {
             .frame(height: 52)
             .background(isEnabled
                 ? tint.opacity(configuration.isPressed ? 0.80 : 1.0)
-                : OPSStyle.Colors.cardBackground
+                : OPSStyle.Colors.fillNeutralDim
             )
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(

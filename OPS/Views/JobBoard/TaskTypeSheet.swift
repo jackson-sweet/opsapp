@@ -156,7 +156,7 @@ struct TaskTypeSheet: View {
                     .ignoresSafeArea()
 
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         // Preview — blown-up task type badge
                         previewCard
 
@@ -168,7 +168,7 @@ struct TaskTypeSheet: View {
                             onDelete: nil,
                             collapsible: false
                         ) {
-                            VStack(spacing: 16) {
+                            VStack(spacing: OPSStyle.Layout.spacing3) {
                                 nameField
                                 colorField
                             }
@@ -380,7 +380,7 @@ struct TaskTypeSheet: View {
                     .multilineTextAlignment(.center)
             }
         }
-        .padding(.top, 8)
+        .padding(.top, OPSStyle.Layout.spacing2)
     }
 
     private func requestDelete(_ type: TaskType) {
@@ -427,31 +427,26 @@ struct TaskTypeSheet: View {
                 .tracking(0.6)
                 .foregroundColor(taskTypeColor)
                 .lineLimit(1)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.vertical, 10)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
                         .fill(taskTypeColor.opacity(0.12))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
                         .stroke(taskTypeColor, lineWidth: 1.5)
                 )
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(.vertical, OPSStyle.Layout.spacing4)
+        .glassSurface()
     }
 
     // MARK: - Name Field
 
     private var nameField: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("NAME")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -460,11 +455,11 @@ struct TaskTypeSheet: View {
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
     }
@@ -498,7 +493,7 @@ struct TaskTypeSheet: View {
     private var colorField: some View {
         let inUse = colorsInUse
 
-        return VStack(alignment: .leading, spacing: 16) {
+        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             Text("COLOR")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -507,13 +502,13 @@ struct TaskTypeSheet: View {
             ForEach(colorFamilies, id: \.family) { group in
                 let familyColors = curatedColors.filter { $0.family == group.family }
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     Text(group.label)
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                     // Wrap colors in a flowing grid
-                    FlowLayout(spacing: 8) {
+                    FlowLayout(spacing: OPSStyle.Layout.spacing2) {
                         ForEach(familyColors, id: \.hex) { curated in
                             let used = inUse.contains(curated.hex.lowercased())
                             let isSelected = taskTypeColorHex.lowercased() == curated.hex.lowercased()
@@ -563,7 +558,7 @@ struct TaskTypeSheet: View {
             onDelete: nil,
             collapsible: false
         ) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 if dependencies.isEmpty {
                     Text("No dependencies — this task can start anytime")
                         .font(OPSStyle.Typography.caption)
@@ -582,7 +577,7 @@ struct TaskTypeSheet: View {
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
-                .padding(.top, 4)
+                .padding(.top, OPSStyle.Layout.spacing1)
             }
         }
     }
@@ -598,9 +593,9 @@ struct TaskTypeSheet: View {
             onDelete: nil,
             collapsible: true
         ) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 if isLoadingLinkedProducts {
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         ProgressView().tint(OPSStyle.Colors.primaryAccent)
                         Text("LOADING…")
                             .font(OPSStyle.Typography.metadata)
@@ -618,7 +613,7 @@ struct TaskTypeSheet: View {
                     }
                 }
 
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         showingAttachProductSheet = true
@@ -657,14 +652,14 @@ struct TaskTypeSheet: View {
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
-                .padding(.top, 4)
+                .padding(.top, OPSStyle.Layout.spacing1)
             }
         }
     }
 
     private func linkedProductRow(_ product: Product) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Text(product.name)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -674,7 +669,7 @@ struct TaskTypeSheet: View {
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Text(formatLinkedProductPrice(product))
                     .font(OPSStyle.Typography.metadata)
                     .monospacedDigit()
@@ -687,15 +682,10 @@ struct TaskTypeSheet: View {
                 Spacer()
             }
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .nestedCard()
     }
 
     private func formatLinkedProductPrice(_ product: Product) -> String {
@@ -719,9 +709,9 @@ struct TaskTypeSheet: View {
             onDelete: nil,
             collapsible: true
         ) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 if isLoadingSubTasks {
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         ProgressView().tint(OPSStyle.Colors.primaryAccent)
                         Text("LOADING…")
                             .font(OPSStyle.Typography.metadata)
@@ -757,7 +747,7 @@ struct TaskTypeSheet: View {
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
-                .padding(.top, 4)
+                .padding(.top, OPSStyle.Layout.spacing1)
             }
         }
     }
@@ -767,8 +757,8 @@ struct TaskTypeSheet: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             editingSubTask = template
         } label: {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(template.title)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -791,15 +781,10 @@ struct TaskTypeSheet: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 12)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .nestedCard()
         }
         .buttonStyle(PlainButtonStyle())
         .accessibilityLabel("Edit sub-task \(template.title)")
@@ -1022,7 +1007,7 @@ struct TaskTypeSheet: View {
                 pairToggles(dep: dep, index: index, predecessorName: depName)
 
                 // Edit mode buttons: DONE + REMOVE DEPENDENCY
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Button {
                         withAnimation(OPSStyle.Animation.spring) {
                             editingDependencyId = nil
@@ -1060,13 +1045,12 @@ struct TaskTypeSheet: View {
                 }
             }
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .padding(OPSStyle.Layout.spacing3)
+        .nestedCard()
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius, style: .continuous)
                 .stroke(
-                    isEditing ? OPSStyle.Colors.primaryAccent.opacity(0.3) : OPSStyle.Colors.cardBorder,
+                    isEditing ? OPSStyle.Colors.primaryAccent.opacity(0.3) : Color.clear,
                     lineWidth: 1
                 )
         )
@@ -1083,7 +1067,7 @@ struct TaskTypeSheet: View {
             let barHeight: CGFloat = 22
             let secondBarOffset = barWidth * (1.0 - fraction)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 // Predecessor bar with label
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 3)
@@ -1121,7 +1105,7 @@ struct TaskTypeSheet: View {
             }
         }
         .frame(height: 48)
-        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: fraction)
+        .animation(OPSStyle.Animation.standard, value: fraction)
     }
 
     private func overlapToFraction(_ dep: TaskTypeDependency) -> CGFloat {
@@ -1219,8 +1203,8 @@ struct TaskTypeSheet: View {
                         .font(OPSStyle.Typography.smallCaption)
                         .tracking(0.3)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .padding(.horizontal, 4)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .padding(.horizontal, OPSStyle.Layout.spacing1)
+                        .background(OPSStyle.Colors.background)
                 }
                 .frame(maxWidth: .infinity)
 
@@ -1250,7 +1234,7 @@ struct TaskTypeSheet: View {
             }
         }
         .frame(height: 48)
-        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: dep.minGapDaysAfterEnd)
+        .animation(OPSStyle.Animation.standard, value: dep.minGapDaysAfterEnd)
     }
 
     // MARK: - After-End Controls
@@ -1285,9 +1269,9 @@ struct TaskTypeSheet: View {
                 .font(OPSStyle.Typography.smallCaption)
                 .tracking(0.3)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .padding(.top, 4)
+                .padding(.top, OPSStyle.Layout.spacing1)
 
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 ForEach(weekdayOptions.indices, id: \.self) { i in
                     let entry = weekdayOptions[i]
                     let isSelected = entry.value == dep.weekdayConstraint
@@ -1301,14 +1285,14 @@ struct TaskTypeSheet: View {
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
                             .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.25) : Color.white.opacity(0.04))
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
+                                    .fill(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(isSelected ? OPSStyle.Colors.primaryAccent : Color.clear, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
+                                    .stroke(isSelected ? OPSStyle.Colors.text : Color.clear, lineWidth: 1)
                             )
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -1349,7 +1333,7 @@ struct TaskTypeSheet: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             // AUTO-CREATE
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("AUTO-CREATE THIS TASK")
                         .font(OPSStyle.Typography.captionBold)
@@ -1373,7 +1357,7 @@ struct TaskTypeSheet: View {
             }
 
             // INHERIT CREW
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("INHERIT CREW FROM \(predecessorName.uppercased())")
                         .font(OPSStyle.Typography.captionBold)
@@ -1397,7 +1381,7 @@ struct TaskTypeSheet: View {
                 .opacity(inheritEnabled ? 1.0 : 0.4)
             }
         }
-        .padding(.top, 4)
+        .padding(.top, OPSStyle.Layout.spacing1)
     }
 
     // MARK: - Mode Toggle (Sliding Underline) — 3-way
@@ -1450,7 +1434,7 @@ struct TaskTypeSheet: View {
             GeometryReader { geo in
                 let segW = geo.size.width / CGFloat(modes.count)
                 Rectangle()
-                    .fill(OPSStyle.Colors.primaryAccent)
+                    .fill(OPSStyle.Colors.text)
                     .frame(width: segW, height: 2)
                     .offset(x: segW * CGFloat(selectedIndex))
             }
@@ -1484,7 +1468,7 @@ struct TaskTypeSheet: View {
                 ZStack {
                     // Track background
                     Capsule()
-                        .fill(Color.white.opacity(0.08))
+                        .fill(OPSStyle.Colors.surfaceActive)
                         .frame(height: 3)
                         .padding(.horizontal, thumbR)
 
@@ -1517,10 +1501,9 @@ struct TaskTypeSheet: View {
                         Circle()
                             .fill(OPSStyle.Colors.primaryAccent)
                             .frame(width: 22, height: 22)
-                            .shadow(color: OPSStyle.Colors.primaryAccent.opacity(0.35), radius: 8, y: 2)
                     }
                     .position(x: thumbCenterX, y: geo.size.height / 2)
-                    .animation(.spring(response: 0.25, dampingFraction: 0.7), value: currentIndex)
+                    .animation(OPSStyle.Animation.quick, value: currentIndex)
                 }
                 .contentShape(Rectangle())
                 .gesture(
@@ -1549,7 +1532,7 @@ struct TaskTypeSheet: View {
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, OPSStyle.Layout.spacing1)
         }
     }
 
@@ -1819,7 +1802,7 @@ struct ColorOption: View {
                 action()
             }
         } label: {
-            VStack(spacing: 4) {
+            VStack(spacing: OPSStyle.Layout.spacing1) {
                 ZStack {
                     Circle()
                         .fill(color)
@@ -1831,7 +1814,7 @@ struct ColorOption: View {
                         )
                         .overlay(
                             Circle()
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: isSelected ? 1.5 : 0)
+                                .stroke(OPSStyle.Colors.text, lineWidth: isSelected ? 1.5 : 0)
                                 .padding(-5)
                         )
                         .scaleEffect(isSelected ? 1.1 : 1.0)

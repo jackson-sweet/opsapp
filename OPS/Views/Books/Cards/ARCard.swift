@@ -155,7 +155,7 @@ struct ARCard: View {
     private var condensedSubline: some View {
         let openCount = viewModel.outstandingInvoiceBreakdown.count
         let overdueCount = viewModel.overdueInvoicesCount
-        return HStack(spacing: 4) {
+        return HStack(spacing: OPSStyle.Layout.spacing1) {
             if isEmpty {
                 Text("// NO OPEN INVOICES")
                     .foregroundColor(OPSStyle.Colors.inactiveText)
@@ -217,7 +217,7 @@ struct ARCard: View {
     private var subline: some View {
         let openCount = viewModel.outstandingInvoiceBreakdown.count
         let overdueCount = viewModel.overdueInvoicesCount
-        return HStack(spacing: 4) {
+        return HStack(spacing: OPSStyle.Layout.spacing1) {
             Text("\(openCount) OPEN")
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             Text("·")
@@ -280,7 +280,7 @@ struct ARCard: View {
 
     private func topChaseTile(for item: MoneyDashboardViewModel.BreakdownItem) -> some View {
         Button(action: onTapTopChase) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 HStack(alignment: .center, spacing: 0) {
                     Text("TOP CHASE")
                         .font(.custom("JetBrainsMono-Medium", size: 9.5))
@@ -292,7 +292,7 @@ struct ARCard: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .accessibilityHidden(true)
                 }
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.label)
                             .font(.custom("Mohave-Medium", size: 15))
@@ -385,8 +385,8 @@ private struct TopChaseButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed
-        let bg: Color = pressed ? Color.white.opacity(0.08) : Color.white.opacity(0.04)
-        let border: Color = pressed ? Color.white.opacity(0.18) : Color.white.opacity(0.08)
+        let bg: Color = pressed ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput
+        let border: Color = pressed ? Color.white.opacity(0.18) : OPSStyle.Colors.surfaceActive
         return configuration.label
             .padding(OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
@@ -405,14 +405,14 @@ private struct TopChaseButtonStyle: ButtonStyle {
 #if DEBUG
 #Preview("ARCard — seeded") {
     ARCard(viewModel: .previewStub(), onTapTopChase: {})
-        .padding(.vertical, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing4)
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
 }
 
 #Preview("ARCard — empty") {
     ARCard(viewModel: .previewEmpty(), onTapTopChase: {})
-        .padding(.vertical, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing4)
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
 }

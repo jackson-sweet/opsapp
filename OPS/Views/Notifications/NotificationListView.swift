@@ -260,7 +260,7 @@ struct NotificationListView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .edgesIgnoringSafeArea(.all)
 
             VStack(spacing: 0) {
@@ -327,7 +327,7 @@ struct NotificationListView: View {
                             if !NotificationManager.shared.isNotificationsEnabled {
                                 pushDisabledBanner
                                     .padding(.horizontal, OPSStyle.Layout.spacing3)
-                                    .padding(.bottom, 12)
+                                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
                             }
 
                             // Sync status section — shows pending/failed operations
@@ -356,7 +356,7 @@ struct NotificationListView: View {
     // MARK: - Push Disabled Banner
 
     private var pushDisabledBanner: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: "bell.slash.fill")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -380,13 +380,13 @@ struct NotificationListView: View {
                     .font(OPSStyle.Typography.smallCaption)
                     .tracking(0.5)
                     .foregroundColor(OPSStyle.Colors.invertedText)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     .padding(.vertical, 6)
                     .background(OPSStyle.Colors.warningStatus)
                     .cornerRadius(OPSStyle.Layout.buttonRadius)
             }
         }
-        .padding(12)
+        .padding(OPSStyle.Layout.spacing2_5)
         .background(OPSStyle.Colors.warningStatus.opacity(0.1))
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
@@ -418,7 +418,7 @@ struct NotificationListView: View {
     private var userInfoHeader: some View {
         Group {
             if let user = dataController.currentUser {
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     // Avatar — prominent size so it's clearly visible on the dark background
                     UserAvatar(user: user, size: 72)
                         .overlay(
@@ -448,8 +448,8 @@ struct NotificationListView: View {
                         .font(OPSStyle.Typography.smallCaption)
                         .tracking(0.5)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
                         .cornerRadius(OPSStyle.Layout.buttonRadius)
                         .overlay(
@@ -458,7 +458,7 @@ struct NotificationListView: View {
                         )
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 24)
+                .padding(.vertical, OPSStyle.Layout.spacing4)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 // No background fill — same background as the rest of the sheet
             }
@@ -676,12 +676,7 @@ struct NotificationListView: View {
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity)
             .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .nestedCard()
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
@@ -719,7 +714,7 @@ struct NotificationListView: View {
                     }
                     .padding(.top, 2)
 
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                         HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
                             Text(notification.title.uppercased())
                                 .font(OPSStyle.Typography.bodyBold)
@@ -754,7 +749,7 @@ struct NotificationListView: View {
                     Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .padding(.top, 4)
+                        .padding(.top, OPSStyle.Layout.spacing1)
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, OPSStyle.Layout.spacing2_5)
@@ -860,19 +855,13 @@ struct NotificationListView: View {
                 .transition(collapseTransition)
             }
         }
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
-                .fill(OPSStyle.Colors.cardBackgroundDark.opacity(isExpanded ? 0.9 : 0.6))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
-                .stroke(
-                    isExpanded ? OPSStyle.Colors.primaryAccent.opacity(0.25) : OPSStyle.Colors.cardBorderSubtle,
-                    lineWidth: OPSStyle.Layout.Border.standard
-                )
+        .glassSurface(
+            borderColor: isExpanded
+                ? OPSStyle.Colors.primaryAccent.opacity(0.25)
+                : OPSStyle.Colors.glassBorder
         )
         .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, 4)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
     }
 
     /// Mark a notification as read in local state and sync to server.
@@ -980,7 +969,7 @@ struct NotificationListView: View {
             .font(OPSStyle.Typography.smallCaption)
             .foregroundColor(color)
             .frame(width: 28, height: 28)
-            .background(OPSStyle.Colors.subtleBackground)
+            .background(OPSStyle.Colors.fillNeutral)
             .clipShape(Circle())
     }
 

@@ -106,12 +106,7 @@ struct InlineTaskRow: View {
             .padding(.vertical, OPSStyle.Layout.spacing2)
         }
         .frame(minHeight: OPSStyle.Layout.touchTargetLarge)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .opacity(isTerminal ? OPSStyle.Layout.Opacity.strong : 1.0)
         .contentShape(Rectangle())
         .onTapGesture {
@@ -370,7 +365,7 @@ struct InlineTaskRow: View {
         companyId: "co-1"
     )
 
-    return VStack(spacing: 12) {
+    return VStack(spacing: OPSStyle.Layout.spacing2_5) {
         InlineTaskRow(
             task: LocalTask(
                 id: UUID(),

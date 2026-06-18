@@ -43,9 +43,9 @@ struct QuickActionSheetHeader: View {
                 }
                 .disabled(!canSave || isSaving)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.vertical, OPSStyle.Layout.spacing3)
+            .background(OPSStyle.Colors.background)
 
             Divider()
                 .background(OPSStyle.Colors.separator)
@@ -84,13 +84,13 @@ struct QuickActionContextHeader: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Rectangle()
                     .fill(accentColor ?? defaultColor)
                     .frame(width: 3, height: 60)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     if let taskName = taskName {
                         Text("TASK: \(taskName.uppercased())")
                             .font(OPSStyle.Typography.bodyBold)
@@ -114,7 +114,7 @@ struct QuickActionContextHeader: View {
                     }
 
                     if let address = formattedAddress {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: OPSStyle.Icons.locationFill)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -128,13 +128,8 @@ struct QuickActionContextHeader: View {
 
                 Spacer()
             }
-            .padding(16)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .padding(OPSStyle.Layout.spacing3)
+            .glassSurface()
         }
     }
 }

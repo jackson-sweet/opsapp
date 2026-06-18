@@ -255,8 +255,8 @@ struct HomeContentView: View {
             // Map filter chips — below carousel
             if !appState.isInProjectMode {
                 MapFilterChips(filterMode: $mapFilterMode)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 4)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.top, OPSStyle.Layout.spacing1)
             }
 
             // Billable-this-week rollup — sits below the TODAY / ACTIVE / ALL
@@ -268,7 +268,7 @@ struct HomeContentView: View {
                     rollup: billableRollup,
                     onSelect: openBillableItem
                 )
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.top, OPSStyle.Layout.spacing1)
             }
 
@@ -277,7 +277,7 @@ struct HomeContentView: View {
             // Show project action bar when in project mode
             if appState.isInProjectMode, let project = getActiveProject() {
                 ProjectActionBar(project: project)
-                    //.padding(.horizontal, 24)
+                    //.padding(.horizontal, OPSStyle.Layout.spacing4)
                     .padding(.bottom, 120) // Add padding for tab bar
             }
         }
@@ -328,7 +328,7 @@ struct HomeContentView: View {
                     )
                 } else if !isLoading {
                     emptyProjectsView
-                        .padding(.top, 20)
+                        .padding(.top, OPSStyle.Layout.spacing3_5)
                 }
             }
         }
@@ -368,23 +368,23 @@ struct HomeContentView: View {
                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         )
         .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .padding(.horizontal, 20) // Match carousel horizontal padding
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5) // Match carousel horizontal padding
         .contentShape(Rectangle()) // Make entire card tappable
     }
     
     private var loadingOverlay: some View {
         ZStack {
-            // Semi-transparent black background
-            OPSStyle.Colors.cardBackgroundDark
+            // Full-screen dimming scrim — canvas black over the map
+            OPSStyle.Colors.background
                 .ignoresSafeArea()
 
-            VStack(spacing: 16) {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
                 // Tactical loading bar
                 TacticalLoadingBarAnimated(
                     barCount: 8,
                     barWidth: 2,
                     barHeight: 6,
-                    spacing: 4,
+                    spacing: OPSStyle.Layout.spacing1,
                     emptyColor: OPSStyle.Colors.pinDotNeutral,
                     fillColor: OPSStyle.Colors.pinDotActive
                 )
@@ -407,7 +407,7 @@ struct HomeContentView: View {
             // Progress and arrival info
             HStack {
                 // Time remaining
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("TIME")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -426,7 +426,7 @@ struct HomeContentView: View {
                 Spacer()
                 
                 // Distance remaining
-                VStack(alignment: .center, spacing: 4) {
+                VStack(alignment: .center, spacing: OPSStyle.Layout.spacing1) {
                     Text("DISTANCE")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -445,7 +445,7 @@ struct HomeContentView: View {
                 Spacer()
                 
                 // Arrival time
-                VStack(alignment: .trailing, spacing: 4) {
+                VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing1) {
                     Text("ARRIVAL")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -503,7 +503,7 @@ struct HomeContentView: View {
                         .allowsHitTesting(false)
                     
                     // Message card
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         // Icon
                         Image(systemName: "location.slash.fill")
                             .font(.system(size: OPSStyle.Layout.IconSize.xxl))
@@ -536,25 +536,15 @@ struct HomeContentView: View {
                                     .font(OPSStyle.Typography.button)
                             }
                             .foregroundColor(OPSStyle.Colors.invertedText)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 12)
+                            .padding(.horizontal, OPSStyle.Layout.spacing4)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
                             .background(OPSStyle.Colors.primaryAccent)
                             .cornerRadius(OPSStyle.Layout.buttonRadius)
                         }
-                        .padding(.top, 8)
+                        .padding(.top, OPSStyle.Layout.spacing2)
                     }
-                    .padding(32)
-                    .background(
-                        ZStack {
-                            // Blur effect
-                            BlurView(style: .systemThinMaterialDark)
-                            
-                            // Semi-transparent overlay
-                            Color(OPSStyle.Colors.cardBackgroundDark)
-                                .opacity(0.3)
-                        }
-                    )
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .padding(OPSStyle.Layout.spacing5)
+                    .glassDense()
                     .padding(.horizontal, 40)
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))

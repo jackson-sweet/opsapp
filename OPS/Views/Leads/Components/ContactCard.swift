@@ -22,20 +22,20 @@ struct ContactCard: View {
     let opportunity: Opportunity
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             header
             actionRow
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassSurface()
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             InitialsAvatar(name: displayName, size: 40)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -150,7 +150,7 @@ private struct CTAButton: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 4) {
+            VStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(systemName: icon)
                     .font(.system(size: 14, weight: .regular))
                 Text(label)
@@ -160,7 +160,7 @@ private struct CTAButton: View {
             }
             .foregroundColor(OPSStyle.Colors.text2)
             .frame(maxWidth: .infinity, minHeight: 44)
-            .padding(.vertical, 8)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
                     .fill(OPSStyle.Colors.surfaceInput)
@@ -213,7 +213,7 @@ private struct InitialsAvatar: View {
 #if DEBUG
 #Preview("ContactCard / states") {
     ScrollView {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             ContactCard(opportunity: {
                 let o = Opportunity.preview(
                     contactName: "Helen Calloway",
@@ -242,7 +242,7 @@ private struct InitialsAvatar: View {
                 estimatedValue: nil
             ))
         }
-        .padding(.vertical, 20)
+        .padding(.vertical, OPSStyle.Layout.spacing3_5)
     }
     .background(OPSStyle.Colors.background)
     .preferredColorScheme(.dark)

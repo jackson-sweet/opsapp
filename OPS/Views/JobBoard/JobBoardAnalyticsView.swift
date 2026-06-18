@@ -96,20 +96,20 @@ struct TimeFrameSelector: View {
                                 : OPSStyle.Colors.secondaryText
                         )
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, OPSStyle.Layout.spacing2_5)
                         .background(
                             selectedTimeframe == timeframe
-                                ? OPSStyle.Colors.primaryAccent.opacity(0.1)
+                                ? OPSStyle.Colors.surfaceActive
                                 : Color.clear
                         )
                 }
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 }
@@ -143,7 +143,7 @@ struct KeyMetricsGrid: View {
     }
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: OPSStyle.Layout.spacing3) {
             MetricCard(
                 title: "ACTIVE",
                 value: "\(activeProjects)",
@@ -182,7 +182,7 @@ struct MetricCard: View {
     let color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack {
                 Circle()
                     .fill(color)
@@ -202,13 +202,8 @@ struct MetricCard: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(color.opacity(0.2), lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(OPSStyle.Layout.spacing3)
+        .nestedCard()
     }
 }
 
@@ -224,7 +219,7 @@ struct ProjectStatusChart: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("PROJECT STATUS DISTRIBUTION")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -236,7 +231,7 @@ struct ProjectStatusChart: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 40)
             } else {
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     ForEach(statusData, id: \.status) { item in
                         StatusBar(
                             status: item.status,
@@ -247,13 +242,8 @@ struct ProjectStatusChart: View {
                 }
             }
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
     }
 }
 
@@ -268,7 +258,7 @@ struct StatusBar: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             HStack {
                 Text(status.displayName)
                     .font(OPSStyle.Typography.caption)
@@ -284,7 +274,7 @@ struct StatusBar: View {
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .fill(OPSStyle.Colors.cardBackground)
+                        .fill(OPSStyle.Colors.fillNeutralDim)
 
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                         .fill(status.color)
@@ -328,7 +318,7 @@ struct TaskCompletionTrend: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("TASK COMPLETION TREND")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -340,10 +330,10 @@ struct TaskCompletionTrend: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 40)
             } else {
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     // Legend
-                    HStack(spacing: 20) {
-                        HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing3_5) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Circle()
                                 .fill(OPSStyle.Colors.successStatus)
                                 .frame(width: 8, height: 8)
@@ -352,7 +342,7 @@ struct TaskCompletionTrend: View {
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
 
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Circle()
                                 .fill(OPSStyle.Colors.primaryAccent)
                                 .frame(width: 8, height: 8)
@@ -363,9 +353,9 @@ struct TaskCompletionTrend: View {
                     }
 
                     // Simple bar chart
-                    HStack(alignment: .bottom, spacing: 8) {
+                    HStack(alignment: .bottom, spacing: OPSStyle.Layout.spacing2) {
                         ForEach(trendData, id: \.date) { item in
-                            VStack(spacing: 4) {
+                            VStack(spacing: OPSStyle.Layout.spacing1) {
                                 HStack(spacing: 2) {
                                     BarView(
                                         value: Double(item.completed),
@@ -391,13 +381,8 @@ struct TaskCompletionTrend: View {
                 }
             }
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
     }
 }
 
@@ -439,7 +424,7 @@ struct ClientDistributionCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("TOP CLIENTS")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -449,9 +434,9 @@ struct ClientDistributionCard: View {
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
+                    .padding(.vertical, OPSStyle.Layout.spacing3_5)
             } else {
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach(topClients, id: \.client.id) { item in
                         HStack {
                             Text(item.client.name)
@@ -468,19 +453,14 @@ struct ClientDistributionCard: View {
 
                         if item.client != topClients.last?.client {
                             Divider()
-                                .background(OPSStyle.Colors.cardBackground)
+                                .background(OPSStyle.Colors.separator)
                         }
                     }
                 }
             }
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
     }
 }
 
@@ -502,7 +482,7 @@ struct TeamPerformanceCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("TEAM PERFORMANCE")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -512,9 +492,9 @@ struct TeamPerformanceCard: View {
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
+                    .padding(.vertical, OPSStyle.Layout.spacing3_5)
             } else {
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach(topPerformers, id: \.member.id) { item in
                         HStack {
                             // Avatar placeholder
@@ -540,31 +520,26 @@ struct TeamPerformanceCard: View {
 
                         if item.member.id != topPerformers.last?.member.id {
                             Divider()
-                                .background(OPSStyle.Colors.cardBackground)
+                                .background(OPSStyle.Colors.separator)
                         }
                     }
                 }
             }
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
     }
 }
 
 // MARK: - Revenue Analysis Card (Placeholder)
 struct RevenueAnalysisCard: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("REVENUE ANALYSIS")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 HStack {
                     Text("Monthly Target")
                         .font(OPSStyle.Typography.caption)
@@ -593,7 +568,7 @@ struct RevenueAnalysisCard: View {
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .fill(OPSStyle.Colors.cardBackground)
+                            .fill(OPSStyle.Colors.fillNeutralDim)
 
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                             .fill(OPSStyle.Colors.successStatus)
@@ -608,12 +583,7 @@ struct RevenueAnalysisCard: View {
                     .frame(maxWidth: .infinity)
             }
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
     }
 }

@@ -255,7 +255,7 @@ struct DeckTab2DView: View {
         let startY = floor(visMinY / gridSpacing) * gridSpacing
 
         let dotSize: CGFloat = 1.5
-        let dotColor = Color.white.opacity(0.08)
+        let dotColor = OPSStyle.Colors.surfaceActive
 
         var x = startX
         while x <= visMaxX {
@@ -294,8 +294,8 @@ struct DeckTab2DView: View {
             context.fill(path, with: .color(tint.opacity(0.10)))
             context.stroke(path, with: .color(tint.opacity(0.30)), lineWidth: 1)
         } else {
-            context.fill(path, with: .color(Color.white.opacity(0.04)))
-            context.stroke(path, with: .color(Color.white.opacity(0.08)), lineWidth: 1)
+            context.fill(path, with: .color(OPSStyle.Colors.surfaceInput))
+            context.stroke(path, with: .color(OPSStyle.Colors.surfaceActive), lineWidth: 1)
         }
 
         drawSelectionHighlight(context: context, path: path, selected: selected)
@@ -327,7 +327,7 @@ struct DeckTab2DView: View {
         let cr: CGFloat = 4
         let pillRect = CGRect(x: cx - pillW / 2, y: cy - pillH / 2, width: pillW, height: pillH)
         context.fill(Path(roundedRect: pillRect, cornerRadius: cr),
-                     with: .color(OPSStyle.Colors.cardBackground.opacity(0.85)))
+                     with: .color(OPSStyle.Colors.glassDenseApprox))
         context.draw(Text(label).font(.system(size: 10, weight: .semibold, design: .monospaced))
             .foregroundColor(Color.white.opacity(0.9)),
                      at: CGPoint(x: cx, y: cy))
@@ -986,7 +986,7 @@ struct DeckTab2DView: View {
             width: textSize.width + padH * 2,
             height: textSize.height + padV * 2
         )
-        context.fill(Path(roundedRect: bgRect, cornerRadius: 4), with: .color(lineColor))
+        context.fill(Path(roundedRect: bgRect, cornerRadius: OPSStyle.Layout.chipRadius), with: .color(lineColor))
         context.draw(resolved, at: CGPoint(x: midX, y: midY), anchor: .center)
     }
 
@@ -995,8 +995,8 @@ struct DeckTab2DView: View {
     /// switches to the warning accent so it reads as "active mode" at a glance.
     @ViewBuilder
     private func measurementToolOverlay(viewportSize: CGSize) -> some View {
-        VStack(alignment: .trailing, spacing: 8) {
-            HStack(spacing: 8) {
+        VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Button {
                     measurementMode.toggle()
                     if measurementMode {
@@ -1062,12 +1062,12 @@ struct DeckTab2DView: View {
 
             if let hint = measurementHintText {
                 Text(hint)
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.warningStatus)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
                     .background(Color.black.opacity(0.6))
-                    .cornerRadius(4)
+                    .cornerRadius(OPSStyle.Layout.chipRadius)
             }
 
             if let hint = selectionHintText {
@@ -1084,8 +1084,8 @@ struct DeckTab2DView: View {
                 selectionReadoutCard(buildSelectionReadout())
             }
         }
-        .padding(.top, 16)
-        .padding(.trailing, 16)
+        .padding(.top, OPSStyle.Layout.spacing3)
+        .padding(.trailing, OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
     }
 

@@ -28,12 +28,12 @@ struct ActivityTimeline: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             PanelSectionHeader(label: "RECENT ACTIVITY", hint: countHint)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.bottom, 10)
 
             content
                 .glassSurface()
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 
@@ -77,7 +77,7 @@ private struct ActivityRow: View {
     let activity: Activity
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
             iconTile
 
             VStack(alignment: .leading, spacing: 2) {
@@ -105,7 +105,7 @@ private struct ActivityRow: View {
                 .monospacedDigit()
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
     }
 
     // MARK: - Visual elements
@@ -200,7 +200,7 @@ private struct EmptyLine: View {
 #if DEBUG
 #Preview("ActivityTimeline / loaded") {
     ScrollView {
-        VStack(spacing: 24) {
+        VStack(spacing: OPSStyle.Layout.spacing4) {
             ActivityTimeline(activities: [
                 {
                     let a = Activity(opportunityId: "p", companyId: "p", type: .email,
@@ -235,7 +235,7 @@ private struct EmptyLine: View {
                 }()
             ])
         }
-        .padding(.vertical, 20)
+        .padding(.vertical, OPSStyle.Layout.spacing3_5)
     }
     .background(OPSStyle.Colors.background)
     .preferredColorScheme(.dark)
@@ -243,10 +243,10 @@ private struct EmptyLine: View {
 
 #Preview("ActivityTimeline / empty") {
     ScrollView {
-        VStack(spacing: 24) {
+        VStack(spacing: OPSStyle.Layout.spacing4) {
             ActivityTimeline(activities: [])
         }
-        .padding(.vertical, 20)
+        .padding(.vertical, OPSStyle.Layout.spacing3_5)
     }
     .background(OPSStyle.Colors.background)
     .preferredColorScheme(.dark)

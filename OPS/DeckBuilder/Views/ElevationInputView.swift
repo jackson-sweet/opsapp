@@ -27,7 +27,7 @@ struct ElevationInputView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: OPSStyle.Layout.spacing3_5) {
                     if let vertexId = targetVertexId {
                         // Single-vertex mode: only edit this vertex's height
                         singleVertexSection(vertexId: vertexId)
@@ -48,7 +48,7 @@ struct ElevationInputView: View {
 
                     Spacer()
                 }
-                .padding(20)
+                .padding(OPSStyle.Layout.spacing3_5)
             }
             .background(OPSStyle.Colors.background)
             .navigationTitle(targetVertexId != nil ? "Vertex Height" : "Deck Height")

@@ -66,7 +66,7 @@ struct ScheduleView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .ignoresSafeArea()
 
                 VStack(spacing: 0) {
@@ -93,13 +93,13 @@ struct ScheduleView: View {
                         hasActiveFilters: viewModel.hasActiveFilters,
                         filterCount: viewModel.activeFilterCount
                     )
-                    .padding(.bottom, 8)
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
 
                     // Bug 68123654 — iPhone Calendar Mirror reminder banner
                     if shouldShowMirrorBanner {
                         mirrorBanner
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 8)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.bottom, OPSStyle.Layout.spacing2)
                     }
                 
                 VStack(spacing: 0) {
@@ -383,7 +383,7 @@ struct ScheduleView: View {
             Spacer()
 
             VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: OPSStyle.Icons.schedule)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.wizardAccent)
@@ -392,13 +392,13 @@ struct ScheduleView: View {
                         .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
 
                 Text("Projects, tasks, and meetings show up here as you create them. Your crew sees their schedule the moment they open OPS.")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineSpacing(4)
-                    .padding(.bottom, 20)
+                    .padding(.bottom, OPSStyle.Layout.spacing3_5)
 
                 VStack(alignment: .leading, spacing: 0) {
                     scheduleEmptyBullet(index: 1, text: "Create your first project")
@@ -413,7 +413,7 @@ struct ScheduleView: View {
                         .padding(.leading, 30)
                     scheduleEmptyBullet(index: 3, text: "Schedule it on the calendar")
                 }
-                .padding(.bottom, 24)
+                .padding(.bottom, OPSStyle.Layout.spacing4)
 
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -441,12 +441,12 @@ struct ScheduleView: View {
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.buttonText)
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .frame(height: OPSStyle.Layout.touchTargetStandard)
                     .background(OPSStyle.Colors.wizardAccent)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
-                .padding(.bottom, 12)
+                .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -460,16 +460,8 @@ struct ScheduleView: View {
                 }
             }
             .padding(28)
-            .background(
-                BlurView(style: .systemUltraThinMaterialDark)
-                    .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
-            )
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .padding(.horizontal, 20)
+            .glassSurface()
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             Spacer()
         }
@@ -492,7 +484,7 @@ struct ScheduleView: View {
     // MARK: - iPhone Calendar Mirror banner (Bug 68123654)
 
     private var mirrorBanner: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Text("// MIRROR DISABLED · TAP TO ENABLE")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -509,12 +501,7 @@ struct ScheduleView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
         .contentShape(Rectangle())
         .onTapGesture {
             Task { try? await mirrorService.enable() }

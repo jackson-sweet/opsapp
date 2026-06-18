@@ -1092,7 +1092,7 @@ struct DeckCanvasView: View {
             : OPSStyle.Colors.cardBackground.opacity(0.95)
         context.fill(Path(roundedRect: pillRect, cornerRadius: cr), with: .color(pillColor))
         context.stroke(Path(roundedRect: pillRect, cornerRadius: cr),
-                       with: .color(Color.white.opacity(0.08)), lineWidth: 0.5)
+                       with: .color(OPSStyle.Colors.surfaceActive), lineWidth: 0.5)
 
         let fontSize = scaledSize(11, min: 8, max: 18)
         let labelColor: Color = (isStale || hasAccuracy) ? OPSStyle.Colors.warningStatus : Color.white
@@ -1157,8 +1157,8 @@ struct DeckCanvasView: View {
                 // Selection summary overlay
                 selectionSummaryContent
             }
-            .padding(.leading, 12)
-            .padding(.bottom, 12)
+            .padding(.leading, OPSStyle.Layout.spacing2_5)
+            .padding(.bottom, OPSStyle.Layout.spacing2_5)
         }
     }
 
@@ -1166,7 +1166,7 @@ struct DeckCanvasView: View {
     @ViewBuilder
     private var deckHeightOverlay: some View {
         if let heightText = deckHeightDisplayText {
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(systemName: "arrow.up.and.down")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -1177,7 +1177,7 @@ struct DeckCanvasView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(OPSStyle.Colors.cardBackground.opacity(0.85))
-            .cornerRadius(6)
+            .cornerRadius(OPSStyle.Layout.cardRadius)
         }
     }
 
@@ -1228,7 +1228,7 @@ struct DeckCanvasView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .background(OPSStyle.Colors.cardBackground.opacity(0.85))
-                .cornerRadius(6)
+                .cornerRadius(OPSStyle.Layout.cardRadius)
         }
     }
 

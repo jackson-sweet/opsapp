@@ -32,10 +32,10 @@ struct CascadePreviewSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             // Drag indicator
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                 .fill(Color.white.opacity(0.3))
                 .frame(width: 36, height: 4)
-                .padding(.top, 8)
+                .padding(.top, OPSStyle.Layout.spacing2)
 
             // Header
             HStack {
@@ -47,12 +47,12 @@ struct CascadePreviewSheet: View {
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.top, OPSStyle.Layout.spacing3)
 
             // Task changes list
             ScrollView {
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     // The pushed task itself
                     changeRow(
                         taskName: pushedTaskName,
@@ -67,7 +67,7 @@ struct CascadePreviewSheet: View {
                     cascadeGroup(title: "Same crew", changes: crewChanges)
                     cascadeGroup(title: "Dependent tasks", changes: dependencyChanges)
                 }
-                .padding(.vertical, 12)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
             }
             .frame(maxHeight: 300)
 
@@ -83,11 +83,11 @@ struct CascadePreviewSheet: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
             // Action buttons
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Button(action: {
                     onCancel()
                     dismiss()
@@ -97,12 +97,7 @@ struct CascadePreviewSheet: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(maxWidth: .infinity)
                         .frame(height: OPSStyle.Layout.touchTargetStandard)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                        )
+                        .nestedCard()
                 }
 
                 Button(action: {
@@ -118,10 +113,10 @@ struct CascadePreviewSheet: View {
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.bottom, OPSStyle.Layout.spacing3)
         }
-        .background(OPSStyle.Colors.background)
+        .glassDense()
     }
 
     private var crewChanges: [SchedulingEngine.CascadeResult.TaskDateChange] {
@@ -137,7 +132,7 @@ struct CascadePreviewSheet: View {
     @ViewBuilder
     private func cascadeGroup(title: String, changes: [SchedulingEngine.CascadeResult.TaskDateChange]) -> some View {
         if !changes.isEmpty {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: "arrow.turn.down.right")
                     .font(.system(size: 12))
                 Text(title)
@@ -145,8 +140,8 @@ struct CascadePreviewSheet: View {
                 Spacer()
             }
             .foregroundColor(OPSStyle.Colors.tertiaryText)
-            .padding(.horizontal, 16)
-            .padding(.top, 4)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.top, OPSStyle.Layout.spacing1)
 
             ForEach(changes) { change in
                 changeRow(
@@ -162,13 +157,13 @@ struct CascadePreviewSheet: View {
 
     @ViewBuilder
     private func changeRow(taskName: String, oldStart: Date?, newStart: Date, newEnd: Date, isPrimary: Bool) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(taskName)
                     .font(isPrimary ? OPSStyle.Typography.bodyBold : OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     if let old = oldStart {
                         Text(dateFormatter.string(from: old))
                             .strikethrough()
@@ -184,11 +179,10 @@ struct CascadePreviewSheet: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(isPrimary ? 1.0 : 0.5))
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .glassSurface()
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
     private func taskName(for taskId: String) -> String {

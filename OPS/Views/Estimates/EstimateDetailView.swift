@@ -189,12 +189,7 @@ struct EstimateDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(OPSStyle.Layout.spacing2_5)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(color.opacity(0.35), lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface(borderColor: color.opacity(0.35))
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.top, OPSStyle.Layout.spacing2)
     }
@@ -242,8 +237,9 @@ struct EstimateDetailView: View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             HStack {
                 Text(estimate.estimateNumber.isEmpty ? "NEW ESTIMATE" : estimate.estimateNumber)
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .font(OPSStyle.Typography.screenTitle(for: estimate.estimateNumber.isEmpty ? "NEW ESTIMATE" : estimate.estimateNumber))
+                    .textCase(.uppercase)
+                    .foregroundColor(OPSStyle.Colors.text)
                 Spacer()
             }
 
@@ -272,7 +268,7 @@ struct EstimateDetailView: View {
 
     private var statusBadge: some View {
         let color = estimate.status.badgeColor
-        return HStack(spacing: 4) {
+        return HStack(spacing: OPSStyle.Layout.spacing1) {
             Circle()
                 .fill(color)
                 .frame(width: 8, height: 8)
@@ -296,7 +292,7 @@ struct EstimateDetailView: View {
                     Button {
                         withAnimation(OPSStyle.Animation.spring) { showBreakdown.toggle() }
                     } label: {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Text(showBreakdown ? "BUNDLED" : "BREAKDOWN")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -328,16 +324,11 @@ struct EstimateDetailView: View {
                         }
 
                         if index < parentItems.count - 1 {
-                            Divider().background(OPSStyle.Colors.cardBorder)
+                            Divider().background(OPSStyle.Colors.line)
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
         }
@@ -359,7 +350,7 @@ struct EstimateDetailView: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Text(item.type.rawValue.uppercased())
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -407,8 +398,8 @@ struct EstimateDetailView: View {
         }
         .padding(.leading, OPSStyle.Layout.spacing3 + 14)
         .padding(.trailing, OPSStyle.Layout.spacing3)
-        .padding(.vertical, 4)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.3))
+        .padding(.vertical, OPSStyle.Layout.spacing1)
+        .background(OPSStyle.Colors.surfaceHover)
     }
 
     /// Child-row metadata: "qty unit · [chosen option] · unit price". The option
@@ -469,12 +460,7 @@ struct EstimateDetailView: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.top, OPSStyle.Layout.spacing3)
         }

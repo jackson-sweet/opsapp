@@ -95,12 +95,7 @@ struct OptionsReadOnlyView: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private func valueChips(_ values: [ProductOptionValue]) -> some View {
@@ -111,7 +106,7 @@ struct OptionsReadOnlyView: View {
                         .font(OPSStyle.Typography.metadata)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)

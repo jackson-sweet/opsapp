@@ -17,7 +17,7 @@ struct RefreshIndicator: View {
             ZStack {
                 
                 // Indicator container
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     ZStack {
                         
                         if isLoading {
@@ -48,19 +48,11 @@ struct RefreshIndicator: View {
                         .font(OPSStyle.Typography.status)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                .padding(24)
-                .background(
-                    ZStack {
-                        BlurView(style: .systemUltraThinMaterialDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.85))
-                    }
-                )
+                .padding(OPSStyle.Layout.spacing4)
+                .glassDense()
                 .scaleEffect(isPresented ? 1 : 0.8)
                 .opacity(isPresented ? 1 : 0)
-                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isPresented)
+                .animation(OPSStyle.Animation.standard, value: isPresented)
             }
             .transition(.opacity)
             .onAppear {

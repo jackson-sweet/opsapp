@@ -89,9 +89,9 @@ struct TimeOffRequestSheet: View {
                                 .foregroundColor(Color(red: 196/255, green: 168/255, blue: 104/255).opacity(0.35)),
                             alignment: .bottom
                         )
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 24)
-                        .padding(.top, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.bottom, OPSStyle.Layout.spacing4)
+                        .padding(.top, OPSStyle.Layout.spacing3_5)
 
                         // Bug 81470acd — multi-target row. Shown for every
                         // role (so the user knows whose request this is)
@@ -100,24 +100,24 @@ struct TimeOffRequestSheet: View {
                         // crew so they can't even attempt to change it.
                         sectionLabel(canRequestForOthers ? "FOR" : "FOR YOU")
                         targetRow
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.bottom, OPSStyle.Layout.spacing3_5)
 
                         // From date
                         sectionLabel("FROM")
                         DatePicker("", selection: $startDate, displayedComponents: .date)
                             .datePickerStyle(.compact)
                             .colorScheme(.dark)
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 12)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                         // To date
                         sectionLabel("TO")
                         DatePicker("", selection: $endDate, in: startDate..., displayedComponents: .date)
                             .datePickerStyle(.compact)
                             .colorScheme(.dark)
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.bottom, OPSStyle.Layout.spacing3_5)
 
                         // Reason field
                         sectionLabel("REASON (OPTIONAL)")
@@ -130,13 +130,14 @@ struct TimeOffRequestSheet: View {
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                             .padding(14)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 2)
-                                    .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
                             )
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 32)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.bottom, OPSStyle.Layout.spacing5)
 
                         // Submit button (amber)
                         Button(action: submit) {
@@ -153,11 +154,11 @@ struct TimeOffRequestSheet: View {
                             }
                             .frame(height: 52)
                             .background(Color(red: 196/255, green: 168/255, blue: 104/255))
-                            .cornerRadius(2)
+                            .cornerRadius(OPSStyle.Layout.progressBarRadius)
                         }
                         .disabled(isSaving)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 32)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.bottom, OPSStyle.Layout.spacing5)
                     }
                 }
             }
@@ -213,20 +214,20 @@ struct TimeOffRequestSheet: View {
             ? (targets.first?.fullName ?? "You")
             : "\(targets.count) team members"
 
-        return HStack(spacing: 12) {
+        return HStack(spacing: OPSStyle.Layout.spacing2_5) {
             HStack(spacing: -6) {
                 ForEach(Array(targets.prefix(3))) { user in
                     UserAvatar(user: user, size: 28)
                         .overlay(
                             Circle()
-                                .stroke(OPSStyle.Colors.cardBackgroundDark, lineWidth: 1.5)
+                                .stroke(OPSStyle.Colors.background, lineWidth: 1.5)
                         )
                 }
                 if targets.count > 3 {
                     Text("+\(targets.count - 3)")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .padding(.leading, 8)
+                        .padding(.leading, OPSStyle.Layout.spacing2)
                 }
             }
 
@@ -245,18 +246,14 @@ struct TimeOffRequestSheet: View {
             }
         }
         .padding(14)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .overlay(
-            RoundedRectangle(cornerRadius: 2)
-                .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
-        )
+        .glassSurface()
     }
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
             .font(OPSStyle.Typography.microLabel)
             .foregroundColor(OPSStyle.Colors.secondaryText)
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.bottom, 6)
     }
 

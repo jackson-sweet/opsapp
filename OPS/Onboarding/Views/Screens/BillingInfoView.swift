@@ -201,13 +201,13 @@ struct BillingInfoView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 40)
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
 
             Spacer()
                 .frame(height: 48)
 
             // Content with fade-in animation
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                 Text("Full access. No card required.")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -228,7 +228,7 @@ struct BillingInfoView: View {
                 Button {
                     showPlanSelection = true
                 } label: {
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         Text("SEE PLANS")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -240,7 +240,7 @@ struct BillingInfoView: View {
                 }
             }
             .padding(.horizontal, 40)
-            .padding(.top, 32)
+            .padding(.top, OPSStyle.Layout.spacing5)
             .opacity(showContent ? 1 : 0)
             .offset(y: showContent ? 0 : 20)
         }
@@ -248,7 +248,7 @@ struct BillingInfoView: View {
 
     private func trialBenefitRow(text: String, index: Int, isLast: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Text("→")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -257,7 +257,7 @@ struct BillingInfoView: View {
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
             if !isLast {
                 Rectangle()
@@ -300,19 +300,19 @@ struct BillingInfoView: View {
                 .frame(height: 48)
 
             // Content with fade-in animation
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                 if let company = dataController.getCurrentUserCompany() {
                     Text(company.name)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
 
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     Text("YOUR SEAT")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Image(systemName: isSeated ? "checkmark.circle.fill" : "xmark.circle.fill")
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(isSeated ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
@@ -327,12 +327,12 @@ struct BillingInfoView: View {
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                     }
-                    .padding(12)
+                    .padding(OPSStyle.Layout.spacing2_5)
                     .background(OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
 
                     if !isSeated {
-                        VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             // Show warning if no seats available
                             if seatsInfo.used >= seatsInfo.total {
                                 Text("You will not be able to use the app until your administrator gives you access.")
@@ -348,12 +348,12 @@ struct BillingInfoView: View {
                                let adminId = company.getAdminIds().first,
                                let admin = dataController.getUser(id: adminId) {
 
-                                VStack(alignment: .leading, spacing: 12) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                                     Text("\(admin.firstName) \(admin.lastName)")
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
 
-                                    HStack(spacing: 12) {
+                                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                         if let phone = admin.phone {
                                             Button {
                                                 if let url = URL(string: "tel://\(phone)") {
@@ -368,7 +368,7 @@ struct BillingInfoView: View {
                                                 }
                                                 .foregroundColor(OPSStyle.Colors.invertedText)
                                                 .frame(maxWidth: .infinity)
-                                                .padding(.vertical, 12)
+                                                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                                                 .background(OPSStyle.Colors.primaryText)
                                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                             }
@@ -388,7 +388,7 @@ struct BillingInfoView: View {
                                                 }
                                                 .foregroundColor(OPSStyle.Colors.invertedText)
                                                 .frame(maxWidth: .infinity)
-                                                .padding(.vertical, 12)
+                                                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                                                 .background(OPSStyle.Colors.primaryText)
                                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                             }
@@ -397,7 +397,7 @@ struct BillingInfoView: View {
                                 }
                             }
                         }
-                        .padding(.top, 8)
+                        .padding(.top, OPSStyle.Layout.spacing2)
                     }
                 }
             }

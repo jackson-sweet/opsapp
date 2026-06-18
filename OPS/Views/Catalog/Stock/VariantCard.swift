@@ -80,16 +80,10 @@ struct VariantCard: View {
         .padding(.horizontal, paddingH)
         .padding(.vertical, paddingV)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(
-                    row.thresholdStatus == .critical
-                        ? OPSStyle.Colors.errorStatus
-                        : OPSStyle.Colors.cardBorder,
-                    lineWidth: OPSStyle.Layout.Border.standard
-                )
+        .glassSurface(
+            borderColor: row.thresholdStatus == .critical
+                ? OPSStyle.Colors.errorStatus
+                : OPSStyle.Colors.glassBorder
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)

@@ -18,7 +18,7 @@ struct CompanyCodeDisplay: View {
     @State private var copied = false
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             // Code display with brackets
             codeDisplayView
 
@@ -28,7 +28,7 @@ struct CompanyCodeDisplay: View {
     }
 
     private var codeDisplayView: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             Text("[")
                 .font(OPSStyle.Typography.title)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -43,8 +43,8 @@ struct CompanyCodeDisplay: View {
                 .font(OPSStyle.Typography.title)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.vertical, OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -65,7 +65,7 @@ struct CompanyCodeDisplay: View {
                 copied = false
             }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: copied ? "checkmark" : OPSStyle.Icons.copy)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                 Text(copied ? "Copied!" : "Copy Code")
@@ -89,7 +89,7 @@ struct CompanyCodeInput: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             Text("[")
                 .font(OPSStyle.Typography.title)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -109,8 +109,8 @@ struct CompanyCodeInput: View {
                 .font(OPSStyle.Typography.title)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.vertical, OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -146,7 +146,7 @@ struct CompanyCodeSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             // Label
             Text(label)
                 .font(OPSStyle.Typography.captionBold)

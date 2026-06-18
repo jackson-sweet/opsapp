@@ -273,12 +273,6 @@ struct ProductLineModuleView: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
                 .padding(OPSStyle.Layout.spacing2)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
             }
         }
         .padding(OPSStyle.Layout.spacing3)

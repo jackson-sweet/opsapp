@@ -61,7 +61,7 @@ struct LinkedProductsAttachSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
                 VStack(spacing: 0) {
                     searchField
                     if isLoading {
@@ -137,13 +137,15 @@ struct LinkedProductsAttachSheet: View {
             }
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
-            Rectangle()
-                .fill(OPSStyle.Colors.separator)
-                .frame(height: 1),
-            alignment: .bottom
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.top, OPSStyle.Layout.spacing3)
+        .padding(.bottom, OPSStyle.Layout.spacing2)
     }
 
     // MARK: - Row
@@ -162,7 +164,7 @@ struct LinkedProductsAttachSheet: View {
                 Task { await attach(product) }
             }
         } label: {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     Text(product.name)
                         .font(OPSStyle.Typography.bodyBold)
@@ -189,12 +191,7 @@ struct LinkedProductsAttachSheet: View {
             .padding(OPSStyle.Layout.spacing2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
         .buttonStyle(PlainButtonStyle())
         .disabled(isSaving)

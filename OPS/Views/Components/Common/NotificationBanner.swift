@@ -16,18 +16,7 @@ struct NotificationBanner: View {
         case success
         case error
         case info
-        
-        var backgroundColor: Color {
-            switch self {
-            case .success:
-                return OPSStyle.Colors.cardBackgroundDark
-            case .error:
-                return OPSStyle.Colors.cardBackgroundDark
-            case .info:
-                return OPSStyle.Colors.cardBackgroundDark
-            }
-        }
-        
+
         var iconColor: Color {
             switch self {
             case .success:
@@ -53,35 +42,29 @@ struct NotificationBanner: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Status bar background
+            // Status bar spacer
             Color.clear
                 .frame(height: 50) // Status bar height
-                .background(
-                    BlurView(style: .systemUltraThinMaterialDark)
-                        .overlay(type.backgroundColor.opacity(0.85))
-                )
-            
+
             // Banner content
             HStack(spacing: 10) {
                 Image(systemName: type.iconName)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(type.iconColor)
-                
+
                 Text(message)
                     .font(OPSStyle.Typography.cardSubtitle)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
-                
+
                 Spacer()
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .frame(maxWidth: .infinity)
-            .background(
-                BlurView(style: .systemUltraThinMaterialDark)
-                    .overlay(type.backgroundColor.opacity(0.85))
-            )
         }
+        .frame(maxWidth: .infinity)
+        .glassDense(cornerRadius: 0)
         .transition(.asymmetric(
             insertion: .move(edge: .top),
             removal: .move(edge: .top)
@@ -115,7 +98,7 @@ struct NotificationBannerModifier: ViewModifier {
                 )
                 .ignoresSafeArea()
                 .zIndex(999)
-                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isPresented)
+                .animation(OPSStyle.Animation.standard, value: isPresented)
             }
         }
     }

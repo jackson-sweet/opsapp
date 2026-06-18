@@ -92,13 +92,13 @@ extension StatusBadge {
 
 struct StatusBadge_Previews: PreviewProvider {
     static var previews: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Text("STATUS BADGES")
                 .font(OPSStyle.Typography.pageTitle)
                 .foregroundColor(OPSStyle.Colors.text)
-                .padding(.bottom, 8)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
 
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 StatusBadge(status: "Active",  color: OPSStyle.Colors.olive)
                 StatusBadge(status: "Pending", color: OPSStyle.Colors.tan)
                 StatusBadge(status: "Error",   color: OPSStyle.Colors.rose)
@@ -107,10 +107,10 @@ struct StatusBadge_Previews: PreviewProvider {
             Text("SIZE VARIATIONS")
                 .font(OPSStyle.Typography.section)
                 .foregroundColor(OPSStyle.Colors.text)
-                .padding(.bottom, 8)
-                .padding(.top, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
+                .padding(.top, OPSStyle.Layout.spacing3)
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 StatusBadge(status: "Small",  color: OPSStyle.Colors.olive, size: .small)
                 StatusBadge(status: "Medium", color: OPSStyle.Colors.olive)
                 StatusBadge(status: "Large",  color: OPSStyle.Colors.olive, size: .large)
@@ -119,10 +119,10 @@ struct StatusBadge_Previews: PreviewProvider {
             Text("JOB STATUS")
                 .font(OPSStyle.Typography.section)
                 .foregroundColor(OPSStyle.Colors.text)
-                .padding(.bottom, 8)
-                .padding(.top, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
+                .padding(.top, OPSStyle.Layout.spacing3)
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 StatusBadge.forJobStatus(.rfq)
                 StatusBadge.forJobStatus(.estimated)
                 StatusBadge.forJobStatus(.accepted)

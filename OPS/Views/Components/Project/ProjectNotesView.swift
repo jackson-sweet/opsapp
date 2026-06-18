@@ -131,10 +131,9 @@ struct ProjectNotesView: View {
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .background(OPSStyle.Colors.cardBackground)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .nestedCard()
                         .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
                                 .stroke(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: 1)
                         )
                     }
@@ -153,12 +152,7 @@ struct ProjectNotesView: View {
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .background(OPSStyle.Colors.cardBackground)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                        )
+                        .nestedCard()
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -166,7 +160,7 @@ struct ProjectNotesView: View {
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing1)
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .glassDense()
     }
 
     // MARK: - Compose Bar
@@ -201,7 +195,7 @@ struct ProjectNotesView: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .glassDense()
         .overlay(
             Rectangle()
                 .fill(OPSStyle.Colors.separator)
@@ -292,12 +286,7 @@ struct ProjectNoteRow: View {
             highlightedContent(note.content)
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-        )
+        .glassSurface()
         .confirmationDialog(
             notePhotoURLs.isEmpty ? "Delete Note" : "Delete the photo too?",
             isPresented: $showDeleteConfirmation,
@@ -320,7 +309,7 @@ struct ProjectNoteRow: View {
     private var authorAvatarView: some View {
         ZStack {
             Circle()
-                .fill(OPSStyle.Colors.subtleBackground)
+                .fill(OPSStyle.Colors.fillNeutral)
                 .frame(width: 32, height: 32)
 
             Text(authorInitials)

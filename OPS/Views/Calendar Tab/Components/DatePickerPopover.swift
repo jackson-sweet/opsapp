@@ -40,16 +40,15 @@ struct DatePickerPopover: View {
                 }
             }
             .padding(.horizontal)
-            .padding(.bottom, 16)
+            .padding(.bottom, OPSStyle.Layout.spacing3)
         }
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+        .glassDense()
         .frame(width: 320, height: mode == .week ? 440 : 360)
     }
     
     // Week picker content
     private var weekPickerContent: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             // Month navigation
             HStack {
                 Button {
@@ -58,7 +57,7 @@ struct DatePickerPopover: View {
                     Image(systemName: OPSStyle.Icons.chevronLeft)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(8)
+                        .padding(OPSStyle.Layout.spacing2)
                 }
                 
                 Spacer()
@@ -75,7 +74,7 @@ struct DatePickerPopover: View {
                     Image(systemName: OPSStyle.Icons.chevronRight)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(8)
+                        .padding(OPSStyle.Layout.spacing2)
                 }
             }
             
@@ -88,10 +87,10 @@ struct DatePickerPopover: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            .padding(.bottom, 4)
+            .padding(.bottom, OPSStyle.Layout.spacing1)
             
             // Calendar grid
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 8) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: OPSStyle.Layout.spacing2) {
                 ForEach(getDaysInMonth(), id: \.timeIntervalSince1970) { date in
                     let isCurrentMonth = isSameMonth(date)
                     let isSelected = isSelectedWeek(date)
@@ -137,13 +136,13 @@ struct DatePickerPopover: View {
                     )
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             }
-            .padding(.top, 8)
+            .padding(.top, OPSStyle.Layout.spacing2)
         }
     }
     
     // Month picker content
     private var monthPickerContent: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             // Year display with prev/next buttons
             HStack {
                 Button {
@@ -152,7 +151,7 @@ struct DatePickerPopover: View {
                     Image(systemName: OPSStyle.Icons.chevronLeft)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(8)
+                        .padding(OPSStyle.Layout.spacing2)
                 }
                 
                 Spacer()
@@ -171,12 +170,12 @@ struct DatePickerPopover: View {
                     Image(systemName: OPSStyle.Icons.chevronRight)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(8)
+                        .padding(OPSStyle.Layout.spacing2)
                 }
             }
             
             // Month grid
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 16) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2_5), count: 3), spacing: OPSStyle.Layout.spacing3) {
                 ForEach(0..<12, id: \.self) { month in
                     let date = getDateForMonth(month)
                     let isSelected = isSameMonth(date) && isSameYear(date)
@@ -219,7 +218,7 @@ struct DatePickerPopover: View {
                     )
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
-            .padding(.top, 8)
+            .padding(.top, OPSStyle.Layout.spacing2)
         }
     }
     

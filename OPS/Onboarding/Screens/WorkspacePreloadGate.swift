@@ -96,7 +96,7 @@ struct WorkspacePreloadGate: View {
                 Spacer()
 
                 // Escape hatch — only after the delay, only if still gated.
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     if showEnterAnyway {
                         Button(action: handleEnterAnyway) {
                             Text("ENTER ANYWAY")
@@ -121,7 +121,7 @@ struct WorkspacePreloadGate: View {
                 // Reserve the escape-hatch footprint so the layout above doesn't
                 // jump when the button appears. Height ≈ button + gap + caption.
                 .frame(height: escapeHatchReservedHeight)
-                .padding(.bottom, 24)
+                .padding(.bottom, OPSStyle.Layout.spacing4)
             }
         }
         .onAppear(perform: startSequence)
@@ -194,7 +194,7 @@ private struct WorkspaceSweepBar: View {
         ZStack(alignment: .leading) {
             // Base track — barely-there hairline.
             RoundedRectangle(cornerRadius: 1)
-                .fill(Color.white.opacity(0.08))
+                .fill(OPSStyle.Colors.surfaceActive)
                 .frame(width: trackWidth, height: trackHeight)
 
             // Accent segment.

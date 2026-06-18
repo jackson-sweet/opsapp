@@ -30,7 +30,7 @@ struct ProjectsWithoutTasksReviewView: View {
 
     private var expandAnimation: Animation {
         reduceMotion
-            ? .easeOut(duration: 0.1)
+            ? OPSStyle.Animation.hover
             : OPSStyle.Animation.standard
     }
 
@@ -162,7 +162,7 @@ struct ProjectsWithoutTasksReviewView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
 
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Text(project.status.displayName.uppercased())
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(project.status.color)
@@ -184,12 +184,7 @@ struct ProjectsWithoutTasksReviewView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .glassSurface()
         .contentShape(Rectangle())
     }
 
@@ -380,12 +375,7 @@ private struct InlineQuickTaskComposer: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .glassSurface(borderColor: OPSStyle.Colors.primaryAccent.opacity(0.5))
         .onAppear { loadTeamUsers() }
         .sheet(isPresented: $showCrewPicker, onDismiss: { handleCrewPickerDismiss() }) {
             crewPickerSheet

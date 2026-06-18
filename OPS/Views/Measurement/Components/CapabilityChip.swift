@@ -18,8 +18,8 @@ struct CapabilityChip: View {
             .textCase(.uppercase)
             .tracking(0.5)
             .foregroundColor(foreground)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
+            .padding(.vertical, OPSStyle.Layout.spacing1)
             .background(background)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)

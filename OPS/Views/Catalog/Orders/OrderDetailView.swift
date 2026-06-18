@@ -70,7 +70,7 @@ struct OrderDetailView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             if let order = order {
                 ScrollView {
@@ -163,7 +163,7 @@ struct OrderDetailView: View {
 
     @ViewBuilder
     private func fieldRow(label: String, text: Binding<String>, placeholder: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             Text(label)
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -175,17 +175,17 @@ struct OrderDetailView: View {
                 .frame(height: OPSStyle.Layout.touchTargetMin)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .fill(OPSStyle.Colors.surfaceInput)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
     }
 
     private var deliveryRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             Text("EXPECTED DELIVERY")
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -216,17 +216,17 @@ struct OrderDetailView: View {
             .frame(minHeight: OPSStyle.Layout.touchTargetMin)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
+                    .fill(OPSStyle.Colors.surfaceInput)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
 
     private var notesRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             Text("NOTES")
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -240,11 +240,11 @@ struct OrderDetailView: View {
                 .frame(minHeight: 80)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .fill(OPSStyle.Colors.surfaceInput)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
     }
@@ -281,7 +281,7 @@ struct OrderDetailView: View {
         let label = variantLabel(for: item.catalogVariantId)
         let isEditing = editingItemId == item.id
 
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text((family?.name ?? "Unknown").uppercased())
@@ -346,7 +346,7 @@ struct OrderDetailView: View {
                 }
             } else {
                 HStack(spacing: OPSStyle.Layout.spacing3) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Text("\(formatNumber(item.quantityRequested))")
                             .font(OPSStyle.Typography.dataValue)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -355,7 +355,7 @@ struct OrderDetailView: View {
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                     if let cost = item.costPerUnit {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Text("@")
                                 .font(OPSStyle.Typography.metadata)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -368,14 +368,7 @@ struct OrderDetailView: View {
             }
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     @ViewBuilder
@@ -392,11 +385,11 @@ struct OrderDetailView: View {
                 .frame(height: OPSStyle.Layout.touchTargetMin)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(OPSStyle.Colors.background.opacity(0.6))
+                        .fill(OPSStyle.Colors.surfaceInput)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
     }

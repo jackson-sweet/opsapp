@@ -41,9 +41,7 @@ struct OnboardingStepHeader: View {
 
     /// MOBILE.md §2.1: title drops from 28pt to 22pt past ~14 chars.
     private var titleFont: Font {
-        title.count > 14
-            ? OPSStyle.Typography.screenTitleCompact // Cake Mono Light 22pt
-            : OPSStyle.Typography.screenTitle        // Cake Mono Light 28pt
+        OPSStyle.Typography.screenTitle(for: title)
     }
 
     /// Back control renders ONLY when both a label and a handler are supplied.

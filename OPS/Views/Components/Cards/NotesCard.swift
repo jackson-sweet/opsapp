@@ -26,13 +26,17 @@ struct NotesCard: View {
         ) {
             if isEditing {
                 // Edit mode
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     TextEditor(text: $editedNotes)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .scrollContentBackground(.hidden)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .background(OPSStyle.Colors.surfaceInput)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                        )
                         .frame(minHeight: 100)
 
                     HStack {

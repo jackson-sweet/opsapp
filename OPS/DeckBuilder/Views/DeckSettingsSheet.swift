@@ -81,17 +81,26 @@ struct DeckSettingsSheet: View {
                                             .font(OPSStyle.Typography.bodyBold)
                                             .foregroundColor(
                                                 viewModel.drawingData.config.lengthSnapIncrement == value
-                                                    ? OPSStyle.Colors.buttonText
+                                                    ? OPSStyle.Colors.text
                                                     : OPSStyle.Colors.primaryText
                                             )
                                             .frame(maxWidth: .infinity)
                                             .frame(height: 36)
                                             .background(
                                                 viewModel.drawingData.config.lengthSnapIncrement == value
-                                                    ? OPSStyle.Colors.primaryAccent
+                                                    ? OPSStyle.Colors.surfaceActive
                                                     : OPSStyle.Colors.cardBackground
                                             )
                                             .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                    .strokeBorder(
+                                                        viewModel.drawingData.config.lengthSnapIncrement == value
+                                                            ? OPSStyle.Colors.text
+                                                            : Color.clear,
+                                                        lineWidth: 1
+                                                    )
+                                            )
                                             .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.borderless)
@@ -115,17 +124,26 @@ struct DeckSettingsSheet: View {
                                             .font(OPSStyle.Typography.bodyBold)
                                             .foregroundColor(
                                                 viewModel.drawingData.config.angleSnapIncrement == value
-                                                    ? OPSStyle.Colors.buttonText
+                                                    ? OPSStyle.Colors.text
                                                     : OPSStyle.Colors.primaryText
                                             )
                                             .frame(maxWidth: .infinity)
                                             .frame(height: 36)
                                             .background(
                                                 viewModel.drawingData.config.angleSnapIncrement == value
-                                                    ? OPSStyle.Colors.primaryAccent
+                                                    ? OPSStyle.Colors.surfaceActive
                                                     : OPSStyle.Colors.cardBackground
                                             )
                                             .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                    .strokeBorder(
+                                                        viewModel.drawingData.config.angleSnapIncrement == value
+                                                            ? OPSStyle.Colors.text
+                                                            : Color.clear,
+                                                        lineWidth: 1
+                                                    )
+                                            )
                                             .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.borderless)
@@ -141,7 +159,7 @@ struct DeckSettingsSheet: View {
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                             Spacer()
                             Text("\(Int(viewModel.drawingData.config.endpointSnapRadius))pt")
-                                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                                .font(OPSStyle.Typography.dataValue)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                         Slider(
@@ -149,7 +167,7 @@ struct DeckSettingsSheet: View {
                             in: 10...40,
                             step: 5
                         )
-                        .tint(OPSStyle.Colors.primaryAccent)
+                        .tint(OPSStyle.Colors.text)
                     }
                 } header: {
                     Text("MEASUREMENT & SNAPPING")

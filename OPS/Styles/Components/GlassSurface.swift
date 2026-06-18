@@ -26,9 +26,12 @@ import SwiftUI
 /// stroked with a 1pt hairline at 9% white, and lit from above by a 4% white
 /// top-edge gradient.
 ///
-/// Pass `cornerRadius` to override the default (`panelRadius` = 10pt).
+/// Pass `cornerRadius` to override the default (`panelRadius` = 10pt). Pass
+/// `borderColor` only for the rare singular-emphasis card that needs a hued
+/// edge (the `OPSCardStyle.Accent` lineage) — default is the 9% glass hairline.
 struct GlassSurfaceModifier: ViewModifier {
     var cornerRadius: CGFloat = OPSStyle.Layout.panelRadius
+    var borderColor: Color = OPSStyle.Colors.glassBorder
 
     func body(content: Content) -> some View {
         content
@@ -40,7 +43,7 @@ struct GlassSurfaceModifier: ViewModifier {
                         .fill(OPSStyle.Colors.glassApprox)
                     // Top-edge gradient — the only "lit from above" cue
                     LinearGradient(
-                        colors: [Color.white.opacity(0.04), .clear],
+                        colors: [OPSStyle.Colors.surfaceInput, .clear],
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -51,7 +54,7 @@ struct GlassSurfaceModifier: ViewModifier {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(OPSStyle.Colors.glassBorder, lineWidth: 1)
+                    .strokeBorder(borderColor, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
@@ -100,11 +103,11 @@ struct NestedCardModifier: ViewModifier {
         content
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color.white.opacity(0.04))
+                    .fill(OPSStyle.Colors.surfaceInput)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                    .strokeBorder(OPSStyle.Colors.nestedBorder, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
@@ -113,9 +116,13 @@ struct NestedCardModifier: ViewModifier {
 // MARK: - View extension
 
 extension View {
-    /// L1 glass section card. Pass `cornerRadius` to override the default 10pt.
-    func glassSurface(cornerRadius: CGFloat = OPSStyle.Layout.panelRadius) -> some View {
-        modifier(GlassSurfaceModifier(cornerRadius: cornerRadius))
+    /// L1 glass section card. Pass `cornerRadius` to override the default 10pt;
+    /// pass `borderColor` only for singular-emphasis cards needing a hued edge.
+    func glassSurface(
+        cornerRadius: CGFloat = OPSStyle.Layout.panelRadius,
+        borderColor: Color = OPSStyle.Colors.glassBorder
+    ) -> some View {
+        modifier(GlassSurfaceModifier(cornerRadius: cornerRadius, borderColor: borderColor))
     }
 
     /// L1 dense glass surface for sheets, popovers, and dropdowns. Default 12pt.
@@ -136,9 +143,9 @@ extension View {
     ZStack {
         OPSStyle.Colors.background.ignoresSafeArea()
 
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             // L1 section card with L2 nested cards inside (the canonical pattern)
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 Text("// L1 SECTION")
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.text3)
@@ -147,18 +154,18 @@ extension View {
                     .font(.custom("Mohave-Light", size: 38))
                     .foregroundColor(OPSStyle.Colors.text)
 
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     nested(label: "OVERDUE", value: "04", tone: OPSStyle.Colors.roseTextM)
                     nested(label: "DUE TODAY", value: "03", tone: OPSStyle.Colors.tanTextM)
                     nested(label: "OPEN", value: "17", tone: OPSStyle.Colors.text3)
                 }
             }
-            .padding(16)
+            .padding(OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .glassSurface()
 
             // L2 card alone on canvas (KPI tile pattern)
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Text("// L2 SOLO")
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.text3)
@@ -179,13 +186,13 @@ extension View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.text)
             }
-            .padding(16)
+            .padding(OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .glassDense()
 
             Spacer()
         }
-        .padding(20)
+        .padding(OPSStyle.Layout.spacing3_5)
     }
     .preferredColorScheme(.dark)
 }
@@ -202,7 +209,7 @@ private func nested(label: String, value: String, tone: Color) -> some View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.vertical, 10)
-    .padding(.horizontal, 12)
+    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
     .nestedCard()
 }
 #endif

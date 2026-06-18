@@ -366,12 +366,12 @@ struct UserEventSheet: View {
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(mode == eventMode ? OPSStyle.Colors.invertedText : OPSStyle.Colors.secondaryText)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, OPSStyle.Layout.spacing2_5)
                         .background(mode == eventMode ? OPSStyle.Colors.primaryText : Color.clear)
                 }
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -446,8 +446,8 @@ struct UserEventSheet: View {
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.placeholderText)
                     }
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -473,8 +473,8 @@ struct UserEventSheet: View {
                         .labelsHidden()
                         .tint(OPSStyle.Colors.text)
                 }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -509,7 +509,7 @@ struct UserEventSheet: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .scrollContentBackground(.hidden)
                         .frame(minHeight: 80, maxHeight: 200)
-                        .padding(12)
+                        .padding(OPSStyle.Layout.spacing2_5)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -541,10 +541,10 @@ struct UserEventSheet: View {
             .datePickerStyle(.compact)
             .labelsHidden()
             .colorScheme(.dark)
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -580,8 +580,8 @@ struct UserEventSheet: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -633,8 +633,8 @@ struct UserEventSheet: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -668,13 +668,13 @@ struct UserEventSheet: View {
                         }
                     )
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
-                .padding(.top, 4)
+                .padding(.top, OPSStyle.Layout.spacing1)
 
                 if recurrenceUseEndDate {
                     HStack {
@@ -696,16 +696,16 @@ struct UserEventSheet: View {
                         .datePickerStyle(.compact)
                         .labelsHidden()
                         .colorScheme(.dark)
-                        .tint(OPSStyle.Colors.primaryAccent)
+                        .tint(OPSStyle.Colors.text)
                     }
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
-                    .padding(.top, 4)
+                    .padding(.top, OPSStyle.Layout.spacing1)
                 }
             }
         }
@@ -850,7 +850,7 @@ struct UserEventSheet: View {
             }
         }
         .padding(.vertical, 14)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.background)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(

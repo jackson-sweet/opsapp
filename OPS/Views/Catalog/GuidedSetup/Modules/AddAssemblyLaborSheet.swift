@@ -66,7 +66,7 @@ struct AddAssemblyLaborSheet: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {

@@ -34,7 +34,7 @@ struct SyncStatusSection: View {
             VStack(spacing: 0) {
                 // Collapsed header — always visible when there's content
                 Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         isExpanded.toggle()
                     }
                 } label: {
@@ -48,23 +48,18 @@ struct SyncStatusSection: View {
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-            )
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .glassSurface()
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.top, OPSStyle.Layout.spacing2)
         }
     }
 
     // MARK: - Header Row
 
     private var headerRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Status icon
             if isSyncing {
                 Image(systemName: "arrow.triangle.2.circlepath")
@@ -110,8 +105,8 @@ struct SyncStatusSection: View {
     private var expandedContent: some View {
         VStack(spacing: 0) {
             Divider()
-                .background(Color.white.opacity(0.1))
-                .padding(.vertical, 8)
+                .background(OPSStyle.Colors.line)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
 
             // Individual operation rows (show up to 15)
             let items = syncEngine.getPendingOperations() + syncEngine.getFailedOperations()
@@ -130,7 +125,7 @@ struct SyncStatusSection: View {
                 Text("+ \(syncEngine.getPendingOperations().count + syncEngine.getFailedOperations().count - 15) more")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .padding(.top, 4)
+                    .padding(.top, OPSStyle.Layout.spacing1)
             }
 
             // Retry all button for failed operations
@@ -153,13 +148,13 @@ struct SyncStatusSection: View {
                             .font(OPSStyle.Typography.smallCaption)
                     }
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
                     .frame(maxWidth: .infinity)
                     .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
                     .cornerRadius(8)
                 }
                 .buttonStyle(PlainButtonStyle())
-                .padding(.top, 8)
+                .padding(.top, OPSStyle.Layout.spacing2)
             }
         }
     }
@@ -184,7 +179,7 @@ struct SyncStatusSection: View {
                 let fields = operation.getChangedFields()
                 if !fields.isEmpty {
                     Text(fields.joined(separator: ", "))
-                        .font(.system(size: 10))
+                        .font(OPSStyle.Typography.metadata)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .lineLimit(1)
                 }
@@ -192,7 +187,7 @@ struct SyncStatusSection: View {
                 // Error line
                 if let error = operation.lastError {
                     Text(error)
-                        .font(.system(size: 10))
+                        .font(OPSStyle.Typography.metadata)
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                         .lineLimit(1)
                 }
@@ -202,7 +197,7 @@ struct SyncStatusSection: View {
 
             // Time ago
             Text(timeAgo(from: operation.createdAt))
-                .font(.system(size: 10))
+                .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             // Action buttons
@@ -219,7 +214,7 @@ struct SyncStatusSection: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 28, height: 28)
-                        .background(OPSStyle.Colors.cardBackground)
+                        .background(OPSStyle.Colors.surfaceActive)
                         .clipShape(Circle())
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -228,7 +223,7 @@ struct SyncStatusSection: View {
             // Cancel button — available for pending and failed (not in-progress)
             if operation.status != "inProgress" {
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         syncEngine.cancelOperation(operation)
                     }
                 } label: {
@@ -236,13 +231,13 @@ struct SyncStatusSection: View {
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .frame(width: 24, height: 24)
-                        .background(OPSStyle.Colors.cardBackground)
+                        .background(OPSStyle.Colors.surfaceActive)
                         .clipShape(Circle())
                 }
                 .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
     }
 
     @ViewBuilder

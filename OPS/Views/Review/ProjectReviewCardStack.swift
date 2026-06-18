@@ -28,21 +28,21 @@ struct ProjectReviewCardStack: View {
     /// catch-up between the gesture position and the rendered card.
     private var dragFollowAnimation: Animation {
         reduceMotion
-            ? .easeOut(duration: 0.1)
+            ? OPSStyle.Animation.hover
             : OPSStyle.Animation.panel
     }
 
     /// Stack-shift when the top card changes — the next card sliding up.
     private var stackShiftAnimation: Animation {
         reduceMotion
-            ? .easeOut(duration: 0.15)
+            ? OPSStyle.Animation.hover
             : OPSStyle.Animation.flip
     }
 
     /// Snap-back when a drag ends below threshold or is blocked.
     private var snapBackAnimation: Animation {
         reduceMotion
-            ? .easeOut(duration: 0.1)
+            ? OPSStyle.Animation.hover
             : OPSStyle.Animation.page
     }
 
@@ -164,7 +164,7 @@ struct ProjectReviewCardStack: View {
         let flyAway = flyAwayOffset(for: direction)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-        withAnimation(.easeIn(duration: 0.25)) {
+        withAnimation(OPSStyle.Animation.standard) {
             dragOffset = flyAway
         }
 

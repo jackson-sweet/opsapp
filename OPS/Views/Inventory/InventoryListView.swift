@@ -24,7 +24,7 @@ struct InventoryListView: View {
     private var showMetadata: Bool { scale >= 1.0 }
 
     var body: some View {
-        LazyVStack(spacing: 12 * scale) {
+        LazyVStack(spacing: OPSStyle.Layout.spacing2_5 * scale) {
             ForEach(items) { item in
                 InventoryItemCard(
                     item: item,
@@ -101,11 +101,11 @@ struct InventoryItemCard: View {
     }
 
     private var captionFont: Font {
-        Font.custom("Kosugi-Regular", size: 14 * scale)
+        Font.custom("JetBrainsMono-Regular", size: 14 * scale)
     }
 
     private var smallCaptionFont: Font {
-        Font.custom("Kosugi-Regular", size: 12 * scale)
+        Font.custom("JetBrainsMono-Regular", size: 12 * scale)
     }
 
     private var quantityFont: Font {
@@ -117,16 +117,16 @@ struct InventoryItemCard: View {
             // Selection stripe (replaces checkbox)
             if isSelectionMode && isSelected {
                 Rectangle()
-                    .fill(OPSStyle.Colors.primaryAccent)
+                    .fill(OPSStyle.Colors.text)
                     .frame(width: 4 * scale)
             }
 
             // Main content
-            HStack(alignment: .center, spacing: 12 * scale) {
+            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2_5 * scale) {
                 // Left: Name, tags, metadata
-                VStack(alignment: .leading, spacing: 4 * scale) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1 * scale) {
                     // Title row with optional badge (badge shown here when not full size)
-                    HStack(spacing: 8 * scale) {
+                    HStack(spacing: OPSStyle.Layout.spacing2 * scale) {
                         Text(item.name.uppercased())
                             .font(titleFont)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -160,7 +160,7 @@ struct InventoryItemCard: View {
 
                     // Metadata row (shown at scale >= 1.0)
                     if showMetadata {
-                        HStack(spacing: 12 * scale) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5 * scale) {
                             // SKU
                             if let sku = item.sku, !sku.isEmpty {
                                 metadataItem(icon: "barcode", text: sku)
@@ -209,15 +209,17 @@ struct InventoryItemCard: View {
             .padding(.vertical, 8 * scale)
         }
         .frame(height: cardHeight)
-        .background(isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.15) : OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface(borderColor: isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.glassBorder)
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: isSelected ? 2 : 1)
+            isSelected
+                ? RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
+                    .fill(OPSStyle.Colors.surfaceActive)
+                    .allowsHitTesting(false)
+                : nil
         )
         .contentShape(Rectangle())
         .scaleEffect(isLongPressing ? 0.95 : 1.0)
-        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)
+        .animation(OPSStyle.Animation.quick, value: isLongPressing)
         .onTapGesture {
             onTap()
         }
@@ -264,7 +266,7 @@ struct InventoryItemCard: View {
     // MARK: - Metadata Item
 
     private func metadataItem(icon: String, text: String, isEmpty: Bool = false) -> some View {
-        HStack(spacing: 4 * scale) {
+        HStack(spacing: OPSStyle.Layout.spacing1 * scale) {
             Image(systemName: icon)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm * scale))
                 .foregroundColor(isEmpty ? OPSStyle.Colors.tertiaryText.opacity(0.5) : OPSStyle.Colors.tertiaryText)
@@ -297,7 +299,7 @@ struct InventoryTagBadge: View {
     var onRemove: (() -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             Text(tag.uppercased())
                 .font(size.font)
                 .foregroundColor(OPSStyle.Inventory.TagBadge.textColor)
@@ -332,7 +334,7 @@ struct InventoryTagActionBadge: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(systemName: isAdd ? "plus" : "minus")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                 Text(tag.uppercased())
@@ -366,7 +368,7 @@ struct InventoryPendingTagBadge: View {
 
     var body: some View {
         Button(action: onRemove) {
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Text(isAdding ? "+" : "−")
                     .font(size == .button ? OPSStyle.Typography.bodyBold : OPSStyle.Typography.captionBold)
                 Text(tag.uppercased())

@@ -122,7 +122,7 @@ struct CatalogImportSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
 
                 VStack(spacing: 0) {
                     tabStrip
@@ -446,8 +446,12 @@ struct CatalogImportSheet: View {
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing2)
                 .padding(.vertical, OPSStyle.Layout.spacing1)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                )
             }
         }
     }
@@ -585,8 +589,7 @@ struct CatalogImportSheet: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
 
     private func summaryRow(label: String, value: String) -> some View {
@@ -621,14 +624,14 @@ struct CatalogImportSheet: View {
         }
         .padding(OPSStyle.Layout.spacing2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .glassSurface(cornerRadius: OPSStyle.Layout.cornerRadius)
         .overlay(
             Rectangle()
                 .fill(OPSStyle.Colors.errorStatus)
                 .frame(width: 2),
             alignment: .leading
         )
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
     }
 
     // MARK: - Step 3: apply
@@ -977,7 +980,7 @@ private struct PrimaryStepButton: ButtonStyle {
             )
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(OPSStyle.Animation.hover, value: configuration.isPressed)
     }
 }
 
@@ -989,13 +992,13 @@ private struct SecondaryStepButton: ButtonStyle {
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .frame(minHeight: 44)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                     .stroke(OPSStyle.Colors.buttonBorder, lineWidth: 1)
             )
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(OPSStyle.Animation.hover, value: configuration.isPressed)
     }
 }

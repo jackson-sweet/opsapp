@@ -54,9 +54,9 @@ struct UniversalSearchBar: View {
     var onFilterTap: (() -> Void)? = nil
 
     var body: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                HStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: OPSStyle.Icons.search)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -76,10 +76,14 @@ struct UniversalSearchBar: View {
                         }
                     }
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                 .padding(.vertical, 10)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                )
 
                 if section == .projects || section == .tasks {
                     Button(action: {

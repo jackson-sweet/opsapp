@@ -119,20 +119,15 @@ struct ImportConfigView: View {
             VStack(spacing: 0) {
                 infoRow(label: "Name", value: spreadsheetData.sourceFileName)
                 Rectangle()
-                    .fill(OPSStyle.Colors.cardBorder)
+                    .fill(OPSStyle.Colors.line)
                     .frame(height: 1)
                 infoRow(label: "Rows", value: "\(spreadsheetData.rowCount)")
                 Rectangle()
-                    .fill(OPSStyle.Colors.cardBorder)
+                    .fill(OPSStyle.Colors.line)
                     .frame(height: 1)
                 infoRow(label: "Columns", value: "\(spreadsheetData.columnCount)")
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
@@ -177,12 +172,7 @@ struct ImportConfigView: View {
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
@@ -212,12 +202,7 @@ struct ImportConfigView: View {
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
@@ -235,7 +220,7 @@ struct ImportConfigView: View {
                 // Selection indicator
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
-                    .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.tertiaryText)
 
                 // Text
                 VStack(alignment: .leading, spacing: 2) {
@@ -251,8 +236,8 @@ struct ImportConfigView: View {
                 Spacer()
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, 12)
-            .background(isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.1) : Color.clear)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .background(isSelected ? OPSStyle.Colors.surfaceActive : Color.clear)
         }
         .buttonStyle(PlainButtonStyle())
     }

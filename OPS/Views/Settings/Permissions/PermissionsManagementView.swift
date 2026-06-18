@@ -31,7 +31,7 @@ struct PermissionsManagementView: View {
                     title: "Permissions",
                     onBackTapped: { dismiss() }
                 )
-                .padding(.bottom, 8)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
 
                 // Tab selector
                 SegmentedControl(
@@ -41,8 +41,8 @@ struct PermissionsManagementView: View {
                         (.team, "TEAM")
                     ]
                 )
-                .padding(.horizontal, 20)
-                .padding(.bottom, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
                 .wizardTarget("switch_to_team")
 
                 // Tab content

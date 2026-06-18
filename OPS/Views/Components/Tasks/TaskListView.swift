@@ -44,16 +44,16 @@ struct TaskListView: View {
                         Text("Project-Based")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
                 Divider()
                     .background(OPSStyle.Colors.cardBorder)
@@ -65,7 +65,7 @@ struct TaskListView: View {
                 Button(action: {
                     showingTaskForm = true
                 }) {
-                    VStack(spacing: 12) {
+                    VStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Image(systemName: OPSStyle.Icons.task)
                             .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -75,12 +75,12 @@ struct TaskListView: View {
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 32)
+                    .padding(.vertical, OPSStyle.Layout.spacing5)
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             } else {
                 // Task cards in single container (matching ProjectDetailsView card style)
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach(activeTasks) { task in
                         TaskRow(
                             task: task,
@@ -95,8 +95,8 @@ struct TaskListView: View {
                         .transition(.opacity.combined(with: .move(edge: .trailing)))
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 // Animation removed - was causing parent sheet to dismiss when tasks were deleted
             }
         }

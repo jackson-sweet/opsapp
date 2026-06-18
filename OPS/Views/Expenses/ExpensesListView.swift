@@ -204,12 +204,12 @@ struct ExpensesListView: View {
                 .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
                 .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                 .padding(.vertical, OPSStyle.Layout.spacing1)
-                .background(isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.25) : OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
+                .cornerRadius(OPSStyle.Layout.chipRadius)
                 .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .stroke(
-                            isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
+                            isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder,
                             lineWidth: OPSStyle.Layout.Border.standard
                         )
                 )
@@ -243,14 +243,14 @@ struct ExpensesListView: View {
             // Animated progress bar
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                         .fill(OPSStyle.Colors.primaryAccent.opacity(0.3))
                         .frame(height: 6)
 
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                         .fill(OPSStyle.Colors.successStatus)
                         .frame(width: geometry.size.width * approvedFraction, height: 6)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: approvedFraction)
+                        .animation(OPSStyle.Animation.standard, value: approvedFraction)
                 }
             }
             .frame(height: 6)
@@ -274,17 +274,12 @@ struct ExpensesListView: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     private func legendDot(color: Color, label: String) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             Circle()
                 .fill(color)
                 .frame(width: OPSStyle.Layout.Indicator.dotSM, height: OPSStyle.Layout.Indicator.dotSM)
@@ -319,7 +314,7 @@ struct ExpensesListView: View {
                         Rectangle()
                             .fill(
                                 selectedTab == tab
-                                    ? OPSStyle.Colors.primaryAccent
+                                    ? OPSStyle.Colors.primaryText
                                     : Color.clear
                             )
                             .frame(height: 2)
@@ -466,7 +461,7 @@ struct ExpensesListView: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Circle()
                         .fill(statusColor)
                         .frame(width: OPSStyle.Layout.Indicator.dotSM, height: OPSStyle.Layout.Indicator.dotSM)
@@ -489,12 +484,7 @@ struct ExpensesListView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - FAB

@@ -8,6 +8,7 @@
 
 // OPSStyle.swift
 import SwiftUI
+import UIKit  // UIAccessibility.isReduceMotionEnabled (reduce-motion-aware Animation tokens)
 
 /// The main styling system for the OPS app — spec v2 (2026-04-17).
 ///
@@ -204,8 +205,9 @@ enum OPSStyle {
         static let surfaceActive  = Color.white.opacity(0.08)  // Active toggle, pressed state
 
         // Borders & neutral fills
-        static let line           = Color.white.opacity(0.10)  // Standard hairline — panels, inputs
-        static let glassBorder    = Color.white.opacity(0.09)  // Glass panel edge
+        static let line           = Color.white.opacity(0.10)  // Standard hairline — panels, inputs, L1 dividers
+        static let glassBorder    = Color.white.opacity(0.09)  // L1 glass panel edge (MOBILE.md §3)
+        static let nestedBorder   = Color.white.opacity(0.08)  // L2 nested-card edge (MOBILE.md §3)
         static let fillNeutral    = Color.white.opacity(0.14)  // Bar fills, progress tracks
         static let fillNeutralDim = Color.white.opacity(0.06)  // Track backgrounds, skeletons
 
@@ -304,11 +306,20 @@ enum OPSStyle {
         /// Display heading — Cake Mono Light 30pt (auth h1s, wizard step titles)
         static let display = Font.display
 
-        /// Mobile screen title — Cake Mono Light 28pt (MOBILE.md §2.1 nav-bar / onboarding step title)
+        /// Screen title — Cake Mono Light 28pt. The canonical screen / nav-bar
+        /// header per MOBILE.md §2.1: uppercase, left-aligned, `Colors.text`.
+        /// For dynamic titles, prefer `screenTitle(for:)` so long strings drop
+        /// to 22pt automatically.
         static let screenTitle = Font.screenTitle
 
-        /// Mobile screen title (long) — Cake Mono Light 22pt (drops past ~14 chars, MOBILE.md §2.1)
-        static let screenTitleCompact = Font.screenTitleCompact
+        /// Long-title variant of `screenTitle` — Cake Mono Light 22pt (>14 chars).
+        static let screenTitleLong = Font.screenTitleLong
+
+        /// Picks the screen-title font by length: 28pt normally, 22pt once the
+        /// title exceeds 14 characters (MOBILE.md §2.1 long-title rule).
+        static func screenTitle(for title: String) -> Font {
+            title.count > 14 ? Font.screenTitleLong : Font.screenTitle
+        }
 
         /// Section heading — Cake Mono Light 18pt (settings subheads)
         static let section = Font.section
@@ -589,24 +600,40 @@ enum OPSStyle {
         static let durationFlip:     Double = 0.350  // 350ms — card flip
         static let durationCountUp:  Double = 0.800  // 800ms — hero number count-up
 
-        // MARK: Pre-built Animation values
-        static let hover = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: durationHover)
-        static let panel = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: durationPanel)
-        static let page  = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: durationPage)
-        static let flip  = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: durationFlip)
+        // MARK: Reduce-motion (spec v2 §8/§14 — "always honor prefers-reduced-motion")
+        // Every pre-built token below is a COMPUTED value that reads the system
+        // setting at animation-creation time and softens to a 150ms crossfade when
+        // Reduce Motion is on. This makes ~all token-based animations app-wide honor
+        // the setting with zero call-site changes — fix lives in one place.
+        /// True when the user has enabled Reduce Motion in iOS Accessibility settings.
+        static var reduceMotion: Bool { UIAccessibility.isReduceMotionEnabled }
+        /// Reduce-motion fallback — gentle 150ms crossfade (no slide/scale character).
+        static let reducedFallback = SwiftUI.Animation.easeInOut(duration: 0.150)
+        /// The single OPS curve at `duration`, or the reduce-motion fallback.
+        static func curve(_ duration: Double) -> SwiftUI.Animation {
+            reduceMotion ? reducedFallback : .timingCurve(0.22, 1, 0.36, 1, duration: duration)
+        }
 
-        // MARK: Legacy aliases (retained for backwards compatibility)
+        // MARK: Pre-built Animation values (reduce-motion aware)
+        static var hover: SwiftUI.Animation { curve(durationHover) }
+        static var panel: SwiftUI.Animation { curve(durationPanel) }
+        static var page:  SwiftUI.Animation { curve(durationPage) }
+        static var flip:  SwiftUI.Animation { curve(durationFlip) }
+
+        // MARK: Legacy aliases (reduce-motion aware; retained for backwards compatibility)
         /// Deprecated — prefer `.page` (250ms). Kept for existing call sites.
-        static let standard = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.250)
+        static var standard: SwiftUI.Animation { curve(0.250) }
         /// Deprecated — prefer `.hover` (150ms). Kept for existing call sites.
-        static let quick    = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.150)
+        static var quick:    SwiftUI.Animation { curve(0.150) }
         /// Deprecated — prefer `.hover` (150ms).
-        static let fast     = SwiftUI.Animation.easeInOut(duration: 0.2)
-        static let faster   = SwiftUI.Animation.easeOut(duration: 0.15)
-        // Spring — DEPRECATED (spec v2: no spring physics, no bounce. Exception: drag-and-drop reorder only.)
-        // Kept for backward compat — migrate call sites to .hover / .panel / .page.
-        static let spring     = SwiftUI.Animation.spring(response: 0.3, dampingFraction: 0.7)
-        static let springFast = SwiftUI.Animation.spring(response: 0.2, dampingFraction: 0.7)
+        static var fast:     SwiftUI.Animation { reduceMotion ? reducedFallback : .easeInOut(duration: 0.2) }
+        static var faster:   SwiftUI.Animation { reduceMotion ? reducedFallback : .easeOut(duration: 0.15) }
+        // Spring tokens — DEPRECATED. Spec v2 bans spring physics (no bounce); these
+        // now resolve to the single OPS curve so every legacy call site conforms.
+        // The genuine drag-and-drop reorder exception uses raw `.spring(...)` at its
+        // call site (PriorityQueueView), not these tokens.
+        static var spring:     SwiftUI.Animation { curve(0.300) }
+        static var springFast: SwiftUI.Animation { curve(0.200) }
     }
 
     // MARK: - Icons
@@ -1034,3 +1061,80 @@ struct BlurView: UIViewRepresentable {
 // The failable `init?(hex:)` lives in OPS/Views/Components/UserAvatar.swift and
 // handles both 6- and 8-char hex (with or without `#`). All call sites use the
 // failable form with `?? fallback` or `if let c = Color(hex:)`.
+
+// MARK: - Global Navigation Bar Appearance (MOBILE.md §2.1 / §13)
+
+extension OPSStyle {
+    /// Installs the global UIKit navigation-bar appearance so every native
+    /// SwiftUI `.navigationTitle` renders in the OPS screen-title voice instead
+    /// of the system font: Cake Mono Light in `Colors.text`. Per MOBILE.md §2.1
+    /// the bar is transparent at the scroll-top and becomes glass
+    /// (`rgba(10,10,10,0.80)` + blur + bottom hairline) once content scrolls
+    /// under it; §13 bans the iOS large-title collapse, so titles read inline.
+    ///
+    /// Call once at launch (AppDelegate.didFinishLaunching), before any nav bar
+    /// renders. This single config conforms every native-title screen at once;
+    /// screens that need the canonical left-aligned 28pt header adopt
+    /// `OPSScreenHeader` / `AppHeader` instead of the native bar.
+    static func configureNavigationBarAppearance() {
+        let textColor = UIColor(named: "TextPrimary") ?? .white
+        let secondaryColor = UIColor(named: "TextSecondary") ?? textColor
+
+        // Inline title — Cake Mono Light. Native inline titles are centered and
+        // height-capped, so 18pt; the left-aligned 28pt canonical header is the
+        // OPSScreenHeader / AppHeader, not the native bar.
+        let inlineTitleFont = UIFont(name: "CakeMono-Light", size: 18)
+            ?? .systemFont(ofSize: 18, weight: .light)
+        // Large title — Cake Mono Light 28pt, only rendered if a screen opts
+        // into a large title; kept on-brand for that case.
+        let largeTitleFont = UIFont(name: "CakeMono-Light", size: 28)
+            ?? .systemFont(ofSize: 28, weight: .light)
+        // Back-button label — JetBrains Mono tactical voice.
+        let backFont = UIFont(name: "JetBrainsMono-Regular", size: 13)
+            ?? .systemFont(ofSize: 13)
+
+        let titleAttrs: [NSAttributedString.Key: Any] = [
+            .font: inlineTitleFont,
+            .foregroundColor: textColor,
+        ]
+        let largeTitleAttrs: [NSAttributedString.Key: Any] = [
+            .font: largeTitleFont,
+            .foregroundColor: textColor,
+        ]
+        let backAttrs: [NSAttributedString.Key: Any] = [
+            .font: backFont,
+            .foregroundColor: secondaryColor,
+            .kern: 0.6,
+        ]
+        let backButtonAppearance = UIBarButtonItemAppearance()
+        backButtonAppearance.normal.titleTextAttributes = backAttrs
+        backButtonAppearance.highlighted.titleTextAttributes = backAttrs
+        backButtonAppearance.focused.titleTextAttributes = backAttrs
+
+        // Scrolled state (standardAppearance) — glass + bottom hairline (§2.1).
+        let scrolled = UINavigationBarAppearance()
+        scrolled.configureWithDefaultBackground()
+        scrolled.backgroundColor = UIColor(white: 10.0 / 255.0, alpha: 0.80)
+        scrolled.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
+        scrolled.shadowColor = UIColor(white: 1.0, alpha: 0.10) // --line hairline
+        scrolled.titleTextAttributes = titleAttrs
+        scrolled.largeTitleTextAttributes = largeTitleAttrs
+        scrolled.backButtonAppearance = backButtonAppearance
+
+        // Scroll-top state (scrollEdgeAppearance) — transparent, no hairline (§2.1).
+        let atTop = UINavigationBarAppearance()
+        atTop.configureWithTransparentBackground()
+        atTop.backgroundColor = .clear
+        atTop.shadowColor = .clear
+        atTop.titleTextAttributes = titleAttrs
+        atTop.largeTitleTextAttributes = largeTitleAttrs
+        atTop.backButtonAppearance = backButtonAppearance
+
+        let navBar = UINavigationBar.appearance()
+        navBar.standardAppearance = scrolled
+        navBar.compactAppearance = scrolled
+        navBar.scrollEdgeAppearance = atTop
+        navBar.compactScrollEdgeAppearance = atTop
+        navBar.tintColor = textColor // chevron + bar-button glyph tint
+    }
+}

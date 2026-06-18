@@ -52,14 +52,14 @@ struct CredentialsScreen: View {
             showBackButton: true,
             onBack: { manager.goBack() }
         ) {
-            VStack(spacing: 20) {
+            VStack(spacing: OPSStyle.Layout.spacing3_5) {
                 // Email field with validation
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     Text("EMAIL")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         TextField("", text: $email)
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -75,7 +75,7 @@ struct CredentialsScreen: View {
                         }
                     }
                     .padding(.vertical, 14)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
@@ -85,12 +85,12 @@ struct CredentialsScreen: View {
                 }
 
                 // Password field with validation
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     Text("PASSWORD")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         // Conditional TextField/SecureField based on showPassword
                         if showPassword {
                             TextField("", text: $password)
@@ -124,7 +124,7 @@ struct CredentialsScreen: View {
                         }
                     }
                     .padding(.vertical, 14)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
@@ -163,7 +163,7 @@ struct CredentialsScreen: View {
                             Image(systemName: "arrow.right")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -172,7 +172,7 @@ struct CredentialsScreen: View {
                 .foregroundColor(OPSStyle.Colors.invertedText)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .disabled(!isFormValid || isSigningUp || isSocialSignIn)
-                .padding(.bottom, 8)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
 
                 // Social auth options
                 SocialAuthButtonStack(
@@ -193,7 +193,7 @@ struct CredentialsScreen: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .underline()
             }
-            .padding(.bottom, 8)
+            .padding(.bottom, OPSStyle.Layout.spacing2)
         }
         .disabled(isSigningUp || isSocialSignIn)
         .onAppear {

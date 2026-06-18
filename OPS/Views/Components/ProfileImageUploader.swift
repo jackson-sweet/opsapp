@@ -63,7 +63,7 @@ struct ProfileImageUploader: View {
     @State private var isLoadingImage = false
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Image Display
             imageView
                 .onTapGesture {
@@ -72,7 +72,7 @@ struct ProfileImageUploader: View {
 
             // Status/Error Messages
             if isUploading {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                         .scaleEffect(0.8)
@@ -519,7 +519,7 @@ struct SimpleImagePicker: UIViewControllerRepresentable {
             config: ImageUploaderConfig(
                 placeholderText: "OPS",
                 size: 100,
-                shape: .roundedSquare(cornerRadius: 12),
+                shape: .roundedSquare(cornerRadius: OPSStyle.Layout.modalRadius),
                 allowDelete: true,
                 backgroundColor: OPSStyle.Colors.primaryAccent,
                 uploadButtonText: "UPLOAD LOGO"

@@ -42,25 +42,19 @@ struct CalendarProjectCard: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .lineLimit(1)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing3)
                 
                 Spacer()
             }
-            .background(cardBackground)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .glassSurface()
             .contentShape(Rectangle()) // Make entire card tappable
             .onTapGesture {
                 onTap()
             }
         // Bug 3 — Match CalendarEventCard breathing room so week-view stack
         // stays visually consistent (8pt = 16pt total gap between cards).
-        .padding(.vertical, 8)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
         .padding(.horizontal)
-    }
-    
-    // Use darker background color for card
-    private var cardBackground: some View {
-        OPSStyle.Colors.cardBackgroundDark
     }
 }

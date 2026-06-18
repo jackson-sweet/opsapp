@@ -259,7 +259,7 @@ struct QuantityAdjustmentSheet: View {
     private var adjustmentButtonsSection: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     ForEach(adjustmentValues, id: \.self) { value in
                         adjustmentPill(value: value)
                             .id(value)
@@ -294,7 +294,7 @@ struct QuantityAdjustmentSheet: View {
                 .foregroundColor(color)
                 .frame(minWidth: 72)
                 .padding(.vertical, 14)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .background(color.opacity(0.15))
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(

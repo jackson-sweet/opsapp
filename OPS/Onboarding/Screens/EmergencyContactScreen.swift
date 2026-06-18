@@ -57,7 +57,7 @@ struct EmergencyContactScreen: View {
                 }
             }
             .padding(.horizontal, 40)
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
 
             // Title section with phased typing animation
             PhasedOnboardingHeader(
@@ -67,16 +67,16 @@ struct EmergencyContactScreen: View {
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 40)
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
 
             Spacer()
                 .frame(height: 48)
 
             // Content section - fades in upward
             PhasedContent(coordinator: animationCoordinator) {
-                VStack(spacing: 20) {
+                VStack(spacing: OPSStyle.Layout.spacing3_5) {
                     // Contact Name
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         PhasedLabel("CONTACT NAME", index: 0, coordinator: animationCoordinator)
 
                         TextField("", text: $contactName)
@@ -86,7 +86,7 @@ struct EmergencyContactScreen: View {
                             .textContentType(.name)
                             .focused($focusedField, equals: .name)
                             .padding(.vertical, 14)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
@@ -96,7 +96,7 @@ struct EmergencyContactScreen: View {
                     }
 
                     // Contact Phone
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         PhasedLabel("CONTACT PHONE", index: 1, coordinator: animationCoordinator)
 
                         TextField("", text: $contactPhone)
@@ -106,7 +106,7 @@ struct EmergencyContactScreen: View {
                             .textContentType(.telephoneNumber)
                             .focused($focusedField, equals: .phone)
                             .padding(.vertical, 14)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
@@ -120,7 +120,7 @@ struct EmergencyContactScreen: View {
                                         Button {
                                             focusedField = nil
                                         } label: {
-                                            HStack(spacing: 4) {
+                                            HStack(spacing: OPSStyle.Layout.spacing1) {
                                                 Text("Done")
                                                 Image(systemName: "return")
                                             }
@@ -133,11 +133,11 @@ struct EmergencyContactScreen: View {
                     }
 
                     // Relationship picker
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                         PhasedLabel("RELATIONSHIP", index: 2, isLast: true, coordinator: animationCoordinator)
 
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
                                 ForEach(relationships, id: \.self) { rel in
                                     Button {
                                         relationship = (relationship == rel) ? "" : rel
@@ -145,7 +145,7 @@ struct EmergencyContactScreen: View {
                                         Text(rel.uppercased())
                                             .font(OPSStyle.Typography.smallCaption)
                                             .foregroundColor(relationship == rel ? OPSStyle.Colors.background : OPSStyle.Colors.secondaryText)
-                                            .padding(.horizontal, 16)
+                                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                                             .padding(.vertical, 10)
                                             .background(
                                                 relationship == rel
@@ -179,7 +179,7 @@ struct EmergencyContactScreen: View {
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.errorStatus)
                     .padding(.horizontal, 40)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
             }
 
             // Continue button with phased animation

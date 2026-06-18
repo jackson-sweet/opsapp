@@ -20,7 +20,7 @@ struct WizardDetailView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
+            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
 
             VStack(spacing: 0) {
                 SettingsHeader(
@@ -29,14 +29,14 @@ struct WizardDetailView: View {
                 )
 
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         descriptionCard
                         actionButton
                         stepListCard
                         promptToggleCard
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.top, OPSStyle.Layout.spacing3)
                     .padding(.bottom, 100)
                 }
             }
@@ -47,8 +47,8 @@ struct WizardDetailView: View {
     // MARK: - Subviews
 
     private var descriptionCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: wizard.iconName)
                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
                     .foregroundColor(OPSStyle.Colors.wizardAccent)
@@ -88,13 +88,8 @@ struct WizardDetailView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .lineSpacing(4)
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
     }
 
     private var actionButton: some View {
@@ -102,7 +97,7 @@ struct WizardDetailView: View {
             if let state = wizardState {
                 switch state.status {
                 case .inProgress:
-                    VStack(spacing: 12) {
+                    VStack(spacing: OPSStyle.Layout.spacing2_5) {
                         primaryButton(title: "RESUME", icon: "play.fill") {
                             launchWizard(isRestart: false)
                         }
@@ -147,7 +142,7 @@ struct WizardDetailView: View {
     }
 
     private var stepListCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("STEPS")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -172,23 +167,18 @@ struct WizardDetailView: View {
 
                         Spacer()
                     }
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                     if index < wizard.steps.count - 1 {
                         Rectangle()
-                            .fill(OPSStyle.Colors.cardBorder)
+                            .fill(OPSStyle.Colors.line)
                             .frame(height: 1)
                             .padding(.leading, 58)
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
     }
 
@@ -232,14 +222,9 @@ struct WizardDetailView: View {
                 .tint(OPSStyle.Colors.text)
             }
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Helpers
@@ -285,7 +270,7 @@ struct WizardDetailView: View {
                         .foregroundColor(OPSStyle.Colors.invertedText)
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .frame(height: 56)
             .background(OPSStyle.Colors.primaryText)
             .cornerRadius(OPSStyle.Layout.cornerRadius)

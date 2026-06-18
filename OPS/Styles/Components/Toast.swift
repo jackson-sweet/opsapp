@@ -217,7 +217,7 @@ struct ToastHostView: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         center.dismiss()
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.top, geometry.safeAreaInsets.top + 8)
                     .transition(transition)
                 }
@@ -295,9 +295,9 @@ private struct ToastBanner: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityLabel(accessibilityLabel)
         }
-        .padding(.leading, 20)
+        .padding(.leading, OPSStyle.Layout.spacing3_5)
         .padding(.trailing, toast.action == nil ? 20 : 12)
-        .padding(.vertical, 12)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Tap to dismiss")
@@ -308,7 +308,7 @@ private struct ToastBanner: View {
         Rectangle()
             .fill(toast.tone.lineColor)
             .frame(width: 1)
-            .padding(.vertical, 8)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .accessibilityHidden(true)
     }
 
@@ -329,8 +329,8 @@ private struct ToastBanner: View {
                     .font(.system(size: 10, weight: .semibold))
             }
             .foregroundColor(OPSStyle.Colors.text)
-            .padding(.leading, 16)
-            .padding(.trailing, 20)
+            .padding(.leading, OPSStyle.Layout.spacing3)
+            .padding(.trailing, OPSStyle.Layout.spacing3_5)
             .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
         }
@@ -343,7 +343,7 @@ private struct ToastBanner: View {
     @ViewBuilder
     private var labelText: some View {
         let parts = split(toast.label)
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             if !parts.prefix.isEmpty {
                 Text(parts.prefix)
                     .font(OPSStyle.Typography.metadata)
@@ -398,7 +398,7 @@ extension View {
             ZStack {
                 OPSStyle.Colors.background.ignoresSafeArea()
 
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     Button("// LEAD CREATED (success)") {
                         ToastCenter.shared.present(
                             Toast(label: "// LEAD CREATED", tone: .success)

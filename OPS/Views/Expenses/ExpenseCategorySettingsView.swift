@@ -118,16 +118,11 @@ struct ExpenseCategorySettingsView: View {
                 .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
 
                 if category.id != viewModel.categories.last?.id {
-                    Divider().background(OPSStyle.Colors.cardBorder)
+                    Divider().background(OPSStyle.Colors.line)
                 }
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
@@ -176,7 +171,7 @@ struct ExpenseCategorySettingsView: View {
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
 
-                            Divider().background(OPSStyle.Colors.cardBorder)
+                            Divider().background(OPSStyle.Colors.line)
 
                             HStack {
                                 Text("ICON")
@@ -191,12 +186,7 @@ struct ExpenseCategorySettingsView: View {
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
                         }
-                        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .glassSurface()
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                         // Icon picker grid
@@ -220,15 +210,15 @@ struct ExpenseCategorySettingsView: View {
                                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                                         .background(
                                             newCategoryIcon == icon
-                                            ? OPSStyle.Colors.primaryAccent.opacity(0.2)
-                                            : OPSStyle.Colors.cardBackgroundDark.opacity(0.6)
+                                            ? OPSStyle.Colors.surfaceActive
+                                            : OPSStyle.Colors.surfaceInput
                                         )
                                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                                 .stroke(
                                                     newCategoryIcon == icon
-                                                    ? OPSStyle.Colors.primaryAccent
+                                                    ? OPSStyle.Colors.primaryText
                                                     : OPSStyle.Colors.cardBorder,
                                                     lineWidth: OPSStyle.Layout.Border.standard
                                                 )

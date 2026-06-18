@@ -16,8 +16,8 @@ struct UserProfileCard: View {
     var user: User
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 16) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing3) {
                 // User avatar
                 ZStack {
                     if let profileURL = user.profileImageURL, 
@@ -42,7 +42,7 @@ struct UserProfileCard: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     // Name and role
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         Text(user.fullName)
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -70,9 +70,8 @@ struct UserProfileCard: View {
                 Spacer()
             }
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
     }
     
     // Helper to get user initials

@@ -41,7 +41,7 @@ struct IconBadge: View {
 
 struct IconBadgePreview: View {
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             IconBadge(iconName: "person.fill")
             
             IconBadge(iconName: "building.2.fill", useStroke: false)

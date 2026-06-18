@@ -23,7 +23,7 @@ struct InventoryMethodChoiceView: View {
             // Card
             VStack(alignment: .leading, spacing: 0) {
                 // Icon + Title
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: "shippingbox.fill")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.wizardAccent)
@@ -32,7 +32,7 @@ struct InventoryMethodChoiceView: View {
                         .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
 
                 // Description
                 Text("Track your materials, supplies, and equipment. Get alerts when stock runs low.")
@@ -61,12 +61,12 @@ struct InventoryMethodChoiceView: View {
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.invertedText)
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .frame(height: 56)
                     .background(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
-                .padding(.bottom, 12)
+                .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                 // Import from Spreadsheet button
                 Button {
@@ -88,16 +88,16 @@ struct InventoryMethodChoiceView: View {
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .frame(height: 56)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                 }
-                .padding(.bottom, 24)
+                .padding(.bottom, OPSStyle.Layout.spacing4)
 
                 // Skip for Now
                 Button {
@@ -112,16 +112,8 @@ struct InventoryMethodChoiceView: View {
                 }
             }
             .padding(28)
-            .background(
-                BlurView(style: .systemUltraThinMaterialDark)
-                    .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
-            )
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.08), lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .padding(.horizontal, 24)
+            .glassDense()
+            .padding(.horizontal, OPSStyle.Layout.spacing4)
         }
     }
 }

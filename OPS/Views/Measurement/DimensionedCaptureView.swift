@@ -181,12 +181,12 @@ public struct DimensionedCaptureView: View {
 
     @ViewBuilder
     private var permissionGate: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: OPSStyle.Layout.spacing4) {
             Image(systemName: "camera.fill")
                 .font(.system(size: 40, weight: .light))
                 .foregroundColor(OPSStyle.Colors.text2)
 
-            VStack(spacing: 8) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
                 Text("// CAMERA OFF")
                     .font(.buttonLabel)
                     .textCase(.uppercase)
@@ -195,7 +195,7 @@ public struct DimensionedCaptureView: View {
                     .font(.smallBody)
                     .foregroundColor(OPSStyle.Colors.text2)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
+                    .padding(.horizontal, OPSStyle.Layout.spacing5)
             }
 
             Button {
@@ -208,7 +208,7 @@ public struct DimensionedCaptureView: View {
                     .textCase(.uppercase)
                     .tracking(0.5)
                     .foregroundColor(OPSStyle.Colors.text)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
                     .padding(.vertical, 14)
                     .background(OPSStyle.Colors.opsAccent)
                     .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
@@ -225,7 +225,7 @@ public struct DimensionedCaptureView: View {
 
     @ViewBuilder
     private var unsupportedGate: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: OPSStyle.Layout.spacing4) {
             Image(systemName: "arkit")
                 .font(.system(size: 40, weight: .light))
                 .foregroundColor(OPSStyle.Colors.text2)
@@ -237,13 +237,13 @@ public struct DimensionedCaptureView: View {
                 .font(.smallBody)
                 .foregroundColor(OPSStyle.Colors.text2)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+                .padding(.horizontal, OPSStyle.Layout.spacing5)
             Button("DISMISS") { dismiss() }
                 .font(.buttonLabel)
                 .textCase(.uppercase)
                 .tracking(0.5)
                 .foregroundColor(OPSStyle.Colors.text)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
                 .padding(.vertical, 14)
                 .background(OPSStyle.Colors.surfaceActive)
                 .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
@@ -272,7 +272,7 @@ public struct DimensionedCaptureView: View {
                 topBar
                 Spacer()
                 helperRow(coordinator: coordinator)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, OPSStyle.Layout.spacing4)
                 bottomBar(coordinator: coordinator)
             }
 
@@ -286,7 +286,7 @@ public struct DimensionedCaptureView: View {
             if let toast = errorToast {
                 VStack {
                     errorToastView(toast)
-                        .padding(.top, 12)
+                        .padding(.top, OPSStyle.Layout.spacing2_5)
                     Spacer()
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -351,7 +351,7 @@ public struct DimensionedCaptureView: View {
             }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.top, 8)
+        .padding(.top, OPSStyle.Layout.spacing2)
     }
 
     // MARK: - Helper text row + accuracy chip
@@ -575,7 +575,7 @@ public struct DimensionedCaptureView: View {
 
     @ViewBuilder
     private func errorToastView(_ toast: ErrorToast) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             Text(toast.copy)
                 .font(.panelTitle)
                 .textCase(.uppercase)
@@ -611,14 +611,13 @@ public struct DimensionedCaptureView: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(OPSStyle.Colors.glassDenseApprox)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .glassDense(cornerRadius: OPSStyle.Layout.chipRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                 .strokeBorder(OPSStyle.Colors.roseLine, lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
         .shadow(color: Color.black.opacity(0.5), radius: 4, y: 2)
         .onTapGesture { withAnimation(.opsCurve200) { errorToast = nil } }
     }

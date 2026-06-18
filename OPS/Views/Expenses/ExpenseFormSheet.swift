@@ -322,12 +322,7 @@ struct ExpenseFormSheet: View {
                     Spacer()
                 }
                 .frame(height: 160)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             } else if let image = receiptImage {
                 // Queue progress indicator
@@ -348,12 +343,7 @@ struct ExpenseFormSheet: View {
                         .scaledToFit()
                         .frame(maxWidth: .infinity)
                         .frame(maxHeight: 360)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .glassSurface()
                         .contentShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
 
                     if ocrUsed {
@@ -406,12 +396,7 @@ struct ExpenseFormSheet: View {
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 100)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             } else {
                 // Add receipt button
@@ -434,12 +419,7 @@ struct ExpenseFormSheet: View {
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 120)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .glassSurface()
                 }
                 .buttonStyle(PlainButtonStyle())
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -487,7 +467,7 @@ struct ExpenseFormSheet: View {
 
             // Amount
             detailRow(label: "AMOUNT") {
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Text(currencySymbol)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -529,7 +509,7 @@ struct ExpenseFormSheet: View {
 
             // Tax
             detailRow(label: "TAX") {
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Text(currencySymbol)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -846,7 +826,7 @@ struct ExpenseFormSheet: View {
                     if canEditExpense {
                         // Viewing your own draft/submitted/rejected — EDIT + the one finalize action.
                         Button {
-                            withAnimation(.easeInOut(duration: 0.2)) { isViewMode = false }
+                            withAnimation(OPSStyle.Animation.panel) { isViewMode = false }
                         } label: {
                             Text("EDIT")
                                 .font(OPSStyle.Typography.button)
@@ -1324,12 +1304,12 @@ private struct ExpenseProjectPickerSheet: View {
                                     .foregroundColor(OPSStyle.Colors.placeholderText)
                             }
                     }
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .background(OPSStyle.Colors.surfaceInput)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -1429,7 +1409,7 @@ private struct ExpenseCategoryPickerSheet: View {
                                 if selectedId == nil {
                                     Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                                         .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                        .foregroundColor(OPSStyle.Colors.text)
                                 }
                             }
                             .padding(.vertical, 14)
@@ -1460,7 +1440,7 @@ private struct ExpenseCategoryPickerSheet: View {
                                     if selectedId == cat.id {
                                         Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                                             .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                            .foregroundColor(OPSStyle.Colors.text)
                                     }
                                 }
                                 .padding(.vertical, 14)
@@ -1527,7 +1507,7 @@ private struct ExpensePaymentPickerSheet: View {
                                     if selected == method {
                                         Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                                             .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                            .foregroundColor(OPSStyle.Colors.text)
                                     }
                                 }
                                 .padding(.vertical, 14)
@@ -1684,12 +1664,12 @@ private struct ExpenseCurrencyPickerSheet: View {
                                     .foregroundColor(OPSStyle.Colors.placeholderText)
                             }
                     }
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .background(OPSStyle.Colors.surfaceInput)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -1719,7 +1699,7 @@ private struct ExpenseCurrencyPickerSheet: View {
                                         if selected.uppercased() == code {
                                             Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                                                 .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                                .foregroundColor(OPSStyle.Colors.text)
                                         }
                                     }
                                     .padding(.vertical, 14)

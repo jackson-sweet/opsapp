@@ -15,7 +15,7 @@ struct HealthSummaryCard: View {
     let iconColor: Color
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
             HStack {
                 Image(systemName: icon)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -34,11 +34,6 @@ struct HealthSummaryCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(14)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .nestedCard()
     }
 }

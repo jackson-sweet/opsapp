@@ -113,7 +113,7 @@ struct VariantDetailView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                         header
@@ -221,12 +221,7 @@ struct VariantDetailView: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: 56, height: 56)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .nestedCard()
                 }
                 .disabled(isAdjusting || localQuantity <= 0 || !canAdjustStock)
                 .opacity(canAdjustStock ? 1.0 : 0.4)
@@ -253,12 +248,7 @@ struct VariantDetailView: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: 56, height: 56)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .nestedCard()
                 }
                 .disabled(isAdjusting || !canAdjustStock)
                 .opacity(canAdjustStock ? 1.0 : 0.4)
@@ -272,12 +262,7 @@ struct VariantDetailView: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var familyImageCard: some View {
@@ -328,12 +313,7 @@ struct VariantDetailView: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     @ViewBuilder
@@ -382,7 +362,7 @@ struct VariantDetailView: View {
 
     private func imagePlaceholder(systemName: String) -> some View {
         ZStack {
-            OPSStyle.Colors.subtleBackground
+            OPSStyle.Colors.background
             Image(systemName: systemName)
                 .font(.system(size: OPSStyle.Layout.IconSize.lg))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -441,12 +421,7 @@ struct VariantDetailView: View {
                         .font(OPSStyle.Typography.metadata)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin)
-                        .background(OPSStyle.Colors.subtleBackground)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .nestedCard()
                 }
                 .disabled(isAdjusting || !canAdjustStock || StockQuantityAdjustment.targetQuantity(current: localQuantity, delta: delta) == nil)
                 .opacity(canAdjustStock ? 1.0 : 0.4)
@@ -469,12 +444,7 @@ struct VariantDetailView: View {
                         .font(OPSStyle.Typography.buttonLabel)
                         .foregroundColor(canApplyExactQuantity ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                         .frame(width: 64, height: OPSStyle.Layout.touchTargetMin)
-                        .background(OPSStyle.Colors.subtleBackground)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .nestedCard()
                 }
                 .disabled(!canApplyExactQuantity)
                 .accessibilityLabel("Set exact quantity")
@@ -496,12 +466,7 @@ struct VariantDetailView: View {
                         .font(OPSStyle.Typography.buttonLabel)
                         .foregroundColor(canApplyCustomDelta(sign: 1) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                         .frame(width: 64, height: OPSStyle.Layout.touchTargetMin)
-                        .background(OPSStyle.Colors.subtleBackground)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .nestedCard()
                 }
                 .disabled(!canApplyCustomDelta(sign: 1))
                 .accessibilityLabel("Add custom quantity")
@@ -513,12 +478,7 @@ struct VariantDetailView: View {
                         .font(OPSStyle.Typography.buttonLabel)
                         .foregroundColor(canApplyCustomDelta(sign: -1) ? OPSStyle.Colors.errorText : OPSStyle.Colors.tertiaryText)
                         .frame(width: 64, height: OPSStyle.Layout.touchTargetMin)
-                        .background(OPSStyle.Colors.subtleBackground)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                        .nestedCard()
                 }
                 .disabled(!canApplyCustomDelta(sign: -1))
                 .accessibilityLabel("Subtract custom quantity")
@@ -547,12 +507,7 @@ struct VariantDetailView: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var skuCard: some View {
@@ -611,12 +566,7 @@ struct VariantDetailView: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var familySetupCard: some View {
@@ -640,12 +590,7 @@ struct VariantDetailView: View {
             }
             .padding(OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin, alignment: .leading)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Edit stock setup")
@@ -689,12 +634,7 @@ struct VariantDetailView: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     @ViewBuilder
@@ -712,7 +652,7 @@ struct VariantDetailView: View {
                             .font(OPSStyle.Typography.metadata)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .padding(.horizontal, OPSStyle.Layout.spacing2)
-                            .padding(.vertical, 4)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
@@ -816,12 +756,7 @@ struct VariantDetailView: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     // MARK: - Quantity adjustment

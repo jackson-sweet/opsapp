@@ -96,17 +96,17 @@ struct SharePhotoToProjectSheet: View {
     @ViewBuilder
     private var content: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                 photosSection
                 projectSection
             }
-            .padding(16)
+            .padding(OPSStyle.Layout.spacing3)
             .padding(.bottom, 80)
         }
     }
 
     private var photosSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("PHOTOS")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -128,9 +128,8 @@ struct SharePhotoToProjectSheet: View {
                     }
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                    .nestedCard()
                 }
             }
         }
@@ -142,7 +141,7 @@ struct SharePhotoToProjectSheet: View {
             maxSelectionCount: 10,
             matching: .images
         ) {
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: "photo.on.rectangle.angled")
                     .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -154,22 +153,17 @@ struct SharePhotoToProjectSheet: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 32)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
+            .padding(.vertical, OPSStyle.Layout.spacing5)
+            .glassSurface()
         }
     }
 
     private var photoGrid: some View {
         LazyVGrid(columns: [
-            GridItem(.flexible(), spacing: 8),
-            GridItem(.flexible(), spacing: 8),
-            GridItem(.flexible(), spacing: 8)
-        ], spacing: 8) {
+            GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2),
+            GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2),
+            GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2)
+        ], spacing: OPSStyle.Layout.spacing2) {
             ForEach(Array(loadedImages.enumerated()), id: \.offset) { index, image in
                 ZStack(alignment: .topTrailing) {
                     Image(uiImage: image)
@@ -187,7 +181,7 @@ struct SharePhotoToProjectSheet: View {
                             .font(.system(size: 20))
                             .foregroundColor(.white)
                             .background(Color.black.opacity(0.6).clipShape(Circle()))
-                            .padding(4)
+                            .padding(OPSStyle.Layout.spacing1)
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -196,7 +190,7 @@ struct SharePhotoToProjectSheet: View {
     }
 
     private var projectSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("PROJECT")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -223,8 +217,12 @@ struct SharePhotoToProjectSheet: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+            )
 
             // Project list
             VStack(spacing: 0) {
@@ -232,7 +230,7 @@ struct SharePhotoToProjectSheet: View {
                     projectRow(project)
                     if project.id != visibleProjects.prefix(20).last?.id {
                         Rectangle()
-                            .fill(OPSStyle.Colors.cardBorderSubtle)
+                            .fill(OPSStyle.Colors.separator)
                             .frame(height: 1)
                             .padding(.horizontal, 14)
                     }
@@ -242,11 +240,10 @@ struct SharePhotoToProjectSheet: View {
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 24)
+                        .padding(.vertical, OPSStyle.Layout.spacing4)
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .glassSurface()
         }
     }
 
@@ -256,7 +253,7 @@ struct SharePhotoToProjectSheet: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             selectedProject = project
         } label: {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(project.title)
                         .font(OPSStyle.Typography.body)
@@ -273,7 +270,7 @@ struct SharePhotoToProjectSheet: View {
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.text)
                 } else {
                     Image(systemName: "circle")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))

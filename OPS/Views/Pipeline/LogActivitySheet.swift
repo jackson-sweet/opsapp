@@ -42,7 +42,7 @@ struct LogActivitySheet: View {
                 )
 
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         // Mic hero
                         micSection()
 
@@ -68,10 +68,10 @@ struct LogActivitySheet: View {
                             Text(error)
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.errorStatus)
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
                     }
-                    .padding(.vertical, 20)
+                    .padding(.vertical, OPSStyle.Layout.spacing3_5)
                 }
             }
         }
@@ -95,7 +95,7 @@ struct LogActivitySheet: View {
 
     @ViewBuilder
     private func micSection() -> some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             Button {
                 Task {
                     // Request permissions on first tap
@@ -112,7 +112,7 @@ struct LogActivitySheet: View {
                     viewModel.toggleRecording()
                 }
             } label: {
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     ZStack {
                         // Pulse ring when recording — sharp ease-out, no bounce
                         if viewModel.speechManager.state == .recording {
@@ -130,7 +130,7 @@ struct LogActivitySheet: View {
                         Circle()
                             .fill(viewModel.speechManager.state == .recording
                                   ? OPSStyle.Colors.errorStatus
-                                  : OPSStyle.Colors.cardBackgroundDark)
+                                  : OPSStyle.Colors.background)
                             .frame(width: 64, height: 64)
 
                         Image(systemName: viewModel.speechManager.state == .recording ? "stop.fill" : "mic.fill")
@@ -155,7 +155,7 @@ struct LogActivitySheet: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText.opacity(0.7))
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .transition(.opacity)
             }
 
@@ -165,10 +165,10 @@ struct LogActivitySheet: View {
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.errorStatus)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     private var micPromptText: String {
@@ -188,19 +188,19 @@ struct LogActivitySheet: View {
 
     @ViewBuilder
     private func typeChipsSection() -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("TYPE")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach(loggableTypes, id: \.rawValue) { type in
                         typeChip(type)
                     }
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             }
         }
     }
@@ -222,7 +222,7 @@ struct LogActivitySheet: View {
             .foregroundColor(isSelected ? .white : OPSStyle.Colors.primaryText)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(isSelected ? OPSStyle.Colors.successStatus : OPSStyle.Colors.cardBackgroundDark)
+            .background(isSelected ? OPSStyle.Colors.successStatus : OPSStyle.Colors.surfaceInput)
             .cornerRadius(20)
         }
         .buttonStyle(.plain)
@@ -233,16 +233,16 @@ struct LogActivitySheet: View {
 
     @ViewBuilder
     private func opportunitySection() -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("LEAD")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             Button {
                 viewModel.showOpportunityPicker = true
             } label: {
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     if let opp = viewModel.selectedOpportunity {
                         ZStack {
                             Circle()
@@ -295,11 +295,10 @@ struct LogActivitySheet: View {
                         .font(.system(size: 14))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, 14)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .padding(.horizontal, 20)
+                .glassSurface()
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             }
             .buttonStyle(.plain)
         }
@@ -323,11 +322,11 @@ struct LogActivitySheet: View {
 
     @ViewBuilder
     private func disambiguationSection() -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("MULTIPLE MATCHES")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.warningStatus)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             VStack(spacing: 0) {
                 ForEach(viewModel.ambiguousCandidates, id: \.opportunityId) { candidate in
@@ -336,7 +335,7 @@ struct LogActivitySheet: View {
                         generator.impactOccurred()
                         viewModel.resolveAmbiguousMatch(opportunityId: candidate.opportunityId)
                     } label: {
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             Text(candidate.contactName)
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -345,18 +344,17 @@ struct LogActivitySheet: View {
                                 .font(.system(size: 12))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.vertical, 14)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
 
-                    Divider().padding(.leading, 16)
+                    Divider().padding(.leading, OPSStyle.Layout.spacing3)
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .padding(.horizontal, 20)
+            .glassSurface()
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 
@@ -364,18 +362,18 @@ struct LogActivitySheet: View {
 
     @ViewBuilder
     private func notesSection() -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("NOTES")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             ZStack(alignment: .topLeading) {
                 if viewModel.notesText.isEmpty {
                     Text("What happened?")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.vertical, 14)
                 }
 
@@ -384,12 +382,16 @@ struct LogActivitySheet: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: 80, maxHeight: 160)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .padding(.horizontal, 20)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+            )
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 
@@ -399,7 +401,7 @@ struct LogActivitySheet: View {
     private func metadataSection() -> some View {
         VStack(spacing: 0) {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.panel) {
                     viewModel.showMetadata.toggle()
                 }
             } label: {
@@ -412,14 +414,14 @@ struct LogActivitySheet: View {
                         .font(.system(size: 12))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
             if viewModel.showMetadata {
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     // Direction (call/email only)
                     if viewModel.showDirectionField {
                         VStack(alignment: .leading, spacing: 6) {
@@ -446,10 +448,14 @@ struct LogActivitySheet: View {
                         TextField("e.g., Left voicemail, Scheduled follow-up", text: $viewModel.outcome)
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                            )
                     }
 
                     // Duration (call/meeting only)
@@ -464,15 +470,19 @@ struct LogActivitySheet: View {
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                            )
                         }
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }

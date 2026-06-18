@@ -16,7 +16,7 @@ import UIKit
 /// Caller controls layout via the `content` ViewBuilder — use HStack, Spacer, dividers, etc.
 ///
 ///     OPSActionBar {
-///         HStack(spacing: 4) {
+///         HStack(spacing: OPSStyle.Layout.spacing1) {
 ///             OPSActionBarButton(icon: "camera.fill", label: "PHOTO") { ... }
 ///             OPSActionBarButton(icon: "note.text", label: "NOTE") { ... }
 ///         }
@@ -141,6 +141,6 @@ private struct ActionBarButtonStyle: ButtonStyle {
         configuration.label
             .opacity(configuration.isPressed ? 0.7 : 1.0)
             .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(OPSStyle.Animation.hover, value: configuration.isPressed)
     }
 }

@@ -110,12 +110,7 @@ struct ExpenseSettingsView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
         .buttonStyle(PlainButtonStyle())
         .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -157,12 +152,7 @@ struct ExpenseSettingsView: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
@@ -186,12 +176,7 @@ struct ExpenseSettingsView: View {
                 text: $adminApprovalThreshold
             )
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
@@ -241,12 +226,7 @@ struct ExpenseSettingsView: View {
                 isOn: $requireProjectAssignment
             )
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
@@ -338,12 +318,7 @@ struct ExpenseSettingsView: View {
             .tint(OPSStyle.Colors.text)
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var addRuleButton: some View {

@@ -38,7 +38,7 @@ struct GuidedCatalogSetupFlow: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
             content
         }
         .trackScreen("Catalog.GuidedSetup")
@@ -208,7 +208,7 @@ struct GuidedCatalogSetupFlow: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackground)
+        .background(OPSStyle.Colors.surfaceInput)
         .overlay(
             Rectangle()
                 .frame(height: OPSStyle.Layout.Border.standard)

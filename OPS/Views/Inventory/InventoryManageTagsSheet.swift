@@ -62,11 +62,17 @@ struct InventoryManageTagsSheet: View {
 
                         // Tag list
                         ScrollView {
-                            LazyVStack(spacing: 1) {
-                                ForEach(filteredTags, id: \.self) { tag in
+                            LazyVStack(spacing: 0) {
+                                ForEach(Array(filteredTags.enumerated()), id: \.element) { index, tag in
+                                    if index > 0 {
+                                        Divider()
+                                            .background(OPSStyle.Colors.line)
+                                    }
                                     tagRow(tag)
                                 }
                             }
+                            .glassSurface()
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.top, OPSStyle.Layout.spacing2)
                             .padding(.bottom, OPSStyle.Layout.spacing4)
                         }
@@ -143,7 +149,7 @@ struct InventoryManageTagsSheet: View {
     private var statusBar: some View {
         HStack(spacing: OPSStyle.Layout.spacing3) {
             // Total tags
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Text("\(allTags.count)")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -158,7 +164,7 @@ struct InventoryManageTagsSheet: View {
 
             // Total items with tags
             let itemsWithTags = items.filter { !$0.tagNames.isEmpty }.count
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Text("\(itemsWithTags)")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -174,7 +180,7 @@ struct InventoryManageTagsSheet: View {
     // MARK: - Search Field
 
     private var searchField: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -192,13 +198,13 @@ struct InventoryManageTagsSheet: View {
                 .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
         .padding(.vertical, 10)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .background(OPSStyle.Colors.surfaceInput)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -240,7 +246,7 @@ struct InventoryManageTagsSheet: View {
             Spacer()
 
             // Action buttons
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 // Rename button
                 actionButton(icon: "pencil") {
                     renameTagText = tag
@@ -255,13 +261,6 @@ struct InventoryManageTagsSheet: View {
         }
         .padding(.vertical, 14)
         .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .overlay(
-            Rectangle()
-                .fill(OPSStyle.Colors.cardBorder)
-                .frame(height: 1),
-            alignment: .bottom
-        )
     }
 
     // MARK: - Action Button

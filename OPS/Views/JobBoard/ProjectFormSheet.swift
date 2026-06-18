@@ -703,12 +703,12 @@ struct ProjectFormSheet: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(isValid && isCreateButtonEnabled ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                     .disabled(!isValid || isSaving || !isCreateButtonEnabled)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .tutorialHighlight(for: .projectFormComplete, cornerRadius: 6)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
+                    .tutorialHighlight(for: .projectFormComplete, cornerRadius: OPSStyle.Layout.cardRadius)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .background(OPSStyle.Colors.background)
 
                 // Divider
@@ -923,7 +923,7 @@ struct ProjectFormSheet: View {
 
             ScrollView {
                     ScrollViewReader { proxy in
-                        VStack(spacing: 24) {
+                        VStack(spacing: OPSStyle.Layout.spacing4) {
                             // PREVIEW CARD (greyed out in tutorial mode to reduce distraction)
                             previewCard
                                 .opacity(tutorialMode ? 0.3 : 1.0)
@@ -982,12 +982,7 @@ struct ProjectFormSheet: View {
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
-                                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.buttonBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                )
+                                .nestedCard()
                             }
                         }
                     }
@@ -1043,7 +1038,7 @@ struct ProjectFormSheet: View {
                 Button {
                     advanceToNextField()
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Text("Enter")
                         Image(systemName: "return")
                     }
@@ -1194,7 +1189,7 @@ struct ProjectFormSheet: View {
     // MARK: - Mandatory Fields Section
 
     private var mandatoryFieldsSection: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             // Expandable section for client and project name
             if isBasicInfoExpanded {
                 ExpandableSection(
@@ -1204,7 +1199,7 @@ struct ProjectFormSheet: View {
                     onDelete: nil, // Can't delete mandatory section
                     collapsible: false // Never show collapse chevron for mandatory section
                 ) {
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         clientField
                             .allowsHitTesting(isClientFieldEnabled)
                             .opacity(tutorialMode && !isClientFieldEnabled ? 0.5 : 1.0)
@@ -1239,7 +1234,7 @@ struct ProjectFormSheet: View {
     }
 
     private var clientField: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("CLIENT")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(clientHighlight.labelColor)
@@ -1255,7 +1250,7 @@ struct ProjectFormSheet: View {
 
     private var selectedClientCard: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(selectedClient!.name)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -1280,8 +1275,8 @@ struct ProjectFormSheet: View {
                 }
             }
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .background(Color.clear)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
@@ -1291,7 +1286,7 @@ struct ProjectFormSheet: View {
     }
 
     private var clientSearchField: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: 0) {
                 HStack {
                     Image(systemName: "magnifyingglass")
@@ -1312,8 +1307,8 @@ struct ProjectFormSheet: View {
                         }
                     }
                 }
-                .padding(.vertical, 12)
-                .padding(.leading, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                .padding(.leading, OPSStyle.Layout.spacing3)
                 .padding(.trailing, tutorialMode ? 16 : 8)
 
                 // Bug 33403492 — import from contacts. Hidden in tutorial
@@ -1371,8 +1366,8 @@ struct ProjectFormSheet: View {
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                 Spacer()
                             }
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 16)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                         }
                     } else {
                         ForEach(matchingClients.prefix(5)) { client in
@@ -1398,8 +1393,8 @@ struct ProjectFormSheet: View {
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                     Spacer()
                                 }
-                                .padding(.vertical, 12)
-                                .padding(.horizontal, 16)
+                                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
                             }
                             .buttonStyle(PlainButtonStyle())
 
@@ -1410,19 +1405,14 @@ struct ProjectFormSheet: View {
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassDense(cornerRadius: OPSStyle.Layout.cornerRadius)
             }
         }
     }
 
     private var titleField: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Text("PROJECT NAME")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(titleHighlight.labelColor)
@@ -1439,7 +1429,7 @@ struct ProjectFormSheet: View {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         }
                     } label: {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: OPSStyle.Icons.client)
                                 .font(.system(size: 10))
                             Text("CLIENT")
@@ -1458,7 +1448,7 @@ struct ProjectFormSheet: View {
                         focusedField = nil
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } label: {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: OPSStyle.Icons.locationFill)
                                 .font(.system(size: 10))
                             Text("USE ADDRESS")
@@ -1476,8 +1466,8 @@ struct ProjectFormSheet: View {
                 .autocorrectionDisabled(true)
                 .textInputAutocapitalization(.words)
                 .focused($focusedField, equals: .title)
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .background(Color.clear)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
@@ -1616,7 +1606,7 @@ struct ProjectFormSheet: View {
     }
 
     private var statusField: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("JOB STATUS")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -1651,8 +1641,8 @@ struct ProjectFormSheet: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .background(Color.clear)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
@@ -1676,7 +1666,7 @@ struct ProjectFormSheet: View {
     // MARK: - Optional Sections Area
 
     private var optionalSectionsArea: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             // Collapsed pills for unexpanded sections
             // In tutorial mode, all pills except ADD TASKS are disabled
             OptionalSectionPillGroup(
@@ -1744,7 +1734,7 @@ struct ProjectFormSheet: View {
     // MARK: - Optional Section Views
 
     private var addressField: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             HStack {
                 Text("SITE ADDRESS")
                     .font(OPSStyle.Typography.captionBold)
@@ -1795,7 +1785,7 @@ struct ProjectFormSheet: View {
     /// view-only operator's primary tap is a no-op while Replace/Remove remain.
     private var deckDesignField: some View {
         let canEditDeck = PermissionStore.shared.can("deck_builder.edit", requiredScope: "assigned")
-        return VStack(alignment: .leading, spacing: 12) {
+        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("DECK DESIGN")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -1814,7 +1804,7 @@ struct ProjectFormSheet: View {
                     showingDeckCreationPicker = true
                 }
             }) {
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: capturedDeckDesign == nil ? "ruler" : "checkmark.circle.fill")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(capturedDeckDesign == nil ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.successStatus)
@@ -1831,7 +1821,7 @@ struct ProjectFormSheet: View {
                     Spacer()
 
                     if capturedDeckDesign != nil {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             // Replace — re-records a new design from scratch.
                             Button {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -1866,7 +1856,7 @@ struct ProjectFormSheet: View {
                 }
                 .padding(14)
                 .frame(minHeight: 44)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1904,12 +1894,12 @@ struct ProjectFormSheet: View {
                 #endif
             }
         ) {
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 TextEditor(text: focusedField == .description ? $tempDescription : $description)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(minHeight: 100)
-                    .padding(12)
+                    .padding(OPSStyle.Layout.spacing2_5)
                     .background(Color.clear)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .scrollContentBackground(.hidden)
@@ -1928,7 +1918,7 @@ struct ProjectFormSheet: View {
                     }
 
                 if focusedField == .description {
-                    HStack(spacing: 16) {
+                    HStack(spacing: OPSStyle.Layout.spacing3) {
                         Spacer()
 
                         Button("CANCEL") {
@@ -1966,12 +1956,12 @@ struct ProjectFormSheet: View {
                 #endif
             }
         ) {
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 TextEditor(text: focusedField == .notes ? $tempNotes : $notes)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(minHeight: 80)
-                    .padding(12)
+                    .padding(OPSStyle.Layout.spacing2_5)
                     .background(Color.clear)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .scrollContentBackground(.hidden)
@@ -1990,7 +1980,7 @@ struct ProjectFormSheet: View {
                     }
 
                 if focusedField == .notes {
-                    HStack(spacing: 16) {
+                    HStack(spacing: OPSStyle.Layout.spacing3) {
                         Spacer()
 
                         Button("CANCEL") {
@@ -2104,7 +2094,7 @@ struct ProjectFormSheet: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -2159,7 +2149,7 @@ struct ProjectFormSheet: View {
         ) {
             if !projectImages.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         ForEach(Array(projectImages.enumerated()), id: \.offset) { index, image in
                             Image(uiImage: image)
                                 .resizable()
@@ -2193,7 +2183,7 @@ struct ProjectFormSheet: View {
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
                             .frame(width: 100, height: 100)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -2214,7 +2204,7 @@ struct ProjectFormSheet: View {
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -2285,9 +2275,9 @@ struct ProjectFormSheet: View {
     private var previewCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     HStack {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                             // Title
                             Text(title.isEmpty ? "PROJECT NAME" : title.uppercased())
                                 .font(OPSStyle.Typography.bodyBold)
@@ -2305,9 +2295,9 @@ struct ProjectFormSheet: View {
                     }
 
                     // Metadata row
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         // Address
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "mappin.circle")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -2318,7 +2308,7 @@ struct ProjectFormSheet: View {
                         }
 
                         // Calendar icon + date
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: OPSStyle.Icons.calendar)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -2336,7 +2326,7 @@ struct ProjectFormSheet: View {
                         }
 
                         // Team icon + unique count across all tasks
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: OPSStyle.Icons.personTwo)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -2352,12 +2342,7 @@ struct ProjectFormSheet: View {
                 }
                 .padding(OPSStyle.Layout.spacing3)
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface(cornerRadius: OPSStyle.Layout.cornerRadius)
             .overlay(
                 // Badge stack - right side
                 VStack(alignment: .trailing, spacing: 0) {
@@ -2365,8 +2350,8 @@ struct ProjectFormSheet: View {
                     Text(selectedStatus.displayName.uppercased())
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(selectedStatus.color)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .fill(selectedStatus.color.opacity(0.1))
@@ -2383,11 +2368,11 @@ struct ProjectFormSheet: View {
                         Text("\(localTasks.count) \(localTasks.count == 1 ? "TASK" : "TASKS")")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .fill(OPSStyle.Colors.cardBackground)
+                                    .fill(OPSStyle.Colors.fillNeutral)
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -2402,8 +2387,8 @@ struct ProjectFormSheet: View {
                         Text("UNSCHEDULED")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.warningStatus)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .fill(OPSStyle.Colors.warningStatus.opacity(0.1))
@@ -2417,7 +2402,7 @@ struct ProjectFormSheet: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                .padding(8)
+                .padding(OPSStyle.Layout.spacing2)
             )
         }
         .opacity(0.7) // Slightly faded to indicate it's a preview
@@ -2457,21 +2442,21 @@ struct ProjectFormSheet: View {
     }
 
     private var recentSuggestionsStrip: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("START FROM RECENT")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, 4)
+                .padding(.horizontal, OPSStyle.Layout.spacing1)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     ForEach(recentSuggestedProjects) { project in
                         recentSuggestionCard(for: project)
                             .contentShape(Rectangle())
                             .onTapGesture { applyStructuralClone(from: project) }
                     }
                 }
-                .padding(.horizontal, 4)
+                .padding(.horizontal, OPSStyle.Layout.spacing1)
             }
         }
     }
@@ -2493,9 +2478,9 @@ struct ProjectFormSheet: View {
 
             Spacer(minLength: 0)
 
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 if taskCount > 0 {
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: OPSStyle.Icons.task)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -2512,14 +2497,9 @@ struct ProjectFormSheet: View {
                 }
             }
         }
-        .padding(12)
+        .padding(OPSStyle.Layout.spacing2_5)
         .frame(width: 160, height: 80, alignment: .topLeading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface(cornerRadius: OPSStyle.Layout.cornerRadius)
     }
 
     /// One-tap structural clone (C2 — "same shape, new job"). Copies tasks

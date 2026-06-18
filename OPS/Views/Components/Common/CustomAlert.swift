@@ -40,7 +40,7 @@ struct CustomAlertModifier: ViewModifier {
                     .transition(.opacity)
 
                 if let config = alert, isVisible {
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         Text(config.title)
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(config.color)
@@ -53,23 +53,20 @@ struct CustomAlertModifier: ViewModifier {
                                 .multilineTextAlignment(.center)
                         }
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 20)
-                    .background(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
-                            .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.95))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
-                                    .stroke(config.color, lineWidth: OPSStyle.Layout.Border.thick)
-                            )
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
+                    .padding(.vertical, OPSStyle.Layout.spacing3_5)
+                    .glassDense(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius, style: .continuous)
+                            .stroke(config.color, lineWidth: OPSStyle.Layout.Border.thick)
                     )
                     .padding(.horizontal, 40)
                     .transition(.scale.combined(with: .opacity))
                 }
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: alert?.id)
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isVisible)
+        .animation(OPSStyle.Animation.standard, value: alert?.id)
+        .animation(OPSStyle.Animation.standard, value: isVisible)
         .onChange(of: alert) { _, newValue in
             if let config = newValue {
                 isVisible = true

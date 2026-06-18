@@ -56,7 +56,7 @@ struct DetailsTabView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
             // STATUS — current project status + manual change control.
             // Bug f3a300f7 — opens the existing ProjectStatusChangeSheet
             // through the parent's `showingStatusPicker` hook.
@@ -152,20 +152,20 @@ struct DetailsTabView: View {
                     }
                     .foregroundColor(OPSStyle.Colors.errorStatus)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                             .stroke(OPSStyle.Colors.errorStatus, lineWidth: OPSStyle.Layout.Border.standard)
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
 
             Spacer()
                 .frame(height: 200)
         }
-        .padding(.top, 16)
+        .padding(.top, OPSStyle.Layout.spacing3)
         .onAppear {
             NotificationCenter.default.post(name: Notification.Name("WizardDetailsTabViewed"), object: nil)
         }
@@ -235,7 +235,7 @@ private struct ProjectTimelineSection: View {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule()
-                            .fill(OPSStyle.Colors.cardBackgroundDark)
+                            .fill(OPSStyle.Colors.fillNeutralDim)
 
                         Capsule()
                             .fill(progress >= 1.0
@@ -252,7 +252,7 @@ private struct ProjectTimelineSection: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 }
 
@@ -276,7 +276,7 @@ private struct StatusSection: View {
     // card the content-rich sections use; the original full card read oversized
     // and bolted-on at the top of the tab (bug f3a300f7 follow-up).
     private var row: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Inline label — reuses the app's `[ LABEL ]` section-label convention.
             Text("[ STATUS ]")
                 .font(OPSStyle.Typography.smallCaption)
@@ -297,7 +297,7 @@ private struct StatusSection: View {
             }
         }
         .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .contentShape(Rectangle())
     }
 
@@ -320,7 +320,7 @@ private struct StatusSection: View {
             Rectangle()
                 .fill(OPSStyle.Colors.separator)
                 .frame(height: 1)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.top, OPSStyle.Layout.spacing2)
         }
     }
@@ -362,10 +362,10 @@ struct ClientSection: View {
     }
 
     private var clientCard: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Left side — tap to open contact details
             Button(action: onContactTap) {
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     if let client = project.client {
                         UserAvatar(client: client, size: 36)
                     }
@@ -386,7 +386,7 @@ struct ClientSection: View {
             Spacer()
 
             // Contact action buttons — independent tap targets
-            HStack(spacing: 16) {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
                 let hasPhone = project.effectiveClientPhone != nil && !project.effectiveClientPhone!.isEmpty
                 let hasEmail = project.effectiveClientEmail != nil && !project.effectiveClientEmail!.isEmpty
 
@@ -417,12 +417,7 @@ struct ClientSection: View {
             .buttonStyle(PlainButtonStyle())
         }
         .padding(14)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-        )
+        .glassSurface()
         .contentShape(Rectangle())
         .simultaneousGesture(
             LongPressGesture(minimumDuration: 0.5)
@@ -433,13 +428,13 @@ struct ClientSection: View {
                     }
                 }
         )
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
     private var emptyCard: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Circle()
-                .fill(OPSStyle.Colors.cardBackgroundDark)
+                .fill(OPSStyle.Colors.background)
                 .frame(width: 36, height: 36)
                 .overlay(
                     Image(systemName: "building.2")
@@ -461,13 +456,8 @@ struct ClientSection: View {
         }
         .contentShape(Rectangle())
         .padding(14)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-        )
-        .padding(.horizontal, 16)
+        .glassSurface()
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 }
 
@@ -488,7 +478,7 @@ private struct VinylOrderMarkerSection: View {
             sectionLabel("VINYL")
 
             HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("ORDER STATUS")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -530,13 +520,8 @@ private struct VinylOrderMarkerSection: View {
                 .opacity(canEdit ? 1 : 0.45)
             }
             .padding(14)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
-            .padding(.horizontal, 16)
+            .glassSurface()
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
 }
@@ -564,10 +549,10 @@ struct TeamSection: View {
                 } else {
                     // Horizontal avatar row
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             ForEach(teamMembers, id: \.id) { member in
                                 Button(action: { onMemberTap(member) }) {
-                                    VStack(spacing: 4) {
+                                    VStack(spacing: OPSStyle.Layout.spacing1) {
                                         UserAvatar(user: member, size: 36)
                                         Text(member.firstName ?? "")
                                             .font(OPSStyle.Typography.smallCaption)
@@ -582,13 +567,8 @@ struct TeamSection: View {
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
-            .padding(.horizontal, 16)
+            .glassSurface()
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
 }
@@ -624,7 +604,7 @@ struct TaskListSection: View {
                     let isInactive = task.status == .completed || task.status == .cancelled
 
                     Button(action: { onTaskTap(task) }) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             // Left cluster: task type badge + status badge (always adjacent)
                             TaskBadge(
                                 name: task.taskType?.display ?? "Task",
@@ -658,17 +638,17 @@ struct TaskListSection: View {
                                         UserAvatar(user: member, size: 22)
                                             .overlay(
                                                 Circle()
-                                                    .stroke(OPSStyle.Colors.cardBackgroundDark, lineWidth: 1.5)
+                                                    .stroke(OPSStyle.Colors.background, lineWidth: 1.5)
                                             )
                                     }
                                     if assignedMembers.count > 3 {
                                         Text("+\(assignedMembers.count - 3)")
                                             .font(OPSStyle.Typography.smallCaption)
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                            .padding(.leading, 8)
+                                            .padding(.leading, OPSStyle.Layout.spacing2)
                                     }
                                 }
-                                .padding(.leading, 4)
+                                .padding(.leading, OPSStyle.Layout.spacing1)
                             }
 
                             Spacer()
@@ -694,10 +674,10 @@ struct TaskListSection: View {
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 12)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                        .padding(.vertical, OPSStyle.Layout.spacing2_5)
                         .contentShape(Rectangle())
-                        .background(isSelected ? OPSStyle.Colors.cardBackgroundDark.opacity(0.5) : Color.clear)
+                        .background(isSelected ? OPSStyle.Colors.surfaceHover : Color.clear)
                         .opacity(isSelected || !hasSelection ? 1.0 : 0.45)
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -744,7 +724,7 @@ struct TaskListSection: View {
                         Rectangle()
                             .fill(OPSStyle.Colors.cardBorderSubtle)
                             .frame(height: 1)
-                            .padding(.leading, 16)
+                            .padding(.leading, OPSStyle.Layout.spacing3)
                     }
                 }
 
@@ -761,10 +741,10 @@ struct TaskListSection: View {
                     Rectangle()
                         .fill(OPSStyle.Colors.cardBorderSubtle)
                         .frame(height: 1)
-                        .padding(.leading, 16)
+                        .padding(.leading, OPSStyle.Layout.spacing3)
 
                     Button(action: onAddTask) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             Image(systemName: "plus")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text("ADD TASK")
@@ -772,20 +752,15 @@ struct TaskListSection: View {
                             Spacer()
                         }
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.vertical, 14)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
-            .padding(.horizontal, 16)
+            .glassSurface()
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
 
@@ -823,7 +798,7 @@ struct DescriptionSection: View {
         VStack(alignment: .leading, spacing: 10) {
             sectionLabel("DESCRIPTION")
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 if isEditing {
                     TextEditor(text: $editText)
                         .font(OPSStyle.Typography.body)
@@ -895,13 +870,8 @@ struct DescriptionSection: View {
                 }
             }
             .padding(14)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
-            .padding(.horizontal, 16)
+            .glassSurface()
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
 }
@@ -928,7 +898,7 @@ struct AddressSection: View {
                 if isEditing {
                     // Inline edit mode
                     VStack(alignment: .leading, spacing: 0) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             Image(systemName: "mappin.circle")
                                 .font(.system(size: OPSStyle.Layout.IconSize.md))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -967,7 +937,7 @@ struct AddressSection: View {
 
                             ForEach(completer.results, id: \.self) { result in
                                 Button(action: { selectResult(result) }) {
-                                    HStack(spacing: 8) {
+                                    HStack(spacing: OPSStyle.Layout.spacing2) {
                                         Image(systemName: "location.fill")
                                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -988,7 +958,7 @@ struct AddressSection: View {
                                         Spacer()
                                     }
                                     .padding(.horizontal, 14)
-                                    .padding(.vertical, 8)
+                                    .padding(.vertical, OPSStyle.Layout.spacing2)
                                     .contentShape(Rectangle())
                                 }
                                 .buttonStyle(PlainButtonStyle())
@@ -1007,7 +977,7 @@ struct AddressSection: View {
                     HStack {
                         if let address = address, !address.isEmpty {
                             Button(action: onDirections) {
-                                HStack(spacing: 8) {
+                                HStack(spacing: OPSStyle.Layout.spacing2) {
                                     Image(systemName: "mappin.circle")
                                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -1038,14 +1008,11 @@ struct AddressSection: View {
                     .padding(14)
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(isEditing ? OPSStyle.Colors.primaryAccent.opacity(0.5) : OPSStyle.Colors.cardBorder, lineWidth: 1)
+            .glassSurface(
+                borderColor: isEditing ? OPSStyle.Colors.primaryAccent.opacity(0.5) : OPSStyle.Colors.glassBorder
             )
-            .animation(.easeInOut(duration: 0.2), value: isEditing)
-            .padding(.horizontal, 16)
+            .animation(OPSStyle.Animation.panel, value: isEditing)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
 
@@ -1159,7 +1126,7 @@ struct PhotosSection: View {
                     // syncs the change to project_photos.is_client_visible so
                     // the web client portal reflects the crew's choice.
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             ForEach(Array(photos.enumerated()), id: \.element) { index, url in
                                 ZStack(alignment: .topTrailing) {
                                     Button(action: { onPhotoTap(index) }) {
@@ -1202,13 +1169,8 @@ struct PhotosSection: View {
                         .padding(.bottom, 10)
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
-            .padding(.horizontal, 16)
+            .glassSurface()
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
 }
@@ -1254,7 +1216,7 @@ private struct ClientVisibilityButton: View {
             ZStack {
                 Circle()
                     .fill(isSyncing
-                          ? OPSStyle.Colors.cardBackgroundDark.opacity(0.85)
+                          ? OPSStyle.Colors.background.opacity(0.85)
                           : (isVisible
                              ? OPSStyle.Colors.primaryAccent.opacity(0.9)
                              : Color.black.opacity(0.55)))
@@ -1324,5 +1286,5 @@ func sectionLabel(_ title: String) -> some View {
         .textCase(.uppercase)
         .tracking(1)
         .foregroundColor(OPSStyle.Colors.tertiaryText)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
 }

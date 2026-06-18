@@ -30,7 +30,7 @@ struct WelcomeView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 44, height: 44)
-                        .padding(.bottom, 8)
+                        .padding(.bottom, OPSStyle.Layout.spacing2)
                     Text("OPS")
                         .font(OPSStyle.Typography.largeTitle.weight(.bold))
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -58,14 +58,14 @@ struct WelcomeView: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                 }
-                .padding(.leading, 4)
+                .padding(.leading, OPSStyle.Layout.spacing1)
 
                 Spacer()
 
                 // Main content
-                VStack(alignment: .leading, spacing: 32) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing5) {
                     // Headline
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         Text("FROM WHITEBOARD")
                             .font(OPSStyle.Typography.largeTitle.weight(.bold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -83,7 +83,7 @@ struct WelcomeView: View {
                 Spacer()
 
                 // Bottom actions
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     // Error message
                     if let error = socialSignInError {
                         Text(error)
@@ -109,7 +109,7 @@ struct WelcomeView: View {
                                     Image(systemName: "arrow.right")
                                         .foregroundColor(OPSStyle.Colors.invertedText)
                                         .font(OPSStyle.Typography.caption.weight(.semibold))
-                                        .padding(.trailing, 20)
+                                        .padding(.trailing, OPSStyle.Layout.spacing3_5)
                                 }
                             )
                     }
@@ -123,7 +123,7 @@ struct WelcomeView: View {
                         Text("OR")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                         Rectangle()
                             .fill(OPSStyle.Colors.tertiaryText.opacity(0.3))
@@ -144,7 +144,7 @@ struct WelcomeView: View {
                     .frame(height: OPSStyle.Layout.touchTargetStandard)
                 }
                 .opacity(contentOpacity)
-                .padding(.bottom, 20)
+                .padding(.bottom, OPSStyle.Layout.spacing3_5)
             }
             .padding(40)
         }
@@ -310,7 +310,7 @@ struct SignupGoogleButton: View {
 
     var body: some View {
         Button(action: onSignIn) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 if isLoading {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
@@ -343,7 +343,7 @@ struct SignupAppleButton: View {
 
     var body: some View {
         Button(action: onSignIn) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 if isLoading {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))

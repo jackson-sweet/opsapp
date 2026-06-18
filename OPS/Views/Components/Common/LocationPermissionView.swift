@@ -19,7 +19,7 @@ struct LocationPermissionView: View {
             OPSStyle.Colors.imageOverlay
                 .ignoresSafeArea()
             
-            VStack(spacing: 24) {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
                 // Icon
                 Image(systemName: "location.fill")
                     .font(.system(size: OPSStyle.Layout.IconSize.xxl))
@@ -28,12 +28,13 @@ struct LocationPermissionView: View {
                 
                 // Title
                 Text("Location Access Required")
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .font(OPSStyle.Typography.pageTitle)
+                    .textCase(.uppercase)
+                    .foregroundColor(OPSStyle.Colors.text)
                     .multilineTextAlignment(.center)
                 
                 // Description
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     PermissionBulletPoint(
                         icon: "map.fill",
                         text: "Navigation to project sites"
@@ -76,7 +77,7 @@ struct LocationPermissionView: View {
                 Spacer()
                 
                 // Buttons
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     if locationManager.authorizationStatus == .denied || locationManager.authorizationStatus == .restricted {
                         // Settings button
                         Button(action: {
@@ -99,7 +100,7 @@ struct LocationPermissionView: View {
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
-                        .padding(.vertical, 8)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
                         
                     } else {
                         // Request permission button
@@ -123,16 +124,13 @@ struct LocationPermissionView: View {
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
-                        .padding(.vertical, 8)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
                     }
                 }
             }
-            .padding(24)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(OPSStyle.Colors.cardBackground)
-            )
-            .padding(24)
+            .padding(OPSStyle.Layout.spacing4)
+            .glassDense()
+            .padding(OPSStyle.Layout.spacing4)
         }
     }
 }
@@ -142,7 +140,7 @@ struct PermissionBulletPoint: View {
     let text: String
     
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: icon)
                 .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(OPSStyle.Colors.primaryAccent)

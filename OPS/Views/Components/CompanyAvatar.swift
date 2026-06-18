@@ -161,7 +161,7 @@ struct CompanyAvatar: View {
 
 // MARK: - Previews
 #Preview("Company Avatars") {
-    VStack(spacing: 20) {
+    VStack(spacing: OPSStyle.Layout.spacing3_5) {
         // With logo
         CompanyAvatar(
             name: "OPS Company",
@@ -182,7 +182,7 @@ struct CompanyAvatar: View {
         )
         
         // Different sizes
-        HStack(spacing: 20) {
+        HStack(spacing: OPSStyle.Layout.spacing3_5) {
             CompanyAvatar(name: "ABC Corp", size: 30)
             CompanyAvatar(name: "XYZ Inc", size: 40)
             CompanyAvatar(name: "Test Co", size: 50)

@@ -25,7 +25,7 @@ struct TeamRoleAssignmentSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .ignoresSafeArea()
 
                 VStack(spacing: 0) {
@@ -36,10 +36,10 @@ struct TeamRoleAssignmentSheet: View {
                     } else {
                         // Content
                         ScrollView {
-                            VStack(alignment: .leading, spacing: 24) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                                 // Header message
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack(spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                                    HStack(spacing: OPSStyle.Layout.spacing2) {
                                         Image(systemName: OPSStyle.Icons.alert)
                                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                                             .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -53,8 +53,8 @@ struct TeamRoleAssignmentSheet: View {
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
                                 }
-                                .padding(.horizontal, 20)
-                                .padding(.top, 16)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                                .padding(.top, OPSStyle.Layout.spacing3)
 
                                 // Team member list
                                 ForEach(teamMembers, id: \.id) { member in
@@ -65,7 +65,7 @@ struct TeamRoleAssignmentSheet: View {
                                             set: { roleAssignments[member.id] = $0 }
                                         )
                                     )
-                                    .padding(.horizontal, 20)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                                 }
 
                                 // Error message if any
@@ -73,7 +73,7 @@ struct TeamRoleAssignmentSheet: View {
                                     Text(error)
                                         .font(OPSStyle.Typography.caption)
                                         .foregroundColor(OPSStyle.Colors.errorStatus)
-                                        .padding(.horizontal, 20)
+                                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                                 }
                             }
                             .padding(.bottom, 100) // Space for button
@@ -102,7 +102,7 @@ struct TeamRoleAssignmentSheet: View {
                             .frame(height: 56)
                             .background(OPSStyle.Colors.primaryAccent)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .padding(20)
+                            .padding(OPSStyle.Layout.spacing3_5)
                             .disabled(isSaving)
                         }
                         .background(OPSStyle.Colors.background)
@@ -127,7 +127,7 @@ struct TeamRoleAssignmentSheet: View {
     }
 
     private var loadingView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             ProgressView()
                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                 .scaleEffect(1.5)
@@ -140,7 +140,7 @@ struct TeamRoleAssignmentSheet: View {
     }
 
     private var emptyView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             // NOTE: person.3.sequence.fill does not have a semantic icon - using legacy
             Image(systemName: "person.3.sequence.fill")
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
@@ -155,7 +155,7 @@ struct TeamRoleAssignmentSheet: View {
             }
             .font(OPSStyle.Typography.bodyBold)
             .foregroundColor(OPSStyle.Colors.primaryAccent)
-            .padding(.top, 8)
+            .padding(.top, OPSStyle.Layout.spacing2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -235,9 +235,9 @@ struct TeamMemberRoleRow: View {
     @Binding var selectedRole: UserRole
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Member info
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Avatar
                 UserAvatar(user: member, size: 48)
 
@@ -259,21 +259,20 @@ struct TeamMemberRoleRow: View {
             }
 
             // Role selector
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("SELECT ROLE")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     ForEach(UserRole.allCases.sorted(by: { $0.hierarchy < $1.hierarchy }), id: \.rawValue) { role in
                         roleButton(role)
                     }
                 }
             }
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
     }
 
     @ViewBuilder
@@ -284,22 +283,22 @@ struct TeamMemberRoleRow: View {
             VStack(spacing: 6) {
                 Image(systemName: iconForRole(role))
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
-                    .foregroundColor(selectedRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .foregroundColor(selectedRole == role ? OPSStyle.Colors.text : OPSStyle.Colors.tertiaryText)
 
                 Text(role.displayName)
                     .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(selectedRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                    .foregroundColor(selectedRole == role ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .fill(selectedRole == role ? OPSStyle.Colors.primaryAccent.opacity(0.1) : Color.clear)
+                    .fill(selectedRole == role ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(selectedRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(selectedRole == role ? OPSStyle.Colors.text : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(PlainButtonStyle())

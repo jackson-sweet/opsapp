@@ -148,7 +148,7 @@ struct PhotoStorageBudgetCard: View {
     // MARK: - Body
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             if let report = capHitReport {
                 capHitBanner(report: report)
             }
@@ -171,12 +171,12 @@ struct PhotoStorageBudgetCard: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Rectangle()
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .fill(OPSStyle.Colors.fillNeutralDim)
                     Rectangle()
                         .fill(isOverBudget ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryAccent)
                         .frame(width: geo.size.width * usagePercent)
                 }
-                .cornerRadius(4)
+                .cornerRadius(OPSStyle.Layout.chipRadius)
             }
             .frame(height: 8)
 
@@ -223,8 +223,8 @@ struct PhotoStorageBudgetCard: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: hasPendingChange)
-        .animation(.easeInOut(duration: 0.25), value: applyBanner)
+        .animation(OPSStyle.Animation.panel, value: hasPendingChange)
+        .animation(OPSStyle.Animation.standard, value: applyBanner)
         .onAppear {
             if !didLoadInitialBudget {
                 // Seed cached budget from UserDefaults (nonisolated, instant)
@@ -380,7 +380,7 @@ struct PhotoStorageBudgetCard: View {
                 .disabled(isApplyingBudget)
 
                 Button(action: applyPendingChange) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         if isApplyingBudget {
                             ProgressView()
                                 .tint(.white)

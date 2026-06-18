@@ -671,7 +671,7 @@ struct FloatingActionMenu: View {
                 )
                 .ignoresSafeArea()
                 .transition(.opacity)
-                .animation(.easeIn(duration: 0.2), value: showCreateMenu)
+                .animation(OPSStyle.Animation.panel, value: showCreateMenu)
                 .onTapGesture {
                     guard !tutorialMode, !isEditMode else { return }
                     closeMenu()
@@ -897,7 +897,7 @@ struct FloatingActionMenu: View {
                 closeMenu()
             } else {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                withAnimation(.easeOut(duration: 0.1)) {
+                withAnimation(OPSStyle.Animation.hover) {
                     showCreateMenu = true
                 }
             }
@@ -971,9 +971,9 @@ struct FloatingActionMenu: View {
 
     private var editModeContent: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .trailing, spacing: 16) {
+            VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing3) {
                 ForEach(Array(editModeGroupedItems.enumerated()), id: \.element.groupId) { _, section in
-                    VStack(alignment: .trailing, spacing: 4) {
+                    VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing1) {
                         // Section header (static, no drag reorder)
                         Text(section.groupTitle)
                             .font(OPSStyle.Typography.captionBold)
@@ -991,7 +991,7 @@ struct FloatingActionMenu: View {
                                 .zIndex(isDragging ? 10 : 0)
                                 .scaleEffect(isDragging ? 1.05 : 1.0)
                                 .opacity(isDragging ? 0.85 : 1.0)
-                                .animation(isDragging ? nil : .easeInOut(duration: 0.15), value: itemVisualOffset(for: item.id, in: section.items))
+                                .animation(isDragging ? nil : OPSStyle.Animation.hover, value: itemVisualOffset(for: item.id, in: section.items))
                                 .gesture(
                                     DragGesture(minimumDistance: 8)
                                         .onChanged { value in
@@ -1003,7 +1003,7 @@ struct FloatingActionMenu: View {
                                         }
                                         .onEnded { _ in
                                             commitItemReorder(item.id, within: section.items, groupId: section.groupId)
-                                            withAnimation(.easeOut(duration: 0.2)) {
+                                            withAnimation(OPSStyle.Animation.panel) {
                                                 dragOffset = 0
                                                 draggingItemId = nil
                                             }
@@ -1013,7 +1013,7 @@ struct FloatingActionMenu: View {
                     }
                 }
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .scrollDisabled(draggingItemId != nil)
@@ -1023,7 +1023,7 @@ struct FloatingActionMenu: View {
     // MARK: - Edit Mode Action Buttons
 
     private var editModeActionButtons: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Spacer()
 
             Button(action: { saveEditMode() }) {
@@ -1040,27 +1040,22 @@ struct FloatingActionMenu: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: 120, height: 52)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                    )
+                    .nestedCard()
             }
         }
-        .padding(.leading, 20)
+        .padding(.leading, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Menu Actions
 
     private func closeMenu() {
-        withAnimation(.easeIn(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.panel) {
             itemsRevealed = false
             isEditMode = false
             draggingItemId = nil
             dragOffset = 0
         }
-        withAnimation(.easeIn(duration: 0.25)) {
+        withAnimation(OPSStyle.Animation.standard) {
             showCreateMenu = false
         }
     }
@@ -1068,14 +1063,14 @@ struct FloatingActionMenu: View {
     private func enterEditMode() {
         editInitialHidden = hiddenItemsData
         editInitialOrder = itemOrderData
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.panel) {
             isEditMode = true
         }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
     private func saveEditMode() {
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.panel) {
             isEditMode = false
             draggingItemId = nil
             dragOffset = 0
@@ -1086,7 +1081,7 @@ struct FloatingActionMenu: View {
     private func cancelEditMode() {
         hiddenItemsData = editInitialHidden
         itemOrderData = editInitialOrder
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(OPSStyle.Animation.panel) {
             isEditMode = false
             draggingItemId = nil
             dragOffset = 0
@@ -1221,24 +1216,24 @@ struct FloatingActionMenu: View {
 
     @ViewBuilder
     private func fabItemView(row: FlatFABRow) -> some View {
-        VStack(alignment: .trailing, spacing: 4) {
+        VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing1) {
             if let header = row.groupHeader {
                 Text(header)
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .padding(.trailing, 14)
                     .padding(.top, row.showDivider ? 12 : 0)
-                    .padding(.bottom, 4)
+                    .padding(.bottom, OPSStyle.Layout.spacing1)
             }
 
             fabMenuItemView(item: row.item)
                 .offset(x: -10)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
         .opacity(itemsRevealed ? 1 : 0)
         .offset(x: itemsRevealed ? 0 : 60)
         .animation(
-            .easeOut(duration: 0.08).delay(revealDelay(for: row)),
+            OPSStyle.Animation.hover.delay(revealDelay(for: row)),
             value: itemsRevealed
         )
     }
@@ -1257,7 +1252,7 @@ struct FloatingActionMenu: View {
                 item.action()
             }
         }) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Badge count inline with label (if present)
                 if let badge = item.badge, badge > 0, !isLocked {
                     Text("\(badge)")
@@ -1277,7 +1272,7 @@ struct FloatingActionMenu: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                     .foregroundColor(isLocked ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.buttonText)
                     .frame(width: 48, height: 48)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.background)
                     .clipShape(Circle())
                     .overlay(
                         Circle()
@@ -1305,7 +1300,7 @@ struct FloatingActionMenu: View {
 
     @ViewBuilder
     private func editModeItemRow(item: FABMenuItem, isHidden: Bool) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Toggle: minus to hide, plus to show (outline icons)
             Button(action: {
                 var hidden = hiddenItemIds
@@ -1330,7 +1325,7 @@ struct FloatingActionMenu: View {
                 .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                 .foregroundColor(isHidden ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.buttonText)
                 .frame(width: 48, height: 48)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.background)
                 .clipShape(Circle())
                 .overlay(
                     Circle()
@@ -1338,7 +1333,7 @@ struct FloatingActionMenu: View {
                 )
         }
         .opacity(isHidden ? 0.5 : 1.0)
-        .padding(.vertical, 4)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
     }
 }
 
@@ -1396,26 +1391,26 @@ fileprivate struct FABCustomizeSheet: View {
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.top, OPSStyle.Layout.spacing3_5)
+            .padding(.bottom, OPSStyle.Layout.spacing3)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                     ForEach(groups, id: \.group.id) { entry in
                         VStack(alignment: .leading, spacing: 0) {
                             Text(entry.group.title)
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                .padding(.horizontal, 20)
-                                .padding(.bottom, 8)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                                .padding(.bottom, OPSStyle.Layout.spacing2)
 
                             VStack(spacing: 0) {
                                 ForEach(entry.items, id: \.id) { item in
                                     let isEnabled = !hiddenIds.contains(item.id)
 
                                     Button(action: { toggleItem(item.id) }) {
-                                        HStack(spacing: 12) {
+                                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                             Image(systemName: item.icon)
                                                 .font(.system(size: 16, weight: .medium))
                                                 .foregroundColor(isEnabled ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
@@ -1429,9 +1424,9 @@ fileprivate struct FABCustomizeSheet: View {
 
                                             Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
                                                 .font(.system(size: 20))
-                                                .foregroundColor(isEnabled ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                                                .foregroundColor(isEnabled ? OPSStyle.Colors.text : OPSStyle.Colors.tertiaryText)
                                         }
-                                        .padding(.horizontal, 16)
+                                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                                         .padding(.vertical, 14)
                                     }
 
@@ -1443,17 +1438,12 @@ fileprivate struct FABCustomizeSheet: View {
                                     }
                                 }
                             }
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 0.5)
-                            )
-                            .padding(.horizontal, 20)
+                            .glassSurface()
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
                     }
                 }
-                .padding(.vertical, 12)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
             }
         }
         .background(OPSStyle.Colors.background)

@@ -31,7 +31,7 @@ struct SocialAuthButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 if isLoading {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
@@ -91,11 +91,11 @@ struct SocialAuthButtonStack: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             // OR divider
             if showDivider {
                 orDivider
-                    .padding(.vertical, 8)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
             }
 
             // Google button
@@ -115,7 +115,7 @@ struct SocialAuthButtonStack: View {
     }
 
     private var orDivider: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: OPSStyle.Layout.spacing3) {
             Rectangle()
                 .fill(OPSStyle.Colors.cardBorder)
                 .frame(height: 1)
@@ -134,7 +134,7 @@ struct SocialAuthButtonStack: View {
 // MARK: - Previews
 
 #Preview("Individual Buttons") {
-    VStack(spacing: 24) {
+    VStack(spacing: OPSStyle.Layout.spacing4) {
         SocialAuthButton(
             provider: .google,
             isLoading: false,

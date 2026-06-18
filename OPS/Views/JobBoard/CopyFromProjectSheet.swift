@@ -118,8 +118,8 @@ struct CopyFromProjectSheet: View {
         .overlay(alignment: .bottom) {
             // Alert description at bottom of screen
             if showingOverwriteWarning {
-                VStack(spacing: 8) {
-                    HStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         Image(systemName: OPSStyle.Icons.alert)
                             .foregroundColor(OPSStyle.Colors.warningStatus)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -128,10 +128,9 @@ struct CopyFromProjectSheet: View {
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                    .glassDense(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.warningStatus, lineWidth: OPSStyle.Layout.Border.standard)
@@ -167,8 +166,12 @@ struct CopyFromProjectSheet: View {
                 }
             }
             .padding()
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
             .padding()
 
             // Project list
@@ -192,9 +195,9 @@ struct CopyFromProjectSheet: View {
 
     private func projectSelectionCard(for project: Project) -> some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 HStack {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                         Text(project.title.uppercased())
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -210,9 +213,9 @@ struct CopyFromProjectSheet: View {
                 }
 
                 // Metadata row
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     if let address = project.address, !address.isEmpty {
-                        HStack(alignment: .bottom, spacing: 4) {
+                        HStack(alignment: .bottom, spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: OPSStyle.Icons.location)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -225,7 +228,7 @@ struct CopyFromProjectSheet: View {
                     }
 
                     if let startDate = project.startDate {
-                        HStack(alignment: .bottom, spacing: 4) {
+                        HStack(alignment: .bottom, spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: OPSStyle.Icons.calendar)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -238,7 +241,7 @@ struct CopyFromProjectSheet: View {
                     }
 
                     if !project.teamMembers.isEmpty {
-                        HStack(alignment: .bottom, spacing: 4) {
+                        HStack(alignment: .bottom, spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: OPSStyle.Icons.personTwo)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -251,7 +254,7 @@ struct CopyFromProjectSheet: View {
                     }
 
                     // Task count
-                    HStack(alignment: .bottom, spacing: 4) {
+                    HStack(alignment: .bottom, spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: OPSStyle.Icons.task)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(project.tasks.isEmpty ? OPSStyle.Colors.tertiaryText.opacity(0.5) : OPSStyle.Colors.tertiaryText)
@@ -268,20 +271,15 @@ struct CopyFromProjectSheet: View {
             .padding(OPSStyle.Layout.spacing3)
         }
         .frame(height: 80)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .overlay(
             // Status badge
             VStack(alignment: .trailing, spacing: 0) {
                 Text(project.status.displayName.uppercased())
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(project.status.color)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                             .fill(project.status.color.opacity(0.1))
@@ -294,9 +292,9 @@ struct CopyFromProjectSheet: View {
                 Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-            .padding(8)
+            .padding(OPSStyle.Layout.spacing2)
         )
-        .padding(.vertical, 8)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
     }
 
     /// Format address to show only street number and street name (no city)
@@ -311,10 +309,10 @@ struct CopyFromProjectSheet: View {
     // MARK: - Field Selection View
 
     private var fieldSelectionView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             // Selected project info
             if let project = selectedProject {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     Text("COPYING FROM")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -329,20 +327,22 @@ struct CopyFromProjectSheet: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .glassSurface()
                 .padding(.horizontal)
             }
 
             // Field checklist
             ScrollView {
-                VStack(spacing: 1) {
-                    ForEach(availableFields, id: \.id) { field in
+                VStack(spacing: 0) {
+                    ForEach(Array(availableFields.enumerated()), id: \.element.id) { index, field in
+                        if index > 0 {
+                            Divider()
+                                .background(OPSStyle.Colors.line)
+                        }
                         fieldChecklistRow(field: field)
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .glassSurface()
                 .padding()
             }
         }
@@ -362,7 +362,7 @@ struct CopyFromProjectSheet: View {
         }) {
             HStack {
                 Image(systemName: selectedFields.contains(field.id) ? OPSStyle.Icons.checkmarkSquareFill : OPSStyle.Icons.square)
-                    .foregroundColor(selectedFields.contains(field.id) ? OPSStyle.Colors.primaryAccent : (field.hasData ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.tertiaryText.opacity(0.3)))
+                    .foregroundColor(selectedFields.contains(field.id) ? OPSStyle.Colors.text : (field.hasData ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.tertiaryText.opacity(0.3)))
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -388,7 +388,7 @@ struct CopyFromProjectSheet: View {
                 }
             }
             .padding()
-            .background(OPSStyle.Colors.background)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
         .disabled(!field.hasData) // Disable button for empty fields

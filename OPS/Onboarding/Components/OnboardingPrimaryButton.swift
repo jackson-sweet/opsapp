@@ -36,7 +36,7 @@ struct OnboardingPrimaryButton: View {
             action()
         } label: {
             if isLoading {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .black))
 
@@ -55,7 +55,7 @@ struct OnboardingPrimaryButton: View {
                     Image(systemName: "arrow.right")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             }
         }
         .frame(maxWidth: .infinity)
@@ -71,7 +71,7 @@ struct OnboardingPrimaryButton: View {
 
 struct OnboardingPrimaryButton_Previews: PreviewProvider {
     static var previews: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             OnboardingPrimaryButton("CONTINUE", isEnabled: true) {
                 print("Tapped")
             }

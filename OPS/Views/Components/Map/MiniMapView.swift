@@ -51,9 +51,9 @@ struct MiniMapView: View {
                     // Show a placeholder that's distinct from the "no
                     // address at all" state — indicates loading / pending
                     // resolution. Bug bec71df9.
-                    OPSStyle.Colors.cardBackgroundDark
+                    OPSStyle.Colors.background
                         .overlay(
-                            VStack(spacing: 8) {
+                            VStack(spacing: OPSStyle.Layout.spacing2) {
                                 if isResolving {
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
@@ -82,9 +82,9 @@ struct MiniMapView: View {
                         )
                 } else {
                     // Fallback for no coordinates AND no address at all.
-                    OPSStyle.Colors.cardBackgroundDark
+                    OPSStyle.Colors.background
                         .overlay(
-                            VStack(spacing: 8) {
+                            VStack(spacing: OPSStyle.Layout.spacing2) {
                                 Image(systemName: "map.slash")
                                     .font(.system(size: OPSStyle.Layout.IconSize.xl))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -110,10 +110,10 @@ struct MiniMapView: View {
                         Image(systemName: "arrow.up.forward.app.fill")
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                            .padding(8)
+                            .padding(OPSStyle.Layout.spacing2)
                             .background(OPSStyle.Colors.primaryAccent)
                             .clipShape(Circle())
-                            .padding(12)
+                            .padding(OPSStyle.Layout.spacing2_5)
                     }
                 }
             }

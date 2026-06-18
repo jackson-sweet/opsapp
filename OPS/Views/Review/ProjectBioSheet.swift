@@ -18,10 +18,10 @@ struct ProjectBioSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                     photoCarousel
 
-                    VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                         headerSection
                         divider
                         timelineSection
@@ -35,8 +35,8 @@ struct ProjectBioSheet: View {
                             financialSection
                         }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 32)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.bottom, OPSStyle.Layout.spacing5)
                 }
             }
             .background(OPSStyle.Colors.background)
@@ -71,7 +71,7 @@ struct ProjectBioSheet: View {
 
     private var divider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.1))
+            .fill(OPSStyle.Colors.line)
             .frame(height: 1)
     }
 
@@ -82,10 +82,10 @@ struct ProjectBioSheet: View {
         let photos = project.getProjectImages()
         if photos.isEmpty {
             Rectangle()
-                .fill(OPSStyle.Colors.cardBackgroundDark)
+                .fill(OPSStyle.Colors.background)
                 .frame(height: 220)
                 .overlay(
-                    VStack(spacing: 8) {
+                    VStack(spacing: OPSStyle.Layout.spacing2) {
                         Image(systemName: "photo.on.rectangle")
                             .font(.system(size: 32))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -96,7 +96,7 @@ struct ProjectBioSheet: View {
                 )
         } else {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     ForEach(photos, id: \.self) { url in
                         PhotoThumbnail(url: url, project: project)
                             .frame(width: 280, height: 220)
@@ -111,24 +111,25 @@ struct ProjectBioSheet: View {
     // MARK: - Header
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             Text(project.title.uppercased())
-                .font(OPSStyle.Typography.title)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+                .font(OPSStyle.Typography.pageTitle)
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.text)
 
             Text(project.effectiveClientName.uppercased())
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             if let address = project.address, !address.isEmpty {
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Image(systemName: "mappin")
                         .font(.system(size: 12))
                     Text(address)
                         .font(OPSStyle.Typography.caption)
                 }
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .padding(.top, 4)
+                .padding(.top, OPSStyle.Layout.spacing1)
             }
         }
     }
@@ -136,10 +137,10 @@ struct ProjectBioSheet: View {
     // MARK: - Timeline
 
     private var timelineSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             sectionHeader("TIMELINE")
 
-            HStack(spacing: 24) {
+            HStack(spacing: OPSStyle.Layout.spacing4) {
                 if let start = project.startDate {
                     dateColumn("STARTED", date: start)
                 }
@@ -173,7 +174,7 @@ struct ProjectBioSheet: View {
     // MARK: - Team
 
     private var teamSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             sectionHeader("TEAM")
 
             if resolvedMembers.isEmpty {
@@ -183,7 +184,7 @@ struct ProjectBioSheet: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(resolvedMembers, id: \.id) { member in
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             UserAvatar(user: member, size: 36)
 
                             VStack(alignment: .leading, spacing: 2) {
@@ -207,7 +208,7 @@ struct ProjectBioSheet: View {
     // MARK: - Notes
 
     private var notesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             sectionHeader("NOTES")
 
             if let notes = project.notes, !notes.isEmpty {
@@ -227,11 +228,11 @@ struct ProjectBioSheet: View {
 
     @ViewBuilder
     private var financialSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             sectionHeader("INVOICING")
 
             // Placeholder -- will wire to actual invoice data
-            HStack(spacing: 24) {
+            HStack(spacing: OPSStyle.Layout.spacing4) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("STATUS")
                         .font(OPSStyle.Typography.smallCaption)

@@ -30,12 +30,12 @@ struct EstimateApprovedStep: View {
             // Context label at top of content area
             if phase == .notification || phase == .explaining {
                 contextLabel
-                    .padding(.bottom, 24)
+                    .padding(.bottom, OPSStyle.Layout.spacing4)
             }
 
             if phase == .transforming || phase == .settled {
                 transformLabel
-                    .padding(.bottom, 16)
+                    .padding(.bottom, OPSStyle.Layout.spacing3)
             }
 
             // Main content
@@ -52,7 +52,7 @@ struct EstimateApprovedStep: View {
                     taskCardsView
                 }
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing4)
 
             Spacer()
         }
@@ -63,7 +63,7 @@ struct EstimateApprovedStep: View {
     // MARK: - Context Labels
 
     private var contextLabel: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: OPSStyle.Layout.spacing1) {
             Text("CLIENT APPROVED YOUR ESTIMATE")
                 .font(.microLabel)
                 .foregroundStyle(OPSStyle.Colors.successStatus)
@@ -79,7 +79,7 @@ struct EstimateApprovedStep: View {
     }
 
     private var transformLabel: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: OPSStyle.Layout.spacing1) {
             Text("TASKS AUTO-GENERATED")
                 .font(.microLabel)
                 .foregroundStyle(OPSStyle.Colors.primaryAccent)
@@ -95,8 +95,8 @@ struct EstimateApprovedStep: View {
     // MARK: - Approval Notification
 
     private var approvalCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 22))
                     .foregroundStyle(OPSStyle.Colors.successStatus)
@@ -117,10 +117,10 @@ struct EstimateApprovedStep: View {
                 Rectangle()
                     .fill(OPSStyle.Colors.separator)
                     .frame(height: 0.5)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
 
                 ForEach(TutorialData.lineItems) { item in
-                    HStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         RoundedRectangle(cornerRadius: 1)
                             .fill(item.type.color)
                             .frame(width: 3, height: 20)
@@ -147,7 +147,7 @@ struct EstimateApprovedStep: View {
                 .transition(.opacity)
             }
         }
-        .padding(20)
+        .padding(OPSStyle.Layout.spacing3_5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -162,7 +162,7 @@ struct EstimateApprovedStep: View {
     // MARK: - Task Cards
 
     private var taskCardsView: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
             ForEach(Array(TutorialData.taskCards.prefix(visibleTasks).enumerated()), id: \.element.id) { _, task in
                 taskCard(task)
                     .transition(.asymmetric(
@@ -174,7 +174,7 @@ struct EstimateApprovedStep: View {
     }
 
     private func taskCard(_ task: TutorialData.TaskCard) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             RoundedRectangle(cornerRadius: 1)
                 .fill(task.color)
                 .frame(width: 3)
@@ -211,7 +211,7 @@ struct EstimateApprovedStep: View {
             }
         }
         .frame(height: 48)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -240,7 +240,7 @@ struct EstimateApprovedStep: View {
 
         // 0.4s — Notification drops in
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 phase = .notification
             }
             TutorialHaptics.milestone()
@@ -248,7 +248,7 @@ struct EstimateApprovedStep: View {
 
         // 1.5s — Show the estimate line items inside the card + explainer text
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 phase = .explaining
                 showExplainer = true
             }
@@ -256,13 +256,13 @@ struct EstimateApprovedStep: View {
 
         // 3.5s — Transform: labor items become task cards
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
-            withAnimation(.easeOut(duration: 0.25)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 phase = .transforming
             }
 
             for i in 0..<TutorialData.taskCards.count {
                 DispatchQueue.main.asyncAfter(deadline: .now() + (Double(i) * 0.15)) {
-                    withAnimation(.easeOut(duration: 0.25)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         visibleTasks = i + 1
                     }
                     TutorialHaptics.arrival()
@@ -273,7 +273,7 @@ struct EstimateApprovedStep: View {
         // Crew docks
         let crewDelay = 3.5 + (Double(TutorialData.taskCards.count) * 0.15) + 0.3
         DispatchQueue.main.asyncAfter(deadline: .now() + crewDelay) {
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(OPSStyle.Animation.standard) {
                 showCrew = true
                 phase = .settled
             }

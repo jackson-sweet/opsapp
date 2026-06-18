@@ -582,8 +582,9 @@ struct SketchCaptureView: View {
 
             // Title
             Text("Scan Paper Sketch")
-                .font(OPSStyle.Typography.heading)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+                .font(OPSStyle.Typography.screenTitle(for: "Scan Paper Sketch"))
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.text)
                 .padding(.bottom, OPSStyle.Layout.spacing5)
 
             // Buttons
@@ -656,21 +657,14 @@ struct SketchCaptureView: View {
     private var reviewScreen: some View {
         VStack(spacing: 0) {
             // Header
-            HStack {
-                Text("Review Scan")
-                    .font(OPSStyle.Typography.heading)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                Spacer()
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: OPSStyle.Icons.xmark)
-                        .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            OPSScreenHeader(
+                "Review Scan",
+                trailing: {
+                    OPSHeaderCloseButton {
+                        dismiss()
+                    }
                 }
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing4)
+            )
             .padding(.top, OPSStyle.Layout.spacing4)
 
             // Image preview

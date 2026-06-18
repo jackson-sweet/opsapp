@@ -39,7 +39,7 @@ struct CompanySetupScreen: View {
                 onSignOut: { manager.signOut() }
             )
             .padding(.horizontal, 40)
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
 
             // Title section with phased typing animation
             PhasedOnboardingHeader(
@@ -49,7 +49,7 @@ struct CompanySetupScreen: View {
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 40)
-            .padding(.top, 16)
+            .padding(.top, OPSStyle.Layout.spacing3)
 
             Spacer()
                 .frame(height: 32)
@@ -58,7 +58,7 @@ struct CompanySetupScreen: View {
             PhasedContent(coordinator: animationCoordinator) {
                 VStack(spacing: 0) {
                     // Company logo
-                    VStack(spacing: 12) {
+                    VStack(spacing: OPSStyle.Layout.spacing2_5) {
                         ProfileImageUploader(
                             config: ImageUploaderConfig(
                                 currentImageData: logoData,
@@ -89,9 +89,9 @@ struct CompanySetupScreen: View {
                         .frame(height: 32)
 
                     // Form fields
-                    VStack(spacing: 20) {
+                    VStack(spacing: OPSStyle.Layout.spacing3_5) {
                         // Company name
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             PhasedLabel("COMPANY NAME", index: 1, coordinator: animationCoordinator)
 
                             TextField("", text: $companyName)
@@ -100,7 +100,7 @@ struct CompanySetupScreen: View {
                                 .autocapitalization(.words)
                                 .focused($focusedField, equals: .name)
                                 .padding(.vertical, 14)
-                                .padding(.horizontal, 16)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
                                 .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
@@ -110,7 +110,7 @@ struct CompanySetupScreen: View {
                         }
 
                         // Office email
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             HStack {
                                 PhasedLabel("OFFICE EMAIL", index: 2, coordinator: animationCoordinator)
 
@@ -134,7 +134,7 @@ struct CompanySetupScreen: View {
                                 .autocapitalization(.none)
                                 .focused($focusedField, equals: .email)
                                 .padding(.vertical, 14)
-                                .padding(.horizontal, 16)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
                                 .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
@@ -144,7 +144,7 @@ struct CompanySetupScreen: View {
                         }
 
                         // Office phone
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             HStack {
                                 PhasedLabel("OFFICE PHONE", index: 3, isLast: true, coordinator: animationCoordinator)
 
@@ -167,7 +167,7 @@ struct CompanySetupScreen: View {
                                 .keyboardType(.phonePad)
                                 .focused($focusedField, equals: .phone)
                                 .padding(.vertical, 14)
-                                .padding(.horizontal, 16)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
                                 .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
@@ -181,7 +181,7 @@ struct CompanySetupScreen: View {
                                             Button {
                                                 focusedField = nil
                                             } label: {
-                                                HStack(spacing: 4) {
+                                                HStack(spacing: OPSStyle.Layout.spacing1) {
                                                     Text("Enter")
                                                     Image(systemName: "return")
                                                 }

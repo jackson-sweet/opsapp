@@ -66,15 +66,15 @@ struct OrganizationDetailsView: View {
                 loadingView
             } else {
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         // PREVIEW CARD (live updating)
                         previewCard
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         // LOGO UPLOADER (if admin)
                         if isCompanyAdmin {
                             logoUploader
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
 
                         // ORGANIZATION DETAILS Section
@@ -84,7 +84,7 @@ struct OrganizationDetailsView: View {
                             isExpanded: $isDetailsExpanded,
                             onDelete: nil
                         ) {
-                            VStack(spacing: 16) {
+                            VStack(spacing: OPSStyle.Layout.spacing3) {
                                 // Phone Field
                                 formField(
                                     label: "PHONE",
@@ -113,7 +113,7 @@ struct OrganizationDetailsView: View {
                                 )
 
                                 // Address Field
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     Text("ADDRESS")
                                         .font(OPSStyle.Typography.captionBold)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -147,8 +147,8 @@ struct OrganizationDetailsView: View {
 
                                                     Spacer()
                                                 }
-                                                .padding(.vertical, 12)
-                                                .padding(.horizontal, 16)
+                                                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                                                .padding(.horizontal, OPSStyle.Layout.spacing3)
                                                 .frame(maxWidth: .infinity, alignment: .leading)
                                                 .background(Color.clear)
                                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -162,8 +162,8 @@ struct OrganizationDetailsView: View {
                                         Text(editedAddress.isEmpty ? "NO ADDRESS" : editedAddress)
                                             .font(OPSStyle.Typography.body)
                                             .foregroundColor(editedAddress.isEmpty ? OPSStyle.Colors.placeholderText : OPSStyle.Colors.primaryText)
-                                            .padding(.vertical, 12)
-                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                             .background(Color.clear)
                                             .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -175,21 +175,21 @@ struct OrganizationDetailsView: View {
                                 }
                             }
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         // COMPANY CODE Section (non-editable, copyable)
                         companyCodeSection
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         // Save/Cancel buttons (only show if changes made and admin)
                         if hasChanges && isCompanyAdmin {
                             actionButtons
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
 
                         // Error message
                         if let error = errorMessage {
-                            HStack(spacing: 8) {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.errorStatus)
@@ -198,10 +198,10 @@ struct OrganizationDetailsView: View {
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.errorStatus)
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
                     }
-                    .padding(.vertical, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing3)
                     .padding(.bottom, 100)
                 }
             }
@@ -259,7 +259,7 @@ struct OrganizationDetailsView: View {
         // Use company's externalId as the company code
         let companyCode = company?.externalId ?? ""
 
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack {
                 Text("COMPANY CODE")
                     .font(OPSStyle.Typography.captionBold)
@@ -273,7 +273,7 @@ struct OrganizationDetailsView: View {
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 .popover(isPresented: $showingCompanyCodeInfo, arrowEdge: .top) {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         Text("What is this?")
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -283,9 +283,9 @@ struct OrganizationDetailsView: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    .padding(16)
+                    .padding(OPSStyle.Layout.spacing3)
                     .frame(width: 280)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .glassDense()
                     .presentationCompactAdaptation(.popover)
                 }
 
@@ -313,7 +313,7 @@ struct OrganizationDetailsView: View {
                         let generator = UINotificationFeedbackGenerator()
                         generator.notificationOccurred(.success)
                     }) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "doc.on.doc")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             Text("COPY")
@@ -323,8 +323,8 @@ struct OrganizationDetailsView: View {
                     }
                 }
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -338,7 +338,7 @@ struct OrganizationDetailsView: View {
     // MARK: - Logo Uploader
 
     private var logoUploader: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: OPSStyle.Layout.spacing3) {
             // Logo circle
             Button(action: { showImagePicker = true }) {
                 ZStack {
@@ -387,7 +387,7 @@ struct OrganizationDetailsView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(companyImage == nil && company?.logoURL == nil && company?.logoData == nil ? "TAP TO ADD LOGO" : "CHANGE LOGO")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -411,7 +411,7 @@ struct OrganizationDetailsView: View {
 
     private var logoPlaceholder: some View {
         Circle()
-            .fill(OPSStyle.Colors.cardBackgroundDark)
+            .fill(OPSStyle.Colors.background)
             .frame(width: 72, height: 72)
             .overlay(
                 Image(systemName: "building.2")
@@ -439,7 +439,7 @@ struct OrganizationDetailsView: View {
         keyboardType: UIKeyboardType,
         field: OrganizationFormField
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text(label)
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -456,8 +456,8 @@ struct OrganizationDetailsView: View {
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(keyboardType == .emailAddress || keyboardType == .URL ? .never : .words)
                     .focused($focusedField, equals: field)
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .background(Color.clear)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
@@ -474,8 +474,8 @@ struct OrganizationDetailsView: View {
                 Text(text.wrappedValue.isEmpty ? placeholder : text.wrappedValue)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(text.wrappedValue.isEmpty ? OPSStyle.Colors.placeholderText : OPSStyle.Colors.primaryText)
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.clear)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -490,7 +490,7 @@ struct OrganizationDetailsView: View {
     // MARK: - Action Buttons
 
     private var actionButtons: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Cancel button
             Button(action: {
                 resetChanges()
@@ -500,12 +500,7 @@ struct OrganizationDetailsView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .nestedCard()
             }
             .disabled(isSaving)
 
@@ -515,7 +510,7 @@ struct OrganizationDetailsView: View {
                     await saveChanges()
                 }
             }) {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     if isSaving {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.invertedText))
@@ -537,7 +532,7 @@ struct OrganizationDetailsView: View {
     // MARK: - Loading View
 
     private var loadingView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             ProgressView()
                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                 .scaleEffect(1.2)

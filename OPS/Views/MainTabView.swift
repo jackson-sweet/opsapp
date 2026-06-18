@@ -220,34 +220,35 @@ struct MainTabView: View {
     // Dynamic tabs based on user role
     private var tabs: [TabItem] {
         var baseTabs: [TabItem] = [
-            TabItem(iconName: "house.fill", wizardStepId: "welcome_home")
+            TabItem(iconName: "nav-home", accessibilityLabel: "Home", wizardStepId: "welcome_home")
         ]
 
         // Add LEADS tab for users with pipeline.view + pipeline feature flag
         if hasLeadsAccess {
             baseTabs.append(TabItem(
-                iconName: "point.3.connected.trianglepath.dotted",
+                iconName: "nav-pipeline",
+                accessibilityLabel: "Leads",
                 wizardStepId: "welcome_leads"
             ))
         }
 
         // Add BOOKS tab for users with any of the three financial-area perms
         if hasBooksAccess {
-            baseTabs.append(TabItem(iconName: "chart.line.uptrend.xyaxis", wizardStepId: "welcome_books"))
+            baseTabs.append(TabItem(iconName: "nav-finance", accessibilityLabel: "Books", wizardStepId: "welcome_books"))
         }
 
         // Add Job Board tab for all users (admin, office crew, and field crew)
-        baseTabs.append(TabItem(iconName: "briefcase.fill", wizardStepId: "welcome_job_board"))
+        baseTabs.append(TabItem(iconName: "nav-jobs", accessibilityLabel: "Job board", wizardStepId: "welcome_job_board"))
 
         // Add Catalog tab if user has catalog access
         if hasCatalogAccess {
-            baseTabs.append(TabItem(iconName: "square.stack.3d.up.fill", wizardStepId: "welcome_catalog"))
+            baseTabs.append(TabItem(iconName: "nav-catalog", accessibilityLabel: "Catalog", wizardStepId: "welcome_catalog"))
         }
 
         // Add Schedule and Settings for all users
         baseTabs.append(contentsOf: [
-            TabItem(iconName: "calendar", wizardStepId: "welcome_schedule"),
-            TabItem(iconName: "gearshape.fill", wizardStepId: "welcome_settings")
+            TabItem(iconName: "nav-calendar", accessibilityLabel: "Schedule", wizardStepId: "welcome_schedule"),
+            TabItem(iconName: "nav-settings", accessibilityLabel: "Settings", wizardStepId: "welcome_settings")
         ])
 
         return baseTabs
@@ -381,10 +382,10 @@ struct MainTabView: View {
             // Pushed detail screens read this to fade the tab bar while on screen.
             .environment(\.tabBarVisibility, tabBarVisibility)
             .transition(slideTransition)
-            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: selectedTab)
+            .animation(OPSStyle.Animation.standard, value: selectedTab)
 
             // Image sync progress bar and sync status at top
-            VStack(spacing: 8) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
                 ImageSyncProgressView(syncManager: imageSyncProgressManager)
 
                 // Sync status indicator — hidden when sync restored banner is showing
@@ -393,7 +394,7 @@ struct MainTabView: View {
                         Spacer()
                         SyncStatusIndicator()
                             .environmentObject(dataController)
-                            .padding(.trailing, 16)
+                            .padding(.trailing, OPSStyle.Layout.spacing3)
                     }
                 }
 
@@ -801,7 +802,7 @@ struct MainTabView: View {
 
         // Handle navigating to Clients tab in Job Board
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NavigateToClients"))) { _ in
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(OPSStyle.Animation.panel) {
                 selectedTab = jobBoardTabIndex
             }
             // Post follow-up notification to switch to Clients section within Job Board

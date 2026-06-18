@@ -57,8 +57,8 @@ struct LeadLogActivitySheet: View {
                         if showsOutcome { outcomeSection }
                         if showsDuration { durationSection }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 4)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.top, OPSStyle.Layout.spacing1)
                     .padding(.bottom, 140)
                 }
                 .scrollIndicators(.hidden)
@@ -79,9 +79,9 @@ struct LeadLogActivitySheet: View {
     private var header: some View {
         // Drag handle is provided by the parent's `.presentationDragIndicator(.visible)`
         SheetTitleLabel(title: "LOG ACTIVITY", size: .half)
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.top, OPSStyle.Layout.spacing3_5)
+            .padding(.bottom, OPSStyle.Layout.spacing2_5)
     }
 
     // MARK: - Type
@@ -250,10 +250,10 @@ struct LeadLogActivitySheet: View {
             Spacer()
             if let errorMessage {
                 SheetStatusLine(mode: .error(errorMessage))
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             } else if isSaving {
                 SheetStatusLine(mode: .syncing)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             }
 
             SheetFooterButtonRow {
@@ -274,7 +274,7 @@ struct LeadLogActivitySheet: View {
                 .disabled(!canSave)
                 .opacity(canSave ? 1 : 0.5)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.bottom, 28)
         }
         .background(

@@ -49,8 +49,8 @@ struct OrganizationJoinView: View {
                                 .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.secondaryText : OPSStyle.Colors.secondaryText)
                         }
                     }
-                    .padding(.top, 8)
-                    .padding(.bottom, 8)
+                    .padding(.top, OPSStyle.Layout.spacing2)
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     
                     // Don't show step indicator on this screen since it's not counted as a step
@@ -58,7 +58,7 @@ struct OrganizationJoinView: View {
                     // Fixed VStack instead of ScrollView since this content should fit on screen
                     VStack(spacing: 0) {
                         // Header
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("ACCOUNT CREATED")
                                 .font(OPSStyle.Typography.largeTitle.weight(.bold))
                                 .foregroundColor(viewModel.shouldUseLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
@@ -69,7 +69,7 @@ struct OrganizationJoinView: View {
                                 .lineSpacing(4)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.bottom, 20)
+                        .padding(.bottom, OPSStyle.Layout.spacing3_5)
 
 
                         Spacer() // This will push content up and button to the bottom
@@ -105,7 +105,7 @@ struct OrganizationJoinView: View {
             }
             
             // Animate icon with spring effect
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.7, blendDuration: 0.3)) {
+            withAnimation(OPSStyle.Animation.curve(0.5)) {
                 iconScale = 1.0
             }
             
@@ -145,7 +145,7 @@ struct OnboardingStepIndicator: View {
     var text: String
     
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             Text(text)
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)

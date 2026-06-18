@@ -35,7 +35,7 @@ struct PillButtonGroup<T: Hashable>: View {
     }
 
     private var wrappingLayout: some View {
-        OnboardingFlowLayout(spacing: 8) {
+        OnboardingFlowLayout(spacing: OPSStyle.Layout.spacing2) {
             ForEach(options) { option in
                 PillButton(
                     title: option.title,
@@ -49,7 +49,7 @@ struct PillButtonGroup<T: Hashable>: View {
 
     private var scrollingLayout: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(options) { option in
                     PillButton(
                         title: option.title,
@@ -91,8 +91,8 @@ struct PillButton: View {
                 .fontWeight(isSelected ? .semibold : .regular)
                 .foregroundColor(isSelected ? .black : OPSStyle.Colors.primaryText)
                 .tracking(0.5)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .fill(isSelected ? Color.white : OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
@@ -200,7 +200,7 @@ struct LabeledPillButtonGroup<T: Hashable>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text(label)
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -221,7 +221,7 @@ struct LabeledPillButtonGroup<T: Hashable>: View {
         @State private var selection: CompanySize?
 
         var body: some View {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                 Text("Selected: \(selection?.rawValue ?? "none")")
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -245,7 +245,7 @@ struct LabeledPillButtonGroup<T: Hashable>: View {
         @State private var selection: CompanyAge?
 
         var body: some View {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                 Text("Selected: \(selection?.rawValue ?? "none")")
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -276,7 +276,7 @@ struct LabeledPillButtonGroup<T: Hashable>: View {
         ]
 
         var body: some View {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                 Text("Selected: \(selection ?? "none")")
                     .foregroundColor(OPSStyle.Colors.primaryText)
 

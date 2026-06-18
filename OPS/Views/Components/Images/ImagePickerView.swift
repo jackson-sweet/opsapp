@@ -15,10 +15,11 @@ struct ImagePickerView: View {
     @State private var selectedItem: PhotosPickerItem?
     
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             Text("Select Profile Image")
-                .font(OPSStyle.Typography.heading)
-                .bold()
+                .font(OPSStyle.Typography.pageTitle)
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.text)
                 .padding(.top)
             
             if let selectedImage = selectedImage {
@@ -80,7 +81,7 @@ struct ImagePickerView: View {
             
             Spacer()
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .glassDense()
         .onChange(of: selectedItem) { oldItem, newItem in
             Task {
                 if let data = try? await newItem?.loadTransferable(type: Data.self),

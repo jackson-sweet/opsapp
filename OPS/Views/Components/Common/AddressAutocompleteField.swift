@@ -86,8 +86,8 @@ struct AddressAutocompleteField: View {
                     }
                 }
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .background(Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
@@ -102,7 +102,7 @@ struct AddressAutocompleteField: View {
                         Button(action: {
                             selectAddress(result)
                         }) {
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                 Text(result.title)
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -115,21 +115,19 @@ struct AddressAutocompleteField: View {
                                         .lineLimit(1)
                                 }
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .background(OPSStyle.Colors.cardBackground)
-                        
+
                         if result != searchResults.prefix(5).last {
                             Divider()
-                                .background(OPSStyle.Colors.secondaryText.opacity(0.3))
+                                .background(OPSStyle.Colors.line)
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackground)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .padding(.top, 4)
+                .glassDense()
+                .padding(.top, OPSStyle.Layout.spacing1)
             }
         }
         .onAppear {

@@ -77,7 +77,7 @@ struct InventorySnapshotSetupView: View {
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: phase == .initial ? "camera.viewfinder" : "checkmark.circle.fill")
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(phase == .initial ? OPSStyle.Colors.wizardAccent : OPSStyle.Colors.successStatus)

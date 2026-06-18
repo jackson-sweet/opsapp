@@ -62,7 +62,7 @@ struct AddressSearchField: View {
                         Button(action: {
                             selectAddress(item)
                         }) {
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                 if let name = item.name {
                                     Text(name)
                                         .font(OPSStyle.Layout.SearchField.rowTitleFont)

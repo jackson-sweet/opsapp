@@ -86,7 +86,7 @@ struct RecurringEventEditScopeSheet: View {
             Capsule()
                 .fill(OPSStyle.Colors.tertiaryText.opacity(0.5))
                 .frame(width: 36, height: 4)
-                .padding(.top, 12)
+                .padding(.top, OPSStyle.Layout.spacing2_5)
                 .padding(.bottom, OPSStyle.Layout.spacing4)
 
             // Title block
@@ -192,13 +192,7 @@ struct RecurringEventEditScopeSheet: View {
             .padding(.vertical, 14)
             .frame(minHeight: OPSStyle.Layout.touchTargetStandard)  // 60pt — primary action target
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(rowBackground(isDestructive: isDestructive, isPrimary: isPrimary))
-            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(rowBorder(isDestructive: isDestructive, isPrimary: isPrimary),
-                            lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .modifier(ScopeRowSurface(isDestructive: isDestructive, isPrimary: isPrimary))
         }
         .buttonStyle(PressDimStyle())
     }
@@ -229,22 +223,26 @@ struct RecurringEventEditScopeSheet: View {
         if isPrimary { return OPSStyle.Colors.invertedText.opacity(0.7) }
         return OPSStyle.Colors.secondaryText
     }
+}
 
-    @ViewBuilder
-    private func rowBackground(isDestructive: Bool, isPrimary: Bool) -> some View {
-        if isPrimary && isDestructive {
-            OPSStyle.Colors.errorStatus
-        } else if isPrimary {
-            OPSStyle.Colors.primaryText
+// MARK: - Scope row surface
+
+/// Surface treatment for a scope row. The two primary rows are decisive CTAs —
+/// solid emphasis fills (errorStatus for destructive, primaryText otherwise) with
+/// no border. The non-primary rows are list-of-cards rows and ride the canonical
+/// L1 glass surface so they read as discrete, tappable cards on the sheet canvas.
+private struct ScopeRowSurface: ViewModifier {
+    let isDestructive: Bool
+    let isPrimary: Bool
+
+    func body(content: Content) -> some View {
+        if isPrimary {
+            content
+                .background(isDestructive ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryText)
+                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
         } else {
-            OPSStyle.Colors.cardBackgroundDark
+            content.glassSurface(cornerRadius: OPSStyle.Layout.cornerRadius)
         }
-    }
-
-    private func rowBorder(isDestructive: Bool, isPrimary: Bool) -> Color {
-        if isPrimary { return Color.clear }
-        if isDestructive { return OPSStyle.Colors.errorStatus.opacity(0.4) }
-        return OPSStyle.Colors.cardBorder
     }
 }
 
@@ -259,6 +257,6 @@ private struct PressDimStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1.0)
             .opacity(configuration.isPressed ? 0.85 : 1.0)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(OPSStyle.Animation.hover, value: configuration.isPressed)
     }
 }

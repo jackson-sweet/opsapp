@@ -120,19 +120,14 @@ struct EstimateCard: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
         .buttonStyle(PlainButtonStyle())
     }
 
     private var statusBadge: some View {
         let color = estimate.status.color
-        return HStack(spacing: 4) {
+        return HStack(spacing: OPSStyle.Layout.spacing1) {
             Circle()
                 .fill(color)
                 .frame(width: 8, height: 8)

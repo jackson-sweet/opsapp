@@ -251,7 +251,7 @@ struct OnboardingABTestCoordinator: View {
                 // Loading screen while checking for pending invites
                 ZStack {
                     OPSStyle.Colors.background.ignoresSafeArea()
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
                         Text("CHECKING FOR INVITES...")
@@ -483,7 +483,7 @@ struct OnboardingABTestCoordinator: View {
                 ZStack {
                     OPSStyle.Colors.background
                         .ignoresSafeArea()
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
                             .scaleEffect(1.2)
@@ -496,8 +496,8 @@ struct OnboardingABTestCoordinator: View {
                 .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: flowStep)
-        .animation(.easeInOut(duration: 0.2), value: isFinishing)
+        .animation(OPSStyle.Animation.standard, value: flowStep)
+        .animation(OPSStyle.Animation.panel, value: isFinishing)
         .onChange(of: flowStep) { _, newStep in
             // Persist flow step for resume on app relaunch
             newStep.save()
@@ -697,7 +697,7 @@ private struct ABTestSplashView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 44, height: 44)
-                        .padding(.bottom, 8)
+                        .padding(.bottom, OPSStyle.Layout.spacing2)
 
                     Text("OPS")
                         .font(OPSStyle.Typography.largeTitle.weight(.bold))
@@ -712,7 +712,7 @@ private struct ABTestSplashView: View {
                 Spacer()
 
                 // Brand message
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     VStack(alignment: .leading, spacing: 0) {
                         Text("BUILT BY TRADES.")
                             .font(OPSStyle.Typography.largeTitle.weight(.bold))
@@ -734,7 +734,7 @@ private struct ABTestSplashView: View {
                 Spacer()
 
                 // Bottom area: CTA + login link
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     // Primary CTA
                     Button(action: onGetStarted) {
                         HStack {
@@ -747,7 +747,7 @@ private struct ABTestSplashView: View {
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         }
                         .foregroundColor(OPSStyle.Colors.invertedText)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
                         .background(OPSStyle.Colors.primaryText)
@@ -766,7 +766,7 @@ private struct ABTestSplashView: View {
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         }
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
                         .background(Color.clear)
@@ -835,7 +835,7 @@ private struct ABTestSplashView: View {
         textOpacity = 0
         buttonOpacity = 0
 
-        withAnimation(Animation.spring(response: 0.8, dampingFraction: 0.6).delay(0.3)) {
+        withAnimation(OPSStyle.Animation.curve(0.5).delay(0.3)) {
             logoOpacity = 1.0
         }
 

@@ -58,7 +58,7 @@ struct RecipeManageSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         if productMaterials.isEmpty {
@@ -182,12 +182,7 @@ struct RecipeManageSheet: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     /// Pencil button — opens AddProductMaterialSheet in edit mode for
@@ -243,7 +238,7 @@ struct RecipeManageSheet: View {
             .foregroundColor(OPSStyle.Colors.primaryAccent)
             .frame(maxWidth: .infinity)
             .frame(height: OPSStyle.Layout.touchTargetStandard)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)

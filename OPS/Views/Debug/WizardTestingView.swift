@@ -26,21 +26,21 @@ struct WizardTestingView: View {
                         }
                         Spacer()
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                     Text("WIZARD TESTING")
                         .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                .padding(.vertical, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing3)
 
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         masterToggleCard
                         globalActionsCard
                         perWizardControls
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .padding(.bottom, 100)
                 }
             }
@@ -68,13 +68,8 @@ struct WizardTestingView: View {
             ))
                 .tint(OPSStyle.Colors.text)
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
     }
 
     private var globalActionsCard: some View {
@@ -91,20 +86,15 @@ struct WizardTestingView: View {
                     Spacer()
                 }
                 .padding(.vertical, 14)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
             .buttonStyle(PlainButtonStyle())
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var perWizardControls: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("PER-WIZARD CONTROLS")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -119,7 +109,7 @@ struct WizardTestingView: View {
     private func wizardControlCard(wizard: any WizardDefinitionProtocol) -> some View {
         let state = stateManager.wizardState(for: wizard.wizardId)
 
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             HStack {
                 Text(wizard.displayName)
                     .font(OPSStyle.Typography.captionBold)
@@ -131,7 +121,7 @@ struct WizardTestingView: View {
             }
 
             if let state {
-                HStack(spacing: 16) {
+                HStack(spacing: OPSStyle.Layout.spacing3) {
                     Text("Step: \(state.currentStepIndex)/\(wizard.totalSteps)")
                     Text("Skipped: \(state.stepsSkipped)")
                     Text("DoNotShow: \(state.doNotShow ? "YES" : "NO")")
@@ -140,7 +130,7 @@ struct WizardTestingView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Button("Reset") {
                     stateManager.resetState(for: wizard.wizardId)
                 }
@@ -157,7 +147,7 @@ struct WizardTestingView: View {
             }
 
             if wizard.steps.count > 1 {
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     Text("Jump to:")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -172,17 +162,12 @@ struct WizardTestingView: View {
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 24, height: 24)
                         .background(OPSStyle.Colors.background.opacity(0.5))
-                        .cornerRadius(4)
+                        .cornerRadius(OPSStyle.Layout.chipRadius)
                     }
                 }
             }
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
     }
 }

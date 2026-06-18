@@ -47,7 +47,7 @@ struct FilterChipRow: View {
                     chipButton(chip)
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 
@@ -75,7 +75,7 @@ struct FilterChipRow: View {
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(isActive ? OPSStyle.Colors.text2 : OPSStyle.Colors.textMute)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .frame(minHeight: 36)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
@@ -113,11 +113,11 @@ private struct FilterChipRowPreviewHost: View {
     var body: some View {
         ZStack {
             OPSStyle.Colors.background.ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                 Text("Selected: \(selected)")
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.text3)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 FilterChipRow(selectedId: $selected, chips: chips)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

@@ -35,7 +35,7 @@ struct OfflineGateView: View {
                 Spacer().frame(height: 40)
 
                 // Messaging card
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Text("NO CONNECTION")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -46,14 +46,9 @@ struct OfflineGateView: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .multilineTextAlignment(.center)
                 }
-                .padding(20)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                )
-                .padding(.horizontal, 24)
+                .padding(OPSStyle.Layout.spacing3_5)
+                .glassSurface()
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
 
                 Spacer().frame(height: 24)
 
@@ -64,11 +59,11 @@ struct OfflineGateView: View {
                             .font(OPSStyle.Typography.button)
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
+                            .padding(.vertical, OPSStyle.Layout.spacing3)
                             .background(OPSStyle.Colors.primaryAccent)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
 
                     Spacer().frame(height: 16)
                 }

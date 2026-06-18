@@ -122,7 +122,7 @@ struct AddAssemblyMaterialSheet: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
@@ -151,7 +151,7 @@ struct AddAssemblyMaterialSheet: View {
                     }
                     .padding(OPSStyle.Layout.spacing3)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .nestedCard()
+                    .glassSurface()
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.top, OPSStyle.Layout.spacing3)
@@ -196,7 +196,7 @@ struct AddAssemblyMaterialSheet: View {
             }
         }
         .padding(OPSStyle.Layout.spacing1)
-        .background(OPSStyle.Colors.cardBackground)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -214,7 +214,7 @@ struct AddAssemblyMaterialSheet: View {
                 .foregroundColor(isOn ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
-                .background(isOn ? OPSStyle.Colors.cardBackgroundDark : Color.clear)
+                .background(isOn ? OPSStyle.Colors.surfaceActive : Color.clear)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
         .buttonStyle(.plain)
@@ -407,12 +407,7 @@ struct AddAssemblyMaterialSheet: View {
             }
             .padding(OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .nestedCard()
         }
     }
 
@@ -504,11 +499,11 @@ struct AddAssemblyMaterialSheet: View {
                 .keyboardType(.decimalPad)
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -527,11 +522,11 @@ struct AddAssemblyMaterialSheet: View {
         .padding(OPSStyle.Layout.spacing2)
         .frame(maxWidth: .infinity, alignment: .leading)
         .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 }

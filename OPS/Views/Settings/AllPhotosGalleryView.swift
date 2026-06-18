@@ -239,7 +239,7 @@ struct AllPhotosGalleryView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .edgesIgnoringSafeArea(.all)
 
             VStack(spacing: 0) {
@@ -383,13 +383,13 @@ struct AllPhotosGalleryView: View {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: OPSStyle.Icons.filter)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                        .foregroundColor(hasActiveFilters ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .background(OPSStyle.Colors.surfaceInput)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
 
                     if activeFilterCount > 0 {
@@ -404,13 +404,13 @@ struct AllPhotosGalleryView: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Group Toggle
 
     private var groupToggleRow: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             HStack {
                 Text("Group by Project")
                     .font(OPSStyle.Typography.caption)
@@ -426,7 +426,7 @@ struct AllPhotosGalleryView: View {
             // "Keep All Photos Downloaded" toggle removed — photo caching is
             // now capacity-based. Manage via Settings → Photo Storage.
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Summary
@@ -439,7 +439,7 @@ struct AllPhotosGalleryView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Spacer()
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Month Section
@@ -447,7 +447,7 @@ struct AllPhotosGalleryView: View {
     private func monthSection(_ group: PhotoMonthGroup) -> some View {
         let isExpanded = expandedMonths.contains(group.id)
 
-        return VStack(spacing: 12) {
+        return VStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Month header — tappable to toggle
             HStack {
                 Text(group.label)
@@ -467,10 +467,10 @@ struct AllPhotosGalleryView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .rotationEffect(.degrees(isExpanded ? 0 : -90))
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.easeInOut(duration: 0.25)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     if isExpanded {
                         expandedMonths.remove(group.id)
                     } else {
@@ -492,7 +492,7 @@ struct AllPhotosGalleryView: View {
                 } else {
                     // Flat photo grid
                     photoGrid(group.photos)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 }
             }
         }
@@ -507,7 +507,7 @@ struct AllPhotosGalleryView: View {
 
         return VStack(spacing: 0) {
             // Card header
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("[ \(title.uppercased()) ]")
                         .font(OPSStyle.Typography.captionBold)
@@ -533,11 +533,11 @@ struct AllPhotosGalleryView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .rotationEffect(.degrees(isExpanded ? 0 : -90))
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .padding(.horizontal, 14)
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.easeInOut(duration: 0.25)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     if isExpanded {
                         expandedProjects.remove(projectId)
                     } else {
@@ -556,13 +556,8 @@ struct AllPhotosGalleryView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .padding(.horizontal, 20)
+        .glassSurface()
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     private func projectCardSubtitle(_ project: Project?) -> String {
@@ -600,14 +595,14 @@ struct AllPhotosGalleryView: View {
             } else if isDownloading {
                 // Downloading: placeholder + progress
                 ZStack {
-                    OPSStyle.Colors.cardBackgroundDark
+                    OPSStyle.Colors.background
                     ProgressView()
                         .tint(OPSStyle.Colors.secondaryText)
                 }
             } else {
                 // Remote: dark placeholder + cloud icon
                 ZStack(alignment: .bottomTrailing) {
-                    OPSStyle.Colors.cardBackgroundDark
+                    OPSStyle.Colors.background
 
                     Image(systemName: "icloud.and.arrow.down")
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
@@ -621,11 +616,11 @@ struct AllPhotosGalleryView: View {
                 Image(systemName: "pin.fill")
                     .font(.system(size: 9))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .padding(4)
+                    .padding(OPSStyle.Layout.spacing1)
                     .background(Color.black.opacity(0.5))
                     .clipShape(Circle())
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                    .padding(4)
+                    .padding(OPSStyle.Layout.spacing1)
             }
 
             // Select mode checkmark
@@ -633,12 +628,12 @@ struct AllPhotosGalleryView: View {
                 ZStack {
                     if isSelected {
                         Circle()
-                            .fill(OPSStyle.Colors.primaryAccent)
+                            .fill(OPSStyle.Colors.text)
                             .frame(width: 22, height: 22)
 
                         Image(systemName: "checkmark")
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .foregroundColor(OPSStyle.Colors.background)
                     } else {
                         Circle()
                             .stroke(OPSStyle.Colors.primaryText.opacity(0.6), lineWidth: 1.5)
@@ -681,10 +676,10 @@ struct AllPhotosGalleryView: View {
         let total = allPhotoURLs.count
         let bytes = downloadManager.estimateStorageBytes(urls: allPhotoURLs.filter { downloadManager.isOnDevice($0) })
 
-        return VStack(spacing: 8) {
+        return VStack(spacing: OPSStyle.Layout.spacing2) {
             OPSStyle.Colors.separator
                 .frame(height: 1)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             Button(action: { showStorageManagement = true }) {
                 HStack {
@@ -702,7 +697,7 @@ struct AllPhotosGalleryView: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.vertical, OPSStyle.Layout.spacing2)
                 .contentShape(Rectangle())
             }
@@ -735,8 +730,8 @@ struct AllPhotosGalleryView: View {
             // Balance spacer
             Spacer().frame(width: OPSStyle.Layout.touchTargetMin)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing2_5)
     }
 
     // MARK: - Select Toolbar
@@ -744,7 +739,7 @@ struct AllPhotosGalleryView: View {
     private var selectToolbar: some View {
         HStack(spacing: OPSStyle.Layout.spacing3) {
             Button(action: shareSelectedPhotos) {
-                VStack(spacing: 4) {
+                VStack(spacing: OPSStyle.Layout.spacing1) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                     Text("Share")
@@ -757,7 +752,7 @@ struct AllPhotosGalleryView: View {
             Spacer()
 
             Button(action: keepSelectedDownloaded) {
-                VStack(spacing: 4) {
+                VStack(spacing: OPSStyle.Layout.spacing1) {
                     Image(systemName: "pin.fill")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                     Text("Keep Downloaded")
@@ -770,7 +765,7 @@ struct AllPhotosGalleryView: View {
             Spacer()
 
             Button(action: saveSelectedToDevice) {
-                VStack(spacing: 4) {
+                VStack(spacing: OPSStyle.Layout.spacing1) {
                     Image(systemName: "arrow.down.to.line")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                     Text("Save to Device")
@@ -780,12 +775,12 @@ struct AllPhotosGalleryView: View {
             }
             .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.vertical, 14)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .glassDense(cornerRadius: 0)
         .overlay(
             Rectangle()
-                .fill(OPSStyle.Colors.cardBorder)
+                .fill(OPSStyle.Colors.line)
                 .frame(height: 1),
             alignment: .top
         )
@@ -808,7 +803,7 @@ struct AllPhotosGalleryView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     /// Inline no-results card rendered beneath the search bar so the user
@@ -838,7 +833,7 @@ struct AllPhotosGalleryView: View {
                         .tracking(0.8)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
@@ -848,7 +843,7 @@ struct AllPhotosGalleryView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, OPSStyle.Layout.spacing4)
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Actions

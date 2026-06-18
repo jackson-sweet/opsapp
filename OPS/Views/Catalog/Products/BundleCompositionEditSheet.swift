@@ -121,7 +121,7 @@ struct BundleCompositionEditSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
                 VStack(spacing: 0) {
                     ScrollView {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
@@ -210,7 +210,7 @@ struct BundleCompositionEditSheet: View {
     private var addChildButton: some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+            withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
                 drawerOpen.toggle()
             }
         } label: {
@@ -226,7 +226,7 @@ struct BundleCompositionEditSheet: View {
             .padding(OPSStyle.Layout.spacing2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -264,11 +264,11 @@ struct BundleCompositionEditSheet: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
 
             if filteredDrawerProducts.isEmpty {
@@ -288,12 +288,7 @@ struct BundleCompositionEditSheet: View {
             }
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassDense()
     }
 
     private func drawerRow(product childProduct: Product) -> some View {
@@ -400,12 +395,7 @@ struct BundleCompositionEditSheet: View {
         }
         .padding(OPSStyle.Layout.spacing2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
                 removeChild(draft)
@@ -436,12 +426,7 @@ struct BundleCompositionEditSheet: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .nestedCard()
             }
             .accessibilityLabel("Decrease quantity")
             .accessibilityHint(draft.quantity > 1 ? "Subtracts one from this bundle child." : "Removes this bundle child.")
@@ -459,12 +444,7 @@ struct BundleCompositionEditSheet: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .nestedCard()
             }
             .accessibilityLabel("Increase quantity")
             .accessibilityHint("Adds one to this bundle child.")
@@ -518,12 +498,7 @@ struct BundleCompositionEditSheet: View {
         }
         .padding(OPSStyle.Layout.spacing2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .accessibilityElement(children: .combine)
         .accessibilityLabel(child?.name ?? "Suggested add-on")
         .accessibilityValue("Quantity \(Int(item.quantity)), unit \(formattedPrice(unitPrice)), add-on total \(formattedPrice(lineTotal))")
@@ -558,14 +533,14 @@ struct BundleCompositionEditSheet: View {
         } label: {
             Text(mode.displayLabel)
                 .font(OPSStyle.Typography.buttonLabel)
-                .foregroundColor(isSelected ? OPSStyle.Colors.buttonText : OPSStyle.Colors.primaryText)
+                .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.primaryText)
                 .frame(maxWidth: .infinity)
                 .frame(height: OPSStyle.Layout.touchTargetStandard)
-                .background(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackgroundDark)
+                .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
+                        .stroke(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.cardBorder,
                                 lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
@@ -588,12 +563,7 @@ struct BundleCompositionEditSheet: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     @ViewBuilder
@@ -671,7 +641,7 @@ struct BundleCompositionEditSheet: View {
                     Spacer()
                 }
                 .frame(height: OPSStyle.Layout.touchTargetStandard)
-                .background(canSave ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackgroundDark)
+                .background(canSave ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.buttonRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)

@@ -28,10 +28,10 @@ struct FollowUpsCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             PanelSectionHeader(label: "NEXT FOLLOW-UP")
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.bottom, 10)
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 statusRow
                 Text(followUp.title)
                     .font(.custom("Mohave-Medium", size: 14.5))
@@ -40,11 +40,11 @@ struct FollowUpsCard: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .glassSurface()
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 
@@ -148,7 +148,7 @@ struct FollowUpsCard: View {
                 dueAt: Calendar.current.date(byAdding: .day, value: 1, to: Date())!
             ))
         }
-        .padding(.vertical, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing4)
     }
     .background(OPSStyle.Colors.background)
     .preferredColorScheme(.dark)

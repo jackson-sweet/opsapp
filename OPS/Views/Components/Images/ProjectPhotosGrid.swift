@@ -67,7 +67,7 @@ struct ProjectPhotosGrid: View {
                                         // smaller carousels do.
                                         if !project.isImageSynced(item.syncStatusURL) {
                                             PhotoSyncFailBadge()
-                                                .padding(4)
+                                                .padding(OPSStyle.Layout.spacing1)
                                                 .allowsHitTesting(false)
                                         }
                                     }
@@ -128,8 +128,8 @@ struct ProjectPhotosGrid: View {
                         .frame(maxWidth: .infinity)
                         .background(OPSStyle.Colors.primaryAccent)
                         .cornerRadius(OPSStyle.Layout.largeCornerRadius)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                        .padding(.bottom, OPSStyle.Layout.spacing3)
                     }
                     .disabled(processingImage)
                 }
@@ -225,7 +225,7 @@ struct ProjectPhotosGrid: View {
     }
     
     private var emptyStateView: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: OPSStyle.Layout.spacing4) {
             Spacer()
             
             Image(systemName: OPSStyle.Icons.photos)
@@ -529,7 +529,7 @@ struct BasicPhotoViewer: View {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: OPSStyle.Layout.IconSize.xl))
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                            .padding(20)
+                            .padding(OPSStyle.Layout.spacing3_5)
                     }
                 }
 
@@ -612,7 +612,7 @@ struct SinglePhotoView: View {
                             }
                             .onEnded { _ in
                                 if scale < 1 {
-                                    withAnimation(.spring()) {
+                                    withAnimation(OPSStyle.Animation.standard) {
                                         scale = 1
                                     }
                                 }
@@ -620,7 +620,7 @@ struct SinglePhotoView: View {
                     )
                     // Double tap to toggle zoom
                     .onTapGesture(count: 2) {
-                        withAnimation(.spring()) {
+                        withAnimation(OPSStyle.Animation.standard) {
                             scale = scale > 1 ? 1 : 2
                         }
                     }

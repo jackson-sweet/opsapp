@@ -50,12 +50,7 @@ struct InventoryTableView: View {
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
 
             HStack {
                 Spacer()
@@ -83,7 +78,7 @@ struct InventoryTableView: View {
             cell("SKU", width: skuColumnWidth, align: .leading, isHeader: true)
         }
         .frame(height: 36)
-        .background(OPSStyle.Colors.subtleBackground)
+        .background(OPSStyle.Colors.surfaceActive)
         .overlay(
             Rectangle()
                 .fill(OPSStyle.Colors.separator)

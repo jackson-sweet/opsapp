@@ -409,7 +409,7 @@ struct CatalogSetupFlowSheet: View {
 
     private var setupScrollContent: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                     headerBlock
@@ -513,11 +513,11 @@ struct CatalogSetupFlowSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, OPSStyle.Layout.spacing2)
                 .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                .background(OPSStyle.Colors.cardBackground)
+                .background(OPSStyle.Colors.surfaceActive)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.text, lineWidth: OPSStyle.Layout.Border.standard)
                 )
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Setup step")
@@ -560,12 +560,12 @@ struct CatalogSetupFlowSheet: View {
                 .fixedSize(horizontal: true, vertical: false)
                 .padding(.horizontal, OPSStyle.Layout.spacing2)
                 .frame(minWidth: 76, minHeight: OPSStyle.Layout.touchTargetMin)
-                .background(isActive ? OPSStyle.Colors.cardBackground : OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .background(isActive ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
+                .cornerRadius(OPSStyle.Layout.chipRadius)
                 .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .stroke(
-                            isActive ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
+                            isActive ? OPSStyle.Colors.text : OPSStyle.Colors.cardBorder,
                             lineWidth: OPSStyle.Layout.Border.standard
                         )
                 )
@@ -588,10 +588,10 @@ struct CatalogSetupFlowSheet: View {
                 .foregroundColor(targetStep == nil ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
                 .lineLimit(1)
                 .frame(minWidth: 64, minHeight: OPSStyle.Layout.touchTargetMin)
-                .background(targetStep == nil ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.cardBackground)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .background(targetStep == nil ? OPSStyle.Colors.surfaceInput : OPSStyle.Colors.surfaceActive)
+                .cornerRadius(OPSStyle.Layout.chipRadius)
                 .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .stroke(
                             targetStep == nil ? OPSStyle.Colors.cardBorder : OPSStyle.Colors.primaryAccent,
                             lineWidth: OPSStyle.Layout.Border.standard
@@ -806,12 +806,7 @@ struct CatalogSetupFlowSheet: View {
                     .accessibilityHint(attribute.name.isEmpty ? "Adds a value to this option axis." : "Adds a value to \(attribute.name).")
                 }
                 .padding(OPSStyle.Layout.spacing2)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .nestedCard()
             }
         }
         .setupPanel()
@@ -915,8 +910,7 @@ struct CatalogSetupFlowSheet: View {
                         .accessibilityHint("Restores this combination to the valid matrix.")
                     }
                     .padding(OPSStyle.Layout.spacing2)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .nestedCard()
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Invalid combination \(label(for: combo.valueIds))")
                     .accessibilityValue("Blocked")
@@ -943,8 +937,7 @@ struct CatalogSetupFlowSheet: View {
                     }
                     .tint(OPSStyle.Colors.text)
                     .padding(OPSStyle.Layout.spacing2)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .nestedCard()
                 }
             }
         }
@@ -1008,8 +1001,7 @@ struct CatalogSetupFlowSheet: View {
                             }
                         }
                         .padding(OPSStyle.Layout.spacing2)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .nestedCard()
                         .accessibilityElement(children: .contain)
                     }
                 }
@@ -1184,15 +1176,15 @@ struct CatalogSetupFlowSheet: View {
 
                     stockLifecycleControls(for: $unit, variantId: variant.wrappedValue.id)
                 }
-                .padding(OPSStyle.Layout.spacing2)
-                .background(OPSStyle.Colors.cardBackground)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .accessibilityElement(children: .contain)
+
+                if unit.id != variant.wrappedValue.stockUnits.last?.id {
+                    Divider().background(OPSStyle.Colors.line)
+                }
             }
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .nestedCard()
     }
 
     private func stockLifecycleControls(
@@ -1200,6 +1192,7 @@ struct CatalogSetupFlowSheet: View {
         variantId: String
     ) -> some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Divider().background(OPSStyle.Colors.line)
             CatalogFieldLabel("Lifecycle note")
             TextField("", text: lifecycleNoteText(for: unit.wrappedValue.id), axis: .vertical)
                 .lineLimit(1...2)
@@ -1254,13 +1247,6 @@ struct CatalogSetupFlowSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
     }
 
     private func stockLifecycleButton(
@@ -1277,7 +1263,7 @@ struct CatalogSetupFlowSheet: View {
                 .foregroundColor(isDisabled ? OPSStyle.Colors.tertiaryText : color)
                 .frame(width: 88)
                 .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                .background(OPSStyle.Colors.subtleBackground)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1348,12 +1334,7 @@ struct CatalogSetupFlowSheet: View {
             .frame(maxWidth: .infinity)
             .frame(minHeight: OPSStyle.Layout.touchTargetMin)
             .padding(.horizontal, OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .nestedCard()
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Author product options")
@@ -1422,8 +1403,7 @@ struct CatalogSetupFlowSheet: View {
                     }
                 }
                 .padding(OPSStyle.Layout.spacing2)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .nestedCard()
             }
         }
     }
@@ -1461,7 +1441,7 @@ struct CatalogSetupFlowSheet: View {
                     .font(OPSStyle.Typography.buttonLabel)
                     .foregroundColor(canCommit ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
                     .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin)
-                    .background(canCommit ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackgroundDark)
+                    .background(canCommit ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
             .disabled(!canCommit)
@@ -2540,11 +2520,11 @@ struct CatalogSetupFlowSheet: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(minHeight: OPSStyle.Layout.touchTargetMin)
             .padding(OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
     }
 
@@ -2560,7 +2540,7 @@ struct CatalogSetupFlowSheet: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -2582,8 +2562,7 @@ struct CatalogSetupFlowSheet: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .nestedCard()
     }
 
     private func metricPill(label: String, value: String) -> some View {
@@ -2598,8 +2577,7 @@ struct CatalogSetupFlowSheet: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .nestedCard()
     }
 
     private func label(for valueIds: Set<String>) -> String {
@@ -2675,11 +2653,6 @@ private extension View {
         self
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackground)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
     }
 }

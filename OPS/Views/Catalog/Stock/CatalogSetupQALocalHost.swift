@@ -32,7 +32,7 @@ struct CatalogSetupQALocalHost: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             if isReady {
                 CatalogSetupFlowSheet()

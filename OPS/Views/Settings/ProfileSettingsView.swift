@@ -45,7 +45,7 @@ struct ProfileSettingsView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -64,17 +64,17 @@ struct ProfileSettingsView: View {
                         saveChanges()
                     }
                 )
-                .padding(.bottom, 8)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
 
                 // Scrollable content — tap to dismiss keyboard
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
 
                         // Contact Preview Card
                         if let user = dataController.currentUser {
                             VStack(alignment: .leading, spacing: 0) {
-                                HStack(alignment: .center, spacing: 12) {
-                                    VStack(alignment: .leading, spacing: 8) {
+                                HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2_5) {
+                                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                         // Name
                                         Text(user.fullName.uppercased())
                                             .font(OPSStyle.Typography.bodyBold)
@@ -101,7 +101,7 @@ struct ProfileSettingsView: View {
 
                                         // Home Address or Role
                                         if let address = user.homeAddress, !address.isEmpty {
-                                            HStack(spacing: 4) {
+                                            HStack(spacing: OPSStyle.Layout.spacing1) {
                                                 Image(systemName: "mappin.circle")
                                                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -111,7 +111,7 @@ struct ProfileSettingsView: View {
                                                     .lineLimit(1)
                                             }
                                         } else {
-                                            HStack(spacing: 4) {
+                                            HStack(spacing: OPSStyle.Layout.spacing1) {
                                                 Image(systemName: "person.badge.shield.checkmark")
                                                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -149,29 +149,24 @@ struct ProfileSettingsView: View {
                                     )
                                 }
                                 .padding(.vertical, 14)
-                                .padding(.horizontal, 16)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                )
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                                .glassSurface()
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
 
                         // Form fields - all directly editable
-                        VStack(spacing: 24) {
+                        VStack(spacing: OPSStyle.Layout.spacing4) {
                             // PERSONAL INFORMATION section
-                            VStack(alignment: .leading, spacing: 8) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                 Text("PERSONAL INFORMATION")
                                     .font(OPSStyle.Typography.captionBold)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
                                 VStack(spacing: 0) {
-                                    VStack(spacing: 16) {
+                                    VStack(spacing: OPSStyle.Layout.spacing3) {
                                         // Name fields in HStack
-                                        HStack(spacing: 16) {
+                                        HStack(spacing: OPSStyle.Layout.spacing3) {
                                             OPSProfileInput(
                                                 label: "First Name",
                                                 text: $firstName,
@@ -203,7 +198,7 @@ struct ProfileSettingsView: View {
                                         )
 
                                         // Home address - with autocomplete
-                                        VStack(alignment: .leading, spacing: 8) {
+                                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                             Text("HOME ADDRESS")
                                                 .font(OPSStyle.Typography.captionBold)
                                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -217,18 +212,13 @@ struct ProfileSettingsView: View {
                                         }
                                     }
                                 }
-                                .padding(16)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                )
+                                .padding(OPSStyle.Layout.spacing3)
+                                .glassSurface()
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                             // CREDENTIALS section
-                            VStack(alignment: .leading, spacing: 8) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                 Text("CREDENTIALS")
                                     .font(OPSStyle.Typography.captionBold)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -244,7 +234,7 @@ struct ProfileSettingsView: View {
                                     )
 
                                     Divider()
-                                        .background(OPSStyle.Colors.cardBorder)
+                                        .background(OPSStyle.Colors.line)
 
                                     SettingsCategoryButton(
                                         title: "Delete Account",
@@ -255,18 +245,13 @@ struct ProfileSettingsView: View {
                                         }
                                     )
                                 }
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                )
+                                .glassSurface()
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         }
                         .padding(.bottom, 40)
                     }
-                    .padding(.top, 12)
+                    .padding(.top, OPSStyle.Layout.spacing2_5)
                     .tabBarPadding() // Add padding for tab bar
                 }
                 .onTapGesture {
@@ -309,25 +294,26 @@ struct ProfileSettingsView: View {
     // Password reset sheet view (unchanged)
     private var resetPasswordSheet: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .ignoresSafeArea()
 
-            VStack(spacing: 24) {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
                 Text("Reset Password")
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.top, 24)
+                    .font(OPSStyle.Typography.pageTitle)
+                    .textCase(.uppercase)
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .padding(.top, OPSStyle.Layout.spacing4)
 
                 if !passwordResetSuccess {
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         Text("Enter your email address to receive a password reset link.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 8)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.bottom, OPSStyle.Layout.spacing2)
 
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("Email Address")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -339,27 +325,27 @@ struct ProfileSettingsView: View {
                                 .autocapitalization(.none)
                                 .disableAutocorrection(true)
                                 .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .background(OPSStyle.Colors.surfaceInput)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         if let error = passwordResetError {
                             Text(error)
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.errorStatus)
                                 .multilineTextAlignment(.center)
-                                .padding(.horizontal, 20)
-                                .padding(.top, 8)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                                .padding(.top, OPSStyle.Layout.spacing2)
                         }
 
                         Spacer()
 
-                        HStack(spacing: 16) {
+                        HStack(spacing: OPSStyle.Layout.spacing3) {
                             Button(action: {
                                 resetPasswordFields()
                                 showResetPasswordSheet = false
@@ -368,8 +354,8 @@ struct ProfileSettingsView: View {
                                     .font(OPSStyle.Typography.button)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 16)
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .padding(.vertical, OPSStyle.Layout.spacing3)
+                                    .background(OPSStyle.Colors.surfaceInput)
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
 
@@ -380,7 +366,7 @@ struct ProfileSettingsView: View {
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.invertedText))
                                         .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 16)
+                                        .padding(.vertical, OPSStyle.Layout.spacing3)
                                         .background(OPSStyle.Colors.primaryAccent)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 } else {
@@ -388,7 +374,7 @@ struct ProfileSettingsView: View {
                                         .font(OPSStyle.Typography.button)
                                         .foregroundColor(OPSStyle.Colors.invertedText)
                                         .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 16)
+                                        .padding(.vertical, OPSStyle.Layout.spacing3)
                                         .background(OPSStyle.Colors.primaryAccent)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 }
@@ -396,25 +382,26 @@ struct ProfileSettingsView: View {
                             .disabled(passwordResetInProgress || !isEmailValid)
                             .opacity(isEmailValid ? 1.0 : 0.6)
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .padding(.bottom, 30)
                     }
                 } else {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                             .font(OPSStyle.Typography.largeTitle)
                             .foregroundColor(OPSStyle.Colors.successStatus)
-                            .padding(.top, 20)
+                            .padding(.top, OPSStyle.Layout.spacing3_5)
 
-                        Text("Reset Link Sent!")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        Text("Reset link sent")
+                            .font(OPSStyle.Typography.pageTitle)
+                            .textCase(.uppercase)
+                            .foregroundColor(OPSStyle.Colors.text)
 
                         Text("We've sent a password reset link to your email. Please check your inbox and follow the instructions to reset your password.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         Spacer()
 
@@ -426,26 +413,26 @@ struct ProfileSettingsView: View {
                                 .font(OPSStyle.Typography.button)
                                 .foregroundColor(OPSStyle.Colors.invertedText)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
+                                .padding(.vertical, OPSStyle.Layout.spacing3)
                                 .background(OPSStyle.Colors.primaryAccent)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .padding(.bottom, 30)
                     }
                 }
             }
-            .padding(.vertical, 20)
+            .padding(.vertical, OPSStyle.Layout.spacing3_5)
         }
     }
 
     // Delete account sheet view
     private var deleteAccountSheet: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .ignoresSafeArea()
 
-            VStack(spacing: 24) {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
                 // Header
                 HStack {
                     Spacer()
@@ -460,22 +447,23 @@ struct ProfileSettingsView: View {
                             .frame(width: 44, height: 44)
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.top, OPSStyle.Layout.spacing3_5)
 
                 // Icon
                 Image(systemName: OPSStyle.Icons.exclamationmarkTriangle)
                     .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                     .foregroundColor(OPSStyle.Colors.errorStatus)
                     .padding(.top, 10)
-                VStack(spacing: 4){
+                VStack(spacing: OPSStyle.Layout.spacing1){
                     // Title
                     Text("DELETE ACCOUNT")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .font(OPSStyle.Typography.pageTitle)
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
 
                     // Warning message
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         Text("PERMANENT ACTION")
                             .font(OPSStyle.Typography.subtitle)
                             .foregroundColor(OPSStyle.Colors.errorStatus)
@@ -487,12 +475,12 @@ struct ProfileSettingsView: View {
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                     Spacer()
 
                     // Confirmation input
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         Text("Type \"confirm delete\" to proceed")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -503,17 +491,17 @@ struct ProfileSettingsView: View {
                             .autocapitalization(.none)
                             .disableAutocorrection(true)
                             .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .stroke(deleteConfirmationText.lowercased() == "confirm delete" ?
                                             OPSStyle.Colors.errorStatus :
-                                                OPSStyle.Colors.cardBorder,
+                                                OPSStyle.Colors.inputFieldBorder,
                                             lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .padding(.top, 10)
 
                     // Error message
@@ -522,14 +510,14 @@ struct ProfileSettingsView: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     }
                 }
 
                 Spacer()
 
                 // Buttons
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     Button(action: {
                         deleteAccount()
                     }) {
@@ -537,7 +525,7 @@ struct ProfileSettingsView: View {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
+                                .padding(.vertical, OPSStyle.Layout.spacing3)
                                 .background(OPSStyle.Colors.errorStatus)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                         } else {
@@ -545,7 +533,7 @@ struct ProfileSettingsView: View {
                                 .font(OPSStyle.Typography.button)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
+                                .padding(.vertical, OPSStyle.Layout.spacing3)
                                 .background(OPSStyle.Colors.errorStatus)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
@@ -562,8 +550,8 @@ struct ProfileSettingsView: View {
                             .font(OPSStyle.Typography.button)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .padding(.vertical, OPSStyle.Layout.spacing3)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                 }

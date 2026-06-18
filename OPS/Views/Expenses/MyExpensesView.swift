@@ -32,7 +32,7 @@ struct MyExpensesView: View {
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             if !embedded {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .edgesIgnoringSafeArea(.all)
             }
 
@@ -160,12 +160,7 @@ struct MyExpensesView: View {
                 Spacer()
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
     }
 
@@ -227,7 +222,7 @@ struct MyExpensesView: View {
             .padding(.vertical, OPSStyle.Layout.spacing2)
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     if isExpanded {
                         expandedMonths.remove(monthGroup.id)
                     } else {
@@ -284,7 +279,7 @@ struct MyExpensesView: View {
             .padding(.vertical, OPSStyle.Layout.spacing1)
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                withAnimation(OPSStyle.Animation.standard) {
                     if isExpanded {
                         expandedProjects.remove(compositeKey)
                     } else {
@@ -346,11 +341,11 @@ struct MyExpensesView: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -370,15 +365,15 @@ struct MyExpensesView: View {
                                 .frame(minHeight: OPSStyle.Layout.touchTargetMin)
                                 .background(
                                     viewModel.selectedFilter == filter
-                                    ? OPSStyle.Colors.primaryAccent.opacity(0.2)
-                                    : OPSStyle.Colors.cardBackgroundDark
+                                    ? OPSStyle.Colors.surfaceActive
+                                    : OPSStyle.Colors.surfaceInput
                                 )
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                         .stroke(
                                             viewModel.selectedFilter == filter
-                                            ? OPSStyle.Colors.primaryAccent
+                                            ? OPSStyle.Colors.text
                                             : OPSStyle.Colors.cardBorder,
                                             lineWidth: OPSStyle.Layout.Border.standard
                                         )

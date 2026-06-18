@@ -25,12 +25,12 @@ struct StageTimeline: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             PanelSectionHeader(label: "STAGE HISTORY")
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.bottom, 10)
 
             content
                 .glassSurface()
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 
@@ -50,7 +50,7 @@ struct StageTimeline: View {
                     }
                 }
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, OPSStyle.Layout.spacing1)
         }
     }
 }
@@ -96,7 +96,7 @@ private struct StageRow: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
     }
 
     private var ageString: String {
@@ -137,7 +137,7 @@ private struct EmptyLine: View {
 #if DEBUG
 #Preview("StageTimeline / chain") {
     ScrollView {
-        VStack(spacing: 24) {
+        VStack(spacing: OPSStyle.Layout.spacing4) {
             StageTimeline(transitions: [
                 StageTransition(
                     companyId: "p", opportunityId: "p",
@@ -161,7 +161,7 @@ private struct EmptyLine: View {
                 )
             ])
         }
-        .padding(.vertical, 20)
+        .padding(.vertical, OPSStyle.Layout.spacing3_5)
     }
     .background(OPSStyle.Colors.background)
     .preferredColorScheme(.dark)
@@ -169,10 +169,10 @@ private struct EmptyLine: View {
 
 #Preview("StageTimeline / empty") {
     ScrollView {
-        VStack(spacing: 24) {
+        VStack(spacing: OPSStyle.Layout.spacing4) {
             StageTimeline(transitions: [])
         }
-        .padding(.vertical, 20)
+        .padding(.vertical, OPSStyle.Layout.spacing3_5)
     }
     .background(OPSStyle.Colors.background)
     .preferredColorScheme(.dark)

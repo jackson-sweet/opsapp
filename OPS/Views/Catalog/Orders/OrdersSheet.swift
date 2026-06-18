@@ -137,7 +137,7 @@ struct OrdersSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
 
                 VStack(spacing: 0) {
                     subSegmentBar
@@ -149,7 +149,7 @@ struct OrdersSheet: View {
                         case .sent:      sentContent
                         }
                     }
-                    .animation(.easeInOut(duration: 0.18), value: subSegment)
+                    .animation(OPSStyle.Animation.panel, value: subSegment)
                 }
             }
             .catalogNavigationTitle("ORDERS")
@@ -201,7 +201,7 @@ struct OrdersSheet: View {
                         Rectangle()
                             .fill(
                                 subSegment == segment
-                                    ? OPSStyle.Colors.primaryAccent
+                                    ? OPSStyle.Colors.text
                                     : Color.clear
                             )
                             .frame(height: 2)
@@ -338,7 +338,7 @@ struct OrdersSheet: View {
             navigateToOrderId = order.id
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing3) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text((order.title ?? defaultTitle(for: order)).uppercased())
                         .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -370,14 +370,7 @@ struct OrdersSheet: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
         .buttonStyle(.plain)
     }

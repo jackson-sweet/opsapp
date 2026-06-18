@@ -274,10 +274,11 @@ private struct CapturedStackThumbnail: View {
                 // many photos they've actually got banked.
                 if count > 0 {
                     Text("\(count)")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(OPSStyle.Typography.metadata)
+                        .fontWeight(.bold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(minWidth: 18, minHeight: 18)
-                        .padding(.horizontal, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing1)
                         .background(
                             Capsule()
                                 .fill(OPSStyle.Colors.primaryAccent)
@@ -308,7 +309,7 @@ private struct CapturedStackThumbnail: View {
 
     private func stackTile(offsetX: CGFloat, offsetY: CGFloat, opacity: Double) -> some View {
         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-            .fill(OPSStyle.Colors.cardBackgroundDark)
+            .fill(OPSStyle.Colors.fillNeutral)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
@@ -404,8 +405,8 @@ private struct CapturedStackReview: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 }
             }
         }
@@ -684,10 +685,10 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
             guard let button = view as? UIButton else { continue }
             let selected = button.tag == selectedIndex
             button.backgroundColor = selected
-                ? UIColor(OPSStyle.Colors.opsAccent)
+                ? UIColor(OPSStyle.Colors.surfaceActive)
                 : UIColor.clear
             button.setTitleColor(
-                selected ? UIColor.black : UIColor(OPSStyle.Colors.text),
+                selected ? UIColor(OPSStyle.Colors.text) : UIColor(OPSStyle.Colors.text3),
                 for: .normal
             )
         }

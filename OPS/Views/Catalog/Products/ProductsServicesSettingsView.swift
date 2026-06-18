@@ -17,14 +17,14 @@ struct ProductsServicesSettingsView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 SettingsHeader(
                     title: "Products & Services",
                     onBackTapped: { dismiss() }
                 )
-                .padding(.bottom, 8)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
 
                 CatalogProductsListView()
                     .environmentObject(dataController)

@@ -67,13 +67,13 @@ struct StockAlertsSection: View {
             Text(title)
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(accentColor)
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.top, OPSStyle.Layout.spacing2_5)
                 .padding(.bottom, alerts.isEmpty ? 0 : 8)
 
             if alerts.isEmpty {
                 // Empty state
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: emptyIcon)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.successStatus)
@@ -84,7 +84,7 @@ struct StockAlertsSection: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, OPSStyle.Layout.spacing3)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             } else {
                 // Alert rows
                 ForEach(Array(alerts.enumerated()), id: \.element.id) { index, alert in
@@ -98,25 +98,20 @@ struct StockAlertsSection: View {
                     if index < alerts.count - 1 {
                         Divider()
                             .background(OPSStyle.Colors.separator)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                     }
                 }
             }
         }
-        .padding(.bottom, 12)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(.bottom, OPSStyle.Layout.spacing2_5)
+        .glassSurface()
         // Left border stripe
         .overlay(alignment: .leading) {
             Rectangle()
                 .fill(accentColor)
                 .frame(width: 3)
         }
-        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius))
     }
 }
 
@@ -155,7 +150,7 @@ private struct StockAlertRow: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.vertical, 10)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -293,7 +288,7 @@ private struct ThresholdEditorPopover: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .background(OPSStyle.Colors.surfaceInput)
                         .cornerRadius(OPSStyle.Layout.buttonRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
@@ -317,7 +312,7 @@ private struct ThresholdEditorPopover: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
+        .glassDense()
         .frame(width: 280)
         .presentationCompactAdaptation(.popover)
     }

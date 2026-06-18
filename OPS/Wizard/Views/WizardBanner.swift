@@ -27,7 +27,7 @@ struct WizardBanner: View {
                 )
 
             // Banner content
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                 // Icon + title row
                 HStack(spacing: 10) {
                     Image(systemName: wizard.iconName)
@@ -108,8 +108,8 @@ struct WizardBanner: View {
                     .buttonStyle(PlainButtonStyle())
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.vertical, OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity)
             .background(
                 BlurView(style: .systemUltraThinMaterialDark)

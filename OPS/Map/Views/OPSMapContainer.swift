@@ -150,7 +150,7 @@ struct OPSMapContainer: View {
     /// primary action on the dark card stack above it.
     private var exitProjectPill: some View {
         Button(action: exitProjectMode) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Text("EXIT PROJECT")
                     .font(OPSStyle.Typography.smallButton)
                     .foregroundColor(OPSStyle.Colors.cardBackground)
@@ -158,7 +158,7 @@ struct OPSMapContainer: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(OPSStyle.Colors.cardBackground)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .frame(height: 44)
             .background(OPSStyle.Colors.primaryText)
             .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
@@ -236,7 +236,7 @@ struct OPSMapContainer: View {
                 Spacer()
             }
             .frame(maxHeight: .infinity)
-            .padding(.trailing, 12)
+            .padding(.trailing, OPSStyle.Layout.spacing2_5)
 
             // 4. Project pin card — anchored to bottom
             if coordinator.showingProjectCard, let project = selectedProject {
@@ -282,7 +282,7 @@ struct OPSMapContainer: View {
                         // ── Drag indicator (matches ProjectPinCard) ──
                         HStack {
                             Spacer()
-                            RoundedRectangle(cornerRadius: 2)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                                 .fill(Color.white.opacity(0.20))
                                 .frame(width: 36, height: 4)
                             Spacer()
@@ -292,7 +292,7 @@ struct OPSMapContainer: View {
 
                         // ── Header ──
                         HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                 Text("\(coordinator.stackedGroupProjects.count) PROJECTS")
                                     .font(OPSStyle.Typography.caption)
                                     .tracking(0.5)
@@ -304,13 +304,13 @@ struct OPSMapContainer: View {
 
                             Spacer()
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                         // ── Divider ──
                         Rectangle()
-                            .fill(Color.white.opacity(0.08))
+                            .fill(OPSStyle.Colors.surfaceActive)
                             .frame(height: 1)
-                            .padding(.vertical, 12)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
                         // ── Project list ──
                         ForEach(coordinator.stackedGroupProjects) { project in
@@ -350,8 +350,8 @@ struct OPSMapContainer: View {
                                         .font(OPSStyle.Typography.miniLabel)
                                         .tracking(0.3)
                                         .foregroundColor(project.status.color)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
+                                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                        .padding(.vertical, OPSStyle.Layout.spacing1)
                                         .background(
                                             RoundedRectangle(cornerRadius: 3)
                                                 .fill(project.status.color.opacity(0.15))
@@ -361,14 +361,14 @@ struct OPSMapContainer: View {
                                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 }
-                                .padding(.horizontal, 16)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
                                 .padding(.vertical, 10)
                             }
                             .buttonStyle(PlainButtonStyle())
 
                             if project.id != coordinator.stackedGroupProjects.last?.id {
                                 Rectangle()
-                                    .fill(Color.white.opacity(0.08))
+                                    .fill(OPSStyle.Colors.surfaceActive)
                                     .frame(height: 1)
                                     .padding(.leading, 34)
                             }
@@ -391,7 +391,7 @@ struct OPSMapContainer: View {
                                 bottomTrailingRadius: 0,
                                 topTrailingRadius: 4
                             )
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                            .stroke(OPSStyle.Colors.surfaceActive, lineWidth: 1)
                         )
                     )
                     .offset(y: stackedGroupDragOffset)
@@ -467,7 +467,7 @@ struct OPSMapContainer: View {
                         )
                         Spacer()
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.bottom, 90)
                 }
                 .transition(.opacity)
@@ -490,7 +490,7 @@ struct OPSMapContainer: View {
                     }
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.top, topSafeAreaInset + 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .transition(.move(edge: .top).combined(with: .opacity))
@@ -696,7 +696,7 @@ struct OPSMapContainer: View {
     /// Right-side vertically stacked control buttons.
     @ViewBuilder
     private var mapControls: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
 
             // Re-centre — only when not following
             if !coordinator.isFollowingUser {
@@ -779,7 +779,7 @@ struct OPSMapContainer: View {
                         .fill(.ultraThinMaterial)
                         .overlay(
                             Circle()
-                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                .stroke(OPSStyle.Colors.surfaceActive, lineWidth: 1)
                         )
                 )
                 .clipShape(Circle())

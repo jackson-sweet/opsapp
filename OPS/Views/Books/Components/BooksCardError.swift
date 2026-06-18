@@ -64,7 +64,7 @@ struct BooksCardError: View {
 #if DEBUG
 #Preview("BooksCardError") {
     BooksCardError(onRetry: {})
-        .padding(.vertical, 24)
+        .padding(.vertical, OPSStyle.Layout.spacing4)
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
 }

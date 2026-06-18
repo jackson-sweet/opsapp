@@ -41,7 +41,7 @@ struct GeofenceBannerView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             // Status line
             HStack(spacing: 6) {
                 Circle()
@@ -79,8 +79,8 @@ struct GeofenceBannerView: View {
                         .font(OPSStyle.Typography.smallCaption)
                         .tracking(0.5)
                         .foregroundColor(OPSStyle.Colors.background)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
                         .background(
                             RoundedRectangle(cornerRadius: 3)
                                 .fill(Color.white)
@@ -98,19 +98,19 @@ struct GeofenceBannerView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.top, 4)
+            .padding(.top, OPSStyle.Layout.spacing1)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .background(
-            RoundedRectangle(cornerRadius: 4)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                 .fill(.ultraThinMaterial)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                        .stroke(OPSStyle.Colors.surfaceActive, lineWidth: 1)
                 )
         )
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-        .padding(.horizontal, 16)
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 }

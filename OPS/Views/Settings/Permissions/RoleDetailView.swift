@@ -256,7 +256,7 @@ struct RoleDetailView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -264,10 +264,10 @@ struct RoleDetailView: View {
                     title: PermissionRegistry.displayName(for: role.name),
                     onBackTapped: { dismiss() }
                 )
-                .padding(.bottom, 8)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
 
                 if isLoading {
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                             .scaleEffect(1.2)
@@ -278,9 +278,9 @@ struct RoleDetailView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 20) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                             // Role info
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 Image(systemName: PermissionRegistry.iconForRole(role.name))
                                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -291,11 +291,11 @@ struct RoleDetailView: View {
                                     .lineLimit(1)
                                     .truncationMode(.tail)
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                             // Preset role banner
                             if isPresetRole {
-                                HStack(spacing: 8) {
+                                HStack(spacing: OPSStyle.Layout.spacing2) {
                                     Image(systemName: "lock.fill")
                                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -303,12 +303,12 @@ struct RoleDetailView: View {
                                         .font(OPSStyle.Typography.caption)
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 }
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             }
 
                             // Team members assigned to this role
                             if !roleUsers.isEmpty {
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     HStack(spacing: 6) {
                                         Image(systemName: OPSStyle.Icons.crew)
                                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
@@ -317,12 +317,12 @@ struct RoleDetailView: View {
                                             .font(OPSStyle.Typography.captionBold)
                                             .foregroundColor(OPSStyle.Colors.secondaryText)
                                     }
-                                    .padding(.horizontal, 20)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                                     LazyVGrid(
-                                        columns: [GridItem(.adaptive(minimum: 56, maximum: 72), spacing: 12)],
+                                        columns: [GridItem(.adaptive(minimum: 56, maximum: 72), spacing: OPSStyle.Layout.spacing2_5)],
                                         alignment: .leading,
-                                        spacing: 12
+                                        spacing: OPSStyle.Layout.spacing2_5
                                     ) {
                                         ForEach(roleUsers) { user in
                                             VStack(spacing: 6) {
@@ -353,13 +353,13 @@ struct RoleDetailView: View {
                                             .frame(width: 56)
                                         }
                                     }
-                                    .padding(.horizontal, 20)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                                 }
                             }
 
                             // Error
                             if let error = errorMessage {
-                                HStack(spacing: 8) {
+                                HStack(spacing: OPSStyle.Layout.spacing2) {
                                     Image(systemName: OPSStyle.Icons.alert)
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.errorStatus)
@@ -367,7 +367,7 @@ struct RoleDetailView: View {
                                         .font(OPSStyle.Typography.caption)
                                         .foregroundColor(OPSStyle.Colors.errorStatus)
                                 }
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             }
 
                             // Search field
@@ -390,13 +390,13 @@ struct RoleDetailView: View {
                             }
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.vertical, OPSStyle.Layout.spacing2)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                             // Permission categories (collapsible)
                             ForEach(visibleCategories, id: \.self) { category in
@@ -413,11 +413,11 @@ struct RoleDetailView: View {
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     .frame(maxWidth: .infinity)
-                                    .padding(.horizontal, 20)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             }
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .padding(.vertical, OPSStyle.Layout.spacing3)
                         .padding(.bottom, hasPendingChanges ? 80 : 0)
                         .tabBarPadding()
                     }
@@ -429,8 +429,8 @@ struct RoleDetailView: View {
                 VStack {
                     Spacer()
                     saveButton
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 32)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.bottom, OPSStyle.Layout.spacing5)
                 }
             }
         }
@@ -467,7 +467,7 @@ struct RoleDetailView: View {
                     }
                 }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: PermissionRegistry.iconForCategory(category))
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -492,7 +492,7 @@ struct RoleDetailView: View {
                         .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, 14)
                 .frame(maxWidth: .infinity)
                 .contentShape(Rectangle())
@@ -508,13 +508,8 @@ struct RoleDetailView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(OPSStyle.Colors.background)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .padding(.horizontal, 20)
+        .glassSurface()
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .frame(maxWidth: .infinity)
     }
 
@@ -539,10 +534,10 @@ struct RoleDetailView: View {
                     onChange: { level in setCategoryLevel(category, to: level) }
                 )
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .frame(maxWidth: .infinity)
-            .background(OPSStyle.Colors.subtleBackground)
+            .background(OPSStyle.Colors.surfaceHover)
 
             // Individual permission rows
             ForEach(permissions) { perm in
@@ -563,7 +558,7 @@ struct RoleDetailView: View {
 
         return VStack(spacing: 0) {
             // Top row: icon + title + bulk picker (lighter background)
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 HStack(spacing: 6) {
                     Image(systemName: PermissionRegistry.iconForCategory(category))
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
@@ -590,9 +585,9 @@ struct RoleDetailView: View {
                     }
                 )
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 14)
-            .background(OPSStyle.Colors.subtleBackground)
+            .background(OPSStyle.Colors.surfaceHover)
 
             // Individual permission rows (darker)
             ForEach(permissions) { perm in
@@ -603,13 +598,8 @@ struct RoleDetailView: View {
                 permissionRow(perm)
             }
         }
-        .background(OPSStyle.Colors.background)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .padding(.horizontal, 20)
+        .glassSurface()
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Gated Category (feature-flagged, not yet available)
@@ -631,25 +621,20 @@ struct RoleDetailView: View {
                 Text("IN TESTING")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
                     .padding(.vertical, 3)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(OPSStyle.Colors.subtleBackground)
+                            .fill(OPSStyle.Colors.surfaceInput)
                     )
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 14)
         }
         .buttonStyle(PlainButtonStyle())
-        .background(OPSStyle.Colors.background)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
         .opacity(0.4)
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Permission Row
@@ -657,7 +642,7 @@ struct RoleDetailView: View {
     private func permissionRow(_ perm: PermissionDefinition) -> some View {
         let level = effectiveLevel(for: perm.id)
 
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text(perm.label)
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(level != .off ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
@@ -677,8 +662,8 @@ struct RoleDetailView: View {
                 }
             )
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .frame(maxWidth: .infinity)
     }
 
@@ -708,12 +693,12 @@ struct RoleDetailView: View {
                                 : OPSStyle.Colors.tertiaryText
                         )
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .fill(
                                     !isMixed && selection == level
-                                        ? OPSStyle.Colors.subtleBackground
+                                        ? OPSStyle.Colors.surfaceActive
                                         : Color.clear
                                 )
                         )
@@ -725,7 +710,7 @@ struct RoleDetailView: View {
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .fill(OPSStyle.Colors.subtleBackground)
+                .fill(OPSStyle.Colors.surfaceInput)
         )
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -751,7 +736,7 @@ struct RoleDetailView: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.primaryAccent)
             .cornerRadius(OPSStyle.Layout.buttonRadius)
         }

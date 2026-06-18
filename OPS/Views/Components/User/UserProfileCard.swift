@@ -11,11 +11,11 @@ struct UserProfileCard: View {
     var user: User
     
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: OPSStyle.Layout.spacing3) {
             // User avatar
             UserAvatar(user: user, size: 60)
             
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(user.fullName)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -31,9 +31,8 @@ struct UserProfileCard: View {
             
             Spacer()
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
-        .padding(.horizontal, 20)
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 }

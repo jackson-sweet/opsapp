@@ -80,16 +80,16 @@ struct DeveloperDashboard: View {
             
             VStack(spacing: 0) {
                 // Header
-                ZStack {
-                    HStack {
+                OPSScreenHeader(
+                    "Developer Tools",
+                    leading: {
                         Button(action: { dismiss() }) {
                             Image(systemName: OPSStyle.Icons.close)
                                 .font(.system(size: 20))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
-                        
-                        Spacer()
-                        
+                    },
+                    trailing: {
                         // Exit Developer Mode button
                         Button {
                             exitDeveloperMode()
@@ -101,7 +101,7 @@ struct DeveloperDashboard: View {
                                     .font(OPSStyle.Typography.caption)
                             }
                             .foregroundColor(OPSStyle.Colors.errorStatus)
-                            .padding(.horizontal, 12)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                             .padding(.vertical, 6)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -109,14 +109,9 @@ struct DeveloperDashboard: View {
                             )
                         }
                     }
-                    
-                    Text("Developer Tools")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-                .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                
+                )
+                .background(OPSStyle.Colors.background)
+
                 // Tools Grid
                 ScrollView {
                     VStack(spacing: OPSStyle.Layout.spacing3) {
@@ -190,7 +185,7 @@ struct DeveloperDashboard: View {
                         // Database Stats
                         DatabaseStatsCard()
                             .padding(.horizontal)
-                            .padding(.bottom, 20)
+                            .padding(.bottom, OPSStyle.Layout.spacing3_5)
                     }
                 }
             }
@@ -281,8 +276,7 @@ struct ToolCard: View {
             }
             .frame(maxWidth: .infinity)
             .padding()
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .nestedCard()
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -294,12 +288,12 @@ struct InfoCard: View {
     
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Label("Development Mode Active", systemImage: "hammer.circle.fill")
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.successStatus)
                 
-                HStack(spacing: 16) {
+                HStack(spacing: OPSStyle.Layout.spacing3) {
                     if let user = dataController.currentUser {
                         Label(user.fullName, systemImage: "person.fill")
                             .font(OPSStyle.Typography.caption)
@@ -317,8 +311,7 @@ struct InfoCard: View {
             Spacer()
         }
         .padding()
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
 }
 
@@ -347,8 +340,7 @@ struct DatabaseStatsCard: View {
             }
         }
         .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
         .onAppear {
             fetchCounts()
         }

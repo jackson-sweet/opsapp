@@ -46,7 +46,7 @@ struct LevelConnectionSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: OPSStyle.Layout.spacing3_5) {
                     // Level selectors
                     levelPickerSection
 
@@ -83,9 +83,9 @@ struct LevelConnectionSheet: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                     .disabled(!canAdd)
-                    .padding(.top, 8)
+                    .padding(.top, OPSStyle.Layout.spacing2)
                 }
-                .padding(16)
+                .padding(OPSStyle.Layout.spacing3)
             }
             .background(OPSStyle.Colors.background)
             .navigationTitle("Connect Levels")
@@ -105,7 +105,7 @@ struct LevelConnectionSheet: View {
     // MARK: - Level Picker
 
     private var levelPickerSection: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             // From (higher)
             HStack {
                 Text("From (higher)")
@@ -127,7 +127,7 @@ struct LevelConnectionSheet: View {
                 }
                 .tint(OPSStyle.Colors.primaryText)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .padding(.vertical, 10)
             .background(OPSStyle.Colors.cardBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -155,7 +155,7 @@ struct LevelConnectionSheet: View {
                 }
                 .tint(OPSStyle.Colors.primaryText)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .padding(.vertical, 10)
             .background(OPSStyle.Colors.cardBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -165,7 +165,7 @@ struct LevelConnectionSheet: View {
     // MARK: - Edge Picker
 
     private func edgePickerSection(level: DeckLevel) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("Attach stairs to edge")
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -177,7 +177,7 @@ struct LevelConnectionSheet: View {
                 } label: {
                     HStack {
                         Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                            .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                            .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
 
                         Text(edgeLabel(edge, level: level))
                             .font(OPSStyle.Typography.body)
@@ -191,9 +191,9 @@ struct LevelConnectionSheet: View {
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                     }
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     .padding(.vertical, 10)
-                    .background(isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.1) : OPSStyle.Colors.cardBackground)
+                    .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
                 .frame(minHeight: OPSStyle.Layout.touchTargetMin)
@@ -204,7 +204,7 @@ struct LevelConnectionSheet: View {
     // MARK: - Stair Width
 
     private var stairWidthSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("Stair width")
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -223,15 +223,15 @@ struct LevelConnectionSheet: View {
                     } label: {
                         Text(DimensionEngine.formatImperial(width))
                             .font(OPSStyle.Typography.caption)
-                            .foregroundColor(stairWidthInches == width ? .white : OPSStyle.Colors.primaryAccent)
+                            .foregroundColor(stairWidthInches == width ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(stairWidthInches == width ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryAccent.opacity(0.1))
+                            .background(stairWidthInches == width ? OPSStyle.Colors.surfaceActive : Color.clear)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .padding(.vertical, 10)
             .background(OPSStyle.Colors.cardBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -241,12 +241,12 @@ struct LevelConnectionSheet: View {
     // MARK: - Stair Spec Display
 
     private func stairSpecSection(spec: StairCalculator.StairSpec) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("Calculated stairs")
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
-            VStack(spacing: 8) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
                 specRow("Elevation difference", value: formatInches(spec.totalRise))
                 specRow("Treads", value: "\(spec.treadCount)")
                 specRow("Rise per step", value: String(format: "%.1f\"", spec.risePerStep))
@@ -254,7 +254,7 @@ struct LevelConnectionSheet: View {
                 specRow("Stringers", value: "\(spec.stringerCount)")
                 specRow("Stringer length", value: formatInches(spec.stringerLength))
             }
-            .padding(12)
+            .padding(OPSStyle.Layout.spacing2_5)
             .background(OPSStyle.Colors.cardBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
@@ -275,8 +275,8 @@ struct LevelConnectionSheet: View {
     // MARK: - Elevation Input
 
     private func elevationInputSection(levelName: String, levelIndex: Int) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -285,12 +285,12 @@ struct LevelConnectionSheet: View {
                     .foregroundColor(OPSStyle.Colors.warningStatus)
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 TextField("Height in feet", text: $elevationInputText)
                     .keyboardType(.decimalPad)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     .padding(.vertical, 10)
                     .background(OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -307,7 +307,7 @@ struct LevelConnectionSheet: View {
                     Text("Set")
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(.white)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.vertical, 10)
                         .background(OPSStyle.Colors.primaryAccent)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -315,7 +315,7 @@ struct LevelConnectionSheet: View {
                 .frame(minHeight: OPSStyle.Layout.touchTargetMin)
             }
         }
-        .padding(12)
+        .padding(OPSStyle.Layout.spacing2_5)
         .background(OPSStyle.Colors.warningStatus.opacity(0.1))
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }

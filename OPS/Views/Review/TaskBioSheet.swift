@@ -19,10 +19,10 @@ struct TaskBioSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                     photoCarousel
 
-                    VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                         headerSection
                         divider
                         projectInfoSection
@@ -39,8 +39,8 @@ struct TaskBioSheet: View {
                         divider
                         fullDetailsButton
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 32)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.bottom, OPSStyle.Layout.spacing5)
                 }
             }
             .background(OPSStyle.Colors.background)
@@ -75,7 +75,7 @@ struct TaskBioSheet: View {
 
     private var divider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.1))
+            .fill(OPSStyle.Colors.line)
             .frame(height: 1)
     }
 
@@ -86,10 +86,10 @@ struct TaskBioSheet: View {
         let photos = task.project?.getProjectImages() ?? []
         if photos.isEmpty {
             Rectangle()
-                .fill(OPSStyle.Colors.cardBackgroundDark)
+                .fill(OPSStyle.Colors.background)
                 .frame(height: 200)
                 .overlay(
-                    VStack(spacing: 8) {
+                    VStack(spacing: OPSStyle.Layout.spacing2) {
                         Image(systemName: "photo.on.rectangle")
                             .font(.system(size: 32))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -100,14 +100,14 @@ struct TaskBioSheet: View {
                 )
         } else {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     ForEach(photos, id: \.self) { url in
                         PhotoThumbnail(url: url, project: task.project)
                             .frame(width: 200, height: 200)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.modalRadius))
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
             .frame(height: 200)
         }
@@ -116,23 +116,24 @@ struct TaskBioSheet: View {
     // MARK: - Header
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             // Color bar
             Rectangle()
                 .fill(Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent)
                 .frame(height: 4)
-                .cornerRadius(2)
+                .cornerRadius(OPSStyle.Layout.progressBarRadius)
 
             // Task title
             Text(task.displayTitle.uppercased())
-                .font(OPSStyle.Typography.title)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+                .font(OPSStyle.Typography.pageTitle)
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.text)
 
             // Status badge
             Text(task.status.displayName.uppercased())
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(.white)
-                .padding(.horizontal, 8)
+                .padding(.horizontal, OPSStyle.Layout.spacing2)
                 .padding(.vertical, 3)
                 .background(Capsule().fill(task.status.color))
         }
@@ -141,10 +142,10 @@ struct TaskBioSheet: View {
     // MARK: - Project Info
 
     private var projectInfoSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             sectionHeader(icon: "folder.fill", title: "PROJECT")
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 if let project = task.project {
                     Text(project.title.uppercased())
                         .font(OPSStyle.Typography.bodyBold)
@@ -161,22 +162,17 @@ struct TaskBioSheet: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-            )
+            .glassSurface()
         }
     }
 
     // MARK: - Schedule
 
     private var scheduleSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             sectionHeader(icon: "calendar", title: "SCHEDULE")
 
-            HStack(spacing: 24) {
+            HStack(spacing: OPSStyle.Layout.spacing4) {
                 if let start = task.startDate {
                     dateColumn("SCHEDULED", date: start)
                 }
@@ -191,12 +187,7 @@ struct TaskBioSheet: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-            )
+            .glassSurface()
         }
     }
 
@@ -214,7 +205,7 @@ struct TaskBioSheet: View {
     // MARK: - Team
 
     private var teamSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             sectionHeader(icon: "person.2.fill", title: "TEAM")
 
             if resolvedMembers.isEmpty {
@@ -224,7 +215,7 @@ struct TaskBioSheet: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(resolvedMembers, id: \.id) { member in
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             UserAvatar(user: member, size: 36)
 
                             VStack(alignment: .leading, spacing: 2) {
@@ -248,7 +239,7 @@ struct TaskBioSheet: View {
     // MARK: - Notes
 
     private func notesSection(_ notes: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             sectionHeader(icon: "note.text", title: "NOTES")
 
             Text(notes)
@@ -271,12 +262,7 @@ struct TaskBioSheet: View {
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
-                )
+                .glassSurface(borderColor: OPSStyle.Colors.primaryAccent.opacity(0.3))
         }
         .disabled(task.project == nil)
     }

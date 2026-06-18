@@ -48,13 +48,8 @@ struct DepletionForecastChart: View {
             }
         }
         .padding(.vertical, 14)
-        .padding(.horizontal, 16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .glassSurface()
     }
 
     // MARK: - Section Header
@@ -123,7 +118,7 @@ struct DepletionForecastChart: View {
 
                 HStack(spacing: 6) {
                     // Bar
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                         .fill(barColor(for: forecast.daysRemaining))
                         .frame(width: barWidth, height: 6)
 

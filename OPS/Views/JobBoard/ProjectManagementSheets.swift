@@ -36,7 +36,7 @@ struct ProjectStatusChangeSheet: View {
                 )
 
                 ScrollView {
-                    VStack(spacing: 20) {
+                    VStack(spacing: OPSStyle.Layout.spacing3_5) {
                         QuickActionContextHeader(
                             clientName: project.effectiveClientName,
                             projectAddress: project.address,
@@ -46,17 +46,17 @@ struct ProjectStatusChangeSheet: View {
                         )
                         .environmentObject(dataController)
 
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                             Text("CURRENT STATUS")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 Rectangle()
                                     .fill(project.status.color)
                                     .frame(width: 3, height: 40)
 
-                                VStack(alignment: .leading, spacing: 4) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                     Text(project.status.displayName.uppercased())
                                         .font(OPSStyle.Typography.bodyBold)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -68,16 +68,11 @@ struct ProjectStatusChangeSheet: View {
 
                                 Spacer()
                             }
-                            .padding(16)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .padding(OPSStyle.Layout.spacing3)
+                            .glassSurface()
                         }
 
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                             Text("SELECT NEW STATUS")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -98,15 +93,10 @@ struct ProjectStatusChangeSheet: View {
                                     }
                                 }
                             }
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .glassSurface()
                         }
                     }
-                    .padding(20)
+                    .padding(OPSStyle.Layout.spacing3_5)
                 }
             }
         }
@@ -177,7 +167,7 @@ struct StatusOption: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Rectangle()
                     .fill(status.color)
                     .frame(width: 3, height: 30)
@@ -192,20 +182,20 @@ struct StatusOption: View {
                 if isSelected && !isDisabled {
                     Image(systemName: OPSStyle.Icons.checkmark)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.text)
                 }
 
                 if isDisabled {
                     Text("CURRENT")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
+                        .background(OPSStyle.Colors.surfaceInput)
+                        .cornerRadius(OPSStyle.Layout.chipRadius)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 14)
             .contentShape(Rectangle())
         }
@@ -246,8 +236,8 @@ struct SchedulingModeConversionSheet: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
 
                     // Current Mode
-                    HStack(spacing: 20) {
-                        VStack(spacing: 8) {
+                    HStack(spacing: OPSStyle.Layout.spacing3_5) {
+                        VStack(spacing: OPSStyle.Layout.spacing2) {
                             Text("FROM")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -258,7 +248,7 @@ struct SchedulingModeConversionSheet: View {
                         Image(systemName: "arrow.right")
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                        VStack(spacing: 8) {
+                        VStack(spacing: OPSStyle.Layout.spacing2) {
                             Text("TO")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -267,11 +257,10 @@ struct SchedulingModeConversionSheet: View {
                         }
                     }
                     .padding(OPSStyle.Layout.spacing3)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .glassSurface()
 
                     // Explanation
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                         // Always task-based now
                         FeaturePoint(
                             icon: "checkmark.circle",
@@ -286,14 +275,13 @@ struct SchedulingModeConversionSheet: View {
                             text: "All scheduling is now task-based"
                         )
                     }
-                    .padding(16)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .padding(OPSStyle.Layout.spacing3)
+                    .glassSurface()
 
                     Spacer()
 
                     // Buttons
-                    HStack(spacing: 16) {
+                    HStack(spacing: OPSStyle.Layout.spacing3) {
                         Button("CANCEL") {
                             dismiss()
                         }
@@ -435,7 +423,7 @@ struct TaskPickerForTeamChange: View {
                 )
 
                 ScrollView {
-                    VStack(spacing: 20) {
+                    VStack(spacing: OPSStyle.Layout.spacing3_5) {
                         QuickActionContextHeader(
                             clientName: project.effectiveClientName,
                             projectAddress: project.address,
@@ -445,7 +433,7 @@ struct TaskPickerForTeamChange: View {
                         )
                         .environmentObject(dataController)
 
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                             Text("SELECT WHICH TASK'S TEAM TO EDIT")
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -455,12 +443,12 @@ struct TaskPickerForTeamChange: View {
                                     Button(action: {
                                         onTaskSelected(task.id)
                                     }) {
-                                        HStack(spacing: 12) {
+                                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                             Circle()
                                                 .fill(Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent)
                                                 .frame(width: 12, height: 12)
 
-                                            VStack(alignment: .leading, spacing: 4) {
+                                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                                 Text(task.taskType?.display ?? "Task")
                                                     .font(OPSStyle.Typography.bodyBold)
                                                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -478,7 +466,7 @@ struct TaskPickerForTeamChange: View {
                                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                         }
-                                        .padding(.horizontal, 16)
+                                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                                         .padding(.vertical, 14)
                                         .contentShape(Rectangle())
                                     }
@@ -490,12 +478,7 @@ struct TaskPickerForTeamChange: View {
                                     }
                                 }
                             }
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .glassSurface()
                         }
 
                         // Create New Task button
@@ -511,7 +494,7 @@ struct TaskPickerForTeamChange: View {
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -520,7 +503,7 @@ struct TaskPickerForTeamChange: View {
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
-                    .padding(20)
+                    .padding(OPSStyle.Layout.spacing3_5)
                 }
             }
         }
@@ -569,7 +552,7 @@ struct ProjectTeamChangeView: View {
 
     private var contentView: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: OPSStyle.Layout.spacing3_5) {
                 QuickActionContextHeader(
                     clientName: project.effectiveClientName,
                     projectAddress: project.address,
@@ -582,12 +565,12 @@ struct ProjectTeamChangeView: View {
                 currentTeamSection
                 teamSelectionSection
             }
-            .padding(20)
+            .padding(OPSStyle.Layout.spacing3_5)
         }
     }
 
     private var currentTeamSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("CURRENT TEAM")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -607,19 +590,14 @@ struct ProjectTeamChangeView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Spacer()
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
     }
 
     private var currentTeamList: some View {
         VStack(spacing: 0) {
             ForEach(Array(project.teamMembers.enumerated()), id: \.element.id) { index, member in
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: OPSStyle.Icons.crew)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -637,8 +615,8 @@ struct ProjectTeamChangeView: View {
 
                     Spacer()
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
                 if index < project.teamMembers.count - 1 {
                     Divider()
@@ -646,16 +624,11 @@ struct ProjectTeamChangeView: View {
                 }
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var teamSelectionSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("SELECT TEAM MEMBERS")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -667,13 +640,8 @@ struct ProjectTeamChangeView: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Spacer()
                 }
-                .padding(16)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .padding(OPSStyle.Layout.spacing3)
+                .glassSurface()
             } else {
                 VStack(spacing: 0) {
                     ForEach(availableMembers, id: \.id) { member in
@@ -690,16 +658,11 @@ struct ProjectTeamChangeView: View {
 
                         if member.id != availableMembers.last?.id {
                             Divider()
-                                .background(OPSStyle.Colors.cardBackground)
+                                .background(OPSStyle.Colors.line)
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
             }
         }
     }
@@ -778,10 +741,10 @@ struct TeamMemberOption: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: isSelected ? OPSStyle.Icons.checkmarkSquareFill : OPSStyle.Icons.square)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
-                    .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.tertiaryText)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(member.fullName)
@@ -795,7 +758,7 @@ struct TeamMemberOption: View {
 
                 Spacer()
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 14)
             .contentShape(Rectangle())
         }
@@ -839,7 +802,7 @@ struct TaskTeamChangeView: View {
                     )
 
                     ScrollView {
-                        VStack(spacing: 20) {
+                        VStack(spacing: OPSStyle.Layout.spacing3_5) {
                             QuickActionContextHeader(
                                 clientName: project.effectiveClientName,
                                 projectAddress: project.address,
@@ -852,7 +815,7 @@ struct TaskTeamChangeView: View {
                             currentTeamSection
                             teamSelectionSection
                         }
-                        .padding(20)
+                        .padding(OPSStyle.Layout.spacing3_5)
                     }
                 }
             } else {
@@ -867,7 +830,7 @@ struct TaskTeamChangeView: View {
     }
 
     private var currentTeamSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("CURRENT TEAM")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -887,20 +850,15 @@ struct TaskTeamChangeView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Spacer()
         }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
     }
 
     private var currentTeamList: some View {
         VStack(spacing: 0) {
             if let task = task {
                 ForEach(Array(task.teamMembers.enumerated()), id: \.element.id) { index, member in
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: OPSStyle.Icons.crew)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -918,8 +876,8 @@ struct TaskTeamChangeView: View {
 
                     Spacer()
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
                 if index < task.teamMembers.count - 1 {
                     Divider()
@@ -928,16 +886,11 @@ struct TaskTeamChangeView: View {
             }
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var teamSelectionSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("SELECT TEAM MEMBERS")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -949,13 +902,8 @@ struct TaskTeamChangeView: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Spacer()
                 }
-                .padding(16)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .padding(OPSStyle.Layout.spacing3)
+                .glassSurface()
             } else {
                 VStack(spacing: 0) {
                     ForEach(availableMembers, id: \.id) { member in
@@ -976,12 +924,7 @@ struct TaskTeamChangeView: View {
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
             }
         }
     }
@@ -1081,7 +1024,7 @@ struct FeaturePoint: View {
     let text: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: icon)
                 .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(OPSStyle.Colors.primaryAccent)

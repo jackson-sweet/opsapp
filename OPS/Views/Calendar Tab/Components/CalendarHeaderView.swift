@@ -25,8 +25,8 @@ struct CalendarHeaderView: View {
         }) {
             HStack(spacing: 0) {
                 // Left side - day label and date
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Text("TODAY")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -46,13 +46,13 @@ struct CalendarHeaderView: View {
                     
                     
                 }
-                .padding(.vertical, 16)
-                .padding(.horizontal, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing3)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 
                 Spacer()
                 
                 // Right side - event count
-                VStack(spacing: 4) {
+                VStack(spacing: OPSStyle.Layout.spacing1) {
                     Text("EVENTS")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -62,13 +62,12 @@ struct CalendarHeaderView: View {
                         .fontWeight(.bold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                .padding(.vertical, 16)
-                .padding(.horizontal, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing3)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
         }
         .buttonStyle(PlainButtonStyle())
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
         .contentShape(Rectangle()) // Makes entire area tappable
     }
     

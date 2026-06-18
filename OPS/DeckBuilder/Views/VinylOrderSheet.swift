@@ -446,7 +446,7 @@ struct VinylOrderSheet: View {
                     emptyLine("—")
                 } else {
                     ForEach(plan.surfaces) { surface in
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                             Text(surface.displayLabel.uppercased())
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -507,15 +507,15 @@ struct VinylOrderSheet: View {
                                 } label: {
                                     Text(separator.label)
                                         .font(OPSStyle.Typography.buttonLabel)
-                                        .foregroundColor(cutSeparator == separator ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
+                                        .foregroundColor(cutSeparator == separator ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, OPSStyle.Layout.spacing2)
-                                        .background(cutSeparator == separator ? OPSStyle.Colors.primaryAccent.opacity(0.18) : OPSStyle.Colors.subtleBackground)
+                                        .background(cutSeparator == separator ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.subtleBackground)
                                         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                                 .stroke(
-                                                    cutSeparator == separator ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
+                                                    cutSeparator == separator ? OPSStyle.Colors.text : OPSStyle.Colors.cardBorder,
                                                     lineWidth: OPSStyle.Layout.Border.standard
                                                 )
                                         )
@@ -600,7 +600,7 @@ struct VinylOrderSheet: View {
                         metricRow("SKU", sku.uppercased())
                     }
                 } else {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                         Text("VARIANT NOT SELECTED")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -611,7 +611,7 @@ struct VinylOrderSheet: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } else {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("NO PRODUCT SELECTED")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)

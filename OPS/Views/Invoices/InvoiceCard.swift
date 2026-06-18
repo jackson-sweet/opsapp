@@ -119,14 +119,10 @@ struct InvoiceCard: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(
-                        invoice.isOverdue ? OPSStyle.Colors.errorStatus.opacity(0.4) : OPSStyle.Colors.cardBorder,
-                        lineWidth: OPSStyle.Layout.Border.standard
-                    )
+            .glassSurface(
+                borderColor: invoice.isOverdue
+                    ? OPSStyle.Colors.errorStatus.opacity(0.4)
+                    : OPSStyle.Colors.glassBorder
             )
         }
         .buttonStyle(PlainButtonStyle())
@@ -153,7 +149,7 @@ struct InvoiceCard: View {
 
     private var statusBadge: some View {
         let color = invoice.status.badgeColor(isOverdue: invoice.isOverdue)
-        return HStack(spacing: 4) {
+        return HStack(spacing: OPSStyle.Layout.spacing1) {
             Circle()
                 .fill(color)
                 .frame(width: 8, height: 8)

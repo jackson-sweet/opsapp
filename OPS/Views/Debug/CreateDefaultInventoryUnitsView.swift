@@ -39,57 +39,58 @@ struct CreateDefaultInventoryUnitsView: View {
             OPSStyle.Colors.background
                 .ignoresSafeArea()
 
-            VStack(spacing: 24) {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
                 // Header
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: "shippingbox.fill")
                         .font(.system(size: 48))
                         .foregroundColor(Color.teal)
 
                     Text("Create Default Inventory Units")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .font(OPSStyle.Typography.screenTitle(for: "Create Default Inventory Units"))
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
 
                     Text("Company: \(companyName)")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
-                .padding(.top, 20)
+                .padding(.top, OPSStyle.Layout.spacing3_5)
 
                 // Existing units section
                 if !companyUnits.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                         Text("EXISTING UNITS (\(companyUnits.count))")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
                                 ForEach(companyUnits) { unit in
                                     UnitChip(display: unit.display, isDefault: unit.isDefault)
                                 }
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                 }
 
                 // Created units section
                 if !createdUnits.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                         Text("NEWLY CREATED UNITS (\(createdUnits.count))")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.successStatus)
 
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
                                 ForEach(createdUnits, id: \.id) { unit in
                                     UnitChip(display: unit.display, isDefault: unit.isDefault)
                                 }
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                 }
 
                 // Error message
@@ -98,13 +99,13 @@ struct CreateDefaultInventoryUnitsView: View {
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                 }
 
                 Spacer()
 
                 // Info box
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     Text("This will create the following default units:")
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -116,16 +117,11 @@ struct CreateDefaultInventoryUnitsView: View {
                     Text("Units will be created directly in Supabase.")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .padding(.top, 4)
+                        .padding(.top, OPSStyle.Layout.spacing1)
                 }
                 .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
-                .padding(.horizontal, 16)
+                .glassSurface()
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                 // Action button
                 Button(action: createDefaultUnits) {
@@ -141,13 +137,13 @@ struct CreateDefaultInventoryUnitsView: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing3)
                     .background(hasCreated ? OPSStyle.Colors.successStatus : Color.teal)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
                 .disabled(isLoading || hasCreated || companyId.isEmpty)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 32)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.bottom, OPSStyle.Layout.spacing5)
             }
         }
         .navigationTitle("Inventory Units")
@@ -235,7 +231,7 @@ struct UnitChip: View {
     let isDefault: Bool
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             Text(display)
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -246,14 +242,9 @@ struct UnitChip: View {
                     .foregroundColor(Color.teal)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .nestedCard()
     }
 }
 

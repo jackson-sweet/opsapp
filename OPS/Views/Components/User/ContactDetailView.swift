@@ -99,11 +99,11 @@ struct ContactDetailView: View {
                     
                     // Scrollable content
                     ScrollView {
-                        VStack(spacing: 16) {
+                        VStack(spacing: OPSStyle.Layout.spacing3) {
                             // Contact preview card (replaces profile header)
                             contactPreviewCard
                                 .padding(.horizontal)
-                                .padding(.top, 16)
+                                .padding(.top, OPSStyle.Layout.spacing3)
                             
                             // Contact information section
                             SectionCard(
@@ -113,7 +113,7 @@ struct ContactDetailView: View {
                                 actionLabel: (isClient && canEditClient) ? "Edit" : nil,
                                 onAction: (isClient && canEditClient) ? { showingClientEdit = true } : nil
                             ) {
-                                VStack(spacing: 16) {
+                                VStack(spacing: OPSStyle.Layout.spacing3) {
                                     contactSection
 
                                     // Save and Share buttons inside the card
@@ -121,14 +121,14 @@ struct ContactDetailView: View {
                                 }
                             }
                             .padding(.horizontal)
-                            .padding(.top, 8)
+                            .padding(.top, OPSStyle.Layout.spacing2)
 
                         // Role information with improved card styling
                         // Only show role section if not a client
                         if !isClient {
                             roleSection
                                 .padding(.horizontal)
-                                .padding(.top, 16)
+                                .padding(.top, OPSStyle.Layout.spacing3)
                         }
 
                         // Sub-contacts section (for clients only) - positioned ABOVE projects
@@ -147,11 +147,11 @@ struct ContactDetailView: View {
                                     subClientToEdit = tempSubClient
                                 } : nil
                             ) {
-                                VStack(spacing: 16) {
+                                VStack(spacing: OPSStyle.Layout.spacing3) {
                                     // Sub-client list or empty state
                                     if client.subClients.isEmpty {
                                         // Empty state
-                                        VStack(spacing: 12) {
+                                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
                                             Image(systemName: OPSStyle.Icons.subClient)
                                                 .font(.system(size: OPSStyle.Layout.IconSize.xl))
                                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -161,16 +161,11 @@ struct ContactDetailView: View {
                                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                         }
                                         .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 32)
-                                        .background(OPSStyle.Colors.cardBackground.opacity(0.8))
-                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(OPSStyle.Colors.cardBorder.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
-                                        )
+                                        .padding(.vertical, OPSStyle.Layout.spacing5)
+                                        .nestedCard()
                                     } else {
                                         // Sub-client rows
-                                        VStack(spacing: 8) {
+                                        VStack(spacing: OPSStyle.Layout.spacing2) {
                                             ForEach(client.subClients, id: \.id) { subClient in
                                                 SubClientRow(
                                                     subClient: subClient,
@@ -222,13 +217,13 @@ struct ContactDetailView: View {
                                 .id(subClientsRefreshKey)
                             }
                             .padding(.horizontal)
-                            .padding(.top, 16)
+                            .padding(.top, OPSStyle.Layout.spacing3)
                         }
 
                         // Projects section
                         projectsSection
                             .padding(.horizontal)
-                            .padding(.top, 16)
+                            .padding(.top, OPSStyle.Layout.spacing3)
 
                         // Delete button at bottom (for clients only)
                         if isClient && canEditClient {
@@ -247,8 +242,8 @@ struct ContactDetailView: View {
                                     )
                             }
                             .padding(.horizontal)
-                            .padding(.top, 32)
-                            .padding(.bottom, 32)
+                            .padding(.top, OPSStyle.Layout.spacing5)
+                            .padding(.bottom, OPSStyle.Layout.spacing5)
                         }
 
                             // Spacer for bottom padding
@@ -481,41 +476,30 @@ struct ContactDetailView: View {
     // MARK: - Custom Navigation Bar
     
     private var customNavigationBar: some View {
-        HStack {
-            // Back button
-            Button(action: {
-                dismiss()
-            }) {
-                Image(systemName: "chevron.left")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-            }
-            .frame(width: 44, height: 44)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            
-            Spacer()
-            
-            // Title
-            Text(isClient ? "CLIENT" : "TEAM MEMBER")
-                .font(OPSStyle.Typography.title)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-            
-            Spacer()
-
-            // Empty space to balance the layout
-            Color.clear
+        OPSScreenHeader(
+            isClient ? "CLIENT" : "TEAM MEMBER",
+            leading: {
+                // Back button
+                Button(action: {
+                    dismiss()
+                }) {
+                    Image(systemName: "chevron.left")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
                 .frame(width: 44, height: 44)
-        }
-        .padding(.horizontal)
+                .background(OPSStyle.Colors.surfaceInput)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+            }
+        )
     }
     
     // MARK: - Contact Preview Card
 
     private var contactPreviewCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2_5) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     // Name
                     Text(fullName.uppercased())
                         .font(OPSStyle.Typography.bodyBold)
@@ -542,7 +526,7 @@ struct ContactDetailView: View {
 
                     // Address (for clients) or Role (for team members)
                     if let address = self.address, !address.isEmpty {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "mappin.circle")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -552,7 +536,7 @@ struct ContactDetailView: View {
                                 .lineLimit(1)
                         }
                     } else {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "person.badge.shield.checkmark")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -584,20 +568,15 @@ struct ContactDetailView: View {
                 )
             }
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .glassSurface()
         }
     }
     
     // MARK: - Contact Buttons
     
     private var contactButtons: some View {
-        HStack(spacing: 20) {
+        HStack(spacing: OPSStyle.Layout.spacing3_5) {
             // Call Button
             if let phone = self.phone, !phone.isEmpty {
                 Button(action: {
@@ -616,8 +595,7 @@ struct ContactDetailView: View {
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                     .frame(width: 65, height: 65)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .nestedCard(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.thick)
@@ -643,8 +621,7 @@ struct ContactDetailView: View {
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                     .frame(width: 65, height: 65)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .nestedCard(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.thick)
@@ -669,8 +646,7 @@ struct ContactDetailView: View {
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                     .frame(width: 65, height: 65)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .nestedCard(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.thick)
@@ -679,7 +655,7 @@ struct ContactDetailView: View {
             }
             
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
         .opacity(showFullContact ? 1 : 0)
         .offset(y: showFullContact ? 0 : 20)
         .animation(.easeInOut(duration: 0.4), value: showFullContact)
@@ -688,10 +664,10 @@ struct ContactDetailView: View {
     // MARK: - Contact Section
 
     private var contactSection: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
 
                 // Email field
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     Text("EMAIL")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -710,7 +686,7 @@ struct ContactDetailView: View {
                                 openURL(emailURL)
                             }
                         }) {
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 Image(systemName: OPSStyle.Icons.envelope)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -727,8 +703,8 @@ struct ContactDetailView: View {
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 16)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .background(Color.clear)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
@@ -739,7 +715,7 @@ struct ContactDetailView: View {
                         .buttonStyle(PlainButtonStyle())
                         .simultaneousGesture(longPressGesture(for: .email))
                     } else {
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             Image(systemName: OPSStyle.Icons.envelope)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -752,8 +728,8 @@ struct ContactDetailView: View {
 
                             Spacer()
                         }
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 16)
+                        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .background(Color.clear)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
@@ -766,7 +742,7 @@ struct ContactDetailView: View {
                 }
                 
                 // Phone field
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     Text("PHONE")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -780,7 +756,7 @@ struct ContactDetailView: View {
                             autocapitalize: false
                         )
                     } else if let phone = self.phone, !phone.isEmpty {
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             Image(systemName: OPSStyle.Icons.phone)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -817,8 +793,8 @@ struct ContactDetailView: View {
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
                         }
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 16)
+                        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .background(Color.clear)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
@@ -828,7 +804,7 @@ struct ContactDetailView: View {
                         .contentShape(Rectangle())
                         .simultaneousGesture(longPressGesture(for: .phone))
                     } else {
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             Image(systemName: OPSStyle.Icons.phone)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -841,8 +817,8 @@ struct ContactDetailView: View {
 
                             Spacer()
                         }
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 16)
+                        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .background(Color.clear)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
@@ -856,7 +832,7 @@ struct ContactDetailView: View {
                 
                 // Address field (for clients only)
                 if isClient {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                         Text("ADDRESS")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -877,7 +853,7 @@ struct ContactDetailView: View {
                                     openURL(mapsURL)
                                 }
                             }) {
-                                HStack(spacing: 12) {
+                                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                     Image(systemName: OPSStyle.Icons.address)
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -895,8 +871,8 @@ struct ContactDetailView: View {
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 }
-                                .padding(.vertical, 12)
-                                .padding(.horizontal, 16)
+                                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
                                 .background(Color.clear)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
@@ -907,7 +883,7 @@ struct ContactDetailView: View {
                             .buttonStyle(PlainButtonStyle())
                             .simultaneousGesture(longPressGesture(for: .address))
                         } else {
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 Image(systemName: "location.slash")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -920,8 +896,8 @@ struct ContactDetailView: View {
 
                                 Spacer()
                             }
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 16)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .background(Color.clear)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
@@ -1013,7 +989,7 @@ struct ContactDetailView: View {
         keyboard: UIKeyboardType,
         autocapitalize: Bool
     ) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: icon)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -1050,8 +1026,8 @@ struct ContactDetailView: View {
                 .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .background(Color.clear)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
@@ -1066,7 +1042,7 @@ struct ContactDetailView: View {
         Group {
             if isClient {
                 if let client = client {
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         // Save to Contacts button
                         Button(action: {
                             showingContactExportOptions = true
@@ -1112,7 +1088,7 @@ struct ContactDetailView: View {
                                 topController?.present(activityVC, animated: true)
                             }
                         }) {
-                            VStack(spacing: 4) {
+                            VStack(spacing: OPSStyle.Layout.spacing1) {
                                 Image(systemName: "square.and.arrow.up")
                                     .font(OPSStyle.Typography.body)
                                 Text("Share")
@@ -1127,7 +1103,7 @@ struct ContactDetailView: View {
                             )
                         }
                     }
-                    .padding(.top, 16)
+                    .padding(.top, OPSStyle.Layout.spacing3)
                 }
             }
         }
@@ -1180,8 +1156,8 @@ struct ContactDetailView: View {
                                 Text(project.status.displayName.uppercased())
                                     .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(project.status.color)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                    .padding(.vertical, OPSStyle.Layout.spacing1)
                                     .background(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                             .fill(project.status.color.opacity(0.1))
@@ -1196,8 +1172,8 @@ struct ContactDetailView: View {
                                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 16)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -1212,7 +1188,7 @@ struct ContactDetailView: View {
                     // Show more/less button if there are more than 5 projects
                     if projects.count > 5 {
                         Button(action: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            withAnimation(OPSStyle.Animation.standard) {
                                 isProjectListExpanded.toggle()
                             }
                         }) {
@@ -1223,7 +1199,7 @@ struct ContactDetailView: View {
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 Spacer()
                             }
-                            .padding(.vertical, 12)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -1234,12 +1210,12 @@ struct ContactDetailView: View {
                 Button(action: {
                     showingCreateProject = true
                 }) {
-                    VStack(spacing: 12) {
+                    VStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Image(systemName: OPSStyle.Icons.addProject)
                             .font(.system(size: OPSStyle.Layout.IconSize.xl))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                        VStack(spacing: 4) {
+                        VStack(spacing: OPSStyle.Layout.spacing1) {
                             Text("No projects yet")
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -1255,7 +1231,7 @@ struct ContactDetailView: View {
                 .buttonStyle(PlainButtonStyle())
             } else {
                 // Empty state for non-clients or field crew (just text, no action)
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: "folder")
                         .font(.system(size: OPSStyle.Layout.IconSize.xl))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -1288,9 +1264,9 @@ struct ContactDetailView: View {
             icon: isClient ? "building.2" : "person.badge.shield.checkmark",
             title: "Role"
         ) {
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 HStack {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                         Text("CURRENT ROLE")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -1317,7 +1293,7 @@ struct ContactDetailView: View {
                                 }
                             }
                         } label: {
-                            HStack(spacing: 4) {
+                            HStack(spacing: OPSStyle.Layout.spacing1) {
                                 if isChangingRole {
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))

@@ -24,8 +24,9 @@ struct CreationPickerView: View {
         } else {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             Text("New Deck Design")
-                .font(OPSStyle.Typography.heading)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+                .font(OPSStyle.Typography.pageTitle)
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.text)
                 // Bug fc95b426 — spacing4 (24pt) isn't enough clearance under
                 // the sheet's drag indicator zone in iOS 26, so the heading's
                 // top edge gets clipped. spacing5 (32pt) is the largest spacing

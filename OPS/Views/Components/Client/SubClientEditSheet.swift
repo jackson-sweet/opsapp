@@ -67,20 +67,20 @@ struct SubClientEditSheet: View {
                     .ignoresSafeArea()
                 
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         // Contact Preview Card
                         subClientPreviewCard
                             .padding(.horizontal)
-                            .padding(.top, 16)
+                            .padding(.top, OPSStyle.Layout.spacing3)
 
                         // Contact Details Section
                         SectionCard(
                             icon: "person.text.rectangle",
                             title: "Contact Details"
                         ) {
-                            VStack(spacing: 16) {
+                            VStack(spacing: OPSStyle.Layout.spacing3) {
                                 // Name field (required)
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     Text("NAME *")
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -90,14 +90,18 @@ struct SubClientEditSheet: View {
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                         .autocorrectionDisabled(true)
                                         .textInputAutocapitalization(.words)
-                                        .padding(12)
-                                        .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                                        .padding(OPSStyle.Layout.spacing2_5)
+                                        .background(OPSStyle.Colors.surfaceInput)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                        )
                                         .focused($focusedField, equals: .name)
                                 }
 
                                 // Title field
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     Text("TITLE")
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -107,14 +111,18 @@ struct SubClientEditSheet: View {
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                         .autocorrectionDisabled(true)
                                         .textInputAutocapitalization(.words)
-                                        .padding(12)
-                                        .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                                        .padding(OPSStyle.Layout.spacing2_5)
+                                        .background(OPSStyle.Colors.surfaceInput)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                        )
                                         .focused($focusedField, equals: .title)
                                 }
 
                                 // Email field
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     Text("EMAIL")
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -125,14 +133,18 @@ struct SubClientEditSheet: View {
                                         .keyboardType(.emailAddress)
                                         .autocapitalization(.none)
                                         .autocorrectionDisabled(true)
-                                        .padding(12)
-                                        .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                                        .padding(OPSStyle.Layout.spacing2_5)
+                                        .background(OPSStyle.Colors.surfaceInput)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                        )
                                         .focused($focusedField, equals: .email)
                                 }
 
                                 // Phone field
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     Text("PHONE")
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -142,14 +154,18 @@ struct SubClientEditSheet: View {
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                         .keyboardType(.phonePad)
                                         .autocorrectionDisabled(true)
-                                        .padding(12)
-                                        .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                                        .padding(OPSStyle.Layout.spacing2_5)
+                                        .background(OPSStyle.Colors.surfaceInput)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                        )
                                         .focused($focusedField, equals: .phone)
                                 }
 
                                 // Address field with autocomplete
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     Text("ADDRESS")
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -164,7 +180,7 @@ struct SubClientEditSheet: View {
                         Button(action: {
                             showingContactPicker = true
                         }) {
-                            HStack(spacing: 8) {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
                                 Image(systemName: OPSStyle.Icons.addContact)
                                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                                 Text("Import from Contacts")
@@ -172,7 +188,7 @@ struct SubClientEditSheet: View {
                             }
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
+                            .padding(.vertical, OPSStyle.Layout.spacing3)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.thick)
@@ -333,8 +349,8 @@ struct SubClientEditSheet: View {
 
     private var subClientPreviewCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2_5) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     // Name
                     Text(viewModel.name.isEmpty ? "SUB CONTACT NAME" : viewModel.name.uppercased())
                         .font(OPSStyle.Typography.bodyBold)
@@ -361,7 +377,7 @@ struct SubClientEditSheet: View {
 
                     // Address or Title
                     if !viewModel.address.isEmpty {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "mappin.circle")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -371,7 +387,7 @@ struct SubClientEditSheet: View {
                                 .lineLimit(1)
                         }
                     } else if !viewModel.title.isEmpty {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "briefcase")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -404,13 +420,8 @@ struct SubClientEditSheet: View {
                     )
             }
             .padding(.vertical, 14)
-            .padding(.horizontal, 16)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .glassSurface()
         }
     }
 

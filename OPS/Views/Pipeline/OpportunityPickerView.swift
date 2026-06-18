@@ -15,7 +15,7 @@ struct OpportunityPickerView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Search bar
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .font(.system(size: 16))
@@ -34,15 +34,19 @@ struct OpportunityPickerView: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .padding(.horizontal, 20)
-            .padding(.top, 12)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.top, OPSStyle.Layout.spacing2_5)
 
             Divider()
-                .padding(.top, 12)
+                .padding(.top, OPSStyle.Layout.spacing2_5)
 
             // Opportunity list
             ScrollView {
@@ -50,7 +54,7 @@ struct OpportunityPickerView: View {
                     ForEach(viewModel.filteredOpportunities) { opp in
                         opportunityRow(opp)
                         Divider()
-                            .padding(.leading, 20)
+                            .padding(.leading, OPSStyle.Layout.spacing3_5)
                     }
 
                     // + New Lead row
@@ -70,11 +74,11 @@ struct OpportunityPickerView: View {
             viewModel.isCreatingNewLead = false
             viewModel.showOpportunityPicker = false
         } label: {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Contact initial circle
                 ZStack {
                     Circle()
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .fill(OPSStyle.Colors.background)
                         .frame(width: 40, height: 40)
                     Text(String(opp.contactName.prefix(1)).uppercased())
                         .font(OPSStyle.Typography.bodyBold)
@@ -101,10 +105,10 @@ struct OpportunityPickerView: View {
                 Text(opp.stage.displayName)
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(4)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
+                    .background(OPSStyle.Colors.surfaceInput)
+                    .cornerRadius(OPSStyle.Layout.chipRadius)
 
                 // Checkmark if selected
                 if viewModel.selectedOpportunity?.id == opp.id {
@@ -113,7 +117,7 @@ struct OpportunityPickerView: View {
                         .font(.system(size: 20))
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.vertical, 14)
             .contentShape(Rectangle())
         }
@@ -126,14 +130,14 @@ struct OpportunityPickerView: View {
     private func newLeadRow() -> some View {
         VStack(spacing: 0) {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.panel) {
                     viewModel.isCreatingNewLead.toggle()
                     if viewModel.isCreatingNewLead {
                         viewModel.selectedOpportunity = nil
                     }
                 }
             } label: {
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     ZStack {
                         Circle()
                             .fill(OPSStyle.Colors.successStatus.opacity(0.2))
@@ -153,7 +157,7 @@ struct OpportunityPickerView: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .font(.system(size: 14))
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.vertical, 14)
                 .contentShape(Rectangle())
             }
@@ -161,13 +165,13 @@ struct OpportunityPickerView: View {
 
             // Inline create form
             if viewModel.isCreatingNewLead {
-                VStack(spacing: 12) {
+                VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     inlineField(label: "Name", text: $viewModel.newLeadName, placeholder: "Contact name *")
                     inlineField(label: "Phone", text: $viewModel.newLeadPhone, placeholder: "Phone (optional)")
                     inlineField(label: "Email", text: $viewModel.newLeadEmail, placeholder: "Email (optional)")
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -178,9 +182,13 @@ struct OpportunityPickerView: View {
         TextField(placeholder, text: text)
             .font(OPSStyle.Typography.body)
             .foregroundColor(OPSStyle.Colors.primaryText)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
     }
 }

@@ -68,7 +68,7 @@ struct GuidedStockDoneView: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .frame(maxWidth: .infinity)
                             .frame(height: 52)
-                            .background(OPSStyle.Colors.cardBackground)
+                            .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.buttonRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)

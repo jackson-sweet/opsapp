@@ -38,7 +38,7 @@ struct SubMetric: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text(label)
                 .font(.custom("JetBrainsMono-Regular", size: 9.5))
                 .fontWeight(.semibold)
@@ -68,7 +68,7 @@ struct SubMetric: View {
 #Preview("SubMetric / 3-up hero row") {
     ZStack {
         OPSStyle.Colors.background.ignoresSafeArea()
-        VStack(spacing: 24) {
+        VStack(spacing: OPSStyle.Layout.spacing4) {
             // The canonical three-up arrangement
             HStack(spacing: 14) {
                 SubMetric(label: "OVERDUE",   value: "04", hint: "NEEDS NOW",   tone: .rose)
@@ -79,7 +79,7 @@ struct SubMetric: View {
             Rectangle().fill(OPSStyle.Colors.line).frame(height: 1)
 
             // All tone variants, single column
-            VStack(spacing: 16) {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
                 SubMetric(label: "ROSE",    value: "04", hint: "ROSE TONE",   tone: .rose)
                 SubMetric(label: "TAN",     value: "03", hint: "TAN TONE",    tone: .tan)
                 SubMetric(label: "OLIVE",   value: "12", hint: "OLIVE TONE",  tone: .olive)
@@ -88,7 +88,7 @@ struct SubMetric: View {
                 SubMetric(label: "NO HINT", value: "—")
             }
         }
-        .padding(20)
+        .padding(OPSStyle.Layout.spacing3_5)
     }
     .preferredColorScheme(.dark)
 }

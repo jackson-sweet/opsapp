@@ -24,14 +24,14 @@ struct SettingsSearchSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
+                OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
 
                 VStack(spacing: 0) {
                     // Search bar
                     searchBar
-                        .padding(.horizontal, 20)
-                        .padding(.top, 20)
-                        .padding(.bottom, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.top, OPSStyle.Layout.spacing3_5)
+                        .padding(.bottom, OPSStyle.Layout.spacing3)
 
                     // Search results
                     if searchText.isEmpty {
@@ -66,7 +66,7 @@ struct SettingsSearchSheet: View {
     // MARK: - Search Bar
 
     private var searchBar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Magnifying glass icon
             Image(systemName: OPSStyle.Icons.search)
                 .font(.system(size: OPSStyle.Layout.IconSize.md))
@@ -91,20 +91,20 @@ struct SettingsSearchSheet: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(isSearchFocused ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(isSearchFocused ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
     // MARK: - States
 
     private var emptySearchState: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Image(systemName: OPSStyle.Icons.search)
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -126,7 +126,7 @@ struct SettingsSearchSheet: View {
     }
 
     private var noResultsState: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             Image(systemName: OPSStyle.Icons.search)
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -147,7 +147,7 @@ struct SettingsSearchSheet: View {
 
     private var searchResultsList: some View {
         ScrollView {
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Results header
                 HStack {
                     Text("\(searchResults.count) RESULT\(searchResults.count == 1 ? "" : "S")")
@@ -156,8 +156,8 @@ struct SettingsSearchSheet: View {
 
                     Spacer()
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 4)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.bottom, OPSStyle.Layout.spacing1)
 
                 // Search results
                 ForEach(searchResults) { item in
@@ -166,12 +166,12 @@ struct SettingsSearchSheet: View {
                     }
                 }
             }
-            .padding(.bottom, 20)
+            .padding(.bottom, OPSStyle.Layout.spacing3_5)
         }
     }
 
     private func searchResultRow(for item: SearchableSettingItem) -> some View {
-        HStack(spacing: 16) {
+        HStack(spacing: OPSStyle.Layout.spacing3) {
             // Category icon
             Image(systemName: item.categoryIcon)
                 .font(.system(size: OPSStyle.Layout.IconSize.md))
@@ -179,7 +179,7 @@ struct SettingsSearchSheet: View {
                 .frame(width: 24)
 
             // Content
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(item.title)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -197,14 +197,9 @@ struct SettingsSearchSheet: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .padding(.vertical, 14)
-        .padding(.horizontal, 16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .glassSurface()
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 }
 

@@ -72,14 +72,7 @@ struct BreakdownSheet: View {
                     .buttonStyle(.plain)
                 }
             }
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
     }
 

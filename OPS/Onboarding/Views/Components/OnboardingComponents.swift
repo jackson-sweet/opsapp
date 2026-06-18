@@ -17,7 +17,7 @@ struct OnboardingTextFieldStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
             .textContentType(.oneTimeCode) // Prevents autofill suggestions
-            .padding(.vertical, 12)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .padding(.horizontal, 2)
             .foregroundColor(OPSStyle.Colors.primaryText)
             .overlay(
@@ -46,7 +46,7 @@ struct OnboardingProgressIndicator: View {
     }
     
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             ForEach(1..<totalSteps+1, id: \.self) { step in
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                     .fill(step <= currentStep.rawValue ? OPSStyle.Colors.primaryAccent : Color.gray.opacity(0.3))
@@ -54,7 +54,7 @@ struct OnboardingProgressIndicator: View {
             }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.top, 12)
+        .padding(.top, OPSStyle.Layout.spacing2_5)
     }
 }
 
@@ -76,7 +76,7 @@ struct ErrorMessageView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 8)
+            .padding(.top, OPSStyle.Layout.spacing2)
             .transition(.opacity)
         }
     }
@@ -97,7 +97,7 @@ struct StandardNavigationHeader: View {
         HStack {
             if showBack {
                 Button(action: onBack) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: "chevron.left")
                             .font(OPSStyle.Typography.caption)
                         Text("Back")
@@ -117,8 +117,8 @@ struct StandardNavigationHeader: View {
                 }
             }
         }
-        .padding(.top, 8)
-        .padding(.bottom, 8)
+        .padding(.top, OPSStyle.Layout.spacing2)
+        .padding(.bottom, OPSStyle.Layout.spacing2)
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 }
@@ -131,7 +131,7 @@ struct OnboardingHeaderView: View {
     var isLightTheme: Bool = false // Default to dark theme
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text(title.uppercased())
                 .font(OPSStyle.Typography.title)
                 .foregroundColor(isLightTheme ? OPSStyle.Colors.Light.primaryText : OPSStyle.Colors.primaryText)
@@ -146,8 +146,8 @@ struct OnboardingHeaderView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 24)
-        .padding(.bottom, 8)
+        .padding(.top, OPSStyle.Layout.spacing4)
+        .padding(.bottom, OPSStyle.Layout.spacing2)
     }
 }
 
@@ -208,7 +208,7 @@ struct UnderlineTextField: View {
     var onChange: ((String) -> Void)? = nil
     
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             ZStack(alignment: .leading) {
                 // Custom placeholder with proper color
                 if text.isEmpty {
@@ -263,7 +263,7 @@ struct OnboardingNavigationButtons: View {
     var onSecondaryTapped: (() -> Void)? = nil
     
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             // Primary continue button
             Button(action: onPrimaryTapped) {
                 ZStack {
@@ -277,7 +277,7 @@ struct OnboardingNavigationButtons: View {
                         if !isLoading && !isPrimaryDisabled {
                             Image(systemName: "arrow.right")
                                 .font(OPSStyle.Typography.captionBold)
-                                .padding(.trailing, 20)
+                                .padding(.trailing, OPSStyle.Layout.spacing3_5)
                         }
                     }
                     .foregroundColor(isLightTheme ? .white : .black)
@@ -300,7 +300,7 @@ struct OnboardingNavigationButtons: View {
             // Secondary back/skip button (if provided)
             if showSecondary, let secondaryAction = onSecondaryTapped {
                 Button(action: secondaryAction) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         if secondaryText.lowercased() == "back" {
                             Image(systemName: "chevron.left")
                                 .font(OPSStyle.Typography.captionBold)
@@ -331,7 +331,7 @@ struct OnboardingNavigationButtons: View {
 #Preview("Button Styles") {
     let previewHelper = OnboardingPreviewHelpers.PreviewStyles()
 
-    VStack(spacing: 20) {
+    VStack(spacing: OPSStyle.Layout.spacing3_5) {
         Button("Continue") {}
             .buttonStyle(OPSButtonStyle.Primary())
 
@@ -350,10 +350,10 @@ struct OnboardingNavigationButtons: View {
 #Preview("Progress Indicator") {
     let previewHelper = OnboardingPreviewHelpers.PreviewStyles()
     
-    VStack(spacing: 20) {
+    VStack(spacing: OPSStyle.Layout.spacing3_5) {
         ForEach(OnboardingStep.allCases, id: \.self) { step in
             if step != .welcome && step != .completion {
-                VStack(spacing: 4) {
+                VStack(spacing: OPSStyle.Layout.spacing1) {
                     Text(String(describing: step))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .font(OPSStyle.Typography.caption)
@@ -380,7 +380,7 @@ struct OnboardingNavigationButtons: View {
         )
         
         // Input field with label
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             InputFieldLabel(label: "EMAIL")
             
             TextField("Email address", text: .constant("user@example.com"))

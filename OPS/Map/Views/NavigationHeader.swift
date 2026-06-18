@@ -43,7 +43,7 @@ struct NavigationManeuverCard: View {
             // rotates 180° when expanded as an affordance.
             if shouldShowDestinationRow {
                 thinHorizontalDivider
-                    .padding(.top, 12)
+                    .padding(.top, OPSStyle.Layout.spacing2_5)
                     .padding(.bottom, 10)
 
                 destinationRow
@@ -53,27 +53,27 @@ struct NavigationManeuverCard: View {
             if isExpanded {
                 thinHorizontalDivider
                     .padding(.top, 10)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
 
                 turnList
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, 14)
         .background(cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
     }
 
     // MARK: - Top row (current maneuver)
 
     private var topRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: navigationManager.maneuverIcon)
                 .font(.system(size: 28, weight: .semibold))
                 .foregroundColor(.white)
                 .frame(width: 44, height: 44)
                 .background(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .fill(OPSStyle.Colors.primaryAccent)
                 )
 
@@ -119,7 +119,7 @@ struct NavigationManeuverCard: View {
 
     private var destinationRow: some View {
         Button(action: toggleExpanded) {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: "mappin.and.ellipse")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(Color.white.opacity(0.55))
@@ -191,13 +191,13 @@ struct NavigationManeuverCard: View {
     }
 
     private func turnRow(step: MKRoute.Step) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: navigationManager.icon(for: step))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(.white)
                 .frame(width: 32, height: 32)
                 .background(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .fill(Color.white.opacity(0.12))
                 )
 
@@ -215,23 +215,23 @@ struct NavigationManeuverCard: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
     }
 
     // MARK: - Shared chrome
 
     private var thinHorizontalDivider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.10))
+            .fill(OPSStyle.Colors.line)
             .frame(height: 1)
     }
 
     private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: 4)
+        RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
             .fill(.ultraThinMaterial)
             .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                    .stroke(OPSStyle.Colors.surfaceActive, lineWidth: 1)
             )
     }
 
@@ -249,10 +249,10 @@ struct NavigationManeuverCard: View {
 
             Spacer()
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, 14)
         .background(cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
     }
 
     // MARK: - Format
@@ -325,7 +325,7 @@ struct NavigationTripStrip: View {
     // MARK: - Stat Item
 
     private func statItem(value: String, label: String) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: OPSStyle.Layout.spacing1) {
             Text(value)
                 .font(OPSStyle.Typography.heading)
                 .foregroundColor(.white)
@@ -339,7 +339,7 @@ struct NavigationTripStrip: View {
 
     private var thinDivider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.14))
+            .fill(OPSStyle.Colors.fillNeutral)
             .frame(width: 1, height: 36)
     }
 

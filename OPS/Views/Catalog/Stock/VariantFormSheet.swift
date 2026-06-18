@@ -93,7 +93,7 @@ struct VariantFormSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         familyPickerSection
@@ -172,11 +172,11 @@ struct VariantFormSheet: View {
             .tint(OPSStyle.Colors.primaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .disabled(isEditing)
         }
@@ -227,7 +227,7 @@ struct VariantFormSheet: View {
             .font(OPSStyle.Typography.metadata)
             .foregroundColor(OPSStyle.Colors.tertiaryText)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.background)
     }
 
     @ViewBuilder
@@ -258,11 +258,11 @@ struct VariantFormSheet: View {
             .tint(OPSStyle.Colors.primaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }
@@ -286,11 +286,11 @@ struct VariantFormSheet: View {
                 .tint(OPSStyle.Colors.primaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(OPSStyle.Layout.spacing2)
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.surfaceInput)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
         }

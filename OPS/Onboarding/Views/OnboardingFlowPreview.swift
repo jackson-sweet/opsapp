@@ -44,7 +44,7 @@ struct OnboardingFlowPreview: View {
         NavigationView {
             VStack(spacing: 0) {
                 // Controls
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     // Flow type selector
                     Picker("Flow Type", selection: $currentFlowType) {
                         ForEach(FlowType.allCases, id: \.self) { flow in
@@ -68,9 +68,9 @@ struct OnboardingFlowPreview: View {
                 
                 // Flow display
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         ForEach(Array(currentScreens.enumerated()), id: \.0) { index, screen in
-                            VStack(spacing: 8) {
+                            VStack(spacing: OPSStyle.Layout.spacing2) {
                                 // Step indicator
                                 HStack {
                                     Text("Step \(index + 1)")
@@ -195,9 +195,9 @@ struct OnboardingScreenPreview<Content: View>: View {
     }
     
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             // Title and controls
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Text(title)
                     .font(OPSStyle.Typography.heading)
                 
@@ -235,7 +235,7 @@ struct OnboardingStateTestingPreview: View {
         VStack {
             // State controls
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                     // User type selector
                     HStack {
                         Text("User Type:")

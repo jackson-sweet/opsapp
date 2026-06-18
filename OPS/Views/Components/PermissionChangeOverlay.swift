@@ -59,7 +59,7 @@ struct PermissionChangeOverlay: View {
                         .font(OPSStyle.Typography.button)
                         .foregroundColor(OPSStyle.Colors.buttonText)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .padding(.vertical, OPSStyle.Layout.spacing3)
                         .background(OPSStyle.Colors.primaryAccent)
                         .cornerRadius(OPSStyle.Layout.buttonRadius)
                 }
@@ -103,12 +103,7 @@ struct PermissionChangeOverlay: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .nestedCard()
                         }
                     }
 
@@ -127,24 +122,14 @@ struct PermissionChangeOverlay: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .nestedCard()
                         }
                     }
                 }
                 .padding(.top, OPSStyle.Layout.spacing1)
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackground)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+            .glassSurface()
         }
     }
 }

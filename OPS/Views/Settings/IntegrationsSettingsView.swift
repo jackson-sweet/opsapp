@@ -16,7 +16,7 @@ struct IntegrationsSettingsView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 SettingsHeader(
@@ -25,7 +25,7 @@ struct IntegrationsSettingsView: View {
                 )
 
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         // Calendar header (Bug 68123654)
                         Text("CALENDAR")
                             .font(OPSStyle.Typography.captionBold)
@@ -46,7 +46,7 @@ struct IntegrationsSettingsView: View {
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 8)
+                            .padding(.top, OPSStyle.Layout.spacing2)
 
                         // QuickBooks
                         integrationCard(
@@ -67,7 +67,7 @@ struct IntegrationsSettingsView: View {
                         )
 
                         // Info note
-                        HStack(alignment: .top, spacing: 12) {
+                        HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
                             Image(systemName: OPSStyle.Icons.info)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -76,10 +76,10 @@ struct IntegrationsSettingsView: View {
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
-                        .padding(.top, 8)
+                        .padding(.top, OPSStyle.Layout.spacing2)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.vertical, OPSStyle.Layout.spacing3)
                 }
             }
         }
@@ -118,13 +118,13 @@ struct IntegrationsSettingsView: View {
         isConnected: Bool,
         onConnect: @escaping () -> Void
     ) -> some View {
-        VStack(spacing: 16) {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             HStack(spacing: 14) {
                 Image(systemName: iconName)
                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(width: 40, height: 40)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .background(OPSStyle.Colors.background)
                     .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
@@ -143,7 +143,7 @@ struct IntegrationsSettingsView: View {
                 Spacer()
 
                 if isConnected {
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: OPSStyle.Icons.complete)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text("CONNECTED")
@@ -166,22 +166,17 @@ struct IntegrationsSettingsView: View {
             }
         }
         .padding(.vertical, 14)
-        .padding(.horizontal, 16)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .glassSurface()
     }
 
     // MARK: - OAuth Placeholder
 
     private func oauthPlaceholder(provider: String) -> some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
 
-            VStack(spacing: 24) {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
                 Spacer()
 
                 Image(systemName: "link.badge.plus")

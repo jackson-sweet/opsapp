@@ -110,8 +110,8 @@ struct LeadsTabView: View {
                             waitingCount: viewModel.waitingCount,
                             avgVelocityDays: viewModel.avgVelocityDays()
                         )
-                        .padding(.horizontal, 20)
-                        .padding(.top, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.top, OPSStyle.Layout.spacing1)
 
                         // Carousel CONVERT → ConvertToProjectSheet mutates
                         // (marks won, creates a project) and its onDisappear
@@ -128,24 +128,24 @@ struct LeadsTabView: View {
 
                         queueHeader
                             .padding(.top, 22)
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         FilterChipRow(
                             selectedId: filterBinding,
                             chips: bucketChips
                         )
-                        .padding(.top, 8)
+                        .padding(.top, OPSStyle.Layout.spacing2)
 
                         queueList
-                            .padding(.top, 4)
-                            .padding(.horizontal, 20)
+                            .padding(.top, OPSStyle.Layout.spacing1)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         PipelineFooter(
                             counts: stageCounts,
                             onStageTap: { footerStage = $0 },
                             onBoardTap: { openBoard() }
                         )
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .padding(.top, 28)
                         .padding(.bottom, 100)
                     }
@@ -258,9 +258,7 @@ struct LeadsTabView: View {
 
             Spacer()
 
-            // No filter icon (plan §2.1 Q4 = delete entirely). Search is
-            // provided by the persistent overlay button in MainTabView
-            // (Bug 706a4d32), so we don't render one here either.
+            // Create new lead. No filter icon (plan §2.1 Q4 = delete entirely).
             // Gated on pipeline.manage — read-only operators get no create
             // affordance, matching the FAB's gating and design-intent §14 #11.
             // (review C-8 / W-12)
@@ -278,15 +276,23 @@ struct LeadsTabView: View {
                 .buttonStyle(PlainButtonStyle())
                 .accessibilityLabel("New lead")
             }
+
+            // Universal search — rightmost trailing action, identical on every
+            // tab via the shared UniversalSearchButton. LEADS previously relied
+            // on the global MainTabView search overlay (Bug 706a4d32); that
+            // overlay was removed, so the tab now owns its own search control.
+            UniversalSearchButton {
+                appState.showingUniversalSearch = true
+            }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 4)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing1)
     }
 
     private var titleRow: some View {
         HStack(alignment: .lastTextBaseline) {
             Text("LEADS")
-                .font(OPSStyle.Typography.display)
+                .font(OPSStyle.Typography.screenTitle(for: "LEADS"))
                 .foregroundColor(OPSStyle.Colors.text)
                 .textCase(.uppercase)
             Spacer()
@@ -298,8 +304,8 @@ struct LeadsTabView: View {
                     .textCase(.uppercase)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing2_5)
         .padding(.bottom, 14)
     }
 
@@ -362,7 +368,7 @@ struct LeadsTabView: View {
                 .padding(.vertical, 28)
                 .frame(maxWidth: .infinity)
         } else {
-            LazyVStack(spacing: 8) {
+            LazyVStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(leads) { lead in
                     LeadActionCard(
                         opportunity: lead,

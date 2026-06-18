@@ -166,7 +166,7 @@ struct PhotoAnnotationView: View {
             .disabled(isSaving)
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.glassDenseApprox)
     }
 
     // MARK: - Bottom Bar
@@ -197,7 +197,7 @@ struct PhotoAnnotationView: View {
                     .padding(.bottom, OPSStyle.Layout.spacing1)
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .background(OPSStyle.Colors.glassDenseApprox)
     }
 
     // MARK: - Actions

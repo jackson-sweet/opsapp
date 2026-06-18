@@ -82,7 +82,7 @@ struct InventoryWizardFlow: View {
                     Button {
                         coordinator.goBack()
                     } label: {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "chevron.left")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             Text("BACK")
@@ -108,12 +108,12 @@ struct InventoryWizardFlow: View {
                             .frame(height: 44)
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.top, OPSStyle.Layout.spacing3)
 
                 // Instruction
                 HStack {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                         Text("ADD YOUR ITEMS")
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -124,17 +124,17 @@ struct InventoryWizardFlow: View {
                     }
                     Spacer()
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
                 Divider().background(OPSStyle.Colors.cardBorder)
 
                 // Inventory list + add button
                 ScrollView {
-                    VStack(spacing: 12) {
+                    VStack(spacing: OPSStyle.Layout.spacing2_5) {
                         // Existing items
                         ForEach(activeItems) { item in
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(item.name)
                                         .font(OPSStyle.Typography.body)
@@ -148,20 +148,15 @@ struct InventoryWizardFlow: View {
                                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                     .foregroundColor(OPSStyle.Colors.successStatus)
                             }
-                            .padding(12)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .padding(OPSStyle.Layout.spacing2_5)
+                            .glassSurface()
                         }
 
                         // Add item button
                         Button {
                             showingAddSheet = true
                         } label: {
-                            HStack(spacing: 8) {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
                                 Image(systemName: "plus.circle.fill")
                                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                                 Text("ADD ITEM")
@@ -169,19 +164,14 @@ struct InventoryWizardFlow: View {
                             }
                             .foregroundColor(OPSStyle.Colors.wizardAccent)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.wizardAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .padding(.vertical, OPSStyle.Layout.spacing3)
+                            .glassSurface(borderColor: OPSStyle.Colors.wizardAccent.opacity(0.3))
                         }
 
                         // Exit option — always available
                         skipSetupButton
                     }
-                    .padding(20)
+                    .padding(OPSStyle.Layout.spacing3_5)
                 }
             }
         }
@@ -206,7 +196,7 @@ struct InventoryWizardFlow: View {
                     Button {
                         coordinator.goBack()
                     } label: {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "chevron.left")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             Text("BACK")
@@ -229,12 +219,12 @@ struct InventoryWizardFlow: View {
                         }
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.top, OPSStyle.Layout.spacing3)
 
                 // Import prompt — left-aligned, icon inline with title
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Image(systemName: "square.and.arrow.down")
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.wizardAccent)
@@ -256,14 +246,14 @@ struct InventoryWizardFlow: View {
                             .font(OPSStyle.Typography.button)
                             .foregroundColor(OPSStyle.Colors.invertedText)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
+                            .padding(.vertical, OPSStyle.Layout.spacing3)
                             .background(OPSStyle.Colors.primaryText)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                     // Exit option — always available
                     skipSetupButton
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.top, OPSStyle.Layout.spacing4)
 
                 Spacer()

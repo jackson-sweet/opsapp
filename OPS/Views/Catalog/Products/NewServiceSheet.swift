@@ -76,7 +76,7 @@ struct NewServiceSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
                 VStack(spacing: 0) {
                     ScrollView {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
@@ -269,7 +269,7 @@ struct NewServiceSheet: View {
                     Spacer()
                 }
                 .frame(height: OPSStyle.Layout.touchTargetStandard)
-                .background(canSave ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackgroundDark)
+                .background(canSave ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.fillNeutralDim)
                 .cornerRadius(OPSStyle.Layout.buttonRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)

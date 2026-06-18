@@ -34,25 +34,19 @@ struct ImageAdjustmentView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Header
-            HStack {
-                Button {
-                    lightImpact.impactOccurred()
-                    onCancel()
-                } label: {
-                    Text("Back")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+            OPSScreenHeader(
+                "Adjust Tone",
+                leading: {
+                    Button {
+                        lightImpact.impactOccurred()
+                        onCancel()
+                    } label: {
+                        Text("Back")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
                 }
-                Spacer()
-                Text("Adjust Tone")
-                    .font(OPSStyle.Typography.heading)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                Spacer()
-                Text("Back")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(.clear)
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing4)
+            )
             .padding(.top, OPSStyle.Layout.spacing4)
             .padding(.bottom, OPSStyle.Layout.spacing3)
 
@@ -160,7 +154,7 @@ struct ImageAdjustmentView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Spacer()
                 Text(formatted(value.wrappedValue))
-                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                    .font(OPSStyle.Typography.dataValue)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
             Slider(value: value, in: range)

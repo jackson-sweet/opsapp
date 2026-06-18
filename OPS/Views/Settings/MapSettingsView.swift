@@ -57,18 +57,18 @@ struct MapSettingsView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
+            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
 
             VStack(spacing: 0) {
                 SettingsHeader(
                     title: "Maps",
                     onBackTapped: { dismiss() }
                 )
-                .padding(.bottom, 8)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
 
                 ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
 
                         // ── LOCATION ──
                         locationStatusCard
@@ -207,10 +207,10 @@ struct MapSettingsView: View {
                         ) {
                             resetToDefaults()
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 8)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.top, OPSStyle.Layout.spacing2)
                     }
-                    .padding(.vertical, 24)
+                    .padding(.vertical, OPSStyle.Layout.spacing4)
                 }
                 // Bug e33aa336 — scroll to + spotlight the section the
                 // search result targeted, then clear the highlight.
@@ -227,10 +227,10 @@ struct MapSettingsView: View {
                     guard let anchor else { return }
 
                     UISelectionFeedbackGenerator().selectionChanged()
-                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         proxy.scrollTo(anchor, anchor: .top)
                     }
-                    withAnimation(.easeIn(duration: 0.2).delay(0.15)) {
+                    withAnimation(OPSStyle.Animation.panel.delay(0.15)) {
                         highlightedSection = anchor
                     }
                     Task {
@@ -255,16 +255,16 @@ struct MapSettingsView: View {
     // MARK: - Project Marker Legend
 
     private var markerLegendSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("PROJECT MARKERS")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             VStack(spacing: 0) {
                 // Large marker example
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     markerDiagram
-                        .padding(.top, 8)
+                        .padding(.top, OPSStyle.Layout.spacing2)
 
                     // Explanation text
                     Text("Each pin on the map represents a project. The center dot shows the project's pipeline status. The outer ring is divided into segments — one for each task type assigned to the project.")
@@ -272,13 +272,13 @@ struct MapSettingsView: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(16)
+                .padding(OPSStyle.Layout.spacing3)
 
                 Divider().background(OPSStyle.Colors.cardBorder)
 
                 // Pipeline status colors — iterates Status.allCases so the
                 // list stays in sync with the enum automatically.
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     Text("CENTER DOT — PIPELINE STATUS")
                         .font(OPSStyle.Typography.miniLabel)
                         .tracking(0.3)
@@ -288,13 +288,13 @@ struct MapSettingsView: View {
                         (status.displayName, OPSStyle.Colors.statusColor(for: status))
                     })
                 }
-                .padding(16)
+                .padding(OPSStyle.Layout.spacing3)
 
                 Divider().background(OPSStyle.Colors.cardBorder)
 
                 // Task type colors — pulled live from the user's company
                 // task types. Shows an empty-state when none are configured.
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     Text("OUTER RING — TASK TYPES")
                         .font(OPSStyle.Typography.miniLabel)
                         .tracking(0.3)
@@ -318,16 +318,11 @@ struct MapSettingsView: View {
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                 }
-                .padding(16)
+                .padding(OPSStyle.Layout.spacing3)
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     /// Large visual diagram of a project marker with labels.
@@ -336,7 +331,7 @@ struct MapSettingsView: View {
     /// sees on the map. Falls back to OPSStyle accents when the
     /// company has fewer than three task types configured.
     private var markerDiagram: some View {
-        HStack(spacing: 24) {
+        HStack(spacing: OPSStyle.Layout.spacing4) {
             // Large rendered marker
             ZStack {
                 // Outer ring — segmented (up to 3 segments drawn)
@@ -367,7 +362,7 @@ struct MapSettingsView: View {
 
             // Labels
             VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: "arrow.left")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -377,7 +372,7 @@ struct MapSettingsView: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
 
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: "arrow.left")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -413,13 +408,13 @@ struct MapSettingsView: View {
     /// Grid of color swatches with labels.
     private func legendColorGrid(items: [(String, Color)]) -> some View {
         let columns = [
-            GridItem(.flexible(), spacing: 8),
-            GridItem(.flexible(), spacing: 8)
+            GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2),
+            GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2)
         ]
 
-        return LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+        return LazyVGrid(columns: columns, alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             ForEach(items, id: \.0) { item in
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Circle()
                         .fill(item.1)
                         .frame(width: 10, height: 10)
@@ -446,8 +441,8 @@ struct MapSettingsView: View {
     /// own Settings page. The user taps the "< Settings" back chevron
     /// once to reach root, then follows the steps.
     private var voiceGuidanceRow: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text("Voice Guidance")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -462,7 +457,7 @@ struct MapSettingsView: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 showingVoiceInfo = true
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: "arrow.up.right.square")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     Text("HOW TO DOWNLOAD VOICES")
@@ -479,7 +474,7 @@ struct MapSettingsView: View {
             .buttonStyle(PlainButtonStyle())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .alert("Download a Premium Voice", isPresented: $showingVoiceInfo) {
             Button("Open Settings") {
                 openSettingsRoot()
@@ -517,7 +512,7 @@ struct MapSettingsView: View {
         title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text(title)
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -525,14 +520,9 @@ struct MapSettingsView: View {
             VStack(spacing: 0) {
                 content()
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     /// A row inside a section card: title + description + custom control.
@@ -542,8 +532,8 @@ struct MapSettingsView: View {
         description: String,
         @ViewBuilder control: () -> Control
     ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(title)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -555,14 +545,14 @@ struct MapSettingsView: View {
 
             control()
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
     }
 
     /// Standard divider between rows inside a section card.
     private var settingsDivider: some View {
         Divider()
             .background(OPSStyle.Colors.cardBorder)
-            .padding(.vertical, 4)
+            .padding(.vertical, OPSStyle.Layout.spacing1)
     }
 
     // MARK: - Location Status Card
@@ -617,13 +607,8 @@ struct MapSettingsView: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .padding(.horizontal, 20)
+        .glassSurface()
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Location Helpers

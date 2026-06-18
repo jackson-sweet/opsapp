@@ -45,21 +45,11 @@ struct DataActorBenchmarkView: View {
     // MARK: - Header
 
     private var header: some View {
-        ZStack {
-            HStack {
-                Button(action: { dismiss() }) {
-                    Image(systemName: OPSStyle.Icons.close)
-                        .font(.system(size: 20))
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-                Spacer()
-            }
-            Text("DataActor Benchmark")
-                .font(OPSStyle.Typography.title)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-        }
-        .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        OPSScreenHeader(
+            "DataActor Benchmark",
+            leading: { OPSHeaderCloseButton(action: { dismiss() }) }
+        )
+        .background(OPSStyle.Colors.background)
     }
 
     // MARK: - Flag Card
@@ -89,10 +79,7 @@ struct DataActorBenchmarkView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
         .padding()
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
-        )
+        .glassSurface()
     }
 
     // MARK: - Actor Status Card
@@ -109,10 +96,7 @@ struct DataActorBenchmarkView: View {
             statusRow(label: "Authenticated", value: dataController.isAuthenticated ? "Yes" : "No")
         }
         .padding()
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
-        )
+        .glassSurface()
     }
 
     private func statusRow(label: String, value: String) -> some View {
@@ -160,10 +144,7 @@ struct DataActorBenchmarkView: View {
             .disabled(log.isEmpty)
         }
         .padding()
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
-        )
+        .glassSurface()
     }
 
     private func benchmarkButtonLabel(icon: String, title: String) -> some View {
@@ -184,7 +165,7 @@ struct DataActorBenchmarkView: View {
             }
         }
         .padding(.vertical, 10)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -219,10 +200,7 @@ struct DataActorBenchmarkView: View {
             }
         }
         .padding()
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
-        )
+        .glassSurface()
     }
 
     // MARK: - Benchmarks

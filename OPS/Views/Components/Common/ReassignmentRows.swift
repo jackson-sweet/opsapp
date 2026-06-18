@@ -17,7 +17,7 @@ struct ProjectReassignmentRow: View {
     let onToggleDelete: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack {
                 Circle()
                     .fill(project.status.color)
@@ -49,16 +49,11 @@ struct ProjectReassignmentRow: View {
 
                         Spacer()
                     }
-                    .padding(12)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .padding(OPSStyle.Layout.spacing2_5)
+                    .nestedCard()
                 }
             } else {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     SearchField(
                         selectedId: $selectedClientId,
                         items: availableClients,
@@ -78,12 +73,7 @@ struct ProjectReassignmentRow: View {
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                             .frame(width: 44, height: 44)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .nestedCard()
                     }
                 }
             }
@@ -101,7 +91,7 @@ struct TaskReassignmentRow: View {
     let onToggleDelete: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack {
                 Circle()
                     .fill(task.status.color)
@@ -112,7 +102,7 @@ struct TaskReassignmentRow: View {
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(markedForDeletion ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryText)
 
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         if let projectTitle = task.project?.title {
                             Text(projectTitle)
                                 .font(OPSStyle.Typography.caption)
@@ -154,16 +144,11 @@ struct TaskReassignmentRow: View {
 
                         Spacer()
                     }
-                    .padding(12)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                    .padding(OPSStyle.Layout.spacing2_5)
+                    .nestedCard()
                 }
             } else {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     SearchField(
                         selectedId: $selectedTaskTypeId,
                         items: availableTaskTypes,
@@ -178,7 +163,7 @@ struct TaskReassignmentRow: View {
                         },
                         getLeadingAccessory: { taskType in
                             AnyView(
-                                HStack(spacing: 8) {
+                                HStack(spacing: OPSStyle.Layout.spacing2) {
                                     Circle()
                                         .fill(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
                                         .frame(width: 8, height: 8)
@@ -198,12 +183,7 @@ struct TaskReassignmentRow: View {
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                             .frame(width: 44, height: 44)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .nestedCard()
                     }
                 }
             }

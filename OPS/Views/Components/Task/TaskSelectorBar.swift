@@ -72,7 +72,7 @@ struct TaskSelectorBar: View {
                             .opacity(swipeOffset < -20 ? min(abs(swipeOffset) / 60, 1.0) : 0)
                     }
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, OPSStyle.Layout.spacing2)
 
                 // Main pill
                 taskPill
@@ -162,16 +162,13 @@ struct TaskSelectorBar: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(
-                        selectedTask != nil ? Color(hex: selectedTask!.effectiveColor)?.opacity(0.3) ?? OPSStyle.Colors.cardBorder : OPSStyle.Colors.cardBorder,
-                        lineWidth: OPSStyle.Layout.Border.standard
-                    )
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .glassSurface(
+                cornerRadius: OPSStyle.Layout.cornerRadius,
+                borderColor: selectedTask != nil
+                    ? Color(hex: selectedTask!.effectiveColor)?.opacity(0.3) ?? OPSStyle.Colors.glassBorder
+                    : OPSStyle.Colors.glassBorder
             )
         }
         .buttonStyle(PlainButtonStyle())
@@ -181,13 +178,13 @@ struct TaskSelectorBar: View {
     private var taskPickerSheet: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 8) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     // Deselect option
                     Button(action: {
                         attemptTaskSwitch(to: nil)
                         showingTaskPicker = false
                     }) {
-                        HStack(spacing: 12) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             Circle()
                                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 .frame(width: 10, height: 10)
@@ -201,19 +198,19 @@ struct TaskSelectorBar: View {
                             if selectedTask == nil {
                                 Image(systemName: "checkmark")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .foregroundColor(OPSStyle.Colors.text)
                             }
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.vertical, 14)
-                        .background(selectedTask == nil ? OPSStyle.Colors.primaryAccent.opacity(0.1) : Color.clear)
+                        .background(selectedTask == nil ? OPSStyle.Colors.surfaceActive : Color.clear)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                     .buttonStyle(PlainButtonStyle())
 
                     Divider()
                         .background(OPSStyle.Colors.cardBorder)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
 
                     // Task options
                     ForEach(sortedTasks, id: \.id) { task in
@@ -221,7 +218,7 @@ struct TaskSelectorBar: View {
                             attemptTaskSwitch(to: task)
                             showingTaskPicker = false
                         }) {
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 // Color indicator
                                 Circle()
                                     .fill(Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent)
@@ -244,12 +241,12 @@ struct TaskSelectorBar: View {
                                 if selectedTask?.id == task.id {
                                     Image(systemName: "checkmark")
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                        .foregroundColor(OPSStyle.Colors.text)
                                 }
                             }
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.vertical, 14)
-                            .background(selectedTask?.id == task.id ? OPSStyle.Colors.primaryAccent.opacity(0.1) : Color.clear)
+                            .background(selectedTask?.id == task.id ? OPSStyle.Colors.surfaceActive : Color.clear)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -287,13 +284,13 @@ struct TaskSelectorBar: View {
 
         if (isSwipingLeft && !canSwipeRight) || (isSwipingRight && !canSwipeLeft) {
             // Resistance when swiping in invalid direction
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+            withAnimation(OPSStyle.Animation.quick) {
                 swipeOffset = value.translation.width * 0.2
             }
             return
         }
 
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+        withAnimation(OPSStyle.Animation.quick) {
             swipeOffset = value.translation.width
         }
 
@@ -334,7 +331,7 @@ struct TaskSelectorBar: View {
         }
 
         // Snap back to center
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+        withAnimation(OPSStyle.Animation.quick) {
             swipeOffset = 0
         }
     }

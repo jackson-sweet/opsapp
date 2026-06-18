@@ -335,9 +335,9 @@ struct UniversalSearchSheet: View {
             VStack(spacing: 0) {
                 // Floating search bar
                 searchBar
-                    .padding(.top, 20)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
+                    .padding(.top, OPSStyle.Layout.spacing3_5)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                 // Content
                 if query.isEmpty {
@@ -459,7 +459,7 @@ struct UniversalSearchSheet: View {
     // MARK: - Search Bar
 
     private var searchBar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -483,13 +483,13 @@ struct UniversalSearchSheet: View {
             .font(OPSStyle.Typography.captionBold)
             .foregroundColor(OPSStyle.Colors.primaryAccent)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, 14)
-        .background(Color.black)
+        .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -826,11 +826,11 @@ struct UniversalSearchSheet: View {
         if count > 0 {
             Button(action: {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(.easeInOut(duration: 0.18)) {
+                withAnimation(OPSStyle.Animation.panel) {
                     isOpen.wrappedValue.toggle()
                 }
             }) {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: isOpen.wrappedValue ? "chevron.down" : "chevron.right")
                         .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -867,10 +867,10 @@ struct UniversalSearchSheet: View {
             VStack(spacing: 6) {
                 content()
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
         } header: {
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: icon)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -882,8 +882,8 @@ struct UniversalSearchSheet: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Spacer()
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .background(Color.black.opacity(0.9))
         }
     }
@@ -891,8 +891,8 @@ struct UniversalSearchSheet: View {
     // MARK: - Empty States
 
     private var emptyQueryState: some View {
-        VStack(spacing: 32) {
-            VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing5) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: OPSStyle.Layout.IconSize.xxl, weight: .light))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -900,7 +900,7 @@ struct UniversalSearchSheet: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
+                    .padding(.horizontal, OPSStyle.Layout.spacing5)
             }
 
             quickCreateRail
@@ -910,8 +910,8 @@ struct UniversalSearchSheet: View {
     }
 
     private var noResultsState: some View {
-        VStack(spacing: 24) {
-            VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing4) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: OPSStyle.Layout.IconSize.xl, weight: .light))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -919,7 +919,7 @@ struct UniversalSearchSheet: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
             }
 
             quickCreateRail
@@ -945,12 +945,12 @@ struct UniversalSearchSheet: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .tracking(1.1)
 
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach(chips, id: \.id) { chip in
                         QuickCreateChip(spec: chip)
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
         }
     }
@@ -1060,7 +1060,7 @@ struct UniversalSearchSheet: View {
             do {
                 try await dataController.updateTaskStatus(task: task, to: .completed)
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.panel) {
                     undoTask = task
                     undoPreviousStatus = previous
                     undoExpiresAt = Date().addingTimeInterval(3.0)
@@ -1071,7 +1071,7 @@ struct UniversalSearchSheet: View {
                 let myExpiry = undoExpiresAt
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 if undoExpiresAt == myExpiry {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(OPSStyle.Animation.panel) {
                         undoTask = nil
                         undoPreviousStatus = nil
                         undoExpiresAt = nil
@@ -1089,7 +1089,7 @@ struct UniversalSearchSheet: View {
         Task { @MainActor in
             do {
                 try await dataController.updateTaskStatus(task: task, to: previous)
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(OPSStyle.Animation.panel) {
                     undoTask = nil
                     undoPreviousStatus = nil
                     undoExpiresAt = nil
@@ -1125,7 +1125,7 @@ struct UniversalSearchSheet: View {
                 Spacer(minLength: 8)
 
                 Button(action: revertCompletion) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: "arrow.uturn.backward")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                         Text("UNDO")
@@ -1133,7 +1133,7 @@ struct UniversalSearchSheet: View {
                             .tracking(0.8)
                     }
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())
                 }
@@ -1141,15 +1141,10 @@ struct UniversalSearchSheet: View {
                 .accessibilityLabel("Undo mark complete")
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(Color.black)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
+            .glassDense(cornerRadius: OPSStyle.Layout.cornerRadius)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.bottom, OPSStyle.Layout.spacing3)
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
@@ -1235,7 +1230,7 @@ private struct UniversalSearchTaskSchedulePickerSheet: View {
                 OPSStyle.Colors.background.ignoresSafeArea()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                         Text("// SELECT TASK")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -1245,17 +1240,17 @@ private struct UniversalSearchTaskSchedulePickerSheet: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .lineLimit(2)
 
-                        VStack(spacing: 8) {
+                        VStack(spacing: OPSStyle.Layout.spacing2) {
                             ForEach(tasks, id: \.id) { task in
                                 Button {
                                     onSelect(task)
                                 } label: {
-                                    HStack(spacing: 12) {
+                                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                         Circle()
                                             .fill(Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent)
                                             .frame(width: 12, height: 12)
 
-                                        VStack(alignment: .leading, spacing: 4) {
+                                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                             Text(task.displayTitle.uppercased())
                                                 .font(OPSStyle.Typography.bodyBold)
                                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -1275,19 +1270,14 @@ private struct UniversalSearchTaskSchedulePickerSheet: View {
                                     }
                                     .frame(minHeight: 52)
                                     .padding(.horizontal, 14)
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                    )
+                                    .glassSurface()
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Schedule \(task.displayTitle)")
                             }
                         }
                     }
-                    .padding(16)
+                    .padding(OPSStyle.Layout.spacing3)
                 }
             }
             .navigationTitle("SELECT TASK")
@@ -1366,7 +1356,7 @@ private struct SearchResultRow: View {
 
             // Title + subtitle + pill — primary tap area for row navigation
             Button(action: onTap) {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(title.uppercased())
                             .font(OPSStyle.Typography.bodyBold)
@@ -1386,8 +1376,8 @@ private struct SearchResultRow: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .monospacedDigit()
                             .foregroundColor(pill.color)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
                             .background(pill.color.opacity(0.15))
                             .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                             .layoutPriority(1)
@@ -1411,12 +1401,7 @@ private struct SearchResultRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 }
 
@@ -1462,12 +1447,7 @@ private struct QuickCreateChip: View {
             }
             .frame(minHeight: 44)
             .padding(.horizontal, 14)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .nestedCard()
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Create new \(spec.label.lowercased())")

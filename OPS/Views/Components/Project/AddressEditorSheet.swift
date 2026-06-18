@@ -23,9 +23,9 @@ struct AddressEditorSheet: View {
                 Text("PROJECT ADDRESS")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 8)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.top, OPSStyle.Layout.spacing3)
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
 
                 // Address input field
                 TextField("Start typing an address...", text: $draft, axis: .vertical)
@@ -34,16 +34,16 @@ struct AddressEditorSheet: View {
                     .lineLimit(3...6)
                     .focused($isFieldFocused)
                     .padding(14)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .background(OPSStyle.Colors.surfaceInput)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(isFieldFocused
                                     ? OPSStyle.Colors.primaryAccent
                                     : OPSStyle.Colors.inputFieldBorder,
                                     lineWidth: OPSStyle.Layout.Border.standard)
                     )
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .onChange(of: draft) { _, newValue in
                         completer.search(newValue)
                     }
@@ -75,7 +75,7 @@ struct AddressEditorSheet: View {
 
                                     Spacer()
                                 }
-                                .padding(.horizontal, 16)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
                                 .padding(.vertical, 10)
                                 .contentShape(Rectangle())
                             }
@@ -89,14 +89,9 @@ struct AddressEditorSheet: View {
                             }
                         }
                     }
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                    )
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
+                    .glassDense()
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.top, OPSStyle.Layout.spacing2)
                     .transition(.opacity)
                 }
 

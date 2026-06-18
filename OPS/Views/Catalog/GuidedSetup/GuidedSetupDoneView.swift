@@ -101,12 +101,7 @@ struct GuidedSetupDoneView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .glassSurface()
     }
 
     private var emptyState: some View {
@@ -125,7 +120,7 @@ struct GuidedSetupDoneView: View {
         SavedProductLine(id: "1", name: "Standard clean", kind: .service, sell: 200)
     ]
     return ZStack {
-        OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+        OPSStyle.Colors.background.ignoresSafeArea()
         GuidedSetupDoneView(model: model)
     }
 }

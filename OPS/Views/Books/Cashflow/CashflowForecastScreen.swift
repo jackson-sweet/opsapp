@@ -118,13 +118,13 @@ struct CashflowForecastScreen: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, OPSStyle.Layout.spacing2_5)
                         .foregroundColor(viewModel.result?.weeks.count == weeks ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
-                        .background(viewModel.result?.weeks.count == weeks ? OPSStyle.Colors.primaryAccent.opacity(0.15) : Color.clear)
+                        .background(viewModel.result?.weeks.count == weeks ? OPSStyle.Colors.surfaceActive : Color.clear)
                 }
             }
         }
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
-                .stroke(OPSStyle.Colors.cardBackgroundDark, lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 

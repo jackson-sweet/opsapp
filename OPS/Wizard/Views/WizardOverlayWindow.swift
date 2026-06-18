@@ -74,8 +74,8 @@ struct WizardOverlayModifier: ViewModifier {
 
                         Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.vertical, OPSStyle.Layout.spacing3)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
                         BlurView(style: .systemUltraThinMaterialDark)
@@ -110,8 +110,8 @@ struct WizardOverlayModifier: ViewModifier {
                                 }
                             }
 
-                        VStack(alignment: .leading, spacing: 20) {
-                            VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                 Text("LEAVE GUIDE?")
                                     .font(OPSStyle.Typography.cardTitle)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -121,7 +121,7 @@ struct WizardOverlayModifier: ViewModifier {
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
 
-                            VStack(spacing: 12) {
+                            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 Button {
                                     TutorialHaptics.lightTap()
                                     showExitPrompt = false
@@ -160,7 +160,7 @@ struct WizardOverlayModifier: ViewModifier {
                                 }
                             }
                         }
-                        .padding(24)
+                        .padding(OPSStyle.Layout.spacing4)
                         .background(
                             BlurView(style: .systemUltraThinMaterialDark)
                                 .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.85))
@@ -170,7 +170,7 @@ struct WizardOverlayModifier: ViewModifier {
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, OPSStyle.Layout.spacing4)
                         .contentShape(Rectangle())
                         .onTapGesture { }
                     }
@@ -178,11 +178,11 @@ struct WizardOverlayModifier: ViewModifier {
                     .zIndex(999)
                 }
             }
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: stateManager.isActive)
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: stateManager.currentStepIndex)
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showExitPrompt)
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: stateManager.completedWizardId != nil)
-            .animation(.easeInOut(duration: 0.2), value: stateManager.isStepTransitioning)
+            .animation(OPSStyle.Animation.standard, value: stateManager.isActive)
+            .animation(OPSStyle.Animation.standard, value: stateManager.currentStepIndex)
+            .animation(OPSStyle.Animation.standard, value: showExitPrompt)
+            .animation(OPSStyle.Animation.standard, value: stateManager.completedWizardId != nil)
+            .animation(OPSStyle.Animation.panel, value: stateManager.isStepTransitioning)
             .onChange(of: stateManager.isActive) { _, active in
                 if !active {
                     showExitPrompt = false

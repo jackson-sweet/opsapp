@@ -39,7 +39,7 @@ struct SparklineView: View {
 #Preview {
     ZStack {
         OPSStyle.Colors.background.ignoresSafeArea()
-        HStack(spacing: 20) {
+        HStack(spacing: OPSStyle.Layout.spacing3_5) {
             SparklineView(points: [0.8, 0.7, 0.5, 0.3, 0.1], color: .red)
             SparklineView(points: [0.2, 0.4, 0.3, 0.6, 0.8], color: .green)
             SparklineView(points: [0.5, 0.5, 0.5, 0.5, 0.5], color: .gray)

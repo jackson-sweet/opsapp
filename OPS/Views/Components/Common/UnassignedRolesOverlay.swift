@@ -69,9 +69,9 @@ struct UnassignedRolesOverlay: View {
 
                             if user.id != unassignedUsers.last?.id {
                                 Rectangle()
-                                    .fill(OPSStyle.Colors.tertiaryText.opacity(0.2))
+                                    .fill(OPSStyle.Colors.line)
                                     .frame(height: 1)
-                                    .padding(.horizontal, 24)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing4)
                             }
                         }
                     }
@@ -90,7 +90,7 @@ struct UnassignedRolesOverlay: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                     }
-                    .padding(.bottom, 16)
+                    .padding(.bottom, OPSStyle.Layout.spacing3)
                 }
 
                 // Footer buttons
@@ -120,7 +120,7 @@ struct UnassignedRolesOverlay: View {
                 .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, OPSStyle.Layout.spacing4)
     }
 
     // MARK: - User Row
@@ -130,7 +130,7 @@ struct UnassignedRolesOverlay: View {
 
         return VStack(spacing: 0) {
             // User info row
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(user.wrappedValue.fullName)
                         .font(OPSStyle.Typography.caption)
@@ -154,7 +154,7 @@ struct UnassignedRolesOverlay: View {
 
                         Image(systemName: "checkmark")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .foregroundColor(OPSStyle.Colors.text)
                     }
                 } else {
                     Text("UNASSIGNED")
@@ -166,8 +166,8 @@ struct UnassignedRolesOverlay: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
-            .padding(.vertical, 16)
-            .padding(.horizontal, 24)
+            .padding(.vertical, OPSStyle.Layout.spacing3)
+            .padding(.horizontal, OPSStyle.Layout.spacing4)
             .contentShape(Rectangle())
             .onTapGesture {
                 withAnimation(OPSStyle.Animation.fast) {
@@ -181,7 +181,7 @@ struct UnassignedRolesOverlay: View {
 
             // Expanded role selection — only assignable roles (no "unassigned")
             if isExpanded {
-                VStack(spacing: 16) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     ForEach(assignableRoles, id: \.rawValue) { role in
                         roleOption(
                             title: role.displayName.uppercased(),
@@ -201,8 +201,8 @@ struct UnassignedRolesOverlay: View {
                         )
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -212,13 +212,13 @@ struct UnassignedRolesOverlay: View {
 
     private func roleOption(title: String, description: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
                 // Selection indicator
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(title)
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
@@ -231,9 +231,9 @@ struct UnassignedRolesOverlay: View {
 
                 Spacer()
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
-            .background(isSelected ? OPSStyle.Colors.subtleBackground : Color.clear)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .background(isSelected ? OPSStyle.Colors.surfaceActive : Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -246,7 +246,7 @@ struct UnassignedRolesOverlay: View {
     // MARK: - Footer
 
     private var footerView: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             // Save button — enabled when at least one role is assigned
             Button(action: {
                 guard !isSaving else { return }
@@ -254,7 +254,7 @@ struct UnassignedRolesOverlay: View {
                     await saveRoleAssignments()
                 }
             }) {
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     if isSaving {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .black))
@@ -270,7 +270,7 @@ struct UnassignedRolesOverlay: View {
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
             .disabled(!hasAnyRoleAssigned || isSaving)
-            .padding(.horizontal, 24)
+            .padding(.horizontal, OPSStyle.Layout.spacing4)
 
             // Later button
             Button(action: dismissAndRemindLater) {

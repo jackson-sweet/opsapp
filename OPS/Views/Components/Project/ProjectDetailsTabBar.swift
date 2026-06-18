@@ -19,7 +19,7 @@ struct ProjectDetailsTabBar: View {
             ZStack(alignment: .bottomLeading) {
                 // Background line
                 Rectangle()
-                    .fill(Color.white.opacity(0.1))
+                    .fill(OPSStyle.Colors.line)
                     .frame(height: 1)
                     .frame(maxWidth: .infinity)
                     .offset(y: 0)
@@ -42,15 +42,15 @@ struct ProjectDetailsTabBar: View {
                                         : OPSStyle.Colors.tertiaryText
                                 )
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
+                                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
                 }
 
-                // Sliding accent underline
+                // Sliding active-tab underline
                 Rectangle()
-                    .fill(OPSStyle.Colors.primaryAccent)
+                    .fill(OPSStyle.Colors.text)
                     .frame(width: tabWidth, height: 2)
                     .offset(x: tabWidth * CGFloat(visibleTabs.firstIndex(of: selectedTab) ?? 0))
                     .animation(OPSStyle.Animation.fast, value: selectedTab)

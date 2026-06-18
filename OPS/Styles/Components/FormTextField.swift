@@ -52,7 +52,7 @@ struct OPSProfileInput: View {
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             // Label — JetBrains Mono uppercase, tactical
             Text(label.uppercased())
                 .font(OPSStyle.Typography.captionBold)
@@ -104,8 +104,8 @@ struct OPSProfileInput: View {
         .foregroundColor(OPSStyle.Colors.text)
         .tint(OPSStyle.Colors.text)
         .focused($isFocused)
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.buttonRadius)
         .overlay(
@@ -128,8 +128,8 @@ struct OPSProfileInput: View {
             .font(OPSStyle.Typography.body)
             .foregroundColor(text.isEmpty ? OPSStyle.Colors.text3 : OPSStyle.Colors.text2)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(
@@ -167,7 +167,7 @@ struct FormTextField: View {
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text(title.uppercased())
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.text3)
@@ -194,8 +194,8 @@ struct FormTextField: View {
             .foregroundColor(OPSStyle.Colors.text)
             .tint(OPSStyle.Colors.text)
             .focused($isFocused)
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(
@@ -214,7 +214,7 @@ struct FormTextField: View {
 
 struct FormTextField_Previews: PreviewProvider {
     static var previews: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: OPSStyle.Layout.spacing3_5) {
             // New unified component
             OPSProfileInput(
                 label: "First Name",

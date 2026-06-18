@@ -39,15 +39,15 @@ struct LoginView: View {
         ZStack {
             OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
 
-            VStack(spacing: 24) {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
                 Spacer()
 
                 // Login form
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                     // Back button
                     if let onBack = onBack {
                         Button(action: onBack) {
-                            HStack(spacing: 4) {
+                            HStack(spacing: OPSStyle.Layout.spacing1) {
                                 Image(systemName: "chevron.left")
                                     .font(OPSStyle.Typography.caption.weight(.semibold))
                                 Text("Back")
@@ -61,7 +61,7 @@ struct LoginView: View {
                     Text("LOG IN")
                         .font(OPSStyle.Typography.title.weight(.bold))
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(.bottom, 16)
+                        .padding(.bottom, OPSStyle.Layout.spacing3)
 
                     // Email field
                     VStack(alignment: .leading, spacing: 6) {
@@ -72,7 +72,7 @@ struct LoginView: View {
                         TextField("", text: $username)
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                            .padding(.vertical, 12)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
                             .autocapitalization(.none)
                             .autocorrectionDisabled(true)
                             .overlay(
@@ -84,7 +84,7 @@ struct LoginView: View {
                                 }
                             )
                     }
-                    .padding(.bottom, 12)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                     // Password field
                     VStack(alignment: .leading, spacing: 6) {
@@ -95,7 +95,7 @@ struct LoginView: View {
                         SecureField("", text: $password)
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                            .padding(.vertical, 12)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
                             .overlay(
                                 VStack {
                                     Spacer()
@@ -112,7 +112,7 @@ struct LoginView: View {
                             if isLoggingIn {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .black))
-                                    .padding(.trailing, 8)
+                                    .padding(.trailing, OPSStyle.Layout.spacing2)
                             }
 
                             Text(isLoggingIn ? "Signing in..." : "Continue")
@@ -130,20 +130,20 @@ struct LoginView: View {
                                 Image(systemName: "arrow.right")
                                     .foregroundColor(OPSStyle.Colors.invertedText)
                                     .font(OPSStyle.Typography.caption.weight(.semibold))
-                                    .padding(.trailing, 20)
+                                    .padding(.trailing, OPSStyle.Layout.spacing3_5)
                             } : nil
                         )
                         .disabledButtonStyle(isDisabled: isLoggingIn || username.isEmpty || password.isEmpty)
                     }
                     .disabled(isLoggingIn || username.isEmpty || password.isEmpty)
-                    .padding(.top, 20)
+                    .padding(.top, OPSStyle.Layout.spacing3_5)
 
                     // Forgot password
                     Button(action: { showForgotPassword = true }) {
                         Text("Forgot password?")
                             .font(OPSStyle.Typography.button)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .padding(.top, 12)
+                            .padding(.top, OPSStyle.Layout.spacing2_5)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
 
@@ -156,13 +156,13 @@ struct LoginView: View {
                         Text("OR")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                         Rectangle()
                             .frame(height: 1)
                             .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.3))
                     }
-                    .padding(.vertical, 16)
+                    .padding(.vertical, OPSStyle.Layout.spacing3)
 
                     // Google Sign-In
                     GoogleSignInButton(onSignIn: handleGoogleSignIn)
@@ -179,7 +179,7 @@ struct LoginView: View {
                 Text("[ VERSION \(AppConfiguration.AppInfo.version.uppercased()) ]")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
-                    .padding(.bottom, 20)
+                    .padding(.bottom, OPSStyle.Layout.spacing3_5)
             }
             .padding(40)
             .dismissKeyboardOnTap()

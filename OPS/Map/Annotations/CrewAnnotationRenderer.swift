@@ -98,7 +98,7 @@ enum CrewAnnotationRenderer {
     /// - Returns: A rendered `UIImage` for use as a Mapbox PointAnnotation image.
     static func render(firstName: String, status: CrewStatus, isSelected: Bool) -> UIImage {
         // -- Compute label size --
-        let labelFont = UIFont(name: "Kosugi-Regular", size: labelFontSize)
+        let labelFont = UIFont(name: "JetBrainsMono-Regular", size: labelFontSize)
             ?? UIFont.systemFont(ofSize: labelFontSize)
         let labelAttributes: [NSAttributedString.Key: Any] = [
             .font: labelFont,

@@ -71,7 +71,7 @@ struct WeekBreakdownSheet: View {
             } else {
                 ForEach(rows) { row in
                     contributorRow(row)
-                    Divider().background(OPSStyle.Colors.cardBackgroundDark)
+                    Divider().background(OPSStyle.Colors.line)
                 }
             }
         }

@@ -29,12 +29,12 @@ struct StickyActionBar: View {
     let onMarkWon:  () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             lostButton
             actionPair
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing3)
         .padding(.bottom, 14)
         .background(floorGradient)
     }
@@ -71,7 +71,7 @@ struct StickyActionBar: View {
             let unit = available / 2.5
             let editWidth = unit
             let wonWidth  = unit * 1.5
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 editButton.frame(width: editWidth, height: 48)
                 wonButton.frame(width: wonWidth, height: 48)
             }
@@ -157,12 +157,12 @@ struct StickyActionBar: View {
         OPSStyle.Colors.background.ignoresSafeArea()
 
         ScrollView {
-            VStack(spacing: 8) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(0..<20) { _ in
                     Rectangle()
-                        .fill(Color.white.opacity(0.04))
+                        .fill(OPSStyle.Colors.surfaceInput)
                         .frame(height: 60)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 }
             }
             .padding(.bottom, 200)

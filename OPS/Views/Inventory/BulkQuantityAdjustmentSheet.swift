@@ -150,7 +150,7 @@ struct BulkQuantityAdjustmentSheet: View {
     private var adjustmentButtonsSection: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     // Reset button
                     Button(action: {
                         adjustmentAmount = 0
@@ -161,13 +161,8 @@ struct BulkQuantityAdjustmentSheet: View {
                             .font(OPSStyle.Typography.buttonLarge)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .padding(.vertical, 14)
-                            .padding(.horizontal, 16)
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .nestedCard()
                     }
                     .buttonStyle(PlainButtonStyle())
 
@@ -206,7 +201,7 @@ struct BulkQuantityAdjustmentSheet: View {
                 .foregroundColor(color)
                 .frame(minWidth: 72)
                 .padding(.vertical, 14)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .background(color.opacity(0.15))
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
@@ -282,8 +277,7 @@ struct BulkQuantityAdjustmentSheet: View {
         }
         .padding(.vertical, OPSStyle.Layout.spacing2)
         .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+        .glassSurface()
     }
 
     private func newQuantityColor(current: Double, new: Double) -> Color {

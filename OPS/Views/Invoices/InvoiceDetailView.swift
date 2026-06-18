@@ -108,8 +108,9 @@ struct InvoiceDetailView: View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             HStack {
                 Text(invoice.invoiceNumber.isEmpty ? "NEW INVOICE" : invoice.invoiceNumber)
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .font(OPSStyle.Typography.screenTitle(for: invoice.invoiceNumber.isEmpty ? "NEW INVOICE" : invoice.invoiceNumber))
+                    .textCase(.uppercase)
+                    .foregroundColor(OPSStyle.Colors.text)
                 Spacer()
             }
 
@@ -150,7 +151,7 @@ struct InvoiceDetailView: View {
 
     private var statusBadge: some View {
         let color = invoice.status.detailBadgeColor(isOverdue: invoice.isOverdue)
-        return HStack(spacing: 4) {
+        return HStack(spacing: OPSStyle.Layout.spacing1) {
             Circle()
                 .fill(color)
                 .frame(width: 8, height: 8)
@@ -181,16 +182,11 @@ struct InvoiceDetailView: View {
                     ForEach(lineItems) { item in
                         lineItemRow(item)
                         if item.id != lineItems.last?.id {
-                            Divider().background(OPSStyle.Colors.cardBorder)
+                            Divider().background(OPSStyle.Colors.separator)
                         }
                     }
                 }
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+                .glassSurface()
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
         }
@@ -209,7 +205,7 @@ struct InvoiceDetailView: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Text(item.type.rawValue.uppercased())
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -231,7 +227,7 @@ struct InvoiceDetailView: View {
 
     private var totalsSection: some View {
         VStack(spacing: 0) {
-            Divider().background(OPSStyle.Colors.cardBorder)
+            Divider().background(OPSStyle.Colors.separator)
 
             VStack(spacing: OPSStyle.Layout.spacing1) {
                 HStack {
@@ -293,12 +289,7 @@ struct InvoiceDetailView: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.top, OPSStyle.Layout.spacing3)
         }
@@ -317,16 +308,11 @@ struct InvoiceDetailView: View {
                 ForEach(payments) { payment in
                     paymentRow(payment)
                     if payment.id != payments.last?.id {
-                        Divider().background(OPSStyle.Colors.cardBorder)
+                        Divider().background(OPSStyle.Colors.separator)
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .glassSurface()
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
         .padding(.top, OPSStyle.Layout.spacing3)

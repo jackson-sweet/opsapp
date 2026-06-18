@@ -21,7 +21,7 @@ struct ReportIssueView: View {
     var body: some View {
         ZStack {
             // Background
-            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
+            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 0) {
                 // Header with back button
@@ -33,19 +33,19 @@ struct ReportIssueView: View {
                 )
                 
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         // Explanation
                         Text("Experiencing an issue? Let us know so we can fix it.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 24)
-                            .padding(.top, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing4)
+                            .padding(.top, OPSStyle.Layout.spacing3_5)
                         
                         // Form
-                        VStack(spacing: 20) {
+                        VStack(spacing: OPSStyle.Layout.spacing3_5) {
                             // Issue title
-                            VStack(alignment: .leading, spacing: 8) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                 Text("ISSUE TITLE")
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -55,17 +55,17 @@ struct ReportIssueView: View {
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .padding()
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .background(OPSStyle.Colors.surfaceInput)
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             
                             // Issue description
-                            VStack(alignment: .leading, spacing: 8) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                 Text("DESCRIPTION")
                                     .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -76,27 +76,27 @@ struct ReportIssueView: View {
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                         .scrollContentBackground(.hidden)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
+                                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                                        .padding(.vertical, OPSStyle.Layout.spacing2)
                                         .frame(minHeight: 150)
 
                                     if issueDescription.isEmpty {
                                         Text("Please describe the issue you're experiencing, including steps to reproduce if possible...")
                                             .font(OPSStyle.Typography.body)
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 16)
+                                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                                            .padding(.vertical, OPSStyle.Layout.spacing3)
                                             .allowsHitTesting(false)
                                     }
                                 }
-                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .background(OPSStyle.Colors.surfaceInput)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             
                             // Submit button
                             Button(action: submitIssueReport) {
@@ -110,7 +110,7 @@ struct ReportIssueView: View {
                                     }
                                 }
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
+                                .padding(.vertical, OPSStyle.Layout.spacing3)
                                 .background(
                                     (issueTitle.isEmpty || issueDescription.isEmpty || isSubmitting)
                                     ? OPSStyle.Colors.primaryAccent.opacity(0.5)
@@ -120,8 +120,8 @@ struct ReportIssueView: View {
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
                             .disabled(issueTitle.isEmpty || issueDescription.isEmpty || isSubmitting)
-                            .padding(.horizontal, 20)
-                            .padding(.top, 16)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.top, OPSStyle.Layout.spacing3)
                         }
                         
                         Spacer()

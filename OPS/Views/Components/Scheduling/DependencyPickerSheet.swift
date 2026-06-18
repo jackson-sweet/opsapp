@@ -37,7 +37,7 @@ struct DependencyPickerSheet: View {
                                 onSelect(taskType.id)
                                 dismiss()
                             }) {
-                                HStack(spacing: 12) {
+                                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                     TaskBadge(
                                         name: taskType.display,
                                         color: Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent,
@@ -50,7 +50,7 @@ struct DependencyPickerSheet: View {
                                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 }
-                                .padding(.horizontal, 16)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
                                 .padding(.vertical, 10)
                                 .contentShape(Rectangle())
                             }
@@ -60,18 +60,13 @@ struct DependencyPickerSheet: View {
                                 Rectangle()
                                     .fill(OPSStyle.Colors.cardBorderSubtle)
                                     .frame(height: 1)
-                                    .padding(.leading, 16)
+                                    .padding(.leading, OPSStyle.Layout.spacing3)
                             }
                         }
                     }
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                    )
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
+                    .glassSurface()
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.top, OPSStyle.Layout.spacing3)
                 }
             }
             .background(OPSStyle.Colors.background)

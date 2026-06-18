@@ -330,7 +330,7 @@ struct BooksTabView: View {
         if isActive {
             ZStack(alignment: .top) {
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(Color.white.opacity(0.10))
+                    .fill(OPSStyle.Colors.line)
                 // 1pt inset top-light — recessed/embossed effect (spec § 7.3)
                 Rectangle()
                     .fill(Color.white.opacity(0.18))
@@ -376,7 +376,7 @@ struct BooksTabView: View {
 
     /// `// INVOICES · 12` data-section marker that anchors the list start.
     private var segmentLabel: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             Text("//").foregroundColor(OPSStyle.Colors.textMute)
             Text(selectedSegment.rawValue).foregroundColor(OPSStyle.Colors.tertiaryText)
             if let count = segmentCount {

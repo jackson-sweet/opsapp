@@ -20,35 +20,30 @@ struct TaskTypesDebugView: View {
     
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 0) {
                 // Header
-                HStack {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: OPSStyle.Icons.close)
-                            .font(.system(size: 20))
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                OPSScreenHeader(
+                    "Task Types",
+                    leading: {
+                        Button(action: { dismiss() }) {
+                            Image(systemName: OPSStyle.Icons.close)
+                                .font(.system(size: 20))
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        }
+                    },
+                    trailing: {
+                        Button(action: { showingAddTaskType = true }) {
+                            Image(systemName: OPSStyle.Icons.add)
+                                .font(.system(size: 20))
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
                     }
-                    
-                    Spacer()
-                    
-                    Text("Task Types")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(.white)
-                    
-                    Spacer()
-                    
-                    Button(action: { showingAddTaskType = true }) {
-                        Image(systemName: OPSStyle.Icons.add)
-                            .font(.system(size: 20))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                }
-                .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                
+                )
+                .background(OPSStyle.Colors.background)
+
                 if isLoading {
                     Spacer()
                     ProgressView("Loading task types...")
@@ -56,7 +51,7 @@ struct TaskTypesDebugView: View {
                     Spacer()
                 } else if taskTypes.isEmpty {
                     Spacer()
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         Image(systemName: "square.grid.2x2")
                             .font(.system(size: 50))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -70,7 +65,7 @@ struct TaskTypesDebugView: View {
                     Spacer()
                 } else {
                     ScrollView {
-                        VStack(spacing: 12) {
+                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
                             ForEach(taskTypes.sorted { $0.displayOrder < $1.displayOrder }) { taskType in
                                 TaskTypeCard(taskType: taskType)
                             }
@@ -87,7 +82,7 @@ struct TaskTypesDebugView: View {
                     
                     Spacer()
                     
-                    HStack(spacing: 12) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Button("Sync from API") {
                             syncTaskTypesFromAPI()
                         }
@@ -102,7 +97,7 @@ struct TaskTypesDebugView: View {
                     }
                 }
                 .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.background)
             }
         }
         .onAppear {
@@ -200,7 +195,7 @@ struct TaskTypeCard: View {
     let taskType: TaskType
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Icon and color
             ZStack {
                 Circle()
@@ -214,12 +209,12 @@ struct TaskTypeCard: View {
                 }
             }
             
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(taskType.display)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(.white)
                 
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Text("ID: \(taskType.id)")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -244,8 +239,7 @@ struct TaskTypeCard: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
         .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
 }
 
@@ -287,9 +281,9 @@ struct AddTaskTypeSheet: View {
                 OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
                 
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
                         // Display name
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Label("NAME", systemImage: "textformat")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -299,12 +293,12 @@ struct AddTaskTypeSheet: View {
                         }
                         
                         // Color selection
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Label("COLOR", systemImage: "paintpalette")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                             
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 12) {
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: OPSStyle.Layout.spacing2_5) {
                                 ForEach(availableColors, id: \.self) { hexColor in
                                     Button {
                                         color = hexColor
@@ -322,12 +316,12 @@ struct AddTaskTypeSheet: View {
                         }
                         
                         // Icon selection
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Label("ICON", systemImage: "star.square")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                             
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 12) {
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: OPSStyle.Layout.spacing2_5) {
                                 ForEach(availableIcons, id: \.self) { iconName in
                                     Button {
                                         icon = iconName
@@ -338,7 +332,7 @@ struct AddTaskTypeSheet: View {
                                             .frame(width: 40, height: 40)
                                             .background(
                                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                                    .fill(icon == iconName ? OPSStyle.Colors.cardBackground : OPSStyle.Colors.cardBackgroundDark)
+                                                    .fill(icon == iconName ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
                                             )
                                     }
                                 }
@@ -346,12 +340,12 @@ struct AddTaskTypeSheet: View {
                         }
                         
                         // Preview
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                             Text("PREVIEW")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                             
-                            HStack(spacing: 12) {
+                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                                 ZStack {
                                     Circle()
                                         .fill(Color(hex: color) ?? OPSStyle.Colors.primaryAccent)
@@ -369,8 +363,7 @@ struct AddTaskTypeSheet: View {
                                 Spacer()
                             }
                             .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .glassSurface()
                         }
                     }
                     .padding()
@@ -424,9 +417,13 @@ struct OPSTextFieldStyle: TextFieldStyle {
     func _body(configuration: TextField<Self._Label>) -> some View {
         configuration
             .padding()
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .foregroundColor(.white)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+            )
     }
 }
 

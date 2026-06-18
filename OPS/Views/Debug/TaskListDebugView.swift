@@ -20,35 +20,30 @@ struct TaskListDebugView: View {
     
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient
+            OPSStyle.Colors.background
                 .edgesIgnoringSafeArea(.all)
-            
+
             VStack(spacing: 0) {
                 // Header
-                HStack {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: OPSStyle.Icons.close)
-                            .font(.system(size: 20))
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                OPSScreenHeader(
+                    "Task List Debug",
+                    leading: {
+                        Button(action: { dismiss() }) {
+                            Image(systemName: OPSStyle.Icons.close)
+                                .font(.system(size: 20))
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        }
+                    },
+                    trailing: {
+                        Button(action: fetchTasks) {
+                            Image(systemName: OPSStyle.Icons.sync)
+                                .font(.system(size: 20))
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
                     }
-                    
-                    Spacer()
-                    
-                    Text("Task List Debug")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(.white)
-                    
-                    Spacer()
-                    
-                    Button(action: fetchTasks) {
-                        Image(systemName: OPSStyle.Icons.sync)
-                            .font(.system(size: 20))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                }
-                .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                
+                )
+                .background(OPSStyle.Colors.background)
+
                 if isLoading {
                     Spacer()
                     ProgressView("Loading tasks...")
@@ -56,7 +51,7 @@ struct TaskListDebugView: View {
                     Spacer()
                 } else if let error = errorMessage {
                     Spacer()
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         Image(systemName: OPSStyle.Icons.alert)
                             .font(.system(size: 50))
                             .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -72,7 +67,7 @@ struct TaskListDebugView: View {
                     Spacer()
                 } else if tasks.isEmpty {
                     Spacer()
-                    VStack(spacing: 16) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         Image(systemName: "list.bullet.rectangle")
                             .font(.system(size: 50))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -86,7 +81,7 @@ struct TaskListDebugView: View {
                     Spacer()
                 } else {
                     ScrollView {
-                        VStack(spacing: 12) {
+                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
                             ForEach(tasks, id: \.id) { task in
                                 TaskDetailCard(task: task)
                                     .onTapGesture {
@@ -113,7 +108,7 @@ struct TaskListDebugView: View {
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
+                .background(OPSStyle.Colors.background)
             }
         }
         .onAppear {
@@ -174,7 +169,7 @@ struct TaskDetailCard: View {
     let task: ProjectTask
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             // Header
             HStack {
                 if let icon = task.taskType?.icon {
@@ -190,7 +185,7 @@ struct TaskDetailCard: View {
                 
                 Text(task.status.displayName)
                     .font(OPSStyle.Typography.caption)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
                     .padding(.vertical, 2)
                     .background(statusColor(for: task.status))
                     .foregroundColor(.white)
@@ -198,10 +193,10 @@ struct TaskDetailCard: View {
             }
             
             Divider()
-                .background(OPSStyle.Colors.tertiaryText)
+                .background(OPSStyle.Colors.separator)
             
             // Fields grid
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 FieldRow(label: "ID", value: task.id)
                 FieldRow(label: "Project ID", value: task.projectId)
                 FieldRow(label: "Company ID", value: task.companyId)
@@ -223,10 +218,9 @@ struct TaskDetailCard: View {
             .font(OPSStyle.Typography.smallCaption)
         }
         .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .glassSurface()
     }
-    
+
     private func statusColor(for status: TaskStatus) -> Color {
         switch status {
         case .active: return .blue
@@ -262,45 +256,43 @@ struct TaskDetailSheet: View {
     var body: some View {
         NavigationView {
             ZStack {
-                OPSStyle.Colors.backgroundGradient
+                OPSStyle.Colors.background
                     .edgesIgnoringSafeArea(.all)
-                
+
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         // Task Type Info
                         if let taskType = task.taskType {
                             Section("Task Type") {
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     FieldRow(label: "Display", value: taskType.display)
                                     FieldRow(label: "Color", value: taskType.color)
                                     FieldRow(label: "Icon", value: taskType.icon ?? "none")
                                     FieldRow(label: "Is Default", value: taskType.isDefault ? "Yes" : "No")
                                 }
                                 .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                                .glassSurface()
                             }
                         }
                         
                         // Project Info
                         if let project = task.project {
                             Section("Project") {
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     FieldRow(label: "Title", value: project.title)
                                     FieldRow(label: "Status", value: project.status.displayName)
                                     FieldRow(label: "Client", value: project.effectiveClientName)
                                     FieldRow(label: "Address", value: project.address ?? "No address")
                                 }
                                 .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                                .glassSurface()
                             }
                         }
                         
                         // Team Members
                         if !task.teamMembers.isEmpty {
                             Section("Team Members") {
-                                VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                     ForEach(task.teamMembers, id: \.id) { member in
                                         HStack {
                                             Text(member.fullName)
@@ -313,8 +305,7 @@ struct TaskDetailSheet: View {
                                     }
                                 }
                                 .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                                .glassSurface()
                             }
                         }
                     }
@@ -345,7 +336,7 @@ private struct Section<Content: View>: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text(title)
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)

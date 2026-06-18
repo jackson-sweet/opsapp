@@ -370,7 +370,7 @@ struct InventoryFormSheet: View {
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .background(OPSStyle.Colors.subtleBackground)
+                        .background(OPSStyle.Colors.surfaceInput)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -400,7 +400,7 @@ struct InventoryFormSheet: View {
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                        .background(newTagInput.isEmpty ? OPSStyle.Colors.subtleBackground : OPSStyle.Colors.cardBackgroundDark)
+                        .background(newTagInput.isEmpty ? OPSStyle.Colors.surfaceInput : OPSStyle.Colors.surfaceActive)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -417,7 +417,7 @@ struct InventoryFormSheet: View {
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                    FlowLayout(spacing: 8) {
+                    FlowLayout(spacing: OPSStyle.Layout.spacing2) {
                         ForEach(predictiveTags, id: \.self) { tag in
                             tagSuggestionPill(tag: tag)
                         }
@@ -432,7 +432,7 @@ struct InventoryFormSheet: View {
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                    FlowLayout(spacing: 8) {
+                    FlowLayout(spacing: OPSStyle.Layout.spacing2) {
                         ForEach(suggestedTags, id: \.self) { tag in
                             tagSuggestionPill(tag: tag)
                         }
@@ -453,7 +453,7 @@ struct InventoryFormSheet: View {
             newTagInput = "" // Clear input after selecting
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }) {
-            HStack(spacing: 4) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(systemName: "plus")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                 Text(tag)
@@ -462,7 +462,7 @@ struct InventoryFormSheet: View {
             .foregroundColor(OPSStyle.Colors.primaryText)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(OPSStyle.Colors.cardBackgroundDark)
+            .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -535,15 +535,16 @@ struct InventoryFormSheet: View {
             let displayValue = valueBinding.wrappedValue.isEmpty ? "—" : valueBinding.wrappedValue
             ZStack {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
+                    .fill(OPSStyle.Colors.surfaceInput)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(dotColor.opacity(0.4), lineWidth: OPSStyle.Layout.Border.standard)
                     )
 
-                VStack(spacing: 4) {
+                VStack(spacing: OPSStyle.Layout.spacing1) {
                     Text(displayValue)
-                        .font(.system(size: 32, weight: .semibold, design: .monospaced))
+                        .font(OPSStyle.Typography.dataValueLg)
+                        .fontWeight(.semibold)
                         .foregroundColor(valueBinding.wrappedValue.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
 
                     HStack(spacing: OPSStyle.Layout.spacing1) {

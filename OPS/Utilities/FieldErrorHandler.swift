@@ -35,7 +35,7 @@ enum FieldErrorHandler {
         }
 
         // Default for unknown errors
-        return "Something went wrong. The app will keep working offline."
+        return "Unexpected error. Your work is saved and the app keeps running offline."
     }
 
     /// Alert to show for an error
@@ -75,7 +75,7 @@ enum FieldErrorHandler {
         }
 
         var body: some View {
-            HStack(spacing: 12) {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Icon based on error type
                 Image(systemName: isNetworkError ? "wifi.slash" : "exclamationmark.triangle")
                     .foregroundColor(OPSStyle.Colors.primaryText)

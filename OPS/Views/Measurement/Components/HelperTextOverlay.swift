@@ -31,7 +31,7 @@ struct HelperTextOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             Text("//")
                 .font(.panelTitle)
                 .foregroundColor(OPSStyle.Colors.textMute)
@@ -41,16 +41,9 @@ struct HelperTextOverlay: View {
                 .tracking(0.5)
                 .foregroundColor(state.foreground)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                .fill(OPSStyle.Colors.glassDenseApprox)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                        .strokeBorder(OPSStyle.Colors.glassBorder, lineWidth: 1)
-                )
-        )
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .glassDense(cornerRadius: OPSStyle.Layout.chipRadius)
         // Sunlight legibility per spec §5.1 — root CLAUDE.md mandates ≥7:1 contrast.
         .shadow(color: Color.black.opacity(0.6), radius: 2, x: 0, y: 1)
         .transition(transition)

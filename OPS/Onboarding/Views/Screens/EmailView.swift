@@ -53,7 +53,7 @@ struct EmailView: View {
                             viewModel.moveToPreviousStep()
                         }
                     }) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "chevron.left")
                                 .font(OPSStyle.Typography.caption.weight(.semibold))
                             Text("Back")
@@ -74,7 +74,7 @@ struct EmailView: View {
                 }
 
                 // Step indicator bars
-                HStack(spacing: 4) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
                     let totalSteps = viewModel.selectedUserType == .employee ? 6 : 11
                     ForEach(0..<totalSteps, id: \.self) { step in
                         Rectangle()
@@ -82,14 +82,14 @@ struct EmailView: View {
                             .frame(height: 2)
                     }
                 }
-                .padding(.top, 16)
+                .padding(.top, OPSStyle.Layout.spacing3)
 
                 Spacer()
 
                 // Main content
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                     // Header - changes based on current field
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         if currentFieldIndex == 0 {
                             Text("CREATE YOUR")
                                 .font(OPSStyle.Typography.largeTitle.weight(.bold))
@@ -113,7 +113,7 @@ struct EmailView: View {
                                 .foregroundColor(primaryTextColor)
                         }
                     }
-                    .padding(.bottom, 8)
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
 
                     // Subtitle
                     Text(currentFieldIndex == 0 ? "Enter your email. That's it." :
@@ -123,7 +123,7 @@ struct EmailView: View {
                         .foregroundColor(secondaryTextColor)
 
                     // Input field
-                    VStack(spacing: 8) {
+                    VStack(spacing: OPSStyle.Layout.spacing2) {
                         if currentFieldIndex == 0 {
                             UnderlineTextField(
                                 placeholder: "Email address",
@@ -241,7 +241,7 @@ struct EmailView: View {
                         }
                     }
                 )
-                .padding(.bottom, 20)
+                .padding(.bottom, OPSStyle.Layout.spacing3_5)
             }
             .padding(40)
         }

@@ -77,15 +77,14 @@ struct OPSFloatingButtonBar<Content: View>: View {
         OPSStyle.Colors.background.ignoresSafeArea()
 
         ScrollView {
-            VStack(spacing: 16) {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
                 ForEach(0..<20) { i in
                     Text("Row \(i)")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.text)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding()
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .glassSurface()
                 }
             }
             .padding()

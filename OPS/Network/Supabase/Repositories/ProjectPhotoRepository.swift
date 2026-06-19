@@ -37,8 +37,7 @@ class ProjectPhotoRepository {
 
         let response: [ProjectPhotoDTO] = try await query
             .order("created_at", ascending: false)
-            .execute()
-            .value
+            .executeResilient(label: "project_photos")
         return response
     }
 

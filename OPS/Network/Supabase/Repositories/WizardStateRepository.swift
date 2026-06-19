@@ -59,8 +59,7 @@ class WizardStateRepository {
 
         let response: [SupabaseWizardStateDTO] = try await query
             .order("updated_at", ascending: false)
-            .execute()
-            .value
+            .executeResilient(label: "wizard_states")
         return response
     }
 

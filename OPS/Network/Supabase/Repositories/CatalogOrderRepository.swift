@@ -23,11 +23,11 @@ class CatalogOrderRepository {
         if let statuses = statuses, !statuses.isEmpty {
             query = query.in("status", values: statuses)
         }
-        return try await query.order("created_at", ascending: false).execute().value
+        return try await query.order("created_at", ascending: false).executeResilient(label: "catalog_orders")
     }
 
     func fetchOrderItems(orderId: String) async throws -> [CatalogOrderItemDTO] {
-        try await client.from("catalog_order_items").select().eq("order_id", value: orderId).execute().value
+        try await client.from("catalog_order_items").select().eq("order_id", value: orderId).executeResilient(label: "catalog_orders")
     }
 
     // MARK: - Create / Update orders

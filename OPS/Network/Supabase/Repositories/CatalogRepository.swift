@@ -36,7 +36,7 @@ class CatalogRepository {
     func fetchCategoriesForSync(since: Date? = nil) async throws -> [CatalogCategoryDTO] {
         var query = client.from("catalog_categories").select().eq("company_id", value: companyId)
         if let since = since { query = query.gte("updated_at", value: isoString(since)) }
-        return try await query.order("updated_at", ascending: true).execute().value
+        return try await query.order("updated_at", ascending: true).executeResilient(label: "catalog")
     }
 
     func fetchDeletedCategoryIds(since: Date) async throws -> [String] {
@@ -73,7 +73,7 @@ class CatalogRepository {
     func fetchItemsForSync(since: Date? = nil) async throws -> [CatalogItemDTO] {
         var query = client.from("catalog_items").select().eq("company_id", value: companyId)
         if let since = since { query = query.gte("updated_at", value: isoString(since)) }
-        return try await query.order("updated_at", ascending: true).execute().value
+        return try await query.order("updated_at", ascending: true).executeResilient(label: "catalog")
     }
 
     func fetchDeletedItemIds(since: Date) async throws -> [String] {
@@ -92,7 +92,7 @@ class CatalogRepository {
     func fetchVariantsForSync(since: Date? = nil) async throws -> [CatalogVariantDTO] {
         var query = client.from("catalog_variants").select().eq("company_id", value: companyId)
         if let since = since { query = query.gte("updated_at", value: isoString(since)) }
-        return try await query.order("updated_at", ascending: true).execute().value
+        return try await query.order("updated_at", ascending: true).executeResilient(label: "catalog")
     }
 
     func fetchDeletedVariantIds(since: Date) async throws -> [String] {
@@ -277,7 +277,7 @@ class CatalogRepository {
         let rows: [Joined] = try await client.from("catalog_options")
             .select("id, catalog_item_id, name, sort_order, created_at, catalog_items!inner(company_id)")
             .eq("catalog_items.company_id", value: companyId)
-            .execute().value
+            .executeResilient(label: "catalog")
         return rows.map {
             CatalogOptionDTO(id: $0.id, catalogItemId: $0.catalogItemId,
                               name: $0.name, sortOrder: $0.sortOrder, createdAt: $0.createdAt)
@@ -302,7 +302,7 @@ class CatalogRepository {
         let rows: [Joined] = try await client.from("catalog_option_values")
             .select("id, option_id, value, sort_order, catalog_options!inner(catalog_items!inner(company_id))")
             .eq("catalog_options.catalog_items.company_id", value: companyId)
-            .execute().value
+            .executeResilient(label: "catalog")
         return rows.map {
             CatalogOptionValueDTO(id: $0.id, optionId: $0.optionId, value: $0.value, sortOrder: $0.sortOrder)
         }
@@ -322,7 +322,7 @@ class CatalogRepository {
         let rows: [Joined] = try await client.from("catalog_variant_option_values")
             .select("variant_id, option_value_id, catalog_variants!inner(company_id)")
             .eq("catalog_variants.company_id", value: companyId)
-            .execute().value
+            .executeResilient(label: "catalog")
         return rows.map {
             CatalogVariantOptionValueDTO(variantId: $0.variantId, optionValueId: $0.optionValueId)
         }
@@ -333,7 +333,7 @@ class CatalogRepository {
     func fetchTagsForSync(since: Date? = nil) async throws -> [CatalogTagDTO] {
         var query = client.from("catalog_tags").select().eq("company_id", value: companyId)
         if let since = since { query = query.gte("updated_at", value: isoString(since)) }
-        return try await query.order("updated_at", ascending: true).execute().value
+        return try await query.order("updated_at", ascending: true).executeResilient(label: "catalog")
     }
 
     func createTag(_ dto: CreateCatalogTagDTO) async throws -> CatalogTagDTO {
@@ -368,7 +368,7 @@ class CatalogRepository {
         let rows: [Joined] = try await client.from("catalog_item_tags")
             .select("id, catalog_item_id, tag_id, catalog_items!inner(company_id)")
             .eq("catalog_items.company_id", value: companyId)
-            .execute().value
+            .executeResilient(label: "catalog")
         return rows.map { CatalogItemTagDTO(id: $0.id, catalogItemId: $0.catalogItemId, tagId: $0.tagId) }
     }
 
@@ -396,7 +396,7 @@ class CatalogRepository {
     func fetchUnitsForSync(since: Date? = nil) async throws -> [CatalogUnitDTO] {
         var query = client.from("catalog_units").select().eq("company_id", value: companyId)
         if let since = since { query = query.gte("updated_at", value: isoString(since)) }
-        return try await query.order("sort_order", ascending: true).execute().value
+        return try await query.order("sort_order", ascending: true).executeResilient(label: "catalog")
     }
 
     func createUnit(_ dto: CreateCatalogUnitDTO) async throws -> CatalogUnitDTO {
@@ -422,12 +422,12 @@ class CatalogRepository {
     func fetchSnapshotsForSync(since: Date? = nil) async throws -> [CatalogSnapshotDTO] {
         var query = client.from("catalog_snapshots").select().eq("company_id", value: companyId)
         if let since = since { query = query.gte("created_at", value: isoString(since)) }
-        return try await query.order("created_at", ascending: true).execute().value
+        return try await query.order("created_at", ascending: true).executeResilient(label: "catalog")
     }
 
     func fetchSnapshotItemsForSnapshots(_ ids: [String]) async throws -> [CatalogSnapshotItemDTO] {
         guard !ids.isEmpty else { return [] }
-        return try await client.from("catalog_snapshot_items").select().in("snapshot_id", values: ids).execute().value
+        return try await client.from("catalog_snapshot_items").select().in("snapshot_id", values: ids).executeResilient(label: "catalog")
     }
 
     private func isoString(_ date: Date) -> String {

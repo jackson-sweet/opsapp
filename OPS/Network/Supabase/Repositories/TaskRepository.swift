@@ -53,8 +53,7 @@ class TaskRepository: ProjectTaskSyncing {
 
         let assigned: [SupabaseProjectTaskDTO] = try await query
             .order("display_order", ascending: true)
-            .execute()
-            .value
+            .executeResilient(label: "project_tasks")
 
         // Bug G9 — tasks on mention-granted projects.
         // Mirror ProjectRepository: at "assigned" scope also pull tasks whose

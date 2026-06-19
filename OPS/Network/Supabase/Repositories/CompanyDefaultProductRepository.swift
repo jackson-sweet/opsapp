@@ -17,7 +17,7 @@ class CompanyDefaultProductRepository {
 
     func fetchAll() async throws -> [CompanyDefaultProductDTO] {
         try await client.from("company_default_products")
-            .select().eq("company_id", value: companyId).execute().value
+            .select().eq("company_id", value: companyId).executeResilient(label: "company_default_products")
     }
 
     func upsert(_ dto: UpsertCompanyDefaultProductDTO) async throws -> CompanyDefaultProductDTO {

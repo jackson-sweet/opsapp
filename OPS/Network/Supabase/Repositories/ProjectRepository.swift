@@ -51,8 +51,7 @@ class ProjectRepository {
 
         let assigned: [SupabaseProjectDTO] = try await query
             .order("created_at", ascending: false)
-            .execute()
-            .value
+            .executeResilient(label: "projects")
 
         // Bug G9 — mention-based project view grant.
         // At "assigned" scope, also fetch projects where the user is tagged in

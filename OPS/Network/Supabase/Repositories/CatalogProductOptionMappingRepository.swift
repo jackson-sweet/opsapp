@@ -23,7 +23,7 @@ final class CatalogProductOptionMappingRepository {
         if let since {
             query = query.gte("updated_at", value: isoString(since))
         }
-        return try await query.order("updated_at", ascending: true).execute().value
+        return try await query.order("updated_at", ascending: true).executeResilient(label: "catalog_product_option_mappings")
     }
 
     func fetchDeletedIds(since: Date) async throws -> [String] {

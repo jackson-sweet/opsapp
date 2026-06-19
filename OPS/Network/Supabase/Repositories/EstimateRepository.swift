@@ -36,8 +36,7 @@ class EstimateRepository: EstimateAcceptanceClient {
 
         return try await query
             .order("created_at", ascending: false)
-            .execute()
-            .value
+            .executeResilient(label: "estimates")
     }
 
     func fetchDeletedIds(since: Date) async throws -> [String] {

@@ -49,7 +49,7 @@ class ProductRichnessRepository {
         let rows: [Joined] = try await client.from("product_options")
             .select("id, product_id, name, kind, affects_price, affects_recipe, required, default_value, option_default_source, sort_order, products!inner(company_id)")
             .eq("products.company_id", value: companyId)
-            .execute().value
+            .executeResilient(label: "product_richness")
         return rows.map {
             ProductOptionDTO(
                 id: $0.id, productId: $0.productId, name: $0.name, kind: $0.kind,
@@ -104,7 +104,7 @@ class ProductRichnessRepository {
         let rows: [Joined] = try await client.from("product_option_values")
             .select("id, option_id, value, sort_order, product_options!inner(products!inner(company_id))")
             .eq("product_options.products.company_id", value: companyId)
-            .execute().value
+            .executeResilient(label: "product_richness")
         return rows.map {
             ProductOptionValueDTO(id: $0.id, optionId: $0.optionId, value: $0.value, sortOrder: $0.sortOrder)
         }
@@ -162,7 +162,7 @@ class ProductRichnessRepository {
         let rows: [Joined] = try await client.from("product_pricing_modifiers")
             .select("id, product_id, option_id, trigger_value_id, trigger_int_min, trigger_int_max, modifier_kind, amount, products!inner(company_id)")
             .eq("products.company_id", value: companyId)
-            .execute().value
+            .executeResilient(label: "product_richness")
         return rows.map {
             ProductPricingModifierDTO(
                 id: $0.id, productId: $0.productId, optionId: $0.optionId,
@@ -266,7 +266,7 @@ class ProductRichnessRepository {
         let rows: [Joined] = try await client.from("product_materials")
             .select("id, product_id, catalog_variant_id, catalog_item_id, variant_selector, quantity_per_unit, scaled_by_option_id, unit_id, notes, products!inner(company_id)")
             .eq("products.company_id", value: companyId)
-            .execute().value
+            .executeResilient(label: "product_richness")
         return rows.map {
             ProductMaterialDTO(
                 id: $0.id, productId: $0.productId,

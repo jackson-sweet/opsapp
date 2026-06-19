@@ -30,8 +30,7 @@ class CalendarUserEventRepository {
             .gte("end_date", value: iso.string(from: startDate))
             .lte("start_date", value: iso.string(from: endDate))
             .order("start_date", ascending: true)
-            .execute()
-            .value
+            .executeResilient(label: "calendar_user_events")
     }
 
     // MARK: - Fetch (company admin — for time-off review)

@@ -32,8 +32,7 @@ class UserRepository {
 
         let response: [SupabaseUserDTO] = try await query
             .order("created_at", ascending: false)
-            .execute()
-            .value
+            .executeResilient(label: "users")
         return response
     }
 

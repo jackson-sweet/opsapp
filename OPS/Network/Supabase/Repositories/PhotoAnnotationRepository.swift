@@ -29,8 +29,7 @@ class PhotoAnnotationRepository {
         )
         let response: [PhotoAnnotationDTO] = try await client
             .rpc("get_photo_annotations_since", params: params)
-            .execute()
-            .value
+            .executeResilient(label: "photo_annotations")
         return response
     }
 

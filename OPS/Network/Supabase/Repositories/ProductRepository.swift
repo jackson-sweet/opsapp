@@ -26,7 +26,7 @@ class ProductRepository {
         if !includeInactive {
             query = query.eq("is_active", value: true)
         }
-        return try await query.order("name", ascending: true).execute().value
+        return try await query.order("name", ascending: true).executeResilient(label: "products")
     }
 
     func create(_ dto: CreateProductDTO) async throws -> ProductDTO {

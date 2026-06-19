@@ -32,8 +32,7 @@ class ProjectNoteRepository {
 
         let response: [ProjectNoteDTO] = try await query
             .order("created_at", ascending: false)
-            .execute()
-            .value
+            .executeResilient(label: "project_notes")
         return response
     }
 

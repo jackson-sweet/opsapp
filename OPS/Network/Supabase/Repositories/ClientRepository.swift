@@ -41,8 +41,7 @@ class ClientRepository {
 
         let response: [SupabaseClientDTO] = try await query
             .order("created_at", ascending: false)
-            .execute()
-            .value
+            .executeResilient(label: "clients")
         return response
     }
 
@@ -226,8 +225,7 @@ class ClientRepository {
 
         let response: [SupabaseSubClientDTO] = try await query
             .order("created_at", ascending: true)
-            .execute()
-            .value
+            .executeResilient(label: "clients")
         return response
     }
 

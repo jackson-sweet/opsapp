@@ -42,8 +42,7 @@ class InventoryRepository {
         }
         return try await query
             .order("updated_at", ascending: true)
-            .execute()
-            .value
+            .executeResilient(label: "inventory")
     }
 
     func fetchDeletedItemIds(since: Date) async throws -> [String] {
@@ -116,8 +115,7 @@ class InventoryRepository {
         }
         return try await query
             .order("updated_at", ascending: true)
-            .execute()
-            .value
+            .executeResilient(label: "inventory")
     }
 
     func fetchDeletedUnitIds(since: Date) async throws -> [String] {
@@ -206,8 +204,7 @@ class InventoryRepository {
         }
         return try await query
             .order("updated_at", ascending: true)
-            .execute()
-            .value
+            .executeResilient(label: "inventory")
     }
 
     func fetchDeletedTagIds(since: Date) async throws -> [String] {
@@ -288,8 +285,7 @@ class InventoryRepository {
             .from("inventory_item_tags")
             .select("id, item_id, tag_id, inventory_items!inner(company_id)")
             .eq("inventory_items.company_id", value: companyId)
-            .execute()
-            .value
+            .executeResilient(label: "inventory")
         return rows.map { InventoryItemTagReadDTO(id: $0.id, itemId: $0.itemId, tagId: $0.tagId) }
     }
 
@@ -333,8 +329,7 @@ class InventoryRepository {
         }
         return try await query
             .order("created_at", ascending: true)
-            .execute()
-            .value
+            .executeResilient(label: "inventory")
     }
 
     func fetchSnapshotItems(snapshotId: String) async throws -> [InventorySnapshotItemReadDTO] {
@@ -355,8 +350,7 @@ class InventoryRepository {
             .from("inventory_snapshot_items")
             .select()
             .in("snapshot_id", values: snapshotIds)
-            .execute()
-            .value
+            .executeResilient(label: "inventory")
     }
 
     private func isoString(_ date: Date) -> String {

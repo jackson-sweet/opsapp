@@ -28,7 +28,7 @@ class ProductBundleItemRepository {
             .eq("company_id", value: companyId)
             .is("deleted_at", value: nil)
             .order("display_order", ascending: true)
-            .execute().value
+            .executeResilient(label: "product_bundle_items")
     }
 
     /// Fetch active children for a specific bundle. Preferred entry point

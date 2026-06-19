@@ -29,8 +29,7 @@ class InvoiceRepository {
 
         return try await query
             .order("created_at", ascending: false)
-            .execute()
-            .value
+            .executeResilient(label: "invoices")
     }
 
     /// Fetch IDs of invoices soft-deleted since the given date (for delta sync removal).

@@ -34,8 +34,7 @@ class TaskTypeRepository {
 
         let response: [SupabaseTaskTypeDTO] = try await query
             .order("display_order", ascending: true)
-            .execute()
-            .value
+            .executeResilient(label: "task_types")
         return response
     }
 

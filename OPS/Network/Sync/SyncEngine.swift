@@ -30,6 +30,8 @@ final class SyncEngine {
     private var modelContext: ModelContext?
     private var connectivity: ConnectivityManager?
     private var syncInProgress: Bool = false
+    private var pushInProgress: Bool = false
+    private var pushRequestedWhileInProgress: Bool = false
     nonisolated(unsafe) private var syncRetryTimer: Timer?
 
     /// The current authenticated user's ID, read from UserDefaults.
@@ -91,6 +93,21 @@ final class SyncEngine {
         self.modelContext = modelContext
         self.connectivity = connectivity
         self.dataActor = dataActor
+
+        // One-time recovery for the poisoned deck-design cursor (the crew
+        // deck-blackout bug): an earlier build advanced sync.lastPull.deckDesign
+        // past a swallowed decode failure, stranding already-existing decks on
+        // every non-creator device (future deltas only pull rows updated after the
+        // cursor). Clear that ONE cursor once so the next pull re-fetches all decks;
+        // decode resilience then keeps a corrupt row from re-poisoning it. Gated by
+        // a UserDefaults flag so it runs exactly once per device.
+        let deckCursorRecoveryKey = "sync.deckCursorRecoveryV1"
+        if !UserDefaults.standard.bool(forKey: deckCursorRecoveryKey) {
+            UserDefaults.standard.removeObject(
+                forKey: "sync.lastPull.\(SyncEntityType.deckDesign.rawValue)"
+            )
+            UserDefaults.standard.set(true, forKey: deckCursorRecoveryKey)
+        }
 
         // Initialize processors
         self.outboundProcessor = OutboundProcessor()
@@ -579,10 +596,11 @@ final class SyncEngine {
         // Pull all entities via DataActor (flag-on) or InboundProcessor (legacy).
         guard let ctx = modelContext else { return }
         let syncStartedAt = Date()
+        var failedEntities = Set<SyncEntityType>()
         do {
             if FeatureFlags.useDataActor, let actor = dataActor {
                 let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
-                try await actor.fullSync(
+                failedEntities = try await actor.fullSync(
                     companyId: companyId,
                     onProgress: { [weak self] entityType, _ in
                         Task { @MainActor [weak self] in
@@ -592,12 +610,12 @@ final class SyncEngine {
                 )
                 await applySpotlightSnapshot(from: actor)
             } else {
-                try await inboundProcessor?.fullSync(
+                failedEntities = try await inboundProcessor?.fullSync(
                     context: ctx,
                     onProgress: { [weak self] entityType, _ in
                         self?.statusText = "Syncing \(entityType.rawValue)…"
                     }
-                )
+                ) ?? []
             }
         } catch {
             print("[SYNC_ENGINE] Full sync pull error: \(error)")
@@ -620,11 +638,14 @@ final class SyncEngine {
             }
         }
 
-        // Update timestamps only for entity types that were actually synced
+        // Advance the last-sync cursor only for entities that did NOT fail this
+        // pull. Advancing a failed entity's cursor strands its existing rows —
+        // future deltas only re-pull rows updated after the cursor — which is how
+        // a single transient deck-sync failure left crew devices unable to see any
+        // deck designs. Failed entities keep their old cursor and are retried in
+        // full on the next sync.
         if !hasError {
-            for entityType in InboundProcessor.syncOrder {
-                setLastSyncTimestamp(syncStartedAt, for: entityType)
-            }
+            advanceSyncCursors(InboundProcessor.syncOrder, excluding: failedEntities, to: syncStartedAt)
         }
 
         // Push any pending local operations
@@ -679,6 +700,22 @@ final class SyncEngine {
             return
         }
 
+        guard !pushInProgress else {
+            pushRequestedWhileInProgress = true
+            print("[SYNC_ENGINE] Push already in progress — queueing one follow-up drain")
+            return
+        }
+        pushInProgress = true
+        defer {
+            pushInProgress = false
+            if pushRequestedWhileInProgress {
+                pushRequestedWhileInProgress = false
+                Task {
+                    await pushPending()
+                }
+            }
+        }
+
         // Safety net: recover any task whose local edit never produced an
         // outbound op (needsSync set without recordOperation) before reading the
         // pending queue, so a future bypass can't silently drop a write.
@@ -693,6 +730,9 @@ final class SyncEngine {
         print("[SYNC_ENGINE] pushPending — \(pending.count) operation(s) to push")
         statusText = "Pushing \(pending.count) change(s)…"
 
+        let pushStartedAt = Date()
+
+        var completedProjectTaskIds = Set<String>()
         if FeatureFlags.useDataActor, let actor = dataActor {
             // Connectivity guard lives here (on main) per PM guidance — the actor
             // method has no connectivity parameter and trusts callers to gate.
@@ -700,7 +740,7 @@ final class SyncEngine {
                 print("[SYNC_ENGINE] Skipping push — connectivity says do not sync")
                 return
             }
-            await actor.processPendingOperations()
+            completedProjectTaskIds = await actor.processPendingOperations()
         } else {
             await outboundProcessor?.processPendingOperations(
                 context: modelContext,
@@ -708,6 +748,10 @@ final class SyncEngine {
             )
         }
 
+        clearCompletedProjectTaskSyncFlags(
+            since: pushStartedAt,
+            completedProjectTaskIds: completedProjectTaskIds
+        )
         refreshPendingCount()
     }
 
@@ -749,7 +793,7 @@ final class SyncEngine {
         guard !orphans.isEmpty else { return }
 
         // A canonical write sets needsSync AND records an op in one synchronous
-        // step, so a needsSync task WITH a pending op is normal. Skip those, and
+        // step, so a needsSync task WITH a pending op is normal. Skip those, and
         // skip ones created in the last 30s to avoid racing an in-flight create.
         let graceCutoff = Date().addingTimeInterval(-30)
         let writer = ISO8601DateFormatter()
@@ -764,7 +808,7 @@ final class SyncEngine {
         var didMutate = false
         for task in orphans {
             if let created = task.createdAt, created > graceCutoff { continue }
-            if hasPendingOperation(entityId: task.id) { continue }
+            if hasOpenOperation(entityId: task.id) { continue }
 
             guard hasRecentLocalWrite(entityId: task.id, withinSeconds: recentLocalWriteWindow) else {
                 // No evidence of a genuine recent local edit. Do NOT push the local
@@ -787,7 +831,8 @@ final class SyncEngine {
                 entityType: .projectTask,
                 entityId: task.id,
                 operationType: "update",
-                changedFields: fields
+                changedFields: fields,
+                deferPush: true
             )
         }
 
@@ -800,14 +845,80 @@ final class SyncEngine {
         }
     }
 
-    /// True if a pending SyncOperation already exists for this entity id.
-    private func hasPendingOperation(entityId: String) -> Bool {
+    /// True if a pending or in-flight SyncOperation already exists for this entity id.
+    private func hasOpenOperation(entityId: String) -> Bool {
         guard let modelContext else { return false }
-        let eid = entityId.lowercased()
+        let idLower = entityId.lowercased()
+        let idUpper = entityId.uppercased()
+        let entityType = SyncEntityType.projectTask.rawValue
         let descriptor = FetchDescriptor<SyncOperation>(
-            predicate: #Predicate { $0.entityId == eid && $0.status == "pending" }
+            predicate: #Predicate { op in
+                op.entityType == entityType &&
+                (op.entityId == idLower || op.entityId == idUpper || op.entityId == entityId) &&
+                (op.status == "pending" || op.status == "inProgress")
+            }
         )
         return ((try? modelContext.fetchCount(descriptor)) ?? 0) > 0
+    }
+
+    /// Clears task dirty flags after their outbound operation completed during
+    /// this push. The orphan sweep runs on the main context, so relying on the
+    /// background actor context to clear `needsSync` can leave a stale main-context
+    /// flag that immediately re-enqueues the same task.
+    private func clearCompletedProjectTaskSyncFlags(
+        since pushStartedAt: Date,
+        completedProjectTaskIds: Set<String>
+    ) {
+        guard let modelContext else { return }
+
+        let dirtyTasks: [ProjectTask]
+        do {
+            dirtyTasks = try modelContext.fetch(
+                FetchDescriptor<ProjectTask>(
+                    predicate: #Predicate { $0.needsSync == true && $0.deletedAt == nil }
+                )
+            )
+        } catch {
+            print("[SYNC_ENGINE] Failed to fetch dirty project tasks after push: \(error)")
+            return
+        }
+        guard !dirtyTasks.isEmpty else { return }
+
+        var clearedCount = 0
+        for task in dirtyTasks {
+            if hasOpenOperation(entityId: task.id) { continue }
+            guard completedProjectTaskIds.contains(task.id.lowercased()) ||
+                    hasCompletedOperation(entityId: task.id, since: pushStartedAt) else { continue }
+            task.needsSync = false
+            task.lastSyncedAt = Date()
+            clearedCount += 1
+        }
+
+        guard clearedCount > 0 else { return }
+        do {
+            try modelContext.save()
+            print("[SYNC_ENGINE] Cleared needsSync on \(clearedCount) project task(s) after outbound completion")
+        } catch {
+            print("[SYNC_ENGINE] Failed to clear completed project task sync flags: \(error)")
+        }
+    }
+
+    private func hasCompletedOperation(entityId: String, since date: Date) -> Bool {
+        guard let modelContext else { return false }
+        let idLower = entityId.lowercased()
+        let idUpper = entityId.uppercased()
+        let entityType = SyncEntityType.projectTask.rawValue
+        let descriptor = FetchDescriptor<SyncOperation>(
+            predicate: #Predicate<SyncOperation> { op in
+                op.entityType == entityType &&
+                op.status == "completed" &&
+                (op.entityId == idLower || op.entityId == idUpper || op.entityId == entityId)
+            }
+        )
+        guard let ops = try? modelContext.fetch(descriptor), !ops.isEmpty else {
+            return false
+        }
+        return ops.contains { ($0.completedAt ?? .distantPast) >= date }
     }
 
     /// True if a SyncOperation for this entity had ANY lifecycle event
@@ -876,21 +987,23 @@ final class SyncEngine {
         }
 
         do {
+            var failedEntities = Set<SyncEntityType>()
             if FeatureFlags.useDataActor, let actor = dataActor {
                 let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
-                try await actor.deltaSync(companyId: companyId, since: sinceTimestamps)
+                failedEntities = try await actor.deltaSync(companyId: companyId, since: sinceTimestamps)
                 await applySpotlightSnapshot(from: actor)
             } else {
-                try await inboundProcessor?.deltaSync(
+                failedEntities = try await inboundProcessor?.deltaSync(
                     context: modelContext,
                     since: sinceTimestamps
-                )
+                ) ?? []
             }
 
-            // Update all timestamps on success.
-            for entityType in SyncEntityType.allCases {
-                setLastSyncTimestamp(syncStartedAt, for: entityType)
-            }
+            // Advance the cursor only for entities that did NOT fail this pull.
+            // A failed entity keeps its old cursor so the next delta re-pulls its
+            // changes; advancing past a transient failure would strand existing
+            // rows (the deck-design blackout bug).
+            advanceSyncCursors(SyncEntityType.allCases, excluding: failedEntities, to: syncStartedAt)
         } catch {
             print("[SYNC_ENGINE] pullDelta error: \(error)")
             hasError = true
@@ -929,21 +1042,21 @@ final class SyncEngine {
         }
 
         do {
+            var failedEntities = Set<SyncEntityType>()
             if FeatureFlags.useDataActor, let actor = dataActor {
                 let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
-                try await actor.deltaSync(companyId: companyId, since: sinceTimestamps)
+                failedEntities = try await actor.deltaSync(companyId: companyId, since: sinceTimestamps)
                 await applySpotlightSnapshot(from: actor)
             } else {
-                try await inboundProcessor?.deltaSync(
+                failedEntities = try await inboundProcessor?.deltaSync(
                     context: modelContext,
                     since: sinceTimestamps
-                )
+                ) ?? []
             }
 
-            // Update timestamps
-            for entityType in SyncEntityType.allCases {
-                setLastSyncTimestamp(syncStartedAt, for: entityType)
-            }
+            // Advance the cursor only for entities that did NOT fail this catch-up
+            // (a failed entity keeps its old cursor and is retried next sync).
+            advanceSyncCursors(SyncEntityType.allCases, excluding: failedEntities, to: syncStartedAt)
             statusText = "Synced"
             kickoffPhotoPrefetch()
         } catch {
@@ -990,6 +1103,30 @@ final class SyncEngine {
     func setLastSyncTimestamp(_ date: Date, for entityType: SyncEntityType) {
         let key = "sync.lastPull.\(entityType.rawValue)"
         UserDefaults.standard.set(date, forKey: key)
+    }
+
+    /// Advance the last-pull cursor for each entity that did NOT fail this pull.
+    /// A failed entity keeps its old cursor so the next sync re-pulls it in full —
+    /// advancing past a transient failure strands the entity's existing rows (the
+    /// deck-design blackout bug). Delegates to the pure `cursorsToAdvance` so the
+    /// invariant is unit-testable.
+    func advanceSyncCursors(
+        _ entities: [SyncEntityType],
+        excluding failed: Set<SyncEntityType>,
+        to date: Date
+    ) {
+        for entityType in Self.cursorsToAdvance(entities, excluding: failed) {
+            setLastSyncTimestamp(date, for: entityType)
+        }
+    }
+
+    /// Pure selection: which entities should advance their cursor (the input
+    /// entities minus the ones that failed this pull). Order-preserving.
+    nonisolated static func cursorsToAdvance(
+        _ entities: [SyncEntityType],
+        excluding failed: Set<SyncEntityType>
+    ) -> [SyncEntityType] {
+        entities.filter { !failed.contains($0) }
     }
 
     private func overlappedTimestamp(_ date: Date) -> Date {

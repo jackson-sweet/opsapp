@@ -223,6 +223,41 @@ final class DeckDesignSyncTests: XCTestCase {
         XCTAssertTrue(item.isGate)
     }
 
+    func test_decodeResilient_skipsACorruptRowAndKeepsTheValidOnes() throws {
+        // Two genuinely-valid rows (round-tripped through the codec) bracketing a
+        // row whose drawing_data is the wrong shape — the exact failure that, when
+        // it fails the WHOLE [SupabaseDeckDesignDTO] decode, blacks out every deck.
+        func valid(_ id: String) -> SupabaseDeckDesignDTO {
+            SupabaseDeckDesignDTO(
+                id: id,
+                companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
+                projectId: nil,
+                title: "Deck \(id)",
+                drawingData: DeckDrawingData(),
+                thumbnailUrl: nil,
+                version: 1,
+                createdBy: nil,
+                createdAt: "2026-05-04T21:27:13Z",
+                updatedAt: nil,
+                deletedAt: nil
+            )
+        }
+        let encoder = JSONEncoder()
+        let v1 = String(data: try encoder.encode(valid("aaa")), encoding: .utf8)!
+        let v2 = String(data: try encoder.encode(valid("bbb")), encoding: .utf8)!
+        let corrupt = #"{"id":"corrupt","company_id":"c","title":"Bad","drawing_data":"not-an-object","version":1,"created_at":"2026-05-04T21:27:13Z"}"#
+        let arrayJSON = "[\(v1),\(corrupt),\(v2)]"
+
+        let decoded = DeckDesignRepository.decodeResilient(Data(arrayJSON.utf8))
+
+        XCTAssertEqual(decoded.count, 2, "the corrupt row is skipped, the valid rows survive")
+        XCTAssertEqual(Set(decoded.map(\.id)), ["aaa", "bbb"])
+    }
+
+    func test_decodeResilient_returnsEmptyForANonArrayPayload() {
+        XCTAssertTrue(DeckDesignRepository.decodeResilient(Data(#"{"not":"an array"}"#.utf8)).isEmpty)
+    }
+
     private func makeInMemoryContainer() throws -> ModelContainer {
         let schema = Schema([DeckDesign.self, SyncOperation.self])
         let configuration = ModelConfiguration(

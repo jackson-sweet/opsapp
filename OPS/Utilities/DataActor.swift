@@ -218,16 +218,23 @@ actor DataActor {
     /// Runs on the actor's background context; main thread is not blocked.
     /// After this returns, SyncEngine calls `extractAndResetSpotlight()` to dispatch
     /// targeted Spotlight updates on main.
+    /// Returns the set of entity types whose sync THREW (and was isolated). The
+    /// caller (SyncEngine) must NOT advance the last-sync cursor for these — a
+    /// transient failure that advanced the cursor would strand every existing
+    /// row of that entity, since later deltas only re-pull rows updated after
+    /// the (poisoned) cursor. Succeeded/skipped/gated entities are absent.
+    @discardableResult
     func fullSync(
         companyId: String,
         onProgress: (@Sendable (SyncEntityType, Double) -> Void)? = nil
-    ) async throws {
+    ) async throws -> Set<SyncEntityType> {
         guard !companyId.isEmpty else {
             print("[DataActor] FULL SYNC ABORTED — no companyId available")
-            return
+            return []
         }
 
         print("[DataActor] ======== FULL SYNC STARTED ========")
+        var failedEntities = Set<SyncEntityType>()
 
         // Reset spotlight accumulator at start (matches InboundProcessor behavior).
         spotlightDirty.removeAll()
@@ -253,6 +260,7 @@ actor DataActor {
                 print("[DataActor] \(entityType.rawValue) complete")
             } catch {
                 print("[DataActor] FAILED \(entityType.rawValue): \(error)")
+                failedEntities.insert(entityType)
                 SyncTelemetry.logError(
                     entityType: entityType.rawValue,
                     error: error,
@@ -270,6 +278,7 @@ actor DataActor {
 
         onProgress?(.photoAnnotation, 1.0)
         print("[DataActor] ======== FULL SYNC COMPLETE ========")
+        return failedEntities
     }
 
     // MARK: - Delta Sync
@@ -277,16 +286,20 @@ actor DataActor {
     /// Pull entities updated since the given timestamps and merge into local SwiftData.
     /// Entity types with no timestamp in the map are SKIPPED (true delta — do not
     /// backfill). Matches InboundProcessor.deltaSync behavior verbatim.
+    /// Returns the set of entity types whose delta sync THREW (and was isolated).
+    /// SyncEngine must NOT advance the last-sync cursor for these (see `fullSync`).
+    @discardableResult
     func deltaSync(
         companyId: String,
         since timestamps: [SyncEntityType: Date]
-    ) async throws {
+    ) async throws -> Set<SyncEntityType> {
         guard !companyId.isEmpty else {
             print("[DataActor] DELTA SYNC ABORTED — no companyId available")
-            return
+            return []
         }
 
         print("[DataActor] ======== DELTA SYNC STARTED ========")
+        var failedEntities = Set<SyncEntityType>()
 
         // Reset spotlight accumulator at start (matches InboundProcessor behavior).
         spotlightDirty.removeAll()
@@ -310,6 +323,7 @@ actor DataActor {
                 try await syncEntityType(entityType, since: sinceDate, repos: repos)
             } catch {
                 print("[DataActor] FAILED delta \(entityType.rawValue): \(error)")
+                failedEntities.insert(entityType)
                 SyncTelemetry.logError(
                     entityType: entityType.rawValue,
                     error: error,
@@ -325,6 +339,7 @@ actor DataActor {
         flushInboundChangeSignal()
 
         print("[DataActor] ======== DELTA SYNC COMPLETE ========")
+        return failedEntities
     }
 
     /// Posts the entity names accumulated by this batch sync as a single
@@ -3750,7 +3765,7 @@ actor DataActor {
     ///     on superseded entries persist atomically
     ///   - executeOperation mutations persist via per-state transactions inside that
     ///     method (no single trailing context.save)
-    func processPendingOperations() async {
+    func processPendingOperations() async -> Set<String> {
         // 1. Fetch pending operations sorted by priority ASC, createdAt ASC.
         let pending: [SyncOperation]
         do {
@@ -3764,12 +3779,12 @@ actor DataActor {
             pending = try modelContext.fetch(descriptor)
         } catch {
             print("[DataActor] Failed to fetch pending operations: \(error)")
-            return
+            return []
         }
 
         guard !pending.isEmpty else {
             print("[DataActor] No pending operations")
-            return
+            return []
         }
 
         print("[DataActor] Found \(pending.count) pending operation(s)")
@@ -3808,21 +3823,28 @@ actor DataActor {
             }
         } catch {
             print("[DataActor] Failed to commit coalescing state: \(error)")
-            return
+            return []
         }
         print("[DataActor] Coalesced \(eligible.count) → \(coalesced.count) operation(s)")
 
         // 4. Execute each survivor. Each call manages its own state transitions via
         //    per-state transactions (inProgress → completed/failed/pending).
+        var completedProjectTaskIds = Set<String>()
         for op in coalesced {
             do {
                 try await executeOperation(op)
+                if op.entityType == SyncEntityType.projectTask.rawValue,
+                   op.status == "completed" {
+                    completedProjectTaskIds.insert(op.entityId.lowercased())
+                }
             } catch {
                 let classified = classifySyncError(error)
                 print("[DataActor] Operation failed for \(op.entityType) \(op.entityId): \(classified.localizedDescription)")
                 // Error handling (state mutation) already done inside executeOperation.
             }
         }
+
+        return completedProjectTaskIds
     }
 
     // MARK: - Dependency Check

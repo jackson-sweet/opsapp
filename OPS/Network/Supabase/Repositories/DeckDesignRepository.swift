@@ -30,17 +30,22 @@ class DeckDesignRepository {
             query = query.gte("updated_at", value: ISO8601DateFormatter().string(from: since))
         }
 
-        let response: [SupabaseDeckDesignDTO] = try await query
+        // Decode row-by-row so a single corrupt drawing_data can't fail the whole
+        // batch — one undecodable deck must never black out every deck (the crew
+        // deck-blackout bug). execute() (no decoded type) returns the raw rows.
+        let data = try await query
             .order("created_at", ascending: false)
             .execute()
-            .value
-        return response
+            .data
+        return Self.decodeResilient(data)
     }
 
     // MARK: - Fetch for Project
 
     func fetchForProject(_ projectId: String) async throws -> [SupabaseDeckDesignDTO] {
-        try await client
+        // Row-by-row decode (see fetchAll) — the DeckTabView self-repair path must
+        // also survive a single corrupt row instead of showing nothing.
+        let data = try await client
             .from("deck_designs")
             .select()
             .eq("company_id", value: companyId)
@@ -48,7 +53,33 @@ class DeckDesignRepository {
             .is("deleted_at", value: nil)
             .order("created_at", ascending: false)
             .execute()
-            .value
+            .data
+        return Self.decodeResilient(data)
+    }
+
+    // MARK: - Decode Resilience
+
+    /// Decode a `deck_designs` array row-by-row, skipping any row whose JSON fails
+    /// to decode (e.g. a corrupt `drawing_data`) instead of failing the whole
+    /// batch — a single bad row must never strand every deck. Every DTO field is
+    /// String/Int/Codable-struct, so a plain JSONDecoder matches the SDK's decode.
+    static func decodeResilient(_ data: Data) -> [SupabaseDeckDesignDTO] {
+        let decoder = JSONDecoder()
+        guard let elements = (try? JSONSerialization.jsonObject(with: data)) as? [Any] else {
+            // Not a JSON array — fall back to a strict decode, else empty.
+            return (try? decoder.decode([SupabaseDeckDesignDTO].self, from: data)) ?? []
+        }
+        var decoded: [SupabaseDeckDesignDTO] = []
+        decoded.reserveCapacity(elements.count)
+        for element in elements {
+            guard let rowData = try? JSONSerialization.data(withJSONObject: element) else { continue }
+            do {
+                decoded.append(try decoder.decode(SupabaseDeckDesignDTO.self, from: rowData))
+            } catch {
+                print("[DECK_SYNC] skipping undecodable deck_designs row: \(error)")
+            }
+        }
+        return decoded
     }
 
     // MARK: - Create

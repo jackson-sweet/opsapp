@@ -184,17 +184,23 @@ final class InboundProcessor {
     // MARK: - Full Sync
 
     /// Pull ALL entities from Supabase in dependency order and merge into local SwiftData.
+    /// Returns the set of entity types whose sync THREW (and was isolated). The
+    /// caller (SyncEngine) must NOT advance the last-sync cursor for these —
+    /// advancing past a transient failure strands every existing row of that
+    /// entity. Mirrors `DataActor.fullSync`.
+    @discardableResult
     func fullSync(
         context: ModelContext,
         onProgress: ((SyncEntityType, Double) -> Void)? = nil
-    ) async throws {
+    ) async throws -> Set<SyncEntityType> {
         // Auto-reconfigure if companyId was empty at init time
         if companyId.isEmpty { reconfigure() }
         guard !companyId.isEmpty else {
             print("[InboundProcessor] FULL SYNC ABORTED — no companyId available")
-            return
+            return []
         }
         print("[InboundProcessor] ======== FULL SYNC STARTED ========")
+        var failedEntities = Set<SyncEntityType>()
 
         // Reset Spotlight tracker at sync start
         spotlightTracker.reset()
@@ -216,6 +222,7 @@ final class InboundProcessor {
                 // single bad row doesn't abort the entire sync. Telemetry
                 // captures the failure for offline diagnosis.
                 print("[InboundProcessor] FAILED \(entityType.rawValue): \(error)")
+                failedEntities.insert(entityType)
                 SyncTelemetry.logError(
                     entityType: entityType.rawValue,
                     error: error,
@@ -243,22 +250,27 @@ final class InboundProcessor {
 
         onProgress?(.photoAnnotation, 1.0)
         print("[InboundProcessor] ======== FULL SYNC COMPLETED ========")
+        return failedEntities
     }
 
     // MARK: - Delta Sync
 
     /// Pull entities updated since the given timestamps and merge into local SwiftData.
+    /// Returns the set of entity types whose delta sync THREW (and was isolated).
+    /// SyncEngine must NOT advance the last-sync cursor for these (see `fullSync`).
+    @discardableResult
     func deltaSync(
         context: ModelContext,
         since: [SyncEntityType: Date]
-    ) async throws {
+    ) async throws -> Set<SyncEntityType> {
         // Auto-reconfigure if companyId was empty at init time
         if companyId.isEmpty { reconfigure() }
         guard !companyId.isEmpty else {
             print("[InboundProcessor] DELTA SYNC ABORTED — no companyId available")
-            return
+            return []
         }
         print("[InboundProcessor] ======== DELTA SYNC STARTED ========")
+        var failedEntities = Set<SyncEntityType>()
 
         // Reset Spotlight tracker at sync start
         spotlightTracker.reset()
@@ -276,6 +288,7 @@ final class InboundProcessor {
                 try await syncEntityType(entityType, since: sinceDate, context: context)
             } catch {
                 print("[InboundProcessor] FAILED delta \(entityType.rawValue): \(error)")
+                failedEntities.insert(entityType)
                 SyncTelemetry.logError(
                     entityType: entityType.rawValue,
                     error: error,
@@ -299,6 +312,7 @@ final class InboundProcessor {
         }
 
         print("[InboundProcessor] ======== DELTA SYNC COMPLETED ========")
+        return failedEntities
     }
 
     // MARK: - Threshold Notifications (Phase 9)

@@ -48,6 +48,11 @@ struct UniversalJobBoardCard: View {
     @State private var showingDeleteConfirmation = false
     @State private var showingClientDeletionSheet = false
     @State private var showingWrongSwipeHint = false
+    // Item 435cf11f — Share action on the project card's long-press menu.
+    // `.sheet(item:)` (not isPresented) avoids the blank-first-tap race where
+    // the activity sheet snapshots an empty items array.
+    @State private var shareSource: ProjectShareItemSource?
+    @State private var isPreparingShare = false
     private let menuLongPressDuration: Double = 0.55
     private let menuLongPressMaximumDistance: CGFloat = 12
 
@@ -382,6 +387,46 @@ struct UniversalJobBoardCard: View {
             itemName: deleteItemName,
             onConfirm: deleteItem
         )
+        .sheet(item: $shareSource) { source in
+            ActivityView(items: [source])
+        }
+    }
+
+    /// Builds the project's deep link + a thumbnail and presents the system
+    /// share sheet. Reuses the same ProjectShareSheet infrastructure
+    /// ProjectDetailsView uses, so a card share and a detail share produce an
+    /// identical rich preview card. Thumbnail loads off the main thread; the
+    /// share still works without one.
+    private func shareProjectFromCard() {
+        guard case .project(let project) = cardType else { return }
+        guard !isPreparingShare, shareSource == nil else { return }
+        guard let url = ProjectShareLinkBuilder.url(for: project) else { return }
+
+        let title = project.title
+        let subtitle = project.effectiveClientName.isEmpty ? nil : project.effectiveClientName
+
+        isPreparingShare = true
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+        Task { @MainActor in
+            let thumbnail = await ProjectShareImageLoader.loadFirstImage(for: project)
+            shareSource = ProjectShareItemSource(
+                url: url,
+                title: title,
+                subtitle: subtitle,
+                image: thumbnail
+            )
+            isPreparingShare = false
+
+            AnalyticsService.shared.track(
+                eventType: .action,
+                eventName: "project_shared",
+                properties: [
+                    "project_id": project.id,
+                    "source": "job_board_card"
+                ]
+            )
+        }
     }
 
     /// Whether to show tutorial shimmer for swipe hint
@@ -1030,6 +1075,10 @@ struct UniversalJobBoardCard: View {
         Group {
             Button("View Project") {
                 showingDetails = true
+            }
+
+            Button("Share") {
+                shareProjectFromCard()
             }
 
             if canModify {

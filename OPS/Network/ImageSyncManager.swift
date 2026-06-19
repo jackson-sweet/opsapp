@@ -9,6 +9,7 @@ import SwiftUI
 import SwiftData
 import Foundation
 import Network
+import Supabase
 
 /// Manager for handling image synchronization between local storage, S3, and Supabase
 @MainActor
@@ -548,10 +549,15 @@ class ImageSyncManager: ObservableObject {
     /// photo that also had a `project_photos` row simply reappeared from the
     /// synced store (and stayed visible in the web client portal). This is the
     /// complete, correct delete:
-    ///   1. Optimistic local removal — drop from the CSV (`needsSync` pushes
-    ///      `project_images`, which is in the outbound allowlist) and soft-delete
-    ///      the local `ProjectPhoto` row so the carousel's `@Query` drops the
-    ///      tile immediately.
+    ///   1. Optimistic local removal — drop from the CSV so the carousel's
+    ///      `@Query` drops the tile immediately, then push the `project_images`
+    ///      change through `DataController.updateProjectFields` (which records a
+    ///      SyncOperation). That recorded op is what actually persists the
+    ///      removal to Supabase AND arms the inbound-merge pending-field guard —
+    ///      `project.needsSync` alone never drains for Project, so a flag-only
+    ///      removal would never reach the server and the photo would reappear
+    ///      from the server CSV on the next inbound merge (bug 209281ba). Also
+    ///      soft-delete the local `ProjectPhoto` row.
     ///   2. Remote `project_photos` soft-delete so it stays gone for teammates
     ///      and the client portal.
     ///   3. Best-effort S3 object delete (server authorizes by company; no
@@ -560,14 +566,13 @@ class ImageSyncManager: ObservableObject {
     ///
     /// Gated by the caller on `projects.edit`; this method assumes authorization.
     @discardableResult
-    func deleteProjectPhoto(_ url: String, from project: Project) async -> Bool {
-        // 1a. Legacy CSV — remove + queue the project_images push.
+    func deleteProjectPhoto(_ url: String, from project: Project, dataController: DataController) async -> Bool {
+        // 1a. Legacy CSV — optimistic local removal for the @Query-backed UI.
         var images = project.getProjectImages()
-        if images.contains(url) {
+        let removedFromCSV = images.contains(url)
+        if removedFromCSV {
             images.removeAll { $0 == url }
             project.setProjectImageURLs(images)
-            project.needsSync = true
-            project.syncPriority = 2
         }
 
         // 1b. Soft-delete the local synced row(s) so the @Query-backed carousel
@@ -586,6 +591,27 @@ class ImageSyncManager: ObservableObject {
                 }
             }
             try? modelContext.save()
+        }
+
+        // 1c. Push the canonical project_images write. updateProjectFields
+        //     records a SyncOperation, which BOTH persists the CSV removal to
+        //     Supabase AND registers the pending-field guard so the next inbound
+        //     merge can't resurrect the photo from the server CSV (bug 209281ba).
+        //     A bare project.needsSync never drains for Project — only recorded
+        //     ops do — so this awaited push is mandatory, not optional.
+        if removedFromCSV {
+            do {
+                try await dataController.updateProjectFields(
+                    projectId: project.id,
+                    fields: ["project_images": .array(images.map { .string($0) })]
+                )
+            } catch {
+                DebugLogger.shared.log(
+                    "project_images push failed for photo delete \(url): \(error)",
+                    level: .warning,
+                    category: "ImageSyncManager"
+                )
+            }
         }
 
         // 2. Remote project_photos soft-delete (best-effort).

@@ -723,7 +723,7 @@ private struct ProjectPhotosCarousel: View {
             withAnimation(OPSStyle.Animation.fast) { isEditing = false }
         }
         Task {
-            await imageSyncManager.deleteProjectPhoto(url, from: project)
+            await imageSyncManager.deleteProjectPhoto(url, from: project, dataController: dataController)
         }
     }
 }
@@ -740,7 +740,7 @@ private struct PhotoDeleteBadge: View {
                 Circle()
                     .fill(Color.black.opacity(0.65))
                     .frame(width: 22, height: 22)
-                Image(systemName: "xmark")
+                Image(systemName: OPSStyle.Icons.xmark)
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }

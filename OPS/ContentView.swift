@@ -631,6 +631,8 @@ struct PINGatedView: View {
     // Company setup prompt (2nd+ launch)
     @State private var showCompanySetupPrompt = false
     @State private var hasCheckedCompanySetup = false
+    @State private var showOverdueTasksPrompt = false
+    @State private var hasCheckedOverdueTasks = false
 
     init(dataController: DataController, appState: AppState, locationManager: LocationManager) {
         self.dataController = dataController
@@ -792,6 +794,22 @@ struct PINGatedView: View {
                                     let company = dataController.getCurrentUserCompany()
                                     if CompanySetupPromptView.shouldShowPrompt(company: company) {
                                         showCompanySetupPrompt = true
+                                    }
+                                }
+                            }
+                        }
+
+                        // Check for the overdue-task prompt (once per session,
+                        // sequenced after the company-setup check so two
+                        // full-screen prompts never stack).
+                        if !hasCheckedOverdueTasks {
+                            hasCheckedOverdueTasks = true
+                            Task {
+                                try? await Task.sleep(nanoseconds: 3_500_000_000) // after company-setup
+                                await MainActor.run {
+                                    guard !showCompanySetupPrompt else { return }
+                                    if OverdueTasksPromptView.shouldShowPrompt(dataController: dataController) {
+                                        showOverdueTasksPrompt = true
                                     }
                                 }
                             }
@@ -991,6 +1009,11 @@ struct PINGatedView: View {
                 CompanySetupPromptView(company: company)
                     .environmentObject(dataController)
             }
+        }
+        // MARK: - Overdue Tasks Prompt Sheet (app open, snoozeable)
+        .sheet(isPresented: $showOverdueTasksPrompt) {
+            OverdueTasksPromptView()
+                .environmentObject(dataController)
         }
         .onReceive(NotificationCenter.default.publisher(for: ConnectivityManager.connectivityChangedNotification)) { _ in
             // Drain offline bug report queue when connectivity returns

@@ -932,14 +932,14 @@ struct ContactDetailView: View {
             if inlineEditField == .notes {
                 inlineEditRow(
                     field: .notes,
-                    icon: "note.text",
+                    icon: OPSStyle.Icons.notes,
                     placeholder: "Site access, gate codes, anything the crew needs",
                     keyboard: .default,
                     autocapitalize: true
                 )
             } else if let notes = client?.notes, !notes.isEmpty {
                 HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
-                    Image(systemName: "note.text")
+                    Image(systemName: OPSStyle.Icons.notes)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 24)
@@ -963,7 +963,7 @@ struct ContactDetailView: View {
             } else if canEditClient {
                 Button(action: { beginInlineEdit(.notes) }) {
                     HStack(spacing: OPSStyle.Layout.spacing2_5) {
-                        Image(systemName: "note.text")
+                        Image(systemName: OPSStyle.Icons.notes)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .frame(width: 24)

@@ -58,7 +58,7 @@ struct ContactDetailView: View {
     /// inline (bug c0ed9969). Email / phone / address only — name is
     /// edited from the header avatar card via the existing ClientSheet.
     private enum InlineEditField: String, Identifiable {
-        case email, phone, address
+        case email, phone, address, notes
         var id: String { rawValue }
     }
     
@@ -909,9 +909,85 @@ struct ContactDetailView: View {
                         }
                     }
                 }
+
+                // Notes field (clients only). Shown to everyone who can view the
+                // contact — field crew rely on the gate code / site access / "dog
+                // in the yard" that lives here. Editing is gated on clients.edit
+                // (beginInlineEdit re-checks), so crew see notes but can't change
+                // them. Empty + no edit permission → omitted entirely.
+                if isClient {
+                    notesField
+                }
             }
         }
-    
+
+    /// Free-form client notes — multi-line display, long-press to edit (gated).
+    @ViewBuilder
+    private var notesField: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            Text("NOTES")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            if inlineEditField == .notes {
+                inlineEditRow(
+                    field: .notes,
+                    icon: "note.text",
+                    placeholder: "Site access, gate codes, anything the crew needs",
+                    keyboard: .default,
+                    autocapitalize: true
+                )
+            } else if let notes = client?.notes, !notes.isEmpty {
+                HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
+                    Image(systemName: "note.text")
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .frame(width: 24)
+
+                    Text(notes)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .background(Color.clear)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .contentShape(Rectangle())
+                .simultaneousGesture(longPressGesture(for: .notes))
+            } else if canEditClient {
+                Button(action: { beginInlineEdit(.notes) }) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                        Image(systemName: "note.text")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .frame(width: 24)
+
+                        Text("Add notes")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                        Spacer()
+                    }
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .background(Color.clear)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+    }
+
     // MARK: - Inline Edit (bug c0ed9969)
 
     /// Long-press gesture wired into each contact-section row. Gated on
@@ -945,6 +1021,7 @@ struct ContactDetailView: View {
         case .email:   return client?.email
         case .phone:   return client?.phoneNumber
         case .address: return client?.address
+        case .notes:   return client?.notes
         }
     }
 
@@ -961,13 +1038,20 @@ struct ContactDetailView: View {
         defer { Task { @MainActor in inlineEditSaving = false } }
 
         do {
-            try await dataController.updateClientContact(
-                clientId: client.id,
-                name: client.name,
-                email:   field == .email   ? normalised : client.email,
-                phone:   field == .phone   ? normalised : client.phoneNumber,
-                address: field == .address ? normalised : client.address
-            )
+            if field == .notes {
+                try await dataController.updateClientNotes(
+                    clientId: client.id,
+                    notes: normalised
+                )
+            } else {
+                try await dataController.updateClientContact(
+                    clientId: client.id,
+                    name: client.name,
+                    email:   field == .email   ? normalised : client.email,
+                    phone:   field == .phone   ? normalised : client.phoneNumber,
+                    address: field == .address ? normalised : client.address
+                )
+            }
             await MainActor.run {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 ToastCenter.shared.present(Feedback.Contact.fieldUpdated)

@@ -6205,6 +6205,35 @@ class DataController: ObservableObject {
         )
     }
 
+    /// Update only a client's free-form notes — kept separate from
+    /// `updateClientContact` so editing a contact field never touches notes
+    /// (and vice-versa). A nil/blank value clears the note; we sync it as an
+    /// empty string because `clients.notes` is nullable text and the UI treats
+    /// "" and nil identically. Mirrors the local-first + SyncEngine path used
+    /// by every other client mutation so the pending-field guard protects this
+    /// edit from an inbound merge before it reaches Supabase.
+    @MainActor
+    func updateClientNotes(clientId: String, notes: String?) async throws {
+        guard let context = modelContext else { return }
+
+        let trimmed = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = (trimmed?.isEmpty ?? true) ? nil : trimmed
+
+        let descriptor = FetchDescriptor<Client>(predicate: #Predicate { $0.id == clientId })
+        if let client = try? context.fetch(descriptor).first {
+            client.notes = normalized
+            client.needsSync = true
+            try? context.save()
+        }
+
+        syncEngine.recordOperation(
+            entityType: .client,
+            entityId: clientId,
+            operationType: "update",
+            changedFields: ["notes": normalized ?? ""]
+        )
+    }
+
     // MARK: - User Delete (SyncEngine Migration)
 
     /// Delete a user (soft delete) - SINGLE SOURCE OF TRUTH

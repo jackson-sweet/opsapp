@@ -525,6 +525,19 @@ private struct ProjectPhotosCarousel: View {
     @EnvironmentObject private var dataController: DataController
     @Query private var syncedPhotos: [ProjectPhoto]
 
+    // Item 923047f3 — long-press a photo to enter a home-screen-style wiggle
+    // edit mode where each tile carries a delete badge. Gated on projects.edit
+    // (the same gate as the per-photo client-visibility toggle), so crew
+    // without edit permission can view photos but never delete them.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isEditing = false
+    @State private var pendingDeleteURL: String?
+    @State private var pendingDeleteWasLast = false
+
+    private var canDeletePhotos: Bool {
+        PermissionStore.shared.can("projects.edit")
+    }
+
     init(project: Project, imageSyncManager: ImageSyncManager, onPhotoTap: @escaping (Int) -> Void) {
         self.project = project
         self.imageSyncManager = imageSyncManager
@@ -556,7 +569,16 @@ private struct ProjectPhotosCarousel: View {
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Spacer()
-                if uploadingCount > 0 {
+                if isEditing {
+                    Button(action: { withAnimation(OPSStyle.Animation.fast) { isEditing = false } }) {
+                        Text("DONE")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                    .transition(.opacity)
+                } else if uploadingCount > 0 {
                     HStack(spacing: 6) {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
@@ -584,35 +606,56 @@ private struct ProjectPhotosCarousel: View {
                     HStack(spacing: OPSStyle.Layout.spacing2) {
                         ForEach(Array(photos.enumerated()), id: \.element) { index, url in
                             ZStack(alignment: .topTrailing) {
-                                Button(action: { onPhotoTap(index) }) {
-                                    PhotoThumbnail(url: url, project: project)
-                                        .frame(width: 72, height: 72)
-                                        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                .wizardTarget(index == 0 ? "view_photo" : "")
-                                .transition(.opacity)
-                                .overlay(alignment: .topLeading) {
-                                    // Bug 189ace29 — sync-fail badge mirrors the
-                                    // visibility eye on the opposite corner:
-                                    // same 22pt circle, same 4pt outside-the-
-                                    // corner offset.
-                                    if !project.isImageSynced(url) {
-                                        PhotoSyncFailBadge()
-                                            .offset(x: -4, y: -4)
-                                            .allowsHitTesting(false)
+                                PhotoThumbnail(url: url, project: project)
+                                    .frame(width: 72, height: 72)
+                                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+                                    .wizardTarget(index == 0 ? "view_photo" : "")
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        // In edit mode taps are inert — the ×
+                                        // badge is the only action; DONE exits.
+                                        guard !isEditing else { return }
+                                        onPhotoTap(index)
                                     }
-                                }
+                                    .onLongPressGesture(minimumDuration: 0.5) {
+                                        guard canDeletePhotos, !isEditing else { return }
+                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                        withAnimation(OPSStyle.Animation.fast) { isEditing = true }
+                                    }
+                                    .overlay(alignment: .topLeading) {
+                                        if isEditing {
+                                            // Home-screen-style delete badge.
+                                            PhotoDeleteBadge {
+                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                                pendingDeleteWasLast = (photos.count == 1)
+                                                pendingDeleteURL = url
+                                            }
+                                            .offset(x: -6, y: -6)
+                                        } else if !project.isImageSynced(url) {
+                                            // Bug 189ace29 — sync-fail badge mirrors
+                                            // the visibility eye on the opposite
+                                            // corner: same 22pt circle, same 4pt
+                                            // outside-the-corner offset.
+                                            PhotoSyncFailBadge()
+                                                .offset(x: -4, y: -4)
+                                                .allowsHitTesting(false)
+                                        }
+                                    }
 
                                 // Per-photo client-portal visibility toggle.
-                                // Filled eye = visible to client, slashed = hidden.
-                                CarouselVisibilityButton(
-                                    url: url,
-                                    project: project,
-                                    dataController: dataController
-                                )
-                                .offset(x: 4, y: -4)
+                                // Hidden in edit mode so the delete affordance
+                                // reads unambiguously.
+                                if !isEditing {
+                                    CarouselVisibilityButton(
+                                        url: url,
+                                        project: project,
+                                        dataController: dataController
+                                    )
+                                    .offset(x: 4, y: -4)
+                                }
                             }
+                            .wiggle(isActive: isEditing, seed: index, reduceMotion: reduceMotion)
+                            .transition(.opacity)
                         }
 
                         // In-flight placeholders ride after the saved
@@ -650,6 +693,107 @@ private struct ProjectPhotosCarousel: View {
                     .animation(OPSStyle.Animation.fast, value: photos.count)
                 }
             }
+        }
+        .confirmationDialog(
+            "Delete photo?",
+            isPresented: Binding(
+                get: { pendingDeleteURL != nil },
+                set: { if !$0 { pendingDeleteURL = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let url = pendingDeleteURL {
+                    deletePhoto(url, wasLast: pendingDeleteWasLast)
+                }
+                pendingDeleteURL = nil
+            }
+            Button("Cancel", role: .cancel) { pendingDeleteURL = nil }
+        } message: {
+            Text("This can't be undone.")
+        }
+    }
+
+    /// Commit a photo deletion through the durable ImageSyncManager path
+    /// (legacy CSV removal + project_photos soft-delete + S3 + cache cleanup).
+    /// Exits edit mode when the last photo is removed.
+    private func deletePhoto(_ url: String, wasLast: Bool) {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        if wasLast {
+            withAnimation(OPSStyle.Animation.fast) { isEditing = false }
+        }
+        Task {
+            await imageSyncManager.deleteProjectPhoto(url, from: project)
+        }
+    }
+}
+
+// MARK: - Photo Edit-Mode Affordances (Item 923047f3)
+
+/// Home-screen-style delete badge shown on each photo tile in edit mode.
+private struct PhotoDeleteBadge: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(Color.black.opacity(0.65))
+                    .frame(width: 22, height: 22)
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
+        }
+        .buttonStyle(PlainButtonStyle())
+        .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+        .accessibilityLabel("Delete photo")
+    }
+}
+
+private extension View {
+    /// iOS home-screen jiggle for edit mode. Pure rotation (a transform — no
+    /// layout thrash), desynced per tile via `seed`, and disabled under Reduce
+    /// Motion (delete badges still appear, so the feature stays usable).
+    func wiggle(isActive: Bool, seed: Int, reduceMotion: Bool) -> some View {
+        modifier(WiggleModifier(isActive: isActive, seed: seed, reduceMotion: reduceMotion))
+    }
+}
+
+private struct WiggleModifier: ViewModifier {
+    let isActive: Bool
+    let seed: Int
+    let reduceMotion: Bool
+    @State private var phase = false
+
+    private var amplitude: Double { (isActive && !reduceMotion) ? 2.2 : 0 }
+    private var duration: Double { 0.14 + Double(seed % 4) * 0.012 }
+
+    func body(content: Content) -> some View {
+        content
+            .rotationEffect(.degrees(phase ? amplitude : -amplitude))
+            .animation(
+                (isActive && !reduceMotion)
+                    ? .easeInOut(duration: duration).repeatForever(autoreverses: true)
+                    : .easeInOut(duration: 0.15),
+                value: phase
+            )
+            .onChange(of: isActive) { _, active in
+                if active && !reduceMotion {
+                    startWiggle()
+                } else {
+                    phase = false
+                }
+            }
+            .onAppear {
+                if isActive && !reduceMotion { startWiggle() }
+            }
+    }
+
+    private func startWiggle() {
+        // Stagger so tiles don't swing in lockstep.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Double(seed % 5) * 0.03) {
+            phase = true
         }
     }
 }

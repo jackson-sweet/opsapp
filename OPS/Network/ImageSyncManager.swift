@@ -539,6 +539,100 @@ class ImageSyncManager: ObservableObject {
         return false
     }
 
+    /// Durably delete a single project photo from EVERY gallery source.
+    ///
+    /// The gallery (`Project+Gallery.mergedGalleryImageURLs`) is the union of
+    /// the legacy `projects.project_images` CSV and synced `project_photos`
+    /// rows, deduped by URL — so a photo only disappears for good when it is
+    /// removed from BOTH. The previous delete path rewrote only the CSV, so a
+    /// photo that also had a `project_photos` row simply reappeared from the
+    /// synced store (and stayed visible in the web client portal). This is the
+    /// complete, correct delete:
+    ///   1. Optimistic local removal — drop from the CSV (`needsSync` pushes
+    ///      `project_images`, which is in the outbound allowlist) and soft-delete
+    ///      the local `ProjectPhoto` row so the carousel's `@Query` drops the
+    ///      tile immediately.
+    ///   2. Remote `project_photos` soft-delete so it stays gone for teammates
+    ///      and the client portal.
+    ///   3. Best-effort S3 object delete (server authorizes by company; no
+    ///      client AWS credentials).
+    ///   4. Local cache + file cleanup.
+    ///
+    /// Gated by the caller on `projects.edit`; this method assumes authorization.
+    @discardableResult
+    func deleteProjectPhoto(_ url: String, from project: Project) async -> Bool {
+        // 1a. Legacy CSV — remove + queue the project_images push.
+        var images = project.getProjectImages()
+        if images.contains(url) {
+            images.removeAll { $0 == url }
+            project.setProjectImageURLs(images)
+            project.needsSync = true
+            project.syncPriority = 2
+        }
+
+        // 1b. Soft-delete the local synced row(s) so the @Query-backed carousel
+        //     drops the tile this run loop.
+        if let modelContext = modelContext {
+            let pid = project.id
+            let descriptor = FetchDescriptor<ProjectPhoto>(
+                predicate: #Predicate { $0.projectId == pid && $0.url == url && $0.deletedAt == nil }
+            )
+            if let rows = try? modelContext.fetch(descriptor) {
+                let now = Date()
+                for row in rows {
+                    row.deletedAt = now
+                    row.updatedAt = now
+                    row.needsSync = true
+                }
+            }
+            try? modelContext.save()
+        }
+
+        // 2. Remote project_photos soft-delete (best-effort).
+        await softDeleteProjectPhotoRow(url: url, projectId: project.id)
+
+        // 3. Best-effort S3 object delete (orphan cleanup).
+        do {
+            try await presignedURLService.deleteImage(url: url)
+        } catch {
+            DebugLogger.shared.log(
+                "S3 object delete failed for \(url): \(error)",
+                level: .warning,
+                category: "ImageSyncManager"
+            )
+        }
+
+        // 4. Local cache + file cleanup.
+        _ = ImageFileManager.shared.deleteImage(localID: url)
+        let cacheKey = url.hasPrefix("//") ? "https:" + url : url
+        ImageCache.shared.remove(forKey: cacheKey)
+
+        return true
+    }
+
+    /// Soft-delete the `project_photos` row(s) for a URL by stamping
+    /// `deleted_at`. Best-effort: a failure logs but does not surface — the
+    /// local row is already soft-deleted and the CSV push removes it from the
+    /// uploader's legacy list, so the photo is gone from the app regardless.
+    private func softDeleteProjectPhotoRow(url: String, projectId: String) async {
+        struct ProjectPhotoSoftDelete: Codable { let deleted_at: String }
+        do {
+            try await SupabaseService.shared.client
+                .from("project_photos")
+                .update(ProjectPhotoSoftDelete(deleted_at: ISO8601DateFormatter().string(from: Date())))
+                .eq("project_id", value: projectId)
+                .eq("url", value: url)
+                .is("deleted_at", value: nil)
+                .execute()
+        } catch {
+            DebugLogger.shared.log(
+                "project_photos soft-delete failed for \(url): \(error)",
+                level: .warning,
+                category: "ImageSyncManager"
+            )
+        }
+    }
+
     /// Sync all pending images to S3 and Supabase
     func syncPendingImages() async {
         

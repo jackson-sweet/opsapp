@@ -757,6 +757,11 @@ struct UniversalJobBoardCard: View {
                     ZStack {
                         // Status badge + assigned-to-me badge — top right
                         HStack(spacing: 6) {
+                            // READY — predecessors all complete, this task can start.
+                            if task.isReadyToStart {
+                                TaskReadyBadge()
+                            }
+
                             if permissionStore.hasFullAccess("tasks.view"),
                                let userId = dataController.currentUser?.id,
                                task.getTeamMemberIds().contains(userId) {

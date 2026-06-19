@@ -306,6 +306,31 @@ final class ProjectTask {
         return effectiveDependencies.contains { $0.dependsOnTaskTypeId == taskTypeId }
     }
 
+    /// True when every predecessor task this one depends on is complete — i.e.
+    /// the work blocking it is done and the crew can start (item ba35b7c0).
+    ///
+    /// Ready iff: the task is active, declares dependencies, predecessor tasks
+    /// of those dependency types actually exist on the project (non-deleted,
+    /// non-cancelled), and ALL of them are completed. A task with no
+    /// dependencies — or whose predecessor types aren't present on the project —
+    /// is not "ready" in this sense (nothing was blocking it), so it shows no
+    /// READY badge.
+    var isReadyToStart: Bool {
+        guard status == .active else { return false }
+        let deps = effectiveDependencies
+        guard !deps.isEmpty else { return false }
+        guard let siblings = project?.tasks else { return false }
+
+        let predecessorTypeIds = Set(deps.map { $0.dependsOnTaskTypeId })
+        let predecessors = siblings.filter { sibling in
+            sibling.deletedAt == nil
+                && sibling.status != .cancelled
+                && predecessorTypeIds.contains(sibling.taskTypeId)
+        }
+        guard !predecessors.isEmpty else { return false }
+        return predecessors.allSatisfy { $0.status == .completed }
+    }
+
     // MARK: - Computed Properties for Dates
 
     var scheduledDate: Date? { startDate }

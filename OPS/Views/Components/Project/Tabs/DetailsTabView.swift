@@ -625,6 +625,9 @@ struct TaskListSection: View {
                                     color: TaskStatus.cancelled.color,
                                     size: .medium
                                 )
+                            } else if task.isReadyToStart {
+                                // READY — predecessors all complete, this task can start.
+                                TaskReadyBadge()
                             }
 
                             // Assigned team avatars — resolved from `teamMemberIdsString`

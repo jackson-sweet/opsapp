@@ -34,6 +34,7 @@ struct OverdueTasksPromptView: View {
     /// for a clean fall-away while the async status write lands.
     @State private var completingTaskIds: Set<String> = []
     @State private var taskToOpen: ProjectTask?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // MARK: - Snooze Token
 
@@ -95,7 +96,9 @@ struct OverdueTasksPromptView: View {
                     VStack(spacing: OPSStyle.Layout.spacing2) {
                         ForEach(overdueTasks, id: \.id) { task in
                             overdueCard(task)
-                                .transition(.move(edge: .leading).combined(with: .opacity))
+                                .transition(reduceMotion
+                                    ? .opacity
+                                    : .move(edge: .leading).combined(with: .opacity))
                         }
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -200,7 +203,7 @@ struct OverdueTasksPromptView: View {
                 // Primary action — close it out.
                 Button(action: { markDone(task) }) {
                     HStack(spacing: OPSStyle.Layout.spacing2) {
-                        Image(systemName: "checkmark")
+                        Image(systemName: OPSStyle.Icons.checkmark)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .bold))
                         Text("MARK DONE")
                             .font(OPSStyle.Typography.captionBold)
@@ -222,6 +225,9 @@ struct OverdueTasksPromptView: View {
         // Tap anywhere on the card (outside the button) to open the task for a
         // fuller review — reschedule, cancel, add a completion note.
         .onTapGesture { taskToOpen = task }
+        // A bare onTapGesture isn't a VoiceOver action — expose the open-task
+        // path explicitly so it's reachable alongside MARK DONE.
+        .accessibilityAction(named: "Open task") { taskToOpen = task }
     }
 
     // MARK: - Later

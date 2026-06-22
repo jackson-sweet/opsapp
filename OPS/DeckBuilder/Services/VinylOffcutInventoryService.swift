@@ -85,6 +85,7 @@ struct VinylOffcutInventoryService {
         for index in 0..<rollCount {
             let label = rollCount == 1 ? "ROLL" : "ROLL \(index + 1)"
             let dto = CreateCatalogStockUnitDTO(
+                id: UUID().uuidString,
                 companyId: companyId,
                 catalogVariantId: variantId,
                 unitKind: .roll,
@@ -170,6 +171,7 @@ struct VinylOffcutInventoryService {
         // 1) Create the offcut stock unit FIRST — its events reference it, and
         //    the anon RLS requires the row to already exist for the company.
         let offcutDTO = CreateCatalogStockUnitDTO(
+            id: UUID().uuidString,
             companyId: companyId,
             catalogVariantId: variantId,
             unitKind: .offcut,

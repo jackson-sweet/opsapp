@@ -56,6 +56,9 @@ struct ScheduleView: View {
     @StateObject private var mirrorService = CalendarMirrorService.shared
     @AppStorage("ops.calendar.mirror.bannerDismissCount") private var mirrorBannerDismissCount: Int = 0
 
+    // Phase-C suggested events (item 63144953)
+    @State private var showSuggestedEventsSheet = false
+
     private var shouldShowMirrorBanner: Bool {
         mirrorService.hasShownPrompt
             && !mirrorService.isEnabled
@@ -94,6 +97,14 @@ struct ScheduleView: View {
                         filterCount: viewModel.activeFilterCount
                     )
                     .padding(.bottom, OPSStyle.Layout.spacing2)
+
+                    // Phase-C suggested events (item 63144953) — only when there's
+                    // something to review; otherwise fully dormant (no banner).
+                    if !viewModel.suggestedEvents.isEmpty {
+                        suggestedEventsBanner
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.bottom, OPSStyle.Layout.spacing2)
+                    }
 
                     // Bug 68123654 — iPhone Calendar Mirror reminder banner
                     if shouldShowMirrorBanner {
@@ -147,6 +158,9 @@ struct ScheduleView: View {
             // Initialize with proper data controller
             viewModel.setDataController(dataController)
 
+            // Phase-C suggested events (item 63144953) — dormant on empty/error.
+            Task { await viewModel.loadSuggestedEvents() }
+
             // Wizard system: evaluate scheduling/calendar wizard trigger
             if let wizard = WizardRegistry.contextualWizard(for: "scheduling_calendar") {
                 wizardTriggerService?.evaluateTrigger(for: wizard, context: "calendar_tab_visit")
@@ -180,6 +194,11 @@ struct ScheduleView: View {
                 .environmentObject(PermissionStore.shared)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
+        }
+        // Phase-C suggested events review (item 63144953)
+        .sheet(isPresented: $showSuggestedEventsSheet) {
+            SuggestedEventsReviewSheet(isPresented: $showSuggestedEventsSheet, viewModel: viewModel)
+                .environmentObject(dataController)
         }
         
         
@@ -479,6 +498,31 @@ struct ScheduleView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
         .padding(.vertical, 14)
+    }
+
+    // MARK: - Phase-C suggested events banner (item 63144953)
+
+    /// Compact, tactical entry point into the suggested-events review. Rendered
+    /// only when `viewModel.suggestedEvents` is non-empty, so an idle Phase C
+    /// leaves the schedule untouched. Taps open the review sheet.
+    private var suggestedEventsBanner: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
+            Text("// SUGGESTED EVENTS · \(viewModel.suggestedEvents.count)")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+        }
+        .padding(.horizontal, 14)
+        .frame(minHeight: 44)
+        .glassSurface()
+        .contentShape(Rectangle())
+        .onTapGesture {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showSuggestedEventsSheet = true
+        }
     }
 
     // MARK: - iPhone Calendar Mirror banner (Bug 68123654)

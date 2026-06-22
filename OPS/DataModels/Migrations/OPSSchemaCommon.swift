@@ -574,6 +574,13 @@ enum OPSSchemaCommon {
         ProjectPhoto.self
     ]
 
+    /// V10 stock-unit lifecycle ledger. Additive over V9 — `CatalogStockUnitEvent`
+    /// is a brand-new @Model mirroring the immutable `catalog_stock_unit_events`
+    /// table so offcut provenance (source roll ↔ banked offcut) syncs locally.
+    static let v10StockUnitEventModels: [any PersistentModel.Type] = [
+        CatalogStockUnitEvent.self
+    ]
+
     /// V3 catalog/product models other than ProductBundleItem. Historical
     /// schemas append a frozen bundle-row shape; V8 appends the live top-level
     /// ProductBundleItem with the additive relationship fields.

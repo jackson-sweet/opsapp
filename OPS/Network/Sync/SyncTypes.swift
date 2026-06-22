@@ -173,6 +173,11 @@ enum SyncEntityType: String, CaseIterable {
     case catalogItem
     case catalogVariant
     case catalogStockUnit
+    /// Append-only stock-unit lifecycle ledger (receive/consume/offcut_create/…).
+    /// Immutable: inbound-fetch only, keyed off `created_at` (no updated_at/
+    /// deleted_at column), written directly by repositories. See
+    /// catalog_stock_unit_events.
+    case catalogStockUnitEvent
     case catalogOption
     case catalogOptionValue
     case catalogVariantOptionValue
@@ -236,6 +241,7 @@ enum SyncEntityType: String, CaseIterable {
         case .catalogItem:                  return "catalog_items"
         case .catalogVariant:               return "catalog_variants"
         case .catalogStockUnit:             return "catalog_stock_units"
+        case .catalogStockUnitEvent:        return "catalog_stock_unit_events"
         case .catalogOption:                return "catalog_options"
         case .catalogOptionValue:           return "catalog_option_values"
         case .catalogVariantOptionValue:    return "catalog_variant_option_values"
@@ -291,6 +297,10 @@ enum SyncEntityType: String, CaseIterable {
              .catalogItemTag:                               return 11
         case .catalogStockUnit,
              .catalogSnapshot, .catalogSnapshotItem:        return 12
+        // Stock-unit events FK to catalog_stock_units (12) + catalog_variants
+        // (11); priority 13 guarantees both parents merge first so the inbound
+        // FK resolves.
+        case .catalogStockUnitEvent:                        return 13
         case .product,
              .productOption, .productOptionValue,
              .productPricingModifier, .productMaterial,

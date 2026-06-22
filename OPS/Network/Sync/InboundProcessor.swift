@@ -42,6 +42,7 @@ final class InboundProcessor {
     private var calendarUserEventRepo: CalendarUserEventRepository
     private var catalogRepo: CatalogRepository
     private var catalogStockUnitRepo: CatalogStockUnitRepository
+    private var catalogStockUnitEventRepo: CatalogStockUnitEventRepository
     private var catalogProductOptionMappingRepo: CatalogProductOptionMappingRepository
     private var productRepo: ProductRepository
     private var productRichnessRepo: ProductRichnessRepository
@@ -80,6 +81,7 @@ final class InboundProcessor {
         self.calendarUserEventRepo = CalendarUserEventRepository(companyId: companyId)
         self.catalogRepo = CatalogRepository(companyId: companyId)
         self.catalogStockUnitRepo = CatalogStockUnitRepository(companyId: companyId)
+        self.catalogStockUnitEventRepo = CatalogStockUnitEventRepository(companyId: companyId)
         self.catalogProductOptionMappingRepo = CatalogProductOptionMappingRepository(companyId: companyId)
         self.productRepo = ProductRepository(companyId: companyId)
         self.productRichnessRepo = ProductRichnessRepository(companyId: companyId)
@@ -124,6 +126,7 @@ final class InboundProcessor {
         self.calendarUserEventRepo = CalendarUserEventRepository(companyId: newCompanyId)
         self.catalogRepo = CatalogRepository(companyId: newCompanyId)
         self.catalogStockUnitRepo = CatalogStockUnitRepository(companyId: newCompanyId)
+        self.catalogStockUnitEventRepo = CatalogStockUnitEventRepository(companyId: newCompanyId)
         self.catalogProductOptionMappingRepo = CatalogProductOptionMappingRepository(companyId: newCompanyId)
         self.productRepo = ProductRepository(companyId: newCompanyId)
         self.productRichnessRepo = ProductRichnessRepository(companyId: newCompanyId)
@@ -163,6 +166,7 @@ final class InboundProcessor {
         .catalogOptionValue,
         .catalogVariant,
         .catalogStockUnit,
+        .catalogStockUnitEvent,
         .catalogVariantOptionValue,
         .catalogItemTag,
         .catalogSnapshot,
@@ -435,6 +439,9 @@ final class InboundProcessor {
         case .catalogStockUnit:
             guard CatalogSchemaCapabilityGate.supportsSync(.catalogStockUnit) else { return }
             try await syncCatalogStockUnits(since: since, context: context)
+        case .catalogStockUnitEvent:
+            guard CatalogSchemaCapabilityGate.supportsSync(.catalogStockUnitEvent) else { return }
+            try await syncCatalogStockUnitEvents(since: since, context: context)
         case .catalogOption:
             try await syncCatalogOptions(context: context)
         case .catalogOptionValue:
@@ -2511,6 +2518,32 @@ final class InboundProcessor {
             existing.needsSync = false
             try context.save()
         }
+    }
+
+    // MARK: - Catalog Stock Unit Events
+
+    /// Append-only ledger: insert-or-skip, keyed off `created_at`. No tombstone
+    /// path — the table is immutable (no soft-delete column). The delta cursor
+    /// overlaps the previous watermark, so re-seeing a boundary row is normal
+    /// and the merge is idempotent on the unique `id`.
+    private func syncCatalogStockUnitEvents(since: Date?, context: ModelContext) async throws {
+        let dtos = try await catalogStockUnitEventRepo.fetchForSync(since: since)
+        for dto in dtos {
+            try mergeCatalogStockUnitEvent(dto: dto, context: context)
+        }
+        if !dtos.isEmpty { try context.save() }
+        print("[InboundProcessor] Merged \(dtos.count) catalog stock unit events")
+    }
+
+    private func mergeCatalogStockUnitEvent(dto: CatalogStockUnitEventDTO, context: ModelContext) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<CatalogStockUnitEvent>(predicate: #Predicate { $0.id == id })
+        // Immutable rows: an existing event never changes, so skip on hit.
+        if try context.fetch(descriptor).first != nil { return }
+        let model = dto.toModel()
+        model.lastSyncedAt = Date()
+        model.needsSync = false
+        context.insert(model)
     }
 
     // MARK: - Catalog Options

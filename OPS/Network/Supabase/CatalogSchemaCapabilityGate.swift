@@ -22,7 +22,7 @@ struct CatalogSchemaCapabilities: Equatable, Sendable {
 
     func supportsSync(_ entityType: SyncEntityType) -> Bool {
         switch entityType {
-        case .catalogStockUnit:
+        case .catalogStockUnit, .catalogStockUnitEvent:
             return catalogStockUnits
         case .catalogProductOptionMapping:
             return catalogProductOptionMappings

@@ -59,7 +59,7 @@ struct OPSApp: App {
     // schema in the migration plan, so it refuses to open it. We delete the store
     // and start fresh — Supabase sync will re-hydrate all data on next launch.
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema(versionedSchema: OPSSchemaV9.self)
+        let schema = Schema(versionedSchema: OPSSchemaV10.self)
 
         let isHostedXCTest = ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil
         let modelConfiguration = ModelConfiguration(

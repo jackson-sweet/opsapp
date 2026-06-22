@@ -47,6 +47,10 @@
 //  `project_photos` gallery store, so every assigned teammate sees the full
 //  gallery instead of only the uploader's optimistic local append.
 //
+//  V9 → V10 stage: lightweight additive — `CatalogStockUnitEvent`, the local
+//  mirror of the append-only `catalog_stock_unit_events` ledger that records
+//  offcut provenance for the vinyl deck-builder cut path.
+//
 
 import Foundation
 import SwiftData
@@ -62,7 +66,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV6.self,
             OPSSchemaV7.self,
             OPSSchemaV8.self,
-            OPSSchemaV9.self
+            OPSSchemaV9.self,
+            OPSSchemaV10.self
         ]
     }
 
@@ -75,9 +80,18 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addForecastModelsV5toV6,
             addVinylOrderMarkerV6toV7,
             addCatalogSetupModelsV7toV8,
-            addProjectPhotosV8toV9
+            addProjectPhotosV8toV9,
+            addStockUnitEventsV9toV10
         ]
     }
+
+    /// V9 → V10: purely additive — `CatalogStockUnitEvent` is a brand-new @Model
+    /// backing the local mirror of `catalog_stock_unit_events`. No pre-existing
+    /// rows to transform; SwiftData lightweight migration handles the V9 store.
+    static let addStockUnitEventsV9toV10 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV9.self,
+        toVersion: OPSSchemaV10.self
+    )
 
     /// V8 → V9: purely additive — `ProjectPhoto` is a brand-new @Model backing
     /// the synced `project_photos` gallery store. No pre-existing rows to

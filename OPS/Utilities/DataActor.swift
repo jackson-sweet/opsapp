@@ -405,6 +405,9 @@ actor DataActor {
         case .catalogStockUnit:
             guard CatalogSchemaCapabilityGate.supportsSync(.catalogStockUnit) else { return }
             try await syncCatalogStockUnits(since: since, repos: repos)
+        case .catalogStockUnitEvent:
+            guard CatalogSchemaCapabilityGate.supportsSync(.catalogStockUnitEvent) else { return }
+            try await syncCatalogStockUnitEvents(since: since, repos: repos)
         case .catalogOption:
             try await syncCatalogOptions(repos: repos)
         case .catalogOptionValue:
@@ -2139,6 +2142,32 @@ actor DataActor {
             existing.deletedAt = Date()
             existing.needsSync = false
         }
+    }
+
+    // MARK: - Sync: Catalog Stock Unit Events (append-only ledger)
+
+    /// Insert-or-skip mirror of the immutable `catalog_stock_unit_events` ledger.
+    /// Keyed off `created_at`; no tombstone path (rows are never deleted).
+    private func syncCatalogStockUnitEvents(since: Date?, repos: InboundRepositories) async throws {
+        let dtos = try await repos.catalogStockUnitEvent.fetchForSync(since: since)
+        guard !dtos.isEmpty else { return }
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergeCatalogStockUnitEvent(dto: dto)
+            }
+        }
+        print("[DataActor] Merged \(dtos.count) catalog stock unit events")
+    }
+
+    private func mergeCatalogStockUnitEvent(dto: CatalogStockUnitEventDTO) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<CatalogStockUnitEvent>(predicate: #Predicate { $0.id == id })
+        // Immutable rows: an existing event never changes, so skip on hit.
+        if try modelContext.fetch(descriptor).first != nil { return }
+        let model = dto.toModel()
+        model.lastSyncedAt = Date()
+        model.needsSync = false
+        modelContext.insert(model)
     }
 
     // MARK: - Sync: Catalog Options (full reconcile)
@@ -4724,6 +4753,7 @@ struct InboundRepositories {
     let estimate: EstimateRepository
     let catalog: CatalogRepository
     let catalogStockUnit: CatalogStockUnitRepository
+    let catalogStockUnitEvent: CatalogStockUnitEventRepository
     let catalogProductOptionMapping: CatalogProductOptionMappingRepository
     let inventory: InventoryRepository
     let product: ProductRepository
@@ -4752,6 +4782,7 @@ struct InboundRepositories {
         self.estimate = EstimateRepository(companyId: companyId)
         self.catalog = CatalogRepository(companyId: companyId)
         self.catalogStockUnit = CatalogStockUnitRepository(companyId: companyId)
+        self.catalogStockUnitEvent = CatalogStockUnitEventRepository(companyId: companyId)
         self.catalogProductOptionMapping = CatalogProductOptionMappingRepository(companyId: companyId)
         self.inventory = InventoryRepository(companyId: companyId)
         self.product = ProductRepository(companyId: companyId)

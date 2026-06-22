@@ -115,6 +115,7 @@ actor DataActor {
         .catalogOptionValue,
         .catalogVariant,
         .catalogStockUnit,
+        .catalogStockUnitEvent,
         .catalogVariantOptionValue,
         .catalogItemTag,
         .catalogSnapshot,

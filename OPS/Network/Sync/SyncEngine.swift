@@ -109,6 +109,20 @@ final class SyncEngine {
             UserDefaults.standard.set(true, forKey: deckCursorRecoveryKey)
         }
 
+        // One-time recovery for catalogStockUnitEvent: a pre-fix build registered
+        // the entity but omitted it from DataActor.syncOrder (the default path),
+        // so pullDelta advanced sync.lastPull.catalogStockUnitEvent to wall-clock
+        // without ever fetching the ledger. Once the entity is wired in, that
+        // poisoned cursor would strand every event created before the advance.
+        // Clear it once so the first post-fix pull re-fetches the full ledger.
+        let stockEventCursorRecoveryKey = "sync.stockUnitEventCursorRecoveryV1"
+        if !UserDefaults.standard.bool(forKey: stockEventCursorRecoveryKey) {
+            UserDefaults.standard.removeObject(
+                forKey: "sync.lastPull.\(SyncEntityType.catalogStockUnitEvent.rawValue)"
+            )
+            UserDefaults.standard.set(true, forKey: stockEventCursorRecoveryKey)
+        }
+
         // Initialize processors
         self.outboundProcessor = OutboundProcessor()
         self.inboundProcessor = InboundProcessor()

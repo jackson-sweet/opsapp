@@ -64,7 +64,33 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
             }
         }
 
+        // Re-attach to the share-extension background upload session and drain
+        // any photos captured via the share sheet while the app was closed.
+        Task { @MainActor in
+            ShareUploadCoordinator.shared.activate()
+            await ShareUploadCoordinator.shared.drainInbox()
+        }
+
         return true
+    }
+
+    // MARK: - Background URLSession (share extension uploads)
+
+    /// iOS relaunches the app in the background when a share-extension photo
+    /// finishes uploading to S3. Hand the events to the coordinator, which
+    /// re-creates the matching session, finalizes the photos, then calls the
+    /// completion handler.
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        Task { @MainActor in
+            ShareUploadCoordinator.shared.handleBackgroundEvents(
+                identifier: identifier,
+                completionHandler: completionHandler
+            )
+        }
     }
 
     // MARK: - OneSignal Configuration

@@ -810,7 +810,7 @@ enum VinylCutListEngine {
             } else {
                 assignedById[cut.id] = cut
                 let leftoverWidth = cut.rollWidthInches - cut.requiredWidthInches
-                if leftoverWidth >= minWidth {
+                if leftoverWidth > 0, leftoverWidth >= minWidth {
                     offcuts.append(OffcutLane(
                         id: "offcut-\(cut.id)",
                         sourceSurfaceId: cut.surfaceId,
@@ -826,7 +826,7 @@ enum VinylCutListEngine {
         // Surviving lanes that this job created (not the banked ones) and still
         // carry usable width are the remnants the operator can bank to stock.
         let producedOffcuts = offcuts
-            .filter { !$0.isOnHand && $0.width >= minWidth && $0.length > 0 }
+            .filter { !$0.isOnHand && $0.width > 0 && $0.width >= minWidth && $0.length > 0 }
             .map {
                 VinylProducedOffcut(
                     id: $0.id,

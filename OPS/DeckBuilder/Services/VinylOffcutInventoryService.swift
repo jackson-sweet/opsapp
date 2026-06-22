@@ -161,8 +161,12 @@ struct VinylOffcutInventoryService {
 
         let offcutLengthFeet = offcut.lengthInches / 12.0
         let offcutWidthFeet = offcut.widthInches / 12.0
-        let consumedFeet = min(offcutLengthFeet, rollRemaining)
-        guard consumedFeet > 0 else { return nil }
+        // The roll must physically cover the full strip length — never silently
+        // truncate, which would mis-size the offcut and misreport the rail
+        // notification. The caller picks a roll with enough remaining; if none
+        // does, banking is rejected (no-op).
+        guard rollRemaining + 0.001 >= offcutLengthFeet else { return nil }
+        let consumedFeet = offcutLengthFeet
 
         let nextRemaining = max(0, rollRemaining - consumedFeet)
         let rollFromStatus = roll.status
@@ -190,11 +194,18 @@ struct VinylOffcutInventoryService {
         )
         let createdOffcut = try await stockUnitRepo.create(offcutDTO)
 
-        // 2) Debit the source roll.
-        var rollFields = UpdateCatalogStockUnitDTO()
-        rollFields.remainingLengthValue = nextRemaining
-        rollFields.status = nextRollStatus
-        _ = try await stockUnitRepo.update(sourceRollId, fields: rollFields)
+        // 2) Debit the source roll. If this fails, compensate the just-created
+        //    offcut so we never strand an orphan unit / inflated inventory —
+        //    there is no cross-request transaction across these REST writes.
+        do {
+            var rollFields = UpdateCatalogStockUnitDTO()
+            rollFields.remainingLengthValue = nextRemaining
+            rollFields.status = nextRollStatus
+            _ = try await stockUnitRepo.update(sourceRollId, fields: rollFields)
+        } catch {
+            try? await stockUnitRepo.softDelete(createdOffcut.id)
+            throw error
+        }
 
         // 3) Ledger (best-effort): offcut_create on the offcut + adjust on the
         //    source roll, cross-linked via related_catalog_stock_unit_id.

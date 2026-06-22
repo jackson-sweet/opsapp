@@ -742,7 +742,10 @@ struct VinylOrderSheet: View {
     private func offcutBankRow(_ offcut: VinylProducedOffcut) -> some View {
         let isBanked = bankedOffcutIds.contains(offcut.id)
         let isBanking = bankingOffcutIds.contains(offcut.id)
-        let canBank = !onHandRolls.isEmpty && !isBanked && !isBanking
+        // Enabled only when a roll can cover this offcut's full length and no
+        // other bank is in flight (banks are serialized so concurrent debits of
+        // the same auto-picked roll cannot over-credit it).
+        let canBank = coveringRoll(for: offcut) != nil && !isBanked && bankingOffcutIds.isEmpty
         return HStack(spacing: OPSStyle.Layout.spacing2) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(formatInchesForSheet(offcut.widthInches)) × \(vinylFormatFeetAndInches(offcut.lengthInches))")
@@ -1268,9 +1271,19 @@ struct VinylOrderSheet: View {
         }
     }
 
+    /// The most-full on-hand roll that can physically cover this offcut's full
+    /// length, or nil when none can (banking is then disabled rather than
+    /// truncating the cut).
+    private func coveringRoll(for offcut: VinylProducedOffcut) -> CatalogStockUnit? {
+        let needFeet = offcut.lengthInches / 12.0
+        return onHandRolls.first { ($0.remainingLengthValue ?? 0) + 0.001 >= needFeet }
+    }
+
     private func bankOffcut(_ offcut: VinylProducedOffcut) {
-        guard let variantId = resolvedVariantId, let roll = onHandRolls.first else { return }
-        guard !bankingOffcutIds.contains(offcut.id), !bankedOffcutIds.contains(offcut.id) else { return }
+        guard let variantId = resolvedVariantId, let roll = coveringRoll(for: offcut) else { return }
+        // Serialize: never start a bank while another is in flight, so two banks
+        // cannot read the same roll's remaining length before either debits it.
+        guard bankingOffcutIds.isEmpty, !bankedOffcutIds.contains(offcut.id) else { return }
         bankingOffcutIds.insert(offcut.id)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         Task { @MainActor in
@@ -1285,7 +1298,10 @@ struct VinylOrderSheet: View {
                 if banked != nil {
                     bankedOffcutIds.insert(offcut.id)
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    recomputePlan()
+                    // Intentionally NOT recomputing the plan here: re-seeding the
+                    // on-screen plan with the just-banked offcut would make this
+                    // row vanish mid-confirmation. The on-hand summary updates via
+                    // the @Query; cross-job reuse seeds on the next sheet open.
                 } else {
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
                 }

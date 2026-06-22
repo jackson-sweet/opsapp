@@ -319,6 +319,9 @@ struct ActivityDTO: Codable, Identifiable {
     let direction: String?
     let outcome: String?
     let durationMinutes: Int?
+    let callSource: String?
+    let callerNumber: String?
+    let callStartedAt: String?
     let isRead: Bool?
     let hasAttachments: Bool?
     let attachmentCount: Int?
@@ -336,6 +339,9 @@ struct ActivityDTO: Codable, Identifiable {
         case direction
         case outcome
         case durationMinutes = "duration_minutes"
+        case callSource      = "call_source"
+        case callerNumber    = "caller_number"
+        case callStartedAt   = "call_started_at"
         case isRead          = "is_read"
         case hasAttachments  = "has_attachments"
         case attachmentCount = "attachment_count"
@@ -357,6 +363,9 @@ struct ActivityDTO: Codable, Identifiable {
         act.direction = direction
         act.outcome = outcome
         act.durationMinutes = durationMinutes
+        act.callSource = callSource
+        act.callerNumber = callerNumber
+        act.callStartedAt = callStartedAt.flatMap { SupabaseDate.parse($0) }
         act.isRead = isRead ?? false
         act.hasAttachments = hasAttachments ?? false
         act.attachmentCount = attachmentCount ?? 0
@@ -374,6 +383,9 @@ struct CreateActivityDTO: Codable {
     let direction: String?
     let outcome: String?
     let durationMinutes: Int?
+    let callSource: String?
+    let callerNumber: String?
+    let callStartedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case opportunityId   = "opportunity_id"
@@ -384,6 +396,38 @@ struct CreateActivityDTO: Codable {
         case direction
         case outcome
         case durationMinutes = "duration_minutes"
+        case callSource      = "call_source"
+        case callerNumber    = "caller_number"
+        case callStartedAt   = "call_started_at"
+    }
+
+    // Explicit init so the call-provenance fields stay optional at every call
+    // site (the generic activity loggers don't pass them; only the around-call
+    // capture flow does).
+    init(
+        opportunityId: String,
+        companyId: String,
+        type: String,
+        subject: String? = nil,
+        bodyText: String? = nil,
+        direction: String? = nil,
+        outcome: String? = nil,
+        durationMinutes: Int? = nil,
+        callSource: String? = nil,
+        callerNumber: String? = nil,
+        callStartedAt: String? = nil
+    ) {
+        self.opportunityId = opportunityId
+        self.companyId = companyId
+        self.type = type
+        self.subject = subject
+        self.bodyText = bodyText
+        self.direction = direction
+        self.outcome = outcome
+        self.durationMinutes = durationMinutes
+        self.callSource = callSource
+        self.callerNumber = callerNumber
+        self.callStartedAt = callStartedAt
     }
 }
 

@@ -57,7 +57,7 @@ class LeadDetailViewModel: ObservableObject {
         } catch { print("[LeadDetail] transitions failed: \(error)") }
     }
 
-    func logActivity(type: ActivityType, subject: String?, body: String?, direction: String? = nil, outcome: String? = nil, durationMinutes: Int? = nil) async throws {
+    func logActivity(type: ActivityType, subject: String?, body: String?, direction: String? = nil, outcome: String? = nil, durationMinutes: Int? = nil, callSource: String? = nil, callerNumber: String? = nil, callStartedAt: Date? = nil) async throws {
         let dto = CreateActivityDTO(
             opportunityId: opportunityId,
             companyId: companyId,
@@ -66,7 +66,10 @@ class LeadDetailViewModel: ObservableObject {
             bodyText: body,
             direction: direction,
             outcome: outcome,
-            durationMinutes: durationMinutes
+            durationMinutes: durationMinutes,
+            callSource: callSource,
+            callerNumber: callerNumber,
+            callStartedAt: callStartedAt.map { SupabaseDate.format($0) }
         )
         let resultDTO = try await repository.logActivity(dto)
         activities.insert(resultDTO.toModel(), at: 0)

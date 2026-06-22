@@ -22,6 +22,13 @@ class Activity: Identifiable {
     var direction: String?            // "inbound" | "outbound" | nil
     var outcome: String?
     var durationMinutes: Int?
+
+    // Around-call provenance (iOS lead capture, feature 154cb8a3). All nullable
+    // and additive — older rows and web-authored rows carry nil.
+    var callSource: String?           // how the call log was captured (DB: call_source)
+    var callerNumber: String?         // normalized digits of the call's number (DB: caller_number)
+    var callStartedAt: Date?          // best-effort call start (DB: call_started_at)
+
     var isRead: Bool
     var hasAttachments: Bool
     var attachmentCount: Int

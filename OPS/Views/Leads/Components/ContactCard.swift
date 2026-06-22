@@ -62,7 +62,7 @@ struct ContactCard: View {
         HStack(spacing: 6) {
             CTAButton(label: "CALL",  icon: "phone",
                       isEnabled: hasPhone,
-                      action: { open("tel:\(sanitizedPhone)") })
+                      action: { placeCall() })
 
             CTAButton(label: "TEXT",  icon: "bubble.left",
                       isEnabled: hasPhone,
@@ -133,6 +133,18 @@ struct ContactCard: View {
         guard let url = URL(string: urlString) else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         UIApplication.shared.open(url)
+    }
+
+    /// Place an outbound call AND record the intent so OPS can offer a one-tap
+    /// "log that call" prompt when the operator returns from the Phone app.
+    /// Around-call lead capture (feature 154cb8a3).
+    private func placeCall() {
+        CallLogStore.shared.recordOutbound(
+            opportunityId: opportunity.id,
+            contactName: opportunity.contactName,
+            phone: opportunity.contactPhone ?? sanitizedPhone
+        )
+        open("tel:\(sanitizedPhone)")
     }
 }
 

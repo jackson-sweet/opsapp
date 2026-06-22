@@ -29,6 +29,12 @@ class SpeechRecognitionManager: ObservableObject {
     /// Contextual strings to boost recognition of names and domain terms
     var contextualStrings: [String] = []
 
+    /// Force on-device transcription so the dictated audio never leaves the
+    /// phone. Used by the around-call voice note (feature 154cb8a3) — the
+    /// operator's own dictation about a call stays private. Falls back to the
+    /// default (server-when-online) when the device/locale can't do on-device.
+    var preferOnDeviceRecognition: Bool = false
+
     /// Silence timer — auto-stop after 3 seconds of no new speech
     private var silenceTimer: Timer?
     private let silenceTimeout: TimeInterval = 3.0
@@ -71,8 +77,10 @@ class SpeechRecognitionManager: ObservableObject {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         request.taskHint = .dictation
-        // Server-based when online, on-device when offline
-        request.requiresOnDeviceRecognition = false
+        // Default: server-based when online. Voice-note callers can force
+        // on-device so call audio never leaves the phone (when supported).
+        request.requiresOnDeviceRecognition =
+            preferOnDeviceRecognition && (speechRecognizer?.supportsOnDeviceRecognition ?? false)
 
         if !contextualStrings.isEmpty {
             request.contextualStrings = Array(contextualStrings.prefix(100))

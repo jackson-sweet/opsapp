@@ -37,6 +37,100 @@ final class DeckDesignSyncTests: XCTestCase {
         XCTAssertEqual(nonUUID.projectId, "DEMO_PROJECT_1")
     }
 
+    // MARK: - Stale-overwrite guard (deck-revert data loss)
+
+    private func iso(_ date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
+    }
+
+    /// A locally-edited deck (renamed level + fresh geometry, not yet converged)
+    /// must NOT be reverted by an inbound snapshot that is older than the local
+    /// row — the exact LUPIN data-loss path where a replica-lagged delta re-pull
+    /// overwrote a just-saved deck.
+    func test_applyServerSnapshot_ignoresStaleOlderServerSnapshot() throws {
+        // Closed square (4 verts + 4 edges) so the geometry survives the JSON
+        // round-trip — orphan (edgeless) vertices are pruned on decode.
+        var localDrawing = DeckDrawingData()
+        localDrawing.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 120, y: 0)),
+            DeckVertex(id: "v3", position: CGPoint(x: 120, y: 120)),
+            DeckVertex(id: "v4", position: CGPoint(x: 0, y: 120))
+        ]
+        localDrawing.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2"),
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4"),
+            DeckEdge(id: "e4", startVertexId: "v4", endVertexId: "v1")
+        ]
+        localDrawing.scaleFactor = 1
+        let local = DeckDesign(
+            id: "deck-stale",
+            companyId: "c1",
+            projectId: "p1",
+            title: "Renamed Level",
+            drawingDataJSON: localDrawing.toJSON(),
+            createdBy: nil
+        )
+        local.updatedAt = Date()          // saved "now"
+        local.needsSync = true            // push not yet converged
+
+        // Server snapshot is 10 minutes OLDER, with the reverted (empty) geometry.
+        let staleDTO = SupabaseDeckDesignDTO(
+            id: "deck-stale", companyId: "c1", projectId: "p1", title: "Untitled Deck",
+            drawingData: DeckDrawingData(), thumbnailUrl: nil, version: 1, createdBy: nil,
+            createdAt: "2026-06-19T19:00:00Z",
+            updatedAt: iso(Date().addingTimeInterval(-600)),
+            deletedAt: nil
+        )
+
+        local.applyServerSnapshot(staleDTO, accepting: Set(DeckDesign.serverMergeFields))
+
+        XCTAssertEqual(local.title, "Renamed Level", "stale snapshot must not revert the title")
+        XCTAssertEqual(local.drawingData.vertices.count, 4, "stale snapshot must not discard local geometry")
+    }
+
+    /// A genuinely NEWER server edit must still apply normally — the guard only
+    /// blocks stale/echoed snapshots, never legitimate remote updates.
+    func test_applyServerSnapshot_appliesGenuinelyNewerServerSnapshot() throws {
+        let local = DeckDesign(
+            id: "deck-newer",
+            companyId: "c1",
+            projectId: "p1",
+            title: "Old Title",
+            drawingDataJSON: DeckDrawingData().toJSON(),
+            createdBy: nil
+        )
+        local.updatedAt = Date().addingTimeInterval(-600)   // local is older
+        local.needsSync = false
+
+        // Closed triangle (3 verts + 3 edges) so it survives the round-trip.
+        var newerDrawing = DeckDrawingData()
+        newerDrawing.vertices = [
+            DeckVertex(id: "a", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "b", position: CGPoint(x: 100, y: 0)),
+            DeckVertex(id: "c", position: CGPoint(x: 0, y: 100))
+        ]
+        newerDrawing.edges = [
+            DeckEdge(id: "ea", startVertexId: "a", endVertexId: "b"),
+            DeckEdge(id: "eb", startVertexId: "b", endVertexId: "c"),
+            DeckEdge(id: "ec", startVertexId: "c", endVertexId: "a")
+        ]
+        newerDrawing.scaleFactor = 1
+        let newerDTO = SupabaseDeckDesignDTO(
+            id: "deck-newer", companyId: "c1", projectId: "p1", title: "New Title",
+            drawingData: newerDrawing, thumbnailUrl: nil, version: 2, createdBy: nil,
+            createdAt: "2026-06-19T19:00:00Z",
+            updatedAt: iso(Date()),
+            deletedAt: nil
+        )
+
+        local.applyServerSnapshot(newerDTO, accepting: Set(DeckDesign.serverMergeFields))
+
+        XCTAssertEqual(local.title, "New Title", "a newer server edit must still apply")
+        XCTAssertEqual(local.drawingData.vertices.count, 3)
+    }
+
     func test_DataActorRealtimeDeckDesignMerge_attachesExistingStandaloneDesignToServerProject() async throws {
         let container = try makeInMemoryContainer()
         let context = ModelContext(container)

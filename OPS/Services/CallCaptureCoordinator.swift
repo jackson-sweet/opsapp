@@ -44,13 +44,42 @@ final class CallCaptureCoordinator: ObservableObject {
     /// the capture sheet; the sheet clears it on dismiss.
     @Published var activeRequest: CallCaptureRequest?
 
+    /// App Shortcut requests are queued (persisted, with a timestamp) rather
+    /// than presented directly: the intent's `perform()` can run before
+    /// permissions hydrate / before `MainTabView` mounts (cold launch, PIN,
+    /// onboarding). `MainTabView` drains this once the surface is ready and the
+    /// gate passes, so the shortcut never silently no-ops or ambushes a locked
+    /// screen.
+    private let shortcutQueueKey = "ops.callCapture.pendingShortcut"
+
+    /// A queued shortcut older than this is dropped (the operator's intent has
+    /// gone stale). Matches the post-call prompt window.
+    nonisolated static let shortcutMaxAge: TimeInterval = 2 * 60
+
     private init() {}
 
+    /// Present immediately. No-op when a request is already active so a stray
+    /// second invocation can't be silently lost behind a live sheet.
     func present(_ request: CallCaptureRequest) {
+        guard activeRequest == nil else { return }
         activeRequest = request
     }
 
     func dismiss() {
         activeRequest = nil
+    }
+
+    /// Queue an App Shortcut capture for the next ready moment.
+    func queueShortcutCapture() {
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: shortcutQueueKey)
+    }
+
+    /// Consume a queued shortcut. Returns true only when one was queued AND is
+    /// still fresh; always clears the queue.
+    func consumeQueuedShortcut(now: Date = Date(), maxAge: TimeInterval = CallCaptureCoordinator.shortcutMaxAge) -> Bool {
+        let ts = UserDefaults.standard.double(forKey: shortcutQueueKey)
+        guard ts > 0 else { return false }
+        UserDefaults.standard.removeObject(forKey: shortcutQueueKey)
+        return now.timeIntervalSince1970 - ts <= maxAge
     }
 }

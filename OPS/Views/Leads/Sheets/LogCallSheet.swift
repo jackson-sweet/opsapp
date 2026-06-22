@@ -77,12 +77,13 @@ struct LogCallSheet: View {
         .presentationDetents(detents)
         .presentationDragIndicator(.visible)
         .presentationBackground(OPSStyle.Colors.background)
-        .interactiveDismissDisabled(vm.isSaving)
+        .interactiveDismissDisabled(vm.isSaving || vm.speech.state == .recording)
         .onAppear {
             if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
                 vm.setup(companyId: companyId, userId: dataController.currentUser?.id, modelContext: modelContext)
             }
         }
+        .onDisappear { vm.teardown() }
         .onChange(of: vm.speech.state) { oldState, newState in
             if oldState == .recording && newState == .idle {
                 vm.applyTranscription()
@@ -132,8 +133,7 @@ struct LogCallSheet: View {
 
     private var postCallContext: String? {
         guard isPostCall else { return nil }
-        let name = (vm.matchedOpportunity?.contactName ?? vm.contactName)
-            .trimmingCharacters(in: .whitespaces)
+        let name = vm.contactName.trimmingCharacters(in: .whitespaces)
         if !name.isEmpty { return "// CALLED \(name)" }
         if !vm.phoneNumber.isEmpty { return "// CALLED \(vm.phoneNumber)" }
         return "// JUST CALLED"
@@ -145,11 +145,11 @@ struct LogCallSheet: View {
         LeadField(label: "CONTACT") {
             HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(vm.matchedOpportunity?.contactName ?? vm.contactName)
+                    Text(vm.contactName.isEmpty ? "This lead" : vm.contactName)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.text)
-                    if let stage = vm.matchedOpportunity?.stage {
-                        Text(stage.displayName)
+                    if let stage = vm.knownStageName {
+                        Text(stage)
                             .font(.custom("JetBrainsMono-Regular", size: 10))
                             .kerning(1.4)
                             .textCase(.uppercase)
@@ -208,7 +208,10 @@ struct LogCallSheet: View {
             HStack(spacing: 0) {
                 Text("// ")
                     .foregroundColor(OPSStyle.Colors.textMute)
-                if let match = vm.matchedOpportunity {
+                if vm.isResolving {
+                    Text("CHECKING…")
+                        .foregroundColor(OPSStyle.Colors.text3)
+                } else if let match = vm.matchedLead {
                     Text("MATCHED — \(match.contactName)")
                         .foregroundColor(OPSStyle.Colors.oliveTextM)
                 } else {
@@ -402,7 +405,7 @@ struct LogCallSheet: View {
                 SheetCTAButton(
                     label: "CANCEL",
                     variant: .secondary,
-                    action: { dismiss() }
+                    action: { vm.teardown(); dismiss() }
                 )
                 .disabled(vm.isSaving)
             } primary: {

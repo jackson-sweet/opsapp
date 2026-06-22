@@ -139,11 +139,17 @@ struct ContactCard: View {
     /// "log that call" prompt when the operator returns from the Phone app.
     /// Around-call lead capture (feature 154cb8a3).
     private func placeCall() {
-        CallLogStore.shared.recordOutbound(
-            opportunityId: opportunity.id,
-            contactName: opportunity.contactName,
-            phone: opportunity.contactPhone ?? sanitizedPhone
-        )
+        // Only record the post-call-prompt intent for operators who can act on
+        // it (pipeline.manage) — keeps the write/consume gates symmetric and
+        // leaves no stale record for read-only operators.
+        if PermissionStore.shared.isFeatureEnabled("pipeline"),
+           PermissionStore.shared.can("pipeline.manage") {
+            CallLogStore.shared.recordOutbound(
+                opportunityId: opportunity.id,
+                contactName: opportunity.contactName,
+                phone: opportunity.contactPhone ?? sanitizedPhone
+            )
+        }
         open("tel:\(sanitizedPhone)")
     }
 }

@@ -3,10 +3,17 @@
 //  OPS
 //
 //  State + save path for the around-call capture sheet (iOS feature 154cb8a3).
-//  Resolves the lead (attach to an existing one matched by phone, or create a
-//  new `source:"phone"` lead), then logs a `call` activity with provenance
-//  through the existing data layer. Optional in-app voice note (on-device
-//  Speech) dictates into the note body.
+//
+//  Post-call mode attaches to the EXACT lead that was called (the opportunityId
+//  is authoritative — carried straight through to logActivity, which writes
+//  against an opportunity_id string and needs no local model). Capture mode
+//  (FAB / App Shortcut) dedups the number against the network candidate set and
+//  attaches to a match, or creates a new `source:"phone"` lead. Optional in-app
+//  voice note dictates (on-device) into the note body.
+//
+//  Opportunities are network-only (never in SwiftData), so dedup fetches the
+//  candidate set once on open and matches locally as the operator types, with a
+//  final network re-check before creating to avoid duplicates.
 //
 
 import Foundation
@@ -25,10 +32,18 @@ final class LogCallViewModel: ObservableObject {
     let mode: Mode
 
     // MARK: - Lead resolution
-    @Published var matchedOpportunity: Opportunity?
+    @Published var matchedLead: LeadPhoneMatch?
     @Published var contactName: String = ""
     @Published var phoneNumber: String = ""
     @Published var showContactPicker = false
+    @Published var isResolving = false
+
+    /// Authoritative id for the post-call path — set from the recorded intent,
+    /// independent of any local/display lookup so we always attach to the lead
+    /// that was actually called.
+    private(set) var knownOpportunityId: String?
+    /// Display-only stage label for the locked lead (enriched async).
+    @Published var knownStageName: String?
 
     // MARK: - Form
     @Published var direction: String          // "inbound" | "outbound"
@@ -49,18 +64,21 @@ final class LogCallViewModel: ObservableObject {
     private var modelContext: ModelContext?
     private var repository: OpportunityRepository?
     private let callStartedAt: Date?
+    private var candidates: [LeadPhoneMatch] = []
+    private var wasNameAutoFilled = false
     private var cancellables = Set<AnyCancellable>()
 
     init(mode: Mode) {
         self.mode = mode
         switch mode {
         case .postCall(let pending):
-            // ContactCard places OUTBOUND calls; default accordingly.
-            direction = "outbound"
+            direction = "outbound"               // ContactCard places outbound calls
             callStartedAt = pending.startedAt
+            knownOpportunityId = pending.opportunityId
+            contactName = pending.contactName ?? ""
+            phoneNumber = pending.phoneNumber
         case .capture:
-            // FAB / Shortcut most often capture an inbound call or a fresh lead.
-            direction = "inbound"
+            direction = "inbound"                // FAB / Shortcut usually capture inbound
             callStartedAt = nil
         }
         speech.preferOnDeviceRecognition = true
@@ -78,55 +96,77 @@ final class LogCallViewModel: ObservableObject {
         self.userId = userId
         self.modelContext = modelContext
         self.repository = OpportunityRepository(companyId: companyId)
-        resolveInitialLead()
-        loadContextualStrings()
-    }
 
-    private func resolveInitialLead() {
-        switch mode {
-        case .postCall(let pending):
-            phoneNumber = pending.phoneNumber
-            if let oid = pending.opportunityId, let context = modelContext {
-                let all = (try? context.fetch(FetchDescriptor<Opportunity>())) ?? []
-                matchedOpportunity = all.first { $0.id == oid && $0.deletedAt == nil }
-            }
-            if matchedOpportunity == nil { runDedup() } // fall back to phone match
-            contactName = matchedOpportunity?.contactName ?? pending.contactName ?? ""
-        case .capture:
-            break
+        if leadIsLocked {
+            // Post-call: lead is fixed by id. Enrich the display (name/stage)
+            // without gating attach on it.
+            Task { await enrichKnownLead() }
+        } else {
+            // Capture: load the dedup candidate set once, then match locally.
+            Task { await loadCandidates() }
         }
     }
 
     /// True when the lead is fixed by the entry point and must not be re-picked.
     var leadIsLocked: Bool {
-        if case .postCall = mode { return matchedOpportunity != nil }
+        if case .postCall = mode { return knownOpportunityId != nil }
         return false
     }
 
-    // MARK: - Dedup
+    private func enrichKnownLead() async {
+        guard let id = knownOpportunityId, let repo = repository else { return }
+        if let dto = try? await repo.fetchOne(id) {
+            knownStageName = PipelineStage(rawValue: dto.stage)?.displayName
+            if contactName.trimmingCharacters(in: .whitespaces).isEmpty {
+                contactName = dto.contactName ?? ""
+            }
+        }
+    }
 
-    /// Re-run the phone→lead match. Called as the operator edits the number or
-    /// picks a contact in capture mode.
+    private func loadCandidates() async {
+        guard let repo = repository else { return }
+        isResolving = true
+        candidates = await repo.fetchLeadCandidates()
+        isResolving = false
+        runDedup()
+    }
+
+    // MARK: - Dedup (instant, local against cached candidates)
+
     func runDedup() {
-        guard let repo = repository, let context = modelContext,
-              !phoneNumber.trimmingCharacters(in: .whitespaces).isEmpty else {
-            matchedOpportunity = nil
+        guard !leadIsLocked else { return }
+        let phone = phoneNumber.trimmingCharacters(in: .whitespaces)
+        guard !phone.isEmpty else {
+            matchedLead = nil
+            if wasNameAutoFilled { contactName = ""; wasNameAutoFilled = false }
             return
         }
-        matchedOpportunity = repo.findByContactPhone(phoneNumber, in: context)
-        if let match = matchedOpportunity, contactName.trimmingCharacters(in: .whitespaces).isEmpty {
-            contactName = match.contactName
+        let match = OpportunityRepository.matchLead(phone: phone, candidates: candidates)
+        matchedLead = match
+        if let match {
+            // Auto-fill the name from the match when the operator hasn't typed
+            // their own (or only inherited a prior auto-fill).
+            if contactName.trimmingCharacters(in: .whitespaces).isEmpty || wasNameAutoFilled {
+                contactName = match.contactName
+                wasNameAutoFilled = true
+            }
+        } else if wasNameAutoFilled {
+            // A previously auto-filled name must not ride onto a new, unmatched
+            // number (which would mislabel the new lead).
+            contactName = ""
+            wasNameAutoFilled = false
         }
     }
 
     func applyPickedContact(name: String, phone: String) {
         contactName = name
+        wasNameAutoFilled = false
         phoneNumber = phone
         runDedup()
     }
 
     /// Whether the save will attach to an existing lead vs create a new one.
-    var willAttach: Bool { matchedOpportunity != nil }
+    var willAttach: Bool { leadIsLocked || matchedLead != nil }
 
     // MARK: - Voice note
 
@@ -135,22 +175,20 @@ final class LogCallViewModel: ObservableObject {
         catch { speech.state = .error(error.localizedDescription) }
     }
 
-    /// Fold the finished transcription into the note body (accumulates across
-    /// multiple dictation passes).
+    /// Fold the finished transcription into the note body, then clear the source
+    /// buffer so a second flush path can't re-append the same text.
     func applyTranscription() {
         let text = speech.transcription.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         bodyText = bodyText.isEmpty ? text : bodyText + "\n" + text
+        speech.transcription = ""
     }
 
-    private func loadContextualStrings() {
-        var strings: [String] = []
-        if !contactName.isEmpty { strings.append(contactName) }
-        if let context = modelContext {
-            let opps = (try? context.fetch(FetchDescriptor<Opportunity>())) ?? []
-            strings += opps.map { $0.contactName }
+    /// Stop any in-flight dictation (audio session teardown). Idempotent.
+    func teardown() {
+        if speech.state == .recording || speech.state == .stopping {
+            speech.stopRecording()
         }
-        speech.contextualStrings = Array(Set(strings)).prefix(100).map { String($0) }
     }
 
     // MARK: - Validation
@@ -158,7 +196,7 @@ final class LogCallViewModel: ObservableObject {
     var canSave: Bool {
         guard !isSaving else { return false }
         if leadIsLocked { return true }
-        return matchedOpportunity != nil
+        return matchedLead != nil
             || !contactName.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
@@ -187,8 +225,14 @@ final class LogCallViewModel: ObservableObject {
             let opportunityId: String
             var createdNewLead = false
 
-            if let existing = matchedOpportunity {
-                opportunityId = existing.id
+            if let known = knownOpportunityId {
+                // Post-call: attach to the exact lead that was called.
+                opportunityId = known
+            } else if let match = matchedLead {
+                opportunityId = match.id
+            } else if let lateMatch = await repo.findByContactPhone(phoneNumber) {
+                // Final network re-check catches a lead created since open.
+                opportunityId = lateMatch.id
             } else {
                 let trimmedName = contactName.trimmingCharacters(in: .whitespaces)
                 let dto = CreateOpportunityDTO(
@@ -199,10 +243,6 @@ final class LogCallViewModel: ObservableObject {
                     assignedTo: userId
                 )
                 let created = try await repo.create(dto)
-                let model = created.toModel()
-                modelContext?.insert(model)
-                try? modelContext?.save()
-                matchedOpportunity = model
                 opportunityId = created.id
                 createdNewLead = true
             }
@@ -221,9 +261,6 @@ final class LogCallViewModel: ObservableObject {
                 callerNumber: PhoneNumber.normalize(phoneNumber),
                 callStartedAt: callStartedAt
             )
-
-            matchedOpportunity?.lastActivityAt = Date()
-            try? modelContext?.save()
 
             if createdNewLead {
                 NotificationCenter.default.post(
@@ -248,8 +285,7 @@ final class LogCallViewModel: ObservableObject {
     }
 
     private func defaultSubject() -> String {
-        let name = (matchedOpportunity?.contactName ?? contactName)
-            .trimmingCharacters(in: .whitespaces)
+        let name = contactName.trimmingCharacters(in: .whitespaces)
         let who = name.isEmpty ? "lead" : name
         return direction == "inbound" ? "Inbound call from \(who)" : "Call with \(who)"
     }

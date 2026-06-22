@@ -922,8 +922,10 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             ReviewThresholdService.evaluate(dataController: dataController)
             // Around-call lead capture (154cb8a3) — if the operator just called
-            // a lead from inside OPS and returned, offer to log it.
+            // a lead from inside OPS and returned, offer to log it; and drain any
+            // App Shortcut capture queued before the app was ready.
             presentPostCallPromptIfNeeded()
+            drainQueuedCaptureIfNeeded()
         }
         // Bug G3 — Re-evaluate review stacks after every sync completes
         // (isSyncing transitions true → false). New tasks / completed projects
@@ -946,6 +948,7 @@ struct MainTabView: View {
                 presentPostCallPromptIfNeeded()
             }
             presentPostCallPromptIfNeeded()
+            drainQueuedCaptureIfNeeded()
 
             // Initialize user role
             userRole = dataController.currentUser?.role
@@ -1225,12 +1228,37 @@ struct MainTabView: View {
     /// other pipeline-mutating surface (feature on + pipeline.manage); a stale
     /// or already-shown intent is a no-op.
     private func presentPostCallPromptIfNeeded() {
-        guard PermissionStore.shared.isFeatureEnabled("pipeline"),
+        guard isCaptureSurfaceReady,
+              PermissionStore.shared.isFeatureEnabled("pipeline"),
               PermissionStore.shared.can("pipeline.manage"),
               CallCaptureCoordinator.shared.activeRequest == nil else { return }
         if let pending = CallLogStore.shared.consumeRecent() {
             CallCaptureCoordinator.shared.present(.postCall(pending))
         }
+    }
+
+    /// Around-call lead capture (154cb8a3). Drain an App Shortcut capture queued
+    /// before the app was ready (cold-launch permission race / PIN / onboarding).
+    /// The real gate is applied HERE — where permissions are loaded and the
+    /// surface is unlocked — not in the AppIntent.
+    private func drainQueuedCaptureIfNeeded() {
+        guard isCaptureSurfaceReady,
+              PermissionStore.shared.isFeatureEnabled("pipeline"),
+              PermissionStore.shared.can("pipeline.manage"),
+              CallCaptureCoordinator.shared.activeRequest == nil else { return }
+        if CallCaptureCoordinator.shared.consumeQueuedShortcut() {
+            CallCaptureCoordinator.shared.present(.capture(.appShortcut))
+        }
+    }
+
+    /// The capture sheet may only present when the operator is signed in and the
+    /// PIN (if any) is unlocked — never over the lock screen. Subscription
+    /// lockout / blocking app-message states don't mount MainTabView at all, so
+    /// they're covered by this view simply not existing.
+    private var isCaptureSurfaceReady: Bool {
+        guard dataController.isAuthenticated else { return false }
+        let pin = dataController.simplePINManager
+        return !pin.requiresPIN || pin.isAuthenticated
     }
     
     private func checkIfSheetIsPresented() -> Bool {

@@ -24,12 +24,11 @@ struct LogCallToOPSIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        // Only meaningful when the pipeline is enabled for this operator. If
-        // not, OPS still opens (so they see where they are); we present nothing.
-        if PermissionStore.shared.isFeatureEnabled("pipeline"),
-           PermissionStore.shared.can("pipeline.manage") {
-            CallCaptureCoordinator.shared.present(.capture(.appShortcut))
-        }
+        // Queue, don't present. perform() can run before permissions hydrate or
+        // before MainTabView mounts (cold launch / PIN / onboarding); MainTabView
+        // drains this once the surface is ready and the pipeline gate passes, so
+        // the shortcut never silently no-ops and never ambushes a locked screen.
+        CallCaptureCoordinator.shared.queueShortcutCapture()
         return .result()
     }
 }

@@ -20,6 +20,7 @@ struct VinylOrderSheet: View {
     @Query private var catalogVariants: [CatalogVariant]
     @Query private var catalogOptionValues: [CatalogOptionValue]
     @Query private var catalogVariantOptionValues: [CatalogVariantOptionValue]
+    @Query private var stockUnits: [CatalogStockUnit]
 
     @State private var settings = VinylOrderSettings.default
     @State private var isCreating = false
@@ -30,6 +31,14 @@ struct VinylOrderSheet: View {
     @State private var surfaceInputs: [VinylOrderSurfaceInput] = []
     @State private var didLoadSurfaceInputs = false
     @State private var showingTemplateEditor = false
+    /// Resolved once on appear: company runs tracked inventory AND the
+    /// catalog_stock_units schema is live. Gates every stock-inventory surface.
+    @State private var stockTrackingActive = false
+    /// Set after a successful order draft (tracked companies only) to prompt the
+    /// roll-receipt confirmation.
+    @State private var pendingRollReceipt: VinylRollReceiptContext?
+    @State private var bankingOffcutIds: Set<String> = []
+    @State private var bankedOffcutIds: Set<String> = []
     @AppStorage(VinylCutListTextTemplate.messageStorageKey) private var messageTemplate = VinylCutListTextTemplate.defaultMessageTemplate
     @AppStorage(VinylCutListTextTemplate.cutStorageKey) private var cutTemplate = VinylCutListTextTemplate.defaultCutTemplate
     @AppStorage(VinylCutListTextTemplate.separatorStorageKey) private var cutSeparatorRawValue = VinylCutListSeparator.lines.rawValue
@@ -87,6 +96,67 @@ struct VinylOrderSheet: View {
 
     private var currentUserId: String? {
         SupabaseService.shared.currentUserId ?? UserDefaults.standard.string(forKey: "currentUserId")
+    }
+
+    /// The selected catalog variant id, or nil when ordering by free-text color
+    /// (no stock identity, so no inventory surfaces).
+    private var resolvedVariantId: String? {
+        guard let id = settings.catalogVariantId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !id.isEmpty else { return nil }
+        return id
+    }
+
+    private var resolvedVariantLabel: String {
+        if let variant = selectedVariant { return variantDisplayName(variant) }
+        return settings.color.isEmpty ? "VINYL" : settings.color
+    }
+
+    /// Available rolls of the selected variant, most-full first (the bank source).
+    private var onHandRolls: [CatalogStockUnit] {
+        guard let vid = resolvedVariantId else { return [] }
+        return stockUnits
+            .filter {
+                $0.companyId == companyId
+                    && $0.catalogVariantId == vid
+                    && $0.unitKind == .roll
+                    && $0.deletedAt == nil
+                    && $0.status.countsAsAvailable
+                    && ($0.remainingLengthValue ?? 0) > 0
+            }
+            .sorted { ($0.remainingLengthValue ?? 0) > ($1.remainingLengthValue ?? 0) }
+    }
+
+    private var onHandOffcuts: [CatalogStockUnit] {
+        guard let vid = resolvedVariantId else { return [] }
+        return stockUnits.filter {
+            $0.companyId == companyId
+                && $0.catalogVariantId == vid
+                && $0.unitKind == .offcut
+                && $0.deletedAt == nil
+                && $0.status.countsAsAvailable
+        }
+    }
+
+    /// Banked offcuts fed back into the planner so reuse spans jobs. Stored in
+    /// feet; the engine works in inches. Empty unless tracking is live.
+    private var availableOffcutSeeds: [VinylOnHandOffcut] {
+        guard stockTrackingActive else { return [] }
+        return onHandOffcuts.map {
+            VinylOnHandOffcut(
+                id: $0.id,
+                label: $0.label ?? "BANKED OFFCUT",
+                widthInches: ($0.widthValue ?? 0) * 12,
+                lengthInches: ($0.remainingLengthValue ?? 0) * 12
+            )
+        }
+    }
+
+    private var offcutInventoryService: VinylOffcutInventoryService {
+        VinylOffcutInventoryService(
+            companyId: companyId,
+            userId: currentUserId ?? "",
+            modelContext: modelContext
+        )
     }
 
     private var canCreateOrder: Bool {
@@ -173,6 +243,7 @@ struct VinylOrderSheet: View {
                             textTemplateSection
                             reuseSection
                             catalogSection
+                            stockSection
                             projectMarkerSection
                             statusSection
 
@@ -206,6 +277,14 @@ struct VinylOrderSheet: View {
             }
             .task {
                 await loadSurfaceInputsIfNeeded()
+            }
+            .task {
+                await resolveStockTracking()
+            }
+            .sheet(item: $pendingRollReceipt) { context in
+                VinylRollReceiptSheet(context: context) { count, lengthFeet, widthInches in
+                    await receiveRolls(context: context, count: count, lengthFeet: lengthFeet, widthInches: widthInches)
+                }
             }
             // Memoization hooks live in a ViewModifier so the (already large) body
             // expression stays inside the Swift type-checker's budget. They keep
@@ -625,6 +704,89 @@ struct VinylOrderSheet: View {
     }
 
     @ViewBuilder
+    private var stockSection: some View {
+        if stockTrackingActive,
+           resolvedVariantId != nil,
+           !plan.producedOffcuts.isEmpty || !onHandRolls.isEmpty || !onHandOffcuts.isEmpty {
+            section(title: "STOCK") {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                    metricRow("ON HAND", onHandSummary)
+
+                    if !plan.producedOffcuts.isEmpty {
+                        Text("// BANK OFFCUTS")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .tracking(0.8)
+                            .padding(.top, OPSStyle.Layout.spacing1)
+
+                        if onHandRolls.isEmpty {
+                            emptyLine("RECEIVE ROLLS TO BANK OFFCUTS.")
+                        }
+
+                        ForEach(plan.producedOffcuts) { offcut in
+                            offcutBankRow(offcut)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var onHandSummary: String {
+        let rolls = onHandRolls.count
+        let offcuts = onHandOffcuts.count
+        guard rolls > 0 || offcuts > 0 else { return "—" }
+        return "\(rolls) ROLL\(rolls == 1 ? "" : "S") · \(offcuts) OFFCUT\(offcuts == 1 ? "" : "S")"
+    }
+
+    private func offcutBankRow(_ offcut: VinylProducedOffcut) -> some View {
+        let isBanked = bankedOffcutIds.contains(offcut.id)
+        let isBanking = bankingOffcutIds.contains(offcut.id)
+        let canBank = !onHandRolls.isEmpty && !isBanked && !isBanking
+        return HStack(spacing: OPSStyle.Layout.spacing2) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(formatInchesForSheet(offcut.widthInches)) × \(vinylFormatFeetAndInches(offcut.lengthInches))")
+                    .font(OPSStyle.Typography.dataValue)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Text("FROM \(offcut.sourceSurfaceLabel.uppercased())")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            Spacer(minLength: 0)
+            Button {
+                bankOffcut(offcut)
+            } label: {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
+                    if isBanking {
+                        ProgressView()
+                            .tint(OPSStyle.Colors.primaryText)
+                    }
+                    Text(isBanked ? "BANKED" : (isBanking ? "BANKING…" : "BANK"))
+                        .font(OPSStyle.Typography.buttonLabel)
+                }
+                .foregroundColor(isBanked ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryText)
+                .padding(.vertical, OPSStyle.Layout.spacing1)
+                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                .background(isBanked ? Color.clear : OPSStyle.Colors.surfaceHover)
+                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                        .stroke(
+                            isBanked ? OPSStyle.Colors.successStatus.opacity(0.5) : OPSStyle.Colors.line,
+                            lineWidth: OPSStyle.Layout.Border.standard
+                        )
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(!canBank)
+            .opacity(canBank || isBanked || isBanking ? 1 : 0.45)
+        }
+        .padding(OPSStyle.Layout.spacing2)
+        .background(OPSStyle.Colors.subtleBackground)
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+    }
+
+    @ViewBuilder
     private var projectMarkerSection: some View {
         if PermissionStore.shared.isFeatureEnabled("deck_builder")
             && PermissionStore.shared.can("deck_builder.view", requiredScope: "assigned") {
@@ -912,7 +1074,11 @@ struct VinylOrderSheet: View {
     }
 
     private func recomputePlan() {
-        plan = VinylCutListEngine.makePlan(surfaces: surfaceInputs, settings: settings)
+        plan = VinylCutListEngine.makePlan(
+            surfaces: surfaceInputs,
+            settings: settings,
+            availableOffcuts: availableOffcutSeeds
+        )
     }
 
     private func applyConfiguredCatalogProduct(in choices: [VinylCatalogProductChoice]) {
@@ -1051,6 +1217,83 @@ struct VinylOrderSheet: View {
             statusMessage = "ORDER DRAFTED"
         }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+
+        // Tracked inventory: offer to receive the physical rolls into stock,
+        // linked to the drafted order line. Silent for untracked companies.
+        if stockTrackingActive,
+           let createdItemDTO,
+           let selection = draftCatalogSelection {
+            pendingRollReceipt = VinylRollReceiptContext(
+                orderItemId: createdItemDTO.id,
+                variantId: selection.variant.id,
+                variantLabel: variantDisplayName(selection.variant),
+                defaultRollCount: 1,
+                defaultRollLengthFeet: 150,
+                defaultRollWidthInches: draftSettings.rollWidthInches
+            )
+        }
+    }
+
+    @MainActor
+    private func resolveStockTracking() async {
+        let active = await offcutInventoryService.isTrackingActive()
+        guard active != stockTrackingActive else { return }
+        stockTrackingActive = active
+        // Re-plan so banked offcuts seed reuse now that tracking is known live.
+        recomputePlan()
+    }
+
+    @MainActor
+    private func receiveRolls(
+        context: VinylRollReceiptContext,
+        count: Int,
+        lengthFeet: Double,
+        widthInches: Double
+    ) async -> Bool {
+        do {
+            let created = try await offcutInventoryService.receiveRolls(
+                orderItemId: context.orderItemId,
+                variantId: context.variantId,
+                rollCount: count,
+                rollLengthFeet: lengthFeet,
+                rollWidthInches: widthInches
+            )
+            guard !created.isEmpty else { return false }
+            recomputePlan()
+            statusMessage = created.count == 1 ? "ROLL ON HAND" : "\(created.count) ROLLS ON HAND"
+            return true
+        } catch {
+            print("[VinylOrderSheet] receiveRolls failed: \(error)")
+            return false
+        }
+    }
+
+    private func bankOffcut(_ offcut: VinylProducedOffcut) {
+        guard let variantId = resolvedVariantId, let roll = onHandRolls.first else { return }
+        guard !bankingOffcutIds.contains(offcut.id), !bankedOffcutIds.contains(offcut.id) else { return }
+        bankingOffcutIds.insert(offcut.id)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Task { @MainActor in
+            defer { bankingOffcutIds.remove(offcut.id) }
+            do {
+                let banked = try await offcutInventoryService.bankOffcut(
+                    variantId: variantId,
+                    sourceRollId: roll.id,
+                    offcut: offcut,
+                    projectId: projectId
+                )
+                if banked != nil {
+                    bankedOffcutIds.insert(offcut.id)
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    recomputePlan()
+                } else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                }
+            } catch {
+                print("[VinylOrderSheet] bankOffcut failed: \(error)")
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
+        }
     }
 
     private func formatInchesForSheet(_ value: Double) -> String {

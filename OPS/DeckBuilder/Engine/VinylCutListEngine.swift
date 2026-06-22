@@ -28,6 +28,9 @@ struct VinylOrderSettings: Equatable {
     var edgeWrapInches: Double
     var direction: VinylLayoutDirection
     var allowsDirectionalChanges: Bool
+    /// Minimum leftover width (inches) for a remnant to be worth banking as an
+    /// offcut. Below this it is treated as scrap and neither reused nor banked.
+    var offcutMinWidthInches: Double
 
     init(
         color: String,
@@ -37,7 +40,8 @@ struct VinylOrderSettings: Equatable {
         seamOverlapInches: Double,
         edgeWrapInches: Double,
         direction: VinylLayoutDirection,
-        allowsDirectionalChanges: Bool = false
+        allowsDirectionalChanges: Bool = false,
+        offcutMinWidthInches: Double = 6
     ) {
         self.color = color
         self.catalogItemId = catalogItemId
@@ -47,6 +51,7 @@ struct VinylOrderSettings: Equatable {
         self.edgeWrapInches = edgeWrapInches
         self.direction = direction
         self.allowsDirectionalChanges = allowsDirectionalChanges
+        self.offcutMinWidthInches = offcutMinWidthInches
     }
 
     static let `default` = VinylOrderSettings(
@@ -67,7 +72,8 @@ struct VinylOrderSettings: Equatable {
             seamOverlapInches: max(0, min(seamOverlapInches, max(0, rollWidthInches - 1))),
             edgeWrapInches: max(0, edgeWrapInches),
             direction: direction,
-            allowsDirectionalChanges: allowsDirectionalChanges
+            allowsDirectionalChanges: allowsDirectionalChanges,
+            offcutMinWidthInches: max(0, offcutMinWidthInches)
         )
     }
 
@@ -94,10 +100,34 @@ struct VinylOrderSurfaceEdge: Identifiable, Equatable {
     let label: String?
 }
 
+/// A remnant the cut plan produces — leftover roll width × the strip length —
+/// worth banking as a reusable offcut. Surfaced so the operator can commit it to
+/// stock after cutting.
+struct VinylProducedOffcut: Identifiable, Equatable {
+    let id: String
+    let sourceSurfaceLabel: String
+    let widthInches: Double
+    let lengthInches: Double
+
+    var areaSqFt: Double { (widthInches * lengthInches) / 144.0 }
+}
+
+/// A banked offcut already on hand, fed into the planner so reuse spans jobs —
+/// the plan prefers a matching banked offcut over purchasing new material.
+struct VinylOnHandOffcut: Identifiable, Equatable {
+    let id: String
+    let label: String
+    let widthInches: Double
+    let lengthInches: Double
+}
+
 struct VinylCutPlan: Equatable {
     let settings: VinylOrderSettings
     let surfaces: [VinylSurfaceCutPlan]
     let reuseNotes: [VinylReuseNote]
+    /// New remnants this plan yields (excludes banked offcuts that were merely
+    /// reused). Empty unless the cut produces a width ≥ `offcutMinWidthInches`.
+    let producedOffcuts: [VinylProducedOffcut]
 
     var totalCutAreaSqFt: Double {
         surfaces.reduce(0) { $0 + $1.cutAreaSqFt }
@@ -505,21 +535,30 @@ enum VinylCutListEngine {
     }
 
     private struct OffcutLane {
+        let id: String
         let sourceSurfaceId: String
         let sourceSurfaceLabel: String
         var width: Double
         let length: Double
+        /// Seeded from a banked stock offcut — reused for planning but not
+        /// re-banked as a new remnant.
+        let isOnHand: Bool
     }
 
     static func makePlan(
         surfaces: [VinylOrderSurfaceInput],
-        settings rawSettings: VinylOrderSettings
+        settings rawSettings: VinylOrderSettings,
+        availableOffcuts: [VinylOnHandOffcut] = []
     ) -> VinylCutPlan {
         let settings = rawSettings.normalized
         let candidates = surfaces.compactMap { surface in
             candidate(surface, settings: settings)
         }
-        let packedCuts = assignOffcuts(candidates.flatMap(\.cuts))
+        let (packedCuts, producedOffcuts) = assignOffcuts(
+            candidates.flatMap(\.cuts),
+            settings: settings,
+            availableOffcuts: availableOffcuts
+        )
         let cutsBySurface = Dictionary(grouping: packedCuts, by: \.surfaceId)
         let plans = candidates.map { candidate in
             surfacePlan(from: candidate, cuts: cutsBySurface[candidate.surface.id] ?? [])
@@ -527,7 +566,8 @@ enum VinylCutListEngine {
         return VinylCutPlan(
             settings: settings,
             surfaces: plans,
-            reuseNotes: reuseNotes(for: plans)
+            reuseNotes: reuseNotes(for: plans),
+            producedOffcuts: producedOffcuts
         )
     }
 
@@ -717,8 +757,34 @@ enum VinylCutListEngine {
         }
     }
 
-    private static func assignOffcuts(_ cuts: [VinylCutPiece]) -> [VinylCutPiece] {
-        var offcuts: [OffcutLane] = []
+    /// Packs cuts against reusable offcut lanes — both banked offcuts already on
+    /// hand (`availableOffcuts`, so reuse spans jobs) and the new leftover-width
+    /// remnants this job's cuts create. Returns the cuts (with reuse provenance
+    /// stamped) plus the NEW remnants worth banking (the on-hand ones that merely
+    /// got reused are not re-reported).
+    private static func assignOffcuts(
+        _ cuts: [VinylCutPiece],
+        settings: VinylOrderSettings,
+        availableOffcuts: [VinylOnHandOffcut]
+    ) -> (cuts: [VinylCutPiece], producedOffcuts: [VinylProducedOffcut]) {
+        let minWidth = settings.offcutMinWidthInches
+        // Seed lanes from banked offcuts, widest first, so the planner prefers a
+        // banked offcut over purchasing new material before it ever cuts a roll.
+        var offcuts: [OffcutLane] = availableOffcuts
+            .sorted {
+                if abs($0.widthInches - $1.widthInches) > 0.01 { return $0.widthInches > $1.widthInches }
+                return $0.lengthInches > $1.lengthInches
+            }
+            .map {
+                OffcutLane(
+                    id: $0.id,
+                    sourceSurfaceId: "stock:\($0.id)",
+                    sourceSurfaceLabel: $0.label,
+                    width: $0.widthInches,
+                    length: $0.lengthInches,
+                    isOnHand: true
+                )
+            }
         var assignedById: [String: VinylCutPiece] = [:]
         let ordered = cuts.sorted {
             if abs($0.fullRollAreaSqFt - $1.fullRollAreaSqFt) > 0.01 {
@@ -738,24 +804,39 @@ enum VinylCutListEngine {
                 let source = offcuts[index]
                 assignedById[cut.id] = cut.assignedFrom(surfaceId: source.sourceSurfaceId, surfaceLabel: source.sourceSurfaceLabel)
                 offcuts[index].width -= cut.requiredWidthInches
-                if offcuts[index].width < 6 {
+                if offcuts[index].width < minWidth {
                     offcuts.remove(at: index)
                 }
             } else {
                 assignedById[cut.id] = cut
                 let leftoverWidth = cut.rollWidthInches - cut.requiredWidthInches
-                if leftoverWidth >= 6 {
+                if leftoverWidth >= minWidth {
                     offcuts.append(OffcutLane(
+                        id: "offcut-\(cut.id)",
                         sourceSurfaceId: cut.surfaceId,
                         sourceSurfaceLabel: cut.displayLabel,
                         width: leftoverWidth,
-                        length: cut.lengthInches
+                        length: cut.lengthInches,
+                        isOnHand: false
                     ))
                 }
             }
         }
 
-        return cuts.compactMap { assignedById[$0.id] }
+        // Surviving lanes that this job created (not the banked ones) and still
+        // carry usable width are the remnants the operator can bank to stock.
+        let producedOffcuts = offcuts
+            .filter { !$0.isOnHand && $0.width >= minWidth && $0.length > 0 }
+            .map {
+                VinylProducedOffcut(
+                    id: $0.id,
+                    sourceSurfaceLabel: $0.sourceSurfaceLabel,
+                    widthInches: $0.width,
+                    lengthInches: $0.length
+                )
+            }
+
+        return (cuts.compactMap { assignedById[$0.id] }, producedOffcuts)
     }
 
     private static func cutsForPolygon(

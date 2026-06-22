@@ -126,4 +126,25 @@ struct CreateCatalogStockUnitEventDTO: Codable {
         case marker
         case notes
     }
+
+    /// Explicit encode so nil optionals are OMITTED rather than sent as JSON
+    /// `null`. Critical for `payload`: the column is NOT NULL with a `'{}'`
+    /// default, so an explicit `null` would violate the constraint — omitting it
+    /// lets the server default apply. The nullable columns are simply left unset.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(companyId, forKey: .companyId)
+        try c.encode(catalogStockUnitId, forKey: .catalogStockUnitId)
+        try c.encode(catalogVariantId, forKey: .catalogVariantId)
+        try c.encode(eventType, forKey: .eventType)
+        try c.encodeIfPresent(relatedCatalogStockUnitId, forKey: .relatedCatalogStockUnitId)
+        try c.encodeIfPresent(fromStatus, forKey: .fromStatus)
+        try c.encodeIfPresent(toStatus, forKey: .toStatus)
+        try c.encodeIfPresent(quantityDelta, forKey: .quantityDelta)
+        try c.encodeIfPresent(remainingLengthDelta, forKey: .remainingLengthDelta)
+        try c.encodeIfPresent(payload, forKey: .payload)
+        try c.encodeIfPresent(marker, forKey: .marker)
+        try c.encodeIfPresent(notes, forKey: .notes)
+    }
 }

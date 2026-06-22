@@ -116,6 +116,24 @@ final class VinylOffcutInventoryTests: XCTestCase {
         XCTAssertNil(banked, "bankOffcut must no-op when gated off")
     }
 
+    // MARK: - Sync wiring regression guard
+
+    func testActiveSyncPathCoversEveryLegacyEntityIncludingStockEvents() {
+        // FeatureFlags.useDataActor defaults true, so DataActor is the live
+        // inbound path. Every entity the legacy InboundProcessor pulls MUST also
+        // be in DataActor.syncOrder, or it silently never syncs on the default
+        // path — the exact catalogStockUnitEvent omission this guards. (DataActor
+        // legitimately covers MORE: the legacy inventory_* entities.)
+        let inbound = Set(InboundProcessor.syncOrder)
+        let active = Set(DataActor.syncOrder)
+        XCTAssertTrue(
+            inbound.isSubset(of: active),
+            "DataActor.syncOrder is missing entities the legacy path syncs: \(inbound.subtracting(active))"
+        )
+        XCTAssertTrue(active.contains(.catalogStockUnitEvent), "active path must sync the stock-unit ledger")
+        XCTAssertTrue(inbound.contains(.catalogStockUnitEvent), "legacy path must sync the stock-unit ledger")
+    }
+
     // MARK: - Helpers
 
     private func zeroAllowanceSettings(offcutMinWidthInches: Double = 6) -> VinylOrderSettings {

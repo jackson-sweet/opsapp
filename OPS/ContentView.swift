@@ -944,6 +944,15 @@ struct PINGatedView: View {
         .onChange(of: pinManager.isAuthenticated) { _, authenticated in
             if authenticated {
                 DeepLinkCoordinator.shared.drain(context: "pin_unlocked")
+                // Around-call lead capture (154cb8a3): the capture pipeline
+                // defers while the PIN is locked. Signal MainTabView to surface
+                // any post-call prompt or queued App Shortcut now that the
+                // surface is unlocked, instead of waiting for the next
+                // background→foreground cycle (which can miss the shortcut TTL).
+                NotificationCenter.default.post(
+                    name: Notification.Name("OPSCaptureSurfaceUnlocked"),
+                    object: nil
+                )
             }
         }
         // MentionAccessIndex freshness on user switch. The index is

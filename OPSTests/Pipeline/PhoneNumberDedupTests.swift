@@ -93,4 +93,14 @@ final class PhoneNumberDedupTests: XCTestCase {
         let candidates = [candidate(phone: "604-555-0142")]
         XCTAssertNil(OpportunityRepository.matchLead(phone: "", candidates: candidates))
     }
+
+    func test_matchLead_tieBreakIsDeterministic() {
+        let t = Date()
+        let a = candidate(id: "aaa", phone: "604-555-0142", recency: t)
+        let b = candidate(id: "bbb", phone: "6045550142", recency: t)
+        // Equal recency → lowest id wins, regardless of input order, so the same
+        // call always attaches to the same lead.
+        XCTAssertEqual(OpportunityRepository.matchLead(phone: "6045550142", candidates: [b, a])?.id, "aaa")
+        XCTAssertEqual(OpportunityRepository.matchLead(phone: "6045550142", candidates: [a, b])?.id, "aaa")
+    }
 }

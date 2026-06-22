@@ -927,6 +927,22 @@ struct MainTabView: View {
             presentPostCallPromptIfNeeded()
             drainQueuedCaptureIfNeeded()
         }
+        // Around-call lead capture (154cb8a3): re-drain the capture pipeline the
+        // moment the PIN unlocks (the capture helpers defer while locked, and the
+        // 2-min shortcut TTL can lapse before the next foreground cycle).
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OPSCaptureSurfaceUnlocked"))) { _ in
+            presentPostCallPromptIfNeeded()
+            drainQueuedCaptureIfNeeded()
+        }
+        // When a capture sheet closes, surface anything that deferred behind it
+        // (e.g. an App Shortcut shadowed by the post-call prompt) immediately,
+        // rather than letting it age out waiting for an external foreground event.
+        .onChange(of: callCaptureCoordinator.activeRequest) { _, newValue in
+            if newValue == nil {
+                presentPostCallPromptIfNeeded()
+                drainQueuedCaptureIfNeeded()
+            }
+        }
         // Bug G3 — Re-evaluate review stacks after every sync completes
         // (isSyncing transitions true → false). New tasks / completed projects
         // arriving via sync are the most common way a stack crosses threshold,

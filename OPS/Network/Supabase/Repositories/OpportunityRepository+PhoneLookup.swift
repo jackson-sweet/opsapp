@@ -56,7 +56,10 @@ extension OpportunityRepository {
     static func matchLead(phone: String, candidates: [LeadPhoneMatch]) -> LeadPhoneMatch? {
         guard let target = PhoneNumber.normalize(phone) else { return nil }
         return candidates
-            .sorted { $0.recency > $1.recency }
+            .sorted {
+                if $0.recency != $1.recency { return $0.recency > $1.recency }
+                return $0.id < $1.id   // total order: same call always attaches to the same lead
+            }
             .first { PhoneNumber.normalize($0.phone) == target }
     }
 }

@@ -29,7 +29,9 @@ Optional later: a Call Directory **recognition** extension labeling inbound pipe
 4. **`LogCallSheet`** (model on `LeadLogActivitySheet`): outcome/direction/duration/voice-note → `logActivity`/`create`.
 5. **FAB entry** "Log a call" + the foreground post-call prompt.
 6. **`LogCallToOPS: AppIntent` + `AppShortcutsProvider`** in the main target (no extension).
-7. Gate every surface on `pipeline.view` + the `pipeline` feature flag (match all Leads surfaces). Copy via `ops-copywriter`; motion/haptics via OPSStyle tokens.
+7. Gate on the `pipeline` feature flag + the right permission per surface: READ surfaces (the LEADS tab, ContactCard) on `pipeline.view`; WRITE/capture surfaces (the FAB "Log a call", the post-call prompt, the App Shortcut) on `pipeline.manage` — matching the existing "Log Activity" FAB item, since logging a call is a mutation (a `pipeline.view`-only operator can't create leads or log activities). Copy via `ops-copywriter`; motion/haptics via OPSStyle tokens.
+
+   **Build correction (verified during the build session):** opportunities are NOT persisted to SwiftData (the pipeline list is network-only), so dedup is network-based — the capture sheet fetches the candidate set once on open, matches locally as the operator types, and re-checks before creating. The post-call path carries the recorded `opportunityId` straight through (no local lookup) so it always attaches to the exact lead called.
 8. Recording stretch = **in-app voice note only** (mic + on-device Speech), transcript → activity `body_text`. No phone-call audio.
 9. Update the bible (pipeline section) + schema docs.
 

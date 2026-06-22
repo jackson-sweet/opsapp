@@ -42,6 +42,9 @@ struct MainTabView: View {
     // primary CTA isn't occluded by the 100pt overlay.
     @StateObject private var tabBarVisibility = TabBarVisibilityController()
     @ObservedObject private var inProgressManager = InProgressManager.shared
+    // Around-call lead capture (154cb8a3) — single host for the LogCallSheet
+    // shared by the post-call prompt, the FAB, and the App Shortcut.
+    @ObservedObject private var callCaptureCoordinator = CallCaptureCoordinator.shared
     @State private var userRole: UserRole? = nil // Track user role changes explicitly
 
     // member_joined push → AssignMemberRoleSheet state
@@ -507,6 +510,13 @@ struct MainTabView: View {
         .sheet(isPresented: $appState.showAccessDenied) {
             AccessDeniedSheet(message: appState.accessDeniedMessage ?? "Access denied.")
         }
+        // Around-call capture sheet (154cb8a3). One host for all three entry
+        // points — post-call prompt, FAB "Log a call", and the App Shortcut.
+        .sheet(item: $callCaptureCoordinator.activeRequest) { request in
+            LogCallSheet(request: request)
+                .environmentObject(dataController)
+                .environmentObject(permissionStore)
+        }
         // Add notification handler for project fetching
         .onReceive(fetchProjectObserver) { notification in
             if let projectID = notification.userInfo?["projectID"] as? String {
@@ -911,6 +921,9 @@ struct MainTabView: View {
         // stay silent until the next cold start.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             ReviewThresholdService.evaluate(dataController: dataController)
+            // Around-call lead capture (154cb8a3) — if the operator just called
+            // a lead from inside OPS and returned, offer to log it.
+            presentPostCallPromptIfNeeded()
         }
         // Bug G3 — Re-evaluate review stacks after every sync completes
         // (isSyncing transitions true → false). New tasks / completed projects
@@ -924,6 +937,15 @@ struct MainTabView: View {
         .onAppear {
             // Clear all pending image syncs on app bootup
             clearPendingImageSyncs()
+
+            // Around-call lead capture (154cb8a3) — observe call state so a call
+            // that ends while OPS stays foregrounded can prompt immediately, and
+            // surface any prompt left pending from a call placed before launch.
+            CallStateObserver.shared.start()
+            CallStateObserver.shared.onForegroundCallEnded {
+                presentPostCallPromptIfNeeded()
+            }
+            presentPostCallPromptIfNeeded()
 
             // Initialize user role
             userRole = dataController.currentUser?.role
@@ -1194,6 +1216,20 @@ struct MainTabView: View {
             
             // Clear all pending uploads to prevent issues with large/stuck uploads
             imageSyncManager.clearAllPendingUploads()
+        }
+    }
+
+    /// Around-call lead capture (154cb8a3). If the operator placed a call from
+    /// inside OPS and a recent intent is still pending, present the post-call
+    /// log prompt pre-filled to that lead. Gated on the same posture as every
+    /// other pipeline-mutating surface (feature on + pipeline.manage); a stale
+    /// or already-shown intent is a no-op.
+    private func presentPostCallPromptIfNeeded() {
+        guard PermissionStore.shared.isFeatureEnabled("pipeline"),
+              PermissionStore.shared.can("pipeline.manage"),
+              CallCaptureCoordinator.shared.activeRequest == nil else { return }
+        if let pending = CallLogStore.shared.consumeRecent() {
+            CallCaptureCoordinator.shared.present(.postCall(pending))
         }
     }
     

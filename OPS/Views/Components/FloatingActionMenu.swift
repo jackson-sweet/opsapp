@@ -304,6 +304,23 @@ struct FloatingActionMenu: View {
                     }
                 )
             )
+
+            // Log a Call — capture a phone call as a lead activity. Routes
+            // through the shared capture coordinator (same host the post-call
+            // prompt and App Shortcut use). Around-call lead capture (154cb8a3).
+            workItems.append(
+                FABMenuItem(
+                    id: "log-call",
+                    icon: "phone.badge.plus",
+                    label: "Log a Call",
+                    permission: "pipeline.manage",
+                    disabledInTutorial: true,
+                    action: {
+                        showCreateMenu = false
+                        CallCaptureCoordinator.shared.present(.capture(.fab))
+                    }
+                )
+            )
         }
 
         workItems.append(contentsOf: [

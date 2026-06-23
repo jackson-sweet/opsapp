@@ -16,10 +16,13 @@ struct CalendarEventCard: View {
     let dayPosition: DayPosition
     let showLabels: Bool
     let onTap: () -> Void
+    /// Drag-reschedule wiring — supplied only on the week day-list (the drag
+    /// surface). nil elsewhere → the card isn't draggable in that context.
+    let dragPayload: RescheduleDragPayload?
+    let dragSession: ScheduleDragSession?
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
     @State private var showingReschedule = false
-    @State private var showingQuickActions = false
     @State private var showingStatusPicker = false
 
     // Reschedule / quick-schedule actions are gated on calendar.edit, scope-aware
@@ -33,12 +36,16 @@ struct CalendarEventCard: View {
 
     init(task: ProjectTask, isFirst: Bool, isOngoing: Bool = false,
          dayPosition: DayPosition = .single, showLabels: Bool = true,
+         dragPayload: RescheduleDragPayload? = nil,
+         dragSession: ScheduleDragSession? = nil,
          onTap: @escaping () -> Void) {
         self.task = task
         self.isFirst = isFirst
         self.isOngoing = isOngoing
         self.dayPosition = dayPosition
         self.showLabels = showLabels
+        self.dragPayload = dragPayload
+        self.dragSession = dragSession
         self.onTap = onTap
     }
 
@@ -207,21 +214,24 @@ struct CalendarEventCard: View {
         .onTapGesture {
             onTap()
         }
-        .onLongPressGesture(minimumDuration: 0.5) {
-            showingQuickActions = true
-        }
-        .confirmationDialog("Quick Actions", isPresented: $showingQuickActions, titleVisibility: .hidden) {
+        // Long-press opens the quick-actions menu; long-press + move lifts the card
+        // into a reschedule drag (native iOS coexistence). `.reschedulable` is a
+        // no-op when this card isn't on a drag surface (dragPayload/dragSession nil).
+        .reschedulable(dragPayload, session: dragSession)
+        .contextMenu {
             if canModify {
-                Button("Reschedule") {
+                Button {
                     showingReschedule = true
+                } label: {
+                    Label("Reschedule", systemImage: "calendar")
                 }
             } else {
-                Button("Update Status") {
+                Button {
                     showingStatusPicker = true
+                } label: {
+                    Label("Update status", systemImage: "circle.dashed")
                 }
             }
-
-            Button("Cancel", role: .cancel) {}
         }
         // Bug a6517f42 — schedule cards previously sat at 4pt vertical padding
         // (8pt total gap between cards), which read as cramped. Bumped to 8pt

@@ -52,6 +52,10 @@ struct ScheduleView: View {
     @State private var showScheduleBanner = false
     @State private var scheduleBannerText = ""
 
+    // Drag-and-drop reschedule — one session shared by the month grid + week strip,
+    // injected via `.environment` so both surfaces and the live target banner read it.
+    @State private var dragSession = ScheduleDragSession()
+
     // Bug 68123654 — iPhone Calendar Mirror state
     @StateObject private var mirrorService = CalendarMirrorService.shared
     @AppStorage("ops.calendar.mirror.bannerDismissCount") private var mirrorBannerDismissCount: Int = 0
@@ -126,12 +130,21 @@ struct ScheduleView: View {
                     }
                 }
                 .animation(OPSStyle.Animation.standard, value: viewModel.isMonthExpanded)
+                // Live target-date banner while a reschedule drag is in flight —
+                // floats at the top of the calendar so the operator sees exactly
+                // where the job will land before they let go.
+                .overlay(alignment: .top) {
+                    RescheduleTargetBanner()
+                        .padding(.top, OPSStyle.Layout.spacing1)
+                        .allowsHitTesting(false)
+                }
                 .padding(.bottom, viewModel.isMonthExpanded ? (wizardActive ? 80 : 0) : 90) // tab bar + wizard bar clearance
                 //.frame(maxWidth: 50)
             }
             }
         }
         .trackScreen("Schedule")
+        .environment(dragSession)
        // .ignoresSafeArea(.keyboard)
         // Monitor viewMode changes to handle view transitions
         .onChange(of: viewModel.viewMode) { _, newMode in
@@ -294,6 +307,51 @@ struct ScheduleView: View {
                 .environmentObject(dataController)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
+        }
+        // Crew/dependency cascade prompt for a drag-drop reschedule (three-way:
+        // push their work / move only this / cancel). Reuses CascadePreviewSheet.
+        .sheet(item: Binding(
+            get: { dragSession.pendingPrompt },
+            set: { dragSession.pendingPrompt = $0 }
+        )) { prompt in
+            if let task = dataController.getTask(id: prompt.taskId) {
+                CascadePreviewSheet(
+                    pushedTaskName: prompt.taskName,
+                    pushedTaskOldStart: prompt.oldStart,
+                    pushedTaskNewStart: prompt.newStart,
+                    pushedTaskNewEnd: prompt.newEnd,
+                    cascadeChanges: prompt.changes,
+                    onConfirm: {
+                        Task {
+                            do {
+                                _ = try await dataController.commitDropReschedule(
+                                    task, targetStart: prompt.newStart, targetEnd: prompt.newEnd, cascade: true)
+                                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                ToastCenter.shared.present(Feedback.Task.scheduleUpdatedCascade(count: prompt.changes.count + 1))
+                            } catch {
+                                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                            }
+                        }
+                    },
+                    onCancel: { },
+                    contextLine: prompt.contextLine,
+                    primaryLabel: prompt.primaryLabel,
+                    onMoveOnly: {
+                        Task {
+                            do {
+                                _ = try await dataController.commitDropReschedule(
+                                    task, targetStart: prompt.newStart, targetEnd: prompt.newEnd, cascade: false)
+                                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                ToastCenter.shared.present(Feedback.Task.scheduledFor(start: prompt.newStart, end: prompt.newEnd))
+                            } catch {
+                                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                            }
+                        }
+                    }
+                )
+                .environmentObject(dataController)
+                .presentationDetents([.medium])
+            }
         }
         // Refresh user events when created from FAB (which owns the sheets)
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CalendarUserEventsDidChange"))) { _ in

@@ -255,6 +255,7 @@ struct MonthGridView: View {
     }
     @EnvironmentObject private var dataController: DataController
     @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(ScheduleDragSession.self) private var dragSession
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
     private let weekdayLabels = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
@@ -360,6 +361,32 @@ struct MonthGridView: View {
         return task.canEditSchedule
     }
 
+    /// Build a drag payload for a badge if its event may be rescheduled. Tasks are
+    /// gated on calendar.edit (scope-aware); non-recurring user events on the same
+    /// owner+crew gate UserEventSheet uses. Returns nil → the badge isn't draggable.
+    private func dragPayload(for span: WeekEventSpan) -> RescheduleDragPayload? {
+        let cal = Calendar.current
+        if span.eventId.hasPrefix("userevent:") {
+            let eventId = String(span.eventId.dropFirst("userevent:".count))
+            guard let event = dataController.getUserEvent(id: eventId),
+                  !event.isRecurringInstance,
+                  PermissionStore.shared.canEditSchedule(
+                    assigneeIds: [event.userId] + (event.teamMemberIds ?? [])) else { return nil }
+            let days = (cal.dateComponents([.day],
+                                           from: cal.startOfDay(for: event.startDate),
+                                           to: cal.startOfDay(for: event.endDate)).day ?? 0) + 1
+            return RescheduleDragPayload(id: eventId, kind: .userEvent, title: event.title,
+                                         durationDays: max(days, 1),
+                                         startEpoch: event.startDate.timeIntervalSince1970)
+        } else {
+            guard let task = dataController.getTask(id: span.eventId),
+                  task.canEditSchedule, let start = task.startDate else { return nil }
+            return RescheduleDragPayload(id: task.id, kind: .task, title: task.displayTitle,
+                                         durationDays: max(task.duration, 1),
+                                         startEpoch: start.timeIntervalSince1970)
+        }
+    }
+
     /// Event badges for one week. Extracted from the month-grid body so EventBar's
     /// initializer doesn't inflate that deeply-nested week expression past the
     /// Swift type-checker's budget. Reschedule (push / pull / pick date) is gated
@@ -403,6 +430,7 @@ struct MonthGridView: View {
                 canModify: spanCanModify
             )
             .offset(x: dayWidth * CGFloat(span.startDayIndex), y: 26 + (CGFloat(span.row) * eventRowHeight(for: cellHeight)))
+            .reschedulable(dragPayload(for: span), session: dragSession)
         }
     }
 
@@ -693,6 +721,7 @@ struct MonthGridView: View {
                                                                 }
                                                             )
                                                             .wizardTarget("tap_month_day")
+                                                            .reschedulableDropTarget(day: date)
                                                         } else {
                                                             Color.clear
                                                                 .frame(maxWidth: .infinity)
@@ -701,7 +730,11 @@ struct MonthGridView: View {
                                                     }
                                                 }
 
+                                                // Badges sit above the day cells; during an active drag
+                                                // disable their hit-testing so drops always reach the
+                                                // MonthDayCell drop targets beneath.
                                                 eventBars(weekSpans, dates: dates, dayWidth: dayWidth)
+                                                    .allowsHitTesting(dragSession.active == nil)
 
                                                 ForEach(moreIndicators) { indicator in
                                                     MoreEventsIndicatorView(indicator: indicator, cellHeight: cellHeight, dayWidth: dayWidth)

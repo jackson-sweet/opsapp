@@ -81,6 +81,7 @@ struct DayPageView: View {
     @ObservedObject var viewModel: CalendarViewModel
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var dataController: DataController
+    @Environment(ScheduleDragSession.self) private var dragSession
     let isActivePage: Bool
 
     /// Section-level gate for the multi-select bulk action bar: true when the user
@@ -327,6 +328,9 @@ struct DayPageView: View {
                                     onDelete: { handleUserEventDelete(event) },
                                     onEdit: { handleUserEventEdit(event) }
                                 )
+                                // Drag a non-recurring personal/time-off card up to
+                                // the week strip to reschedule it (no crew cascade).
+                                .reschedulable(userEventDragPayload(event), session: dragSession)
                             }
                         }
                         .padding(.bottom, 100) // tab bar clearance
@@ -474,14 +478,42 @@ struct DayPageView: View {
 
     // MARK: - Task Row
 
+    /// Lift payload for a personal/time-off card. Non-recurring only (recurring
+    /// keeps the explicit scope picker) and gated on the same owner+crew rule the
+    /// edit sheet uses. nil → not draggable.
+    private func userEventDragPayload(_ event: CalendarUserEvent) -> RescheduleDragPayload? {
+        guard !event.isRecurringInstance,
+              PermissionStore.shared.canEditSchedule(
+                assigneeIds: [event.userId] + (event.teamMemberIds ?? [])) else { return nil }
+        let cal = Calendar.current
+        let days = (cal.dateComponents([.day],
+                                       from: cal.startOfDay(for: event.startDate),
+                                       to: cal.startOfDay(for: event.endDate)).day ?? 0) + 1
+        return RescheduleDragPayload(id: event.id, kind: .userEvent,
+                                     title: event.title.isEmpty ? "Event" : event.title,
+                                     durationDays: max(days, 1),
+                                     startEpoch: event.startDate.timeIntervalSince1970)
+    }
+
     @ViewBuilder
     private func taskRow(task: ProjectTask, isOngoing: Bool, isFirst: Bool) -> some View {
+        // Lift payload only for jobs the user may reschedule (calendar.edit,
+        // scope-aware). Dragging a card up to the week strip drops it on that day.
+        let payload: RescheduleDragPayload? = task.canEditSchedule
+            ? task.startDate.map {
+                RescheduleDragPayload(id: task.id, kind: .task, title: task.displayTitle,
+                                      durationDays: max(task.duration, 1),
+                                      startEpoch: $0.timeIntervalSince1970)
+            }
+            : nil
         let card = CalendarEventCard(
             task: task,
             isFirst: isFirst,
             isOngoing: isOngoing,
             dayPosition: dayPosition(for: task, on: date),
             showLabels: true,
+            dragPayload: payload,
+            dragSession: dragSession,
             onTap: {
                 if isSelectMode {
                     toggleSelection(task.id)

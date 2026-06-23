@@ -91,145 +91,150 @@ class ImageSyncManager: ObservableObject {
         }
     }
     
-    /// Save images using S3 and update Supabase
+    /// Save images using S3 and update Supabase.
+    ///
+    /// Resilient per-photo path (Bug photo-upload-resilience). The old version
+    /// uploaded the whole batch in one call that threw on the FIRST failure —
+    /// so a single mid-batch timeout discarded every photo (including ones
+    /// already on S3) and fell back to re-queueing all of them. Now each photo
+    /// uploads independently (`ProjectPhotoBatchUploader`): the ones that land
+    /// are recorded immediately, transient failures are saved locally + queued,
+    /// and permanent failures surface a red failed tile — per photo, never
+    /// all-or-nothing.
+    ///
+    /// Bug e5310f3d — in-flight placeholder tiles (one per image) are resolved
+    /// individually by each photo's fate rather than cleared en masse.
     func saveImages(_ images: [UIImage], for project: Project, notifyCrew: Bool = true) async -> [String] {
         let companyId = project.companyId
         guard !companyId.isEmpty else {
             return []
         }
 
-        // Bug e5310f3d — surface in-flight uploads to the UI immediately
-        // so the carousel can show placeholder cards with loaders. Each
-        // pending upload carries a UIImage we can render right away while
-        // the bytes climb to S3.
-        //
-        // Auto-bug-reporting (May-12 follow-up): only `endInFlightUploads`
-        // when we know the upload settled cleanly. If a permanent error
-        // hits, we flip the tile to failed state and KEEP it in the map so
-        // the user sees the red badge instead of a silent disappearance.
         let placeholders = beginInFlightUploads(images, for: project)
-        let placeholderIds = placeholders.map { $0.id }
         var savedURLs: [String] = []
-        var tilesShouldRemainAsFailed = false
 
-        defer {
-            // Only clear tiles that did NOT end up in the failed state.
-            if !tilesShouldRemainAsFailed {
-                endInFlightUploads(placeholderIds, for: project.id)
-            }
-        }
-
-        if connectivity.isConnected {
-            do {
-                // Upload to S3 via presigned URLs
-                let s3Results = try await presignedURLService.uploadProjectImages(images, for: project, companyId: companyId)
-
-                savedURLs = s3Results.map { $0.url }
-
-                // Update project with new image URLs
-                var currentImages = project.getProjectImages()
-                currentImages.append(contentsOf: savedURLs)
-
-                project.setProjectImageURLs(currentImages)
-
-                // Update Supabase directly with new image URLs
-                try await SupabaseService.shared.client
-                    .from("projects")
-                    .update(["project_images": currentImages])
-                    .eq("id", value: project.id)
-                    .execute()
-
-                // Bug 7b43be32 + May-12 follow-up — also insert one
-                // project_photos row per URL so the web client portal can
-                // see them. The May-12 outage came from RLS rejecting this
-                // insert; insertProjectPhotoRows now auto-bugs + returns
-                // false so we can flip the tile to failed and surface the
-                // portal-sync failure even though S3+projects succeeded.
-                let uploaderId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
-                let portalMirrorSucceeded = await insertProjectPhotoRows(
-                    urls: savedURLs,
-                    projectId: project.id,
-                    companyId: companyId,
-                    uploadedBy: uploaderId,
-                    source: "in_progress"
-                )
-
-                if !portalMirrorSucceeded {
-                    markInFlightUploadsFailed(
-                        ids: placeholderIds,
-                        for: project.id,
-                        lastError: "Portal sync failed — photo saved locally but not yet visible in the client portal."
-                    )
-                    tilesShouldRemainAsFailed = true
-                }
-
-                // Notify assigned crew that new photos landed on the project.
-                // Gallery "add photos" actions notify; the note-attachment path
-                // passes notifyCrew:false so a photo-bearing note doesn't fire a
-                // second notification. Best-effort, and the uploader is excluded.
-                if notifyCrew && portalMirrorSucceeded {
-                    notifyCrewOfAddedPhotos(
-                        project: project,
-                        uploaderId: uploaderId,
-                        photoCount: savedURLs.count,
-                        firstURL: savedURLs.first
-                    )
-                }
-
-                // Images uploaded to S3 and Supabase updated — no further sync needed
-                project.needsSync = false
-                project.lastSyncedAt = Date()
-
-                if let modelContext = modelContext {
-                    try? modelContext.save()
-                }
-
-            } catch {
-                // Classify before falling through. Permanent errors here
-                // mean the projects row update or S3 upload itself was
-                // rejected — auto-bug + surface red badge. Transient is
-                // the normal offline-fallback path (save locally, drain
-                // later via syncPendingImages).
-                let kind = UploadErrorClassifier.classify(error)
-                if case .permanent(let code, let reason) = kind {
-                    await AutoBugReporter.shared.report(
-                        screen: "ImageSyncManager.saveImages",
-                        suspectedFile: "ImageSyncManager.swift",
-                        errorCode: code,
-                        summary: "saveImages permanent failure for project \(project.id): \(reason)",
-                        metadata: [
-                            "project_id": project.id,
-                            "image_count": images.count
-                        ]
-                    )
-                    markInFlightUploadsFailed(
-                        ids: placeholderIds,
-                        for: project.id,
-                        lastError: "Upload rejected by server — \(reason). Tap to retry."
-                    )
-                    tilesShouldRemainAsFailed = true
-                } else {
-                    // Transient (or unknown) — fall back to local save so
-                    // the periodic retry timer picks it up later.
-                    DebugLogger.shared.log(
-                        "saveImages transient/unknown failure (\(kind)) for \(project.id): \(error)",
-                        level: .warning,
-                        category: "ImageSyncManager"
-                    )
-                    for (index, image) in images.enumerated() {
-                        if let localURL = await saveImageLocally(image, for: project, index: index) {
-                            savedURLs.append(localURL)
-                        }
-                    }
-                }
-            }
-        } else {
-            // Offline - save locally
+        guard connectivity.isConnected else {
+            // Offline — save every image locally. The carousel renders each via
+            // its local:// URL and the retry timer drains the queue once signal
+            // returns. Clear the spinner tiles (the local photo now renders).
             for (index, image) in images.enumerated() {
                 if let localURL = await saveImageLocally(image, for: project, index: index) {
                     savedURLs.append(localURL)
                 }
             }
+            endInFlightUploads(placeholders.map { $0.id }, for: project.id)
+            return savedURLs
+        }
+
+        // Online — resilient concurrent upload. One outcome per input image, in
+        // input order, so placeholders/images/outcomes all align by index.
+        let outcomes = await presignedURLService.uploadProjectImages(images, for: project, companyId: companyId)
+        let successURLs = outcomes.compactMap { $0.url }
+        let uploaderId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+        var portalMirrorSucceeded = true
+
+        // 1) Record the photos that DID upload — immediately. Their S3 bytes are
+        //    real; a sibling photo's failure must never drop them.
+        if !successURLs.isEmpty {
+            savedURLs.append(contentsOf: successURLs)
+
+            var currentImages = project.getProjectImages()
+            currentImages.append(contentsOf: successURLs)
+            project.setProjectImageURLs(currentImages)
+
+            // Legacy projects.project_images CSV mirror — best effort. The
+            // canonical cross-device + portal store is project_photos (below),
+            // so a failure here only delays the legacy CSV; the photo isn't lost.
+            do {
+                try await SupabaseService.shared.client
+                    .from("projects")
+                    .update(["project_images": currentImages])
+                    .eq("id", value: project.id)
+                    .execute()
+                project.needsSync = false
+            } catch {
+                // Leave needsSync set so the project's normal sync re-pushes it.
+                project.needsSync = true
+            }
+
+            // Bug 7b43be32 — project_photos rows so the web client portal sees
+            // the photos. insertProjectPhotoRows auto-bugs on a permanent reject.
+            portalMirrorSucceeded = await insertProjectPhotoRows(
+                urls: successURLs,
+                projectId: project.id,
+                companyId: companyId,
+                uploadedBy: uploaderId,
+                source: "in_progress"
+            )
+
+            project.lastSyncedAt = Date()
+            if let modelContext = modelContext {
+                try? modelContext.save()
+            }
+
+            // Notify assigned crew. notifyCrew:false on the note-attachment path
+            // so a photo-bearing note doesn't fire a second notification.
+            if notifyCrew && portalMirrorSucceeded {
+                notifyCrewOfAddedPhotos(
+                    project: project,
+                    uploaderId: uploaderId,
+                    photoCount: successURLs.count,
+                    firstURL: successURLs.first
+                )
+            }
+        }
+
+        // 2) Resolve each tile by its own photo's fate (index-aligned).
+        var permanentFailureMessages: [String] = []
+        for (index, outcome) in outcomes.enumerated() {
+            guard index < placeholders.count else { break }
+            let tileId = placeholders[index].id
+            switch outcome {
+            case .success:
+                if portalMirrorSucceeded {
+                    endInFlightUploads([tileId], for: project.id)
+                } else {
+                    // S3 + gallery succeeded but the portal row insert failed —
+                    // keep a failed tile so the crew knows it isn't in the portal.
+                    markInFlightUploadsFailed(
+                        ids: [tileId],
+                        for: project.id,
+                        lastError: "Photo saved, but not yet visible in the client portal. It'll retry automatically."
+                    )
+                }
+            case .failure(let image, _, let kind, let message):
+                if case .permanent = kind {
+                    permanentFailureMessages.append(message)
+                    markInFlightUploadsFailed(ids: [tileId], for: project.id, lastError: message)
+                } else {
+                    // Transient — save locally + queue; the carousel renders the
+                    // local placeholder, so clear the spinner tile.
+                    DebugLogger.shared.log(
+                        "saveImages transient photo failure (\(kind)) for \(project.id)",
+                        level: .warning,
+                        category: "ImageSyncManager"
+                    )
+                    if let localURL = await saveImageLocally(image, for: project, index: index) {
+                        savedURLs.append(localURL)
+                    }
+                    endInFlightUploads([tileId], for: project.id)
+                }
+            }
+        }
+
+        // Auto-bug permanent rejections once (server-side dedupe collapses repeats).
+        if !permanentFailureMessages.isEmpty {
+            await AutoBugReporter.shared.report(
+                screen: "ImageSyncManager.saveImages",
+                suspectedFile: "ImageSyncManager.swift",
+                errorCode: "PHOTO_UPLOAD_PERMANENT",
+                summary: "saveImages: \(permanentFailureMessages.count) of \(images.count) photo(s) permanently rejected for project \(project.id). First: \(permanentFailureMessages[0])",
+                metadata: [
+                    "project_id": project.id,
+                    "permanent_failures": permanentFailureMessages.count,
+                    "image_count": images.count
+                ]
+            )
         }
 
         return savedURLs
@@ -585,112 +590,116 @@ class ImageSyncManager: ObservableObject {
             return
         }
 
-        // Convert pending uploads to UIImages
-        let images = uploads.compactMap { upload in
-            if let imageData = ImageFileManager.shared.getImageData(localID: upload.localURL) {
-                return UIImage(data: imageData)
+        // Pair each pending upload with its decoded image, KEEPING the localURL
+        // link. The old version compactMapped to a bare [UIImage] then remapped
+        // results back BY POSITION (s3Results[index]) — which misaligned and
+        // permanently stranded local:// URLs the moment any image was skipped.
+        // Undecodable uploads can never succeed, so drop them from the queue.
+        var pairs: [(upload: PendingImageUpload, image: UIImage)] = []
+        var undecodable: [PendingImageUpload] = []
+        for upload in uploads {
+            if let imageData = ImageFileManager.shared.getImageData(localID: upload.localURL),
+               let image = UIImage(data: imageData) {
+                pairs.append((upload, image))
+            } else if let image = upload.originalImage {
+                pairs.append((upload, image))
+            } else {
+                undecodable.append(upload)
             }
-            return upload.originalImage
         }
 
-        guard !images.isEmpty else {
+        if !undecodable.isEmpty {
+            let dead = Set(undecodable.map { $0.localURL })
+            pendingUploads.removeAll { dead.contains($0.localURL) }
+            savePendingUploads()
+        }
+
+        guard !pairs.isEmpty else {
+            if pendingUploads.isEmpty { stopRetryTimer() }
             return
         }
 
-        do {
-            // Upload to S3 via presigned URLs
-            let s3Results = try await presignedURLService.uploadProjectImages(images, for: project, companyId: companyId)
+        // Resilient per-photo upload — one failure never aborts the batch.
+        let images = pairs.map { $0.image }
+        let outcomes = await presignedURLService.uploadProjectImages(images, for: project, companyId: companyId)
 
-            // Success - update project with S3 URLs
-            var currentImages = project.getProjectImages()
+        // Reconcile by IDENTITY: each upload's local:// URL is swapped for ITS
+        // OWN remote URL, found by identity (never by array position).
+        let results: [(localURL: String, outcome: ProjectImageUploadOutcome)] =
+            zip(pairs, outcomes).map { ($0.0.upload.localURL, $0.1) }
+        let reconciled = GalleryReconciler.reconcileDrain(
+            currentImageURLs: project.getProjectImages(),
+            results: results
+        )
 
-            // Replace local URLs with S3 URLs
-            for (index, upload) in uploads.enumerated() {
-                if let localIndex = currentImages.firstIndex(of: upload.localURL),
-                   index < s3Results.count {
-                    currentImages[localIndex] = s3Results[index].url
-                    project.markImageAsSynced(upload.localURL)
-                }
+        if !reconciled.syncedLocalURLs.isEmpty {
+            project.setProjectImageURLs(reconciled.updatedImageURLs)
+            for localURL in reconciled.syncedLocalURLs {
+                project.markImageAsSynced(localURL)
             }
 
-            project.setProjectImageURLs(currentImages)
+            // Best-effort CSV mirror; project_photos (below) is canonical.
+            do {
+                try await SupabaseService.shared.client
+                    .from("projects")
+                    .update(["project_images": reconciled.updatedImageURLs])
+                    .eq("id", value: project.id)
+                    .execute()
+                project.needsSync = false
+            } catch {
+                project.needsSync = true
+            }
 
-            // Update Supabase directly
-            try await SupabaseService.shared.client
-                .from("projects")
-                .update(["project_images": currentImages])
-                .eq("id", value: project.id)
-                .execute()
-
-            // Bug 7b43be32 — also write project_photos rows for each newly
-            // synced URL so the web client portal sees them. Mirrors the
-            // online-path insert in saveImages.
+            // Bug 7b43be32 — project_photos rows for the newly landed URLs.
             let uploaderId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
             await insertProjectPhotoRows(
-                urls: s3Results.map { $0.url },
+                urls: reconciled.newRemoteURLs,
                 projectId: project.id,
                 companyId: companyId,
                 uploadedBy: uploaderId,
                 source: "in_progress"
             )
 
-            // Images uploaded to S3 and Supabase updated — no further sync needed
-            project.needsSync = false
             project.lastSyncedAt = Date()
 
-            // Remove from pending uploads
-            pendingUploads.removeAll { upload in
-                uploads.contains { $0.localURL == upload.localURL }
-            }
+            // Drop the drained (synced) uploads from the queue.
+            let synced = Set(reconciled.syncedLocalURLs)
+            pendingUploads.removeAll { synced.contains($0.localURL) }
             savePendingUploads()
 
             if let modelContext = modelContext {
                 try? modelContext.save()
             }
+        }
 
-            // Bug b171536b — drop the periodic retry timer once the
-            // queue is empty so we're not waking up the runloop every
-            // 30s for nothing.
-            if pendingUploads.isEmpty {
-                stopRetryTimer()
-            }
+        // Permanent failures will keep failing — drop them from the queue and
+        // auto-bug, so the 30s retry loop doesn't hammer a rejection forever.
+        // Transient failures stay queued for the next pass (Bug b171536b).
+        let permanentLocalURLs = zip(pairs, outcomes)
+            .filter { $0.1.isPermanentFailure }
+            .map { $0.0.upload.localURL }
+        if !permanentLocalURLs.isEmpty {
+            let dead = Set(permanentLocalURLs)
+            pendingUploads.removeAll { dead.contains($0.localURL) }
+            savePendingUploads()
+            await AutoBugReporter.shared.report(
+                screen: "ImageSyncManager.syncImagesForProject",
+                suspectedFile: "ImageSyncManager.swift",
+                errorCode: "PHOTO_DRAIN_PERMANENT",
+                summary: "Offline-drain: \(permanentLocalURLs.count) of \(pairs.count) queued photo(s) permanently rejected for project \(projectId).",
+                metadata: [
+                    "project_id": projectId,
+                    "permanent_failures": permanentLocalURLs.count,
+                    "queued_count": uploads.count
+                ]
+            )
+        }
 
-        } catch {
-            // Bug b171536b — keep the queue intact and ensure the retry
-            // timer is alive so the next pass fires automatically. Weak
-            // connections often need several tries.
-            //
-            // Auto-bug-reporting (May-12 follow-up): classify before
-            // retrying. A permanent rejection (RLS 42501, 4xx) will keep
-            // failing forever on the same poisoned item — auto-bug AND
-            // drop the offending uploads from the queue so we don't burn
-            // the retry timer on a rejection the server will never accept.
-            // Transient errors stay queued for the next pass.
-            let kind = UploadErrorClassifier.classify(error)
-            if case .permanent(let code, let reason) = kind {
-                await AutoBugReporter.shared.report(
-                    screen: "ImageSyncManager.syncImagesForProject",
-                    suspectedFile: "ImageSyncManager.swift",
-                    errorCode: code,
-                    summary: "Offline-drain permanent failure for project \(projectId): \(reason)",
-                    metadata: [
-                        "project_id": projectId,
-                        "queued_count": uploads.count
-                    ]
-                )
-                // Drop the poisoned items — the retry loop would otherwise
-                // hit the same rejection every 30s forever.
-                pendingUploads.removeAll { upload in
-                    uploads.contains { $0.localURL == upload.localURL }
-                }
-                savePendingUploads()
-            } else {
-                DebugLogger.shared.log(
-                    "syncImagesForProject transient/unknown failure (\(kind)) for \(projectId): \(error)",
-                    level: .warning,
-                    category: "ImageSyncManager"
-                )
-            }
+        // Keep the periodic retry timer alive only while transient failures
+        // remain queued; otherwise stop waking the runloop every 30s.
+        if pendingUploads.isEmpty {
+            stopRetryTimer()
+        } else {
             startRetryTimerIfNeeded()
         }
     }

@@ -16,6 +16,20 @@ class PresignedURLUploadService {
 
     private init() {}
 
+    /// Dedicated session for the presign POST and the S3 PUT. `URLSession.shared`
+    /// uses a 60s request-inactivity timeout, so a stalled upload on a weak field
+    /// connection hangs a full minute before failing — long enough that a 10-photo
+    /// batch routinely tripped it. A tighter per-request timeout lets the retry
+    /// layer (NetworkRetry) react quickly; `timeoutIntervalForResource` caps a
+    /// single transfer so a near-dead link can't hold a slot indefinitely.
+    private static let uploadSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30      // seconds of zero progress → fail
+        config.timeoutIntervalForResource = 180    // hard cap on a single transfer
+        config.waitsForConnectivity = false        // fail fast; queue handles offline
+        return URLSession(configuration: config)
+    }()
+
     // MARK: - Data Models
 
     /// Response from ops-web presign endpoint
@@ -26,86 +40,62 @@ class PresignedURLUploadService {
     
     // MARK: - Public Methods
     
-    /// Upload multiple images using presigned URLs
-    func uploadProjectImages(_ images: [UIImage], for project: Project, companyId: String) async throws -> [(url: String, filename: String)] {
-        
-        var uploadedImages: [(url: String, filename: String)] = []
-        
-        // Get existing project images to check for duplicates
-        let existingImages = project.getProjectImages()
+    /// Upload multiple images using presigned URLs.
+    ///
+    /// Resilient batch upload (see `ProjectPhotoBatchUploader`): photos upload
+    /// concurrently, each with its own retry, and a single photo's failure never
+    /// aborts the rest. Returns one outcome PER input image, in input order, so
+    /// the caller records the successes immediately and queues only the genuine
+    /// failures — replacing the old sequential loop that threw out the whole
+    /// batch (and discarded already-uploaded photos) on the first error.
+    func uploadProjectImages(
+        _ images: [UIImage],
+        for project: Project,
+        companyId: String
+    ) async -> [ProjectImageUploadOutcome] {
+        // Existing filenames (for in-project dedupe) — collected once up front.
         var existingFilenames = Set<String>()
-        
-        // Extract filenames from existing URLs
-        for imageURL in existingImages {
+        for imageURL in project.getProjectImages() {
             if let url = URL(string: imageURL),
                let filename = url.lastPathComponent.removingPercentEncoding {
                 existingFilenames.insert(filename)
             }
         }
-        
-        
-        // Process each image
+
+        let streetPrefix = extractStreetAddress(from: project.address ?? "")
+
+        // Prepare (resize + compress + unique filename) sequentially so the
+        // dedupe set has no races, then hand the prepared batch to the uploader.
+        var inputs: [ProjectPhotoBatchUploader.Input] = []
         for (index, image) in images.enumerated() {
-            
-            // Resize image if needed
             let processedImage = resizeImageIfNeeded(image)
-            
-            // Use adaptive compression based on image size
             let compressionQuality = getAdaptiveCompressionQuality(for: processedImage)
-            
-            // Compress image
-            guard let imageData = processedImage.jpegData(compressionQuality: compressionQuality) else {
-                continue
-            }
-            
-            let sizeInMB = Double(imageData.count) / (1024 * 1024)
-            
-            // Generate filename with duplicate checking
-            let streetPrefix = extractStreetAddress(from: project.address ?? "")
             let timestamp = Date().timeIntervalSince1970
+
             var attemptCount = 0
             var filename = ""
-            
-            // Keep generating filenames until we find a unique one
             repeat {
                 let uniqueSuffix = attemptCount > 0 ? "_\(attemptCount)" : ""
                 filename = "\(streetPrefix)_IMG_\(timestamp)_\(index)\(uniqueSuffix).jpg"
                 attemptCount += 1
             } while existingFilenames.contains(filename) && attemptCount < 100
-            
-            if existingFilenames.contains(filename) {
+            existingFilenames.insert(filename)
+
+            guard let imageData = processedImage.jpegData(compressionQuality: compressionQuality) else {
+                inputs.append(.encodingFailed(image: image, filename: filename))
                 continue
             }
-            
-            // Add to our tracking set
-            existingFilenames.insert(filename)
-            
-            
-            do {
-                // Step 1: Get presigned URL from Lambda
-                let presignedResponse = try await getPresignedURL(
-                    filename: filename,
-                    projectId: project.id,
-                    companyId: companyId
-                )
-                
-                // Step 2: Upload image to S3 using presigned URL
-                try await uploadToPresignedURL(
-                    presignedResponse: presignedResponse,
-                    imageData: imageData,
-                    contentType: "image/jpeg"
-                )
-                
-                // Step 3: Add to results
-                uploadedImages.append((url: presignedResponse.publicUrl, filename: filename))
-                
-            } catch {
-                throw error
-            }
+            inputs.append(.ready(PreparedProjectImage(image: image, filename: filename, data: imageData)))
         }
-        
 
-        return uploadedImages
+        let batch = ProjectPhotoBatchUploader(
+            uploader: LiveProjectImageDataUploader(),
+            folder: "projects/\(companyId)/\(project.id)",
+            maxConcurrent: 3,
+            maxAttempts: 3,
+            baseDelaySeconds: 0.5
+        )
+        return await batch.upload(inputs)
     }
 
     /// Upload images for a project note attachment
@@ -447,15 +437,6 @@ class PresignedURLUploadService {
 
     // MARK: - Private Methods
 
-    /// Get presigned URL from ops-web
-    private func getPresignedURL(filename: String, projectId: String, companyId: String) async throws -> PresignedURLResponse {
-        return try await requestPresignedURL(
-            filename: filename,
-            contentType: "image/jpeg",
-            folder: "projects/\(companyId)/\(projectId)"
-        )
-    }
-
     /// Get presigned URL for profile or logo image
     private func getPresignedURLForProfile(filename: String, imageType: String, companyId: String) async throws -> PresignedURLResponse {
         print("[PRESIGNED_UPLOAD] Requesting presigned URL for \(imageType): \(filename)")
@@ -489,7 +470,7 @@ class PresignedURLUploadService {
         ]
         request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.uploadSession.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw UploadError.invalidResponse
@@ -521,7 +502,7 @@ class PresignedURLUploadService {
         request.setValue("\(imageData.count)", forHTTPHeaderField: "Content-Length")
         request.httpBody = imageData
 
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await Self.uploadSession.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw UploadError.invalidResponse

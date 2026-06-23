@@ -83,20 +83,23 @@ enum RescheduleCoordinator {
         }
     }
 
-    /// Move an event onto `droppedDay`, preserving its day-span AND both time-of-days
-    /// using calendar arithmetic (DST-safe — a raw seconds offset can drift an hour
-    /// across a daylight-saving boundary on multi-day moves).
+    /// Move an event onto `droppedDay`, preserving its day-span AND both time-of-days.
+    /// Fully DST-safe: the day count uses calendar arithmetic and the time-of-day is
+    /// re-applied with date components (a raw seconds offset would drift an hour
+    /// across a daylight-saving boundary).
     private static func targetDates(originalStart: Date, originalEnd: Date,
                                     droppedDay: Date, calendar cal: Calendar) -> (start: Date, end: Date) {
         let dropDayStart = cal.startOfDay(for: droppedDay)
-        let startOffset = originalStart.timeIntervalSince(cal.startOfDay(for: originalStart))
-        let endOffset = originalEnd.timeIntervalSince(cal.startOfDay(for: originalEnd))
+        let s = cal.dateComponents([.hour, .minute, .second], from: originalStart)
+        let e = cal.dateComponents([.hour, .minute, .second], from: originalEnd)
         let daySpan = max(cal.dateComponents([.day],
                                              from: cal.startOfDay(for: originalStart),
                                              to: cal.startOfDay(for: originalEnd)).day ?? 0, 0)
-        let start = dropDayStart.addingTimeInterval(startOffset)
-        let endDay = cal.date(byAdding: .day, value: daySpan, to: dropDayStart) ?? dropDayStart
-        let end = endDay.addingTimeInterval(endOffset)
+        let start = cal.date(bySettingHour: s.hour ?? 0, minute: s.minute ?? 0, second: s.second ?? 0,
+                             of: dropDayStart) ?? dropDayStart
+        let endDayStart = cal.date(byAdding: .day, value: daySpan, to: dropDayStart) ?? dropDayStart
+        let end = cal.date(bySettingHour: e.hour ?? 0, minute: e.minute ?? 0, second: e.second ?? 0,
+                           of: endDayStart) ?? endDayStart
         return (start, end)
     }
 }
@@ -167,8 +170,14 @@ extension View {
     func reschedulable(_ payload: RescheduleDragPayload?, session: ScheduleDragSession?) -> some View {
         if let payload, let session {
             self.draggable(payload) {
+                // The drag preview is created at lift and torn down when the drag
+                // ENDS — commit or cancel. onAppear arms the session; onDisappear is
+                // the only reliable "drag ended" hook SwiftUI gives `.draggable`, so
+                // it clears `active` even when the user releases off-grid (otherwise
+                // the month-grid hit-test gate would stay disabled and lock out taps).
                 RescheduleDragPreview(payload: payload)
                     .onAppear { session.begin(payload) }
+                    .onDisappear { session.end() }
             }
         } else {
             self

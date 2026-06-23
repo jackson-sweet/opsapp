@@ -381,8 +381,14 @@ struct MonthGridView: View {
         } else {
             guard let task = dataController.getTask(id: span.eventId),
                   task.canEditSchedule, let start = task.startDate else { return nil }
+            // Calendar-day span (matches targetDates + the month-grid bar renderer) so
+            // the highlight never disagrees with the landed drop for tasks whose stored
+            // end time-of-day precedes the start time-of-day.
+            let days = (cal.dateComponents([.day],
+                                           from: cal.startOfDay(for: start),
+                                           to: cal.startOfDay(for: task.endDate ?? start)).day ?? 0) + 1
             return RescheduleDragPayload(id: task.id, kind: .task, title: task.displayTitle,
-                                         durationDays: max(task.duration, 1),
+                                         durationDays: max(days, 1),
                                          startEpoch: start.timeIntervalSince1970)
         }
     }

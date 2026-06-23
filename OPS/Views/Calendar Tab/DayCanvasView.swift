@@ -499,11 +499,17 @@ struct DayPageView: View {
     private func taskRow(task: ProjectTask, isOngoing: Bool, isFirst: Bool) -> some View {
         // Lift payload only for jobs the user may reschedule (calendar.edit,
         // scope-aware). Dragging a card up to the week strip drops it on that day.
+        // Day-span uses the start-of-day calendar formula (matches targetDates) so the
+        // live highlight matches the landed drop regardless of stored time-of-day.
         let payload: RescheduleDragPayload? = task.canEditSchedule
-            ? task.startDate.map {
-                RescheduleDragPayload(id: task.id, kind: .task, title: task.displayTitle,
-                                      durationDays: max(task.duration, 1),
-                                      startEpoch: $0.timeIntervalSince1970)
+            ? task.startDate.map { start in
+                let cal = Calendar.current
+                let days = (cal.dateComponents([.day],
+                                               from: cal.startOfDay(for: start),
+                                               to: cal.startOfDay(for: task.endDate ?? start)).day ?? 0) + 1
+                return RescheduleDragPayload(id: task.id, kind: .task, title: task.displayTitle,
+                                             durationDays: max(days, 1),
+                                             startEpoch: start.timeIntervalSince1970)
             }
             : nil
         let card = CalendarEventCard(

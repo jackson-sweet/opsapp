@@ -39,4 +39,61 @@ final class SyncCursorInvariantTests: XCTestCase {
         )
         XCTAssertEqual(result, [.deckDesign, .client])
     }
+
+    // MARK: - One-time cursor recovery (poisoned 3.0.3 schedule cursors)
+
+    /// Builds an isolated UserDefaults suite so the recovery gating can be
+    /// exercised without touching the device's real `.standard` domain.
+    private func makeDefaults(_ name: String) -> UserDefaults {
+        let suite = "SyncCursorRecoveryTests.\(name)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return defaults
+    }
+
+    func test_runCursorRecovery_clearsListedCursors_onFirstRun() {
+        let defaults = makeDefaults(#function)
+        // Simulate poisoned cursors carried over from 3.0.3.
+        defaults.set(Date(), forKey: "sync.lastPull.\(SyncEntityType.project.rawValue)")
+        defaults.set(Date(), forKey: "sync.lastPull.\(SyncEntityType.projectTask.rawValue)")
+        // An unrelated cursor must survive.
+        defaults.set(Date(), forKey: "sync.lastPull.\(SyncEntityType.invoice.rawValue)")
+
+        let didRun = SyncEngine.runCursorRecovery(
+            key: "sync.scheduleCursorRecoveryV1",
+            entities: [.project, .projectTask],
+            defaults: defaults
+        )
+
+        XCTAssertTrue(didRun)
+        XCTAssertNil(defaults.object(forKey: "sync.lastPull.\(SyncEntityType.project.rawValue)"))
+        XCTAssertNil(defaults.object(forKey: "sync.lastPull.\(SyncEntityType.projectTask.rawValue)"))
+        XCTAssertNotNil(defaults.object(forKey: "sync.lastPull.\(SyncEntityType.invoice.rawValue)"))
+        XCTAssertTrue(defaults.bool(forKey: "sync.scheduleCursorRecoveryV1"))
+    }
+
+    func test_runCursorRecovery_runsExactlyOncePerDevice() {
+        let defaults = makeDefaults(#function)
+
+        let firstRun = SyncEngine.runCursorRecovery(
+            key: "sync.scheduleCursorRecoveryV1",
+            entities: [.project, .projectTask],
+            defaults: defaults
+        )
+        XCTAssertTrue(firstRun)
+
+        // A freshly-synced cursor written AFTER the one-time recovery must not
+        // be wiped by a second configure() pass.
+        let freshCursor = Date()
+        defaults.set(freshCursor, forKey: "sync.lastPull.\(SyncEntityType.project.rawValue)")
+
+        let secondRun = SyncEngine.runCursorRecovery(
+            key: "sync.scheduleCursorRecoveryV1",
+            entities: [.project, .projectTask],
+            defaults: defaults
+        )
+
+        XCTAssertFalse(secondRun)
+        XCTAssertNotNil(defaults.object(forKey: "sync.lastPull.\(SyncEntityType.project.rawValue)"))
+    }
 }

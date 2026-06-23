@@ -599,11 +599,17 @@ class CalendarViewModel: ObservableObject {
             return
         }
 
-        // Clear the count cache so freshly-synced data isn't masked.
-        projectCountCache.removeAll()
-
         // Pull the latest of everything from the backend (full sync).
         await dataController.refreshProjectsFromBackend()
+
+        // Invalidate ALL snapshot caches AFTER the sync writes land — not just
+        // projectCountCache. dayTaskCache and cachedWeekStart must be cleared
+        // too, otherwise rebuildWeekCache() short-circuits on the still-set
+        // cachedWeekStart and the freshly-synced dates never re-fetch from
+        // SwiftData (the pull-to-refresh stale-calendar bug). Clearing AFTER the
+        // await (not before) also prevents an in-flight repaint from
+        // repopulating cachedWeekStart mid-sync and re-masking the new data.
+        clearProjectCountCache()
 
         // Reload both the task layer and the user-event layer for the day.
         loadProjectsForDate(selectedDate)

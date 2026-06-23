@@ -100,7 +100,7 @@ class PhotoCommentsViewModel: ObservableObject {
             loadCommentsFromLocal()
         } catch {
             if !(error is CancellationError) {
-                self.error = error.localizedDescription
+                self.error = FieldErrorHandler.userFriendlyMessage(for: error)
             }
             loadCommentsFromLocal()
         }
@@ -174,7 +174,10 @@ class PhotoCommentsViewModel: ObservableObject {
         mentionSuggestions = []
 
         do {
-            let created = try await repo.create(dto)
+            // Retry through a transient signal blip before giving up.
+            let created = try await NetworkRetry.run(maxAttempts: 3, baseDelaySeconds: 0.5) {
+                try await repo.create(dto)
+            }
             // Replace optimistic note with server version
             if let context = modelContext {
                 let optimisticId = optimisticNote.id
@@ -197,7 +200,9 @@ class PhotoCommentsViewModel: ObservableObject {
             await sendPhotoOwnerNotification(mentionedIds: mentionedIds, noteText: text, noteId: created.id)
         } catch {
             if !(error is CancellationError) {
-                self.error = error.localizedDescription
+                self.error = FieldErrorHandler.userFriendlyMessage(for: error)
+                // Preserve the operator's typed comment for a one-tap retry.
+                newCommentText = text
             }
             // Revert optimistic note
             if let context = modelContext {
@@ -231,7 +236,7 @@ class PhotoCommentsViewModel: ObservableObject {
             }
             loadCommentsFromLocal()
             if !(error is CancellationError) {
-                self.error = error.localizedDescription
+                self.error = FieldErrorHandler.userFriendlyMessage(for: error)
             }
         }
     }
@@ -273,7 +278,7 @@ class PhotoCommentsViewModel: ObservableObject {
             try? context.save()
             loadCommentsFromLocal()
             if !(error is CancellationError) {
-                self.error = error.localizedDescription
+                self.error = FieldErrorHandler.userFriendlyMessage(for: error)
             }
         }
     }

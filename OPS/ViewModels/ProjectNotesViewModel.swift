@@ -108,7 +108,7 @@ class ProjectNotesViewModel: ObservableObject {
             loadNotesFromLocal()
         } catch {
             if !(error is CancellationError) {
-                self.error = error.localizedDescription
+                self.error = FieldErrorHandler.userFriendlyMessage(for: error)
             }
             // Fall back to local data
             loadNotesFromLocal()
@@ -297,7 +297,11 @@ class ProjectNotesViewModel: ObservableObject {
         NotificationCenter.default.post(name: Notification.Name("WizardNotePosted"), object: nil)
 
         do {
-            let created = try await repo.create(dto)
+            // Retry through a transient signal blip — a single timeout used to
+            // surface a raw "request timed out" and delete the post outright.
+            let created = try await NetworkRetry.run(maxAttempts: 3, baseDelaySeconds: 0.5) {
+                try await repo.create(dto)
+            }
             // Replace optimistic note with server version
             if let context = modelContext {
                 let optimisticId = optimisticNote.id
@@ -321,9 +325,16 @@ class ProjectNotesViewModel: ObservableObject {
             await sendNoteAddedNotifications(mentionedIds: mentionedIds, noteText: noteContent, noteId: created.id, attachmentURLs: attachmentURLs)
         } catch {
             if !(error is CancellationError) {
-                self.error = error.localizedDescription
+                // Field-friendly copy (e.g. "Connection timed out. Try moving to
+                // a better signal area.") instead of the raw NSURLError text.
+                self.error = FieldErrorHandler.userFriendlyMessage(for: error)
+                // Preserve the operator's typed note so they don't lose their
+                // work — restore it into the composer for a one-tap retry. Any
+                // attached photos already landed on the project via saveImages.
+                newNoteText = text
             }
-            // Revert: remove the optimistic note that failed to sync
+            // Revert: remove the optimistic note that failed to sync (notes have
+            // no outbound retry queue, so a kept needsSync note would never push).
             if let context = modelContext {
                 let optimisticId = optimisticNote.id
                 let descriptor = FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == optimisticId })
@@ -433,7 +444,7 @@ class ProjectNotesViewModel: ObservableObject {
             }
             loadNotesFromLocal()
             if !(error is CancellationError) {
-                self.error = error.localizedDescription
+                self.error = FieldErrorHandler.userFriendlyMessage(for: error)
             }
         }
     }
@@ -631,7 +642,7 @@ class ProjectNotesViewModel: ObservableObject {
             try? context.save()
             loadNotesFromLocal()
             if !(error is CancellationError) {
-                self.error = error.localizedDescription
+                self.error = FieldErrorHandler.userFriendlyMessage(for: error)
             }
         }
     }

@@ -99,15 +99,27 @@ final class SyncEngine {
         // past a swallowed decode failure, stranding already-existing decks on
         // every non-creator device (future deltas only pull rows updated after the
         // cursor). Clear that ONE cursor once so the next pull re-fetches all decks;
-        // decode resilience then keeps a corrupt row from re-poisoning it. Gated by
-        // a UserDefaults flag so it runs exactly once per device.
-        let deckCursorRecoveryKey = "sync.deckCursorRecoveryV1"
-        if !UserDefaults.standard.bool(forKey: deckCursorRecoveryKey) {
-            UserDefaults.standard.removeObject(
-                forKey: "sync.lastPull.\(SyncEntityType.deckDesign.rawValue)"
-            )
-            UserDefaults.standard.set(true, forKey: deckCursorRecoveryKey)
-        }
+        // decode resilience then keeps a corrupt row from re-poisoning it.
+        SyncEngine.runCursorRecovery(
+            key: "sync.deckCursorRecoveryV1",
+            entities: [.deckDesign]
+        )
+
+        // One-time recovery for poisoned project / project_task delta cursors
+        // carried over from the 3.0.3 sync engine. That build used gte + a
+        // whole-batch decode and advanced the cursor to a post-pull wall-clock
+        // `now` with no overlap window and no per-entity error isolation, so a
+        // row written during an in-flight pull (or a single undecodable row)
+        // could strand schedule changes that delta pulls then never re-fetched —
+        // crew saw stale schedules until a reinstall wiped UserDefaults. Resilient
+        // decode + the overlap window fix FUTURE poisoning, but the cursor value
+        // already on disk only self-corrects if a launch full-sync happens to
+        // succeed. Clear the two schedule cursors once so the next pull re-fetches
+        // from the epoch sentinel and heals the device in place — no reinstall.
+        SyncEngine.runCursorRecovery(
+            key: "sync.scheduleCursorRecoveryV1",
+            entities: [.project, .projectTask]
+        )
 
         // One-time recovery for catalogStockUnitEvent: a pre-fix build registered
         // the entity but omitted it from DataActor.syncOrder (the default path),
@@ -1141,6 +1153,25 @@ final class SyncEngine {
         excluding failed: Set<SyncEntityType>
     ) -> [SyncEntityType] {
         entities.filter { !failed.contains($0) }
+    }
+
+    /// One-time, per-device cursor recovery. If `key` has not yet been recorded
+    /// in `defaults`, clears the last-pull delta cursor for each entity in
+    /// `entities` (so the next pull re-fetches from the epoch sentinel) and
+    /// records `key` so the recovery never runs again. Returns whether it ran.
+    /// Pure and defaults-injectable so the gating is unit-testable.
+    @discardableResult
+    nonisolated static func runCursorRecovery(
+        key: String,
+        entities: [SyncEntityType],
+        defaults: UserDefaults = .standard
+    ) -> Bool {
+        guard !defaults.bool(forKey: key) else { return false }
+        for entity in entities {
+            defaults.removeObject(forKey: "sync.lastPull.\(entity.rawValue)")
+        }
+        defaults.set(true, forKey: key)
+        return true
     }
 
     private func overlappedTimestamp(_ date: Date) -> Date {

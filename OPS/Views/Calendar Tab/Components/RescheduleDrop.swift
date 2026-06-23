@@ -11,6 +11,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Commit coordinator
 
@@ -41,7 +42,6 @@ enum RescheduleCoordinator {
             let showPreview = UserDefaults.standard.object(forKey: "showCascadePreview") as? Bool ?? true
 
             if !changes.isEmpty && showPreview {
-                let crew = changes.contains { $0.reason == .crew }
                 session.pendingPrompt = ReschedulePrompt(
                     taskId: task.id,
                     taskName: task.displayTitle,
@@ -49,9 +49,10 @@ enum RescheduleCoordinator {
                     newStart: target.start,
                     newEnd: target.end,
                     changes: changes,
-                    contextLine: crew ? "This crew has other work on these days."
-                                      : "Other jobs follow this one.",
-                    primaryLabel: crew ? "PUSH THEIR WORK" : "MOVE ALL")
+                    explanationLines: explanationLines(for: changes,
+                                                       pushedCrew: Set(task.getTeamMemberIds()),
+                                                       dataController: dataController),
+                    primaryLabel: "PUSH IT ALL")
             } else {
                 let cascade = !changes.isEmpty   // pref off but changes exist → still cascade
                 Task {
@@ -81,6 +82,41 @@ enum RescheduleCoordinator {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             ToastCenter.shared.present(Feedback.Task.scheduledFor(start: target.start, end: target.end))
         }
+    }
+
+    /// Build plain-language "why" lines from the actual changes — names the crew on
+    /// each shifting job, then the follow-on tasks — so the prompt explains exactly
+    /// what "push it all" will do. Capped so the sheet stays glanceable.
+    private static func explanationLines(for changes: [SchedulingEngine.CascadeResult.TaskDateChange],
+                                         pushedCrew: Set<String>,
+                                         dataController: DataController) -> [String] {
+        let df = DateFormatter()
+        df.dateFormat = "EEE"
+        var lines: [String] = []
+
+        let crew = changes.filter { $0.reason == .crew }
+        for change in crew.prefix(3) {
+            let job = dataController.getTask(id: change.id)
+            let title = job?.displayTitle ?? "Another job"
+            let member = job.flatMap { Set($0.getTeamMemberIds()).intersection(pushedCrew).first }
+            let name = member.flatMap { dataController.getUser(id: $0)?.firstName } ?? "Same crew"
+            let to = df.string(from: change.newStartDate)
+            if let from = change.oldStartDate.map({ df.string(from: $0) }) {
+                lines.append("\(name)'s on \(title) (\(from) → \(to)).")
+            } else {
+                lines.append("\(name)'s on \(title) — shifts to \(to).")
+            }
+        }
+        if crew.count > 3 { lines.append("+\(crew.count - 3) more crew jobs shift.") }
+
+        let deps = changes.filter { $0.reason == .dependency }
+        if let first = deps.first {
+            let title = dataController.getTask(id: first.id)?.displayTitle ?? "A follow-on task"
+            lines.append(deps.count == 1
+                ? "\(title) follows this — shifts to \(df.string(from: first.newStartDate))."
+                : "\(title) and \(deps.count - 1) more follow this — they shift too.")
+        }
+        return lines
     }
 
     /// Move an event onto `droppedDay`, preserving its day-span AND both time-of-days.
@@ -132,24 +168,56 @@ struct RescheduleDropTarget: ViewModifier {
                 }
             }
             .animation(reduceMotion ? nil : OPSStyle.Animation.hover, value: highlighted)
-            .dropDestination(for: RescheduleDragPayload.self) { items, _ in
-                guard let payload = items.first else { return false }
+            // A custom DropDelegate (not .dropDestination) so we can propose `.move`
+            // instead of `.copy` — otherwise iOS shows the green "+" add badge, which
+            // reads as "creating something" rather than moving a job.
+            .onDrop(of: [.opsRescheduleItem],
+                    delegate: RescheduleDropDelegate(day: day, session: session, dataController: dataController))
+    }
+}
+
+/// Drives one day cell's drop behaviour. Proposes `.move` (no add badge), tracks the
+/// live hover target for the multi-day highlight, and commits via the coordinator.
+struct RescheduleDropDelegate: DropDelegate {
+    let day: Date
+    let session: ScheduleDragSession
+    let dataController: DataController
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.opsRescheduleItem])
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        // The whole point of the custom delegate: a move, not a copy.
+        DropProposal(operation: .move)
+    }
+
+    func dropEntered(info: DropInfo) {
+        let cal = Calendar.current
+        // Tick only when the projected start day actually changes (no haptic spam).
+        let changed = session.hoveredDate.map { !cal.isDate($0, inSameDayAs: day) } ?? true
+        if changed { UISelectionFeedbackGenerator().selectionChanged() }
+        session.hoveredDate = day
+    }
+
+    func dropExited(info: DropInfo) {
+        let cal = Calendar.current
+        if let h = session.hoveredDate, cal.isDate(h, inSameDayAs: day) {
+            session.hoveredDate = nil
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let provider = info.itemProviders(for: [.opsRescheduleItem]).first else { return false }
+        _ = provider.loadTransferable(type: RescheduleDragPayload.self) { result in
+            guard case .success(let payload) = result else { return }
+            Task { @MainActor in
                 RescheduleCoordinator.handleDrop(payload, on: day,
                                                  dataController: dataController, session: session)
                 session.end()
-                return true
-            } isTargeted: { targeted in
-                let cal = Calendar.current
-                if targeted {
-                    // Tick only when the projected start day actually changes.
-                    let changed = session.hoveredDate.map { !cal.isDate($0, inSameDayAs: day) } ?? true
-                    if changed { UISelectionFeedbackGenerator().selectionChanged() }
-                    session.hoveredDate = day
-                } else if let h = session.hoveredDate, cal.isDate(h, inSameDayAs: day) {
-                    // Finger left the current target with nothing else captured — clear.
-                    session.hoveredDate = nil
-                }
             }
+        }
+        return true
     }
 }
 

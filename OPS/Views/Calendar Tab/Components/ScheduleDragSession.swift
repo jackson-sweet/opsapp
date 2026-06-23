@@ -97,6 +97,9 @@ struct ReschedulePrompt: Identifiable {
     let newStart: Date
     let newEnd: Date
     let changes: [SchedulingEngine.CascadeResult.TaskDateChange]
-    let contextLine: String
+    /// Plain-language "why" lines naming the crew + the follow-on tasks that will
+    /// shift — what the user reads before deciding. Derived from the actual changes
+    /// so the explanation always matches what commits.
+    let explanationLines: [String]
     let primaryLabel: String
 }

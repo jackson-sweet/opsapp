@@ -341,7 +341,7 @@ struct ScheduleView: View {
                         }
                     },
                     onCancel: { },
-                    contextLine: prompt.contextLine,
+                    explanationLines: prompt.explanationLines,
                     primaryLabel: prompt.primaryLabel,
                     onMoveOnly: {
                         Task {

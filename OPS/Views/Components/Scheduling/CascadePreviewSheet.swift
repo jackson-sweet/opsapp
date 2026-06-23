@@ -21,9 +21,9 @@ struct CascadePreviewSheet: View {
     let onConfirm: () -> Void
     let onCancel: () -> Void
 
-    /// Optional one-line context shown under the header (drag-drop crew/dependency
-    /// flow). Defaults nil so existing callers render unchanged.
-    var contextLine: String? = nil
+    /// Optional plain-language "why" lines shown under the header (drag-drop crew/
+    /// dependency prompt). Empty for existing callers, which render unchanged.
+    var explanationLines: [String] = []
     /// Label for the primary (confirm) action. Defaults "CONFIRM".
     var primaryLabel: String = "CONFIRM"
     /// Optional third action: move only the dropped job, leaving the rest in place
@@ -60,14 +60,25 @@ struct CascadePreviewSheet: View {
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.top, OPSStyle.Layout.spacing3)
 
-            // Optional context line (drag-drop crew/dependency prompt)
-            if let contextLine {
-                Text(contextLine)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .padding(.top, OPSStyle.Layout.spacing1)
+            // Plain-language "why" lines (drag-drop crew/dependency prompt)
+            if !explanationLines.isEmpty {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    ForEach(explanationLines, id: \.self) { line in
+                        HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
+                            Image(systemName: "arrow.turn.down.right")
+                                .font(.system(size: 11))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            Text(line)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.top, OPSStyle.Layout.spacing2)
             }
 
             // Task changes list

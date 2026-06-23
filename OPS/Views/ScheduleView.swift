@@ -323,11 +323,18 @@ struct ScheduleView: View {
                     cascadeChanges: prompt.changes,
                     onConfirm: {
                         Task {
+                            // Defense-in-depth: re-check the gate at commit time — a
+                            // permission/assignment change could land while the sheet
+                            // is open. Toast count comes from the applied result, not
+                            // the (possibly re-planned-away) drop-time snapshot.
+                            guard task.canEditSchedule else {
+                                UINotificationFeedbackGenerator().notificationOccurred(.error); return
+                            }
                             do {
-                                _ = try await dataController.commitDropReschedule(
+                                let result = try await dataController.commitDropReschedule(
                                     task, targetStart: prompt.newStart, targetEnd: prompt.newEnd, cascade: true)
                                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                                ToastCenter.shared.present(Feedback.Task.scheduleUpdatedCascade(count: prompt.changes.count + 1))
+                                ToastCenter.shared.present(Feedback.Task.scheduleUpdatedCascade(count: result.changes.count + 1))
                             } catch {
                                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                             }
@@ -338,6 +345,9 @@ struct ScheduleView: View {
                     primaryLabel: prompt.primaryLabel,
                     onMoveOnly: {
                         Task {
+                            guard task.canEditSchedule else {
+                                UINotificationFeedbackGenerator().notificationOccurred(.error); return
+                            }
                             do {
                                 _ = try await dataController.commitDropReschedule(
                                     task, targetStart: prompt.newStart, targetEnd: prompt.newEnd, cascade: false)

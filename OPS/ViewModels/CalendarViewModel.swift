@@ -22,6 +22,12 @@ class CalendarViewModel: ObservableObject {
     @Published var userEventsForCurrentPeriod: [CalendarUserEvent] = []
     @Published var isMonthExpanded: Bool = false
 
+    /// Phase-C "Suggested events" (item 63144953). Detected commitments the
+    /// operator can confirm onto their calendar. Empty is the normal, healthy
+    /// state — when it is, the schedule shows no suggestions surface at all, so
+    /// the app never depends on the Phase C engine running.
+    @Published var suggestedEvents: [SuggestedCalendarEventDTO] = []
+
     // Computed properties to get fresh models
     var projectsForSelectedDate: [Project] {
         guard let dataController = dataController else { return [] }
@@ -608,6 +614,9 @@ class CalendarViewModel: ObservableObject {
         // Reload both the task layer and the user-event layer for the day.
         loadProjectsForDate(selectedDate)
         loadUserEvents()
+
+        // Refresh Phase-C suggestions too (item 63144953). Dormant on empty.
+        await loadSuggestedEvents()
     }
     
     private func getWeekDays() -> [Date] {

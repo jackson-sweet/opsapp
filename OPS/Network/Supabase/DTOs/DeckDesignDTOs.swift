@@ -81,8 +81,38 @@ extension DeckDesign {
 
     func applyServerSnapshot(
         _ dto: SupabaseDeckDesignDTO,
-        accepting acceptedFields: Set<String>
+        accepting requestedFields: Set<String>
     ) {
+        // Stale-overwrite guard (deck-revert data loss — LUPIN, 2026-06-19).
+        // An inbound merge must never overwrite locally-authored content with a
+        // server snapshot that is OLDER than, or an unconfirmed echo of, the
+        // local row. After a save+push completes, the pending SyncOperation that
+        // was the ONLY thing protecting drawing_data flips to "completed"; the
+        // 300s delta-overlap re-pull then re-fetches the very same deck, and a
+        // replica-lagged read can hand back a pre-edit row. Without this guard,
+        // applyServerSnapshot wrote that stale drawing_data over the just-saved
+        // geometry — silently reverting renamed levels + new geometry. The DTO
+        // already carries updated_at; we simply refuse to apply a stale snapshot.
+        let serverUpdatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) }
+
+        // Server strictly older than local → the whole snapshot is stale; ignore it.
+        if let server = serverUpdatedAt, let local = updatedAt, server < local {
+            return
+        }
+
+        var acceptedFields = requestedFields
+
+        // Local row still has unconfirmed edits and the server copy is NOT
+        // strictly newer → keep our locally-authored content rather than let an
+        // echo/replica-lagged read round-trip-clobber it. A genuinely newer
+        // server edit (server > local) is still applied normally.
+        if needsSync {
+            let serverIsNewer = serverUpdatedAt.flatMap { s in updatedAt.map { s > $0 } } ?? false
+            if !serverIsNewer {
+                acceptedFields.subtract(["drawing_data", "title", "thumbnail_url", "version"])
+            }
+        }
+
         if acceptedFields.contains("company_id") { companyId = dto.companyId }
         if acceptedFields.contains("project_id") { projectId = dto.projectId }
         if acceptedFields.contains("title") { title = dto.title }

@@ -20,6 +20,12 @@ struct CalendarDaySelector: View {
     @State private var cellsVisible: [Bool] = Array(repeating: false, count: 7)
     @State private var lastWeekStart: Date? = nil
     @Namespace private var calendarNamespace
+    @Environment(ScheduleDragSession.self) private var dragSession
+    // Drag-to-strip: width for the edge-paging animation + the dwell timer that
+    // flips weeks when a reschedule drag lingers on the first/last strip cell.
+    @State private var weekViewWidth: CGFloat = 0
+    @State private var edgePageTask: Task<Void, Never>?
+    @State private var edgePageGen: Int = 0
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -58,6 +64,11 @@ struct CalendarDaySelector: View {
                                 )
                                 .frame(maxWidth: .infinity)
                                 .wizardTarget("tap_day")
+                                // Drop target: drag a job card up to a strip day to
+                                // reschedule it there. Highlight clamps to this week.
+                                .reschedulableDropTarget(
+                                    day: date,
+                                    weekClamp: (weekDays.first ?? date)...(weekDays.last ?? date))
                                 .opacity(index < cellsVisible.count ? (cellsVisible[index] ? 1 : 0) : 1)
                                 .offset(y: index < cellsVisible.count ? (cellsVisible[index] ? 0 : 5) : 0)
                             }
@@ -108,6 +119,13 @@ struct CalendarDaySelector: View {
                             }
                         }
                 )
+            }
+            .onAppear { weekViewWidth = geometry.size.width }
+            .onChange(of: geometry.size.width) { _, w in weekViewWidth = w }
+            // Edge-paging: a reschedule drag lingering on the first/last strip cell
+            // flips to the previous/next week so you can drop on any week.
+            .onChange(of: dragSession.hoveredDate) { _, newValue in
+                handleDragEdgeHover(newValue)
             }
         }
         // Bug 2b61daa0 — bumped from 86 → 118 to honor the internal vertical
@@ -454,6 +472,43 @@ struct CalendarDaySelector: View {
         var calendar = Calendar.current
         calendar.firstWeekday = 2
         return calendar.dateInterval(of: .weekOfYear, for: date ?? viewModel.selectedDate)?.start
+    }
+
+    /// Flip the visible week when a reschedule drag dwells on the first/last strip
+    /// day, so the operator can drop a job on any week without ending the drag.
+    private func handleDragEdgeHover(_ hovered: Date?) {
+        guard dragSession.active != nil, let hovered else {
+            edgePageTask?.cancel(); edgePageTask = nil; return
+        }
+        let cal = Calendar.current
+        let week = getCurrentWeekDays()
+        let atStart = week.first.map { cal.isDate($0, inSameDayAs: hovered) } ?? false
+        let atEnd = week.last.map { cal.isDate($0, inSameDayAs: hovered) } ?? false
+        guard atStart != atEnd else {            // not on a single edge → cancel any armed flip
+            edgePageTask?.cancel(); edgePageTask = nil; return
+        }
+        guard edgePageTask == nil else { return } // a flip is already armed for this dwell
+        let offset = atStart ? -1 : 1
+        let width = weekViewWidth > 0 ? weekViewWidth : UIScreen.main.bounds.width
+        // Generation token: a cancelled task resumes asynchronously, so it must not
+        // clear edgePageTask if a newer dwell has already re-armed one.
+        edgePageGen &+= 1
+        let gen = edgePageGen
+        edgePageTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(700))
+            guard gen == edgePageGen else { return }   // superseded by a newer arm
+            edgePageTask = nil
+            // Re-confirm the drag is still live AND still dwelling on this edge of the
+            // current week (covers an abandoned drag or a move off the edge mid-dwell).
+            guard !Task.isCancelled, dragSession.active != nil, !isTransitioning else { return }
+            let live = getCurrentWeekDays()
+            let edgeDay = offset < 0 ? live.first : live.last
+            let stillOnEdge = edgeDay.map { d in
+                dragSession.hoveredDate.map { cal.isDate($0, inSameDayAs: d) } ?? false
+            } ?? false
+            guard stillOnEdge else { return }
+            navigateToWeek(offset: offset, screenWidth: width)
+        }
     }
 
     // Generate only the current week days (7 days starting from Monday)

@@ -82,5 +82,20 @@
 		<string>CakeMono-Regular.ttf</string>
 		<string>CakeMono-Bold.ttf</string>
 	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.ops.reschedule-item</string>
+			<key>UTTypeDescription</key>
+			<string>OPS Schedule reschedule item</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict/>
+		</dict>
+	</array>
 </dict>
 </plist>

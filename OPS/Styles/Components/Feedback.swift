@@ -158,6 +158,11 @@ enum Feedback {
                 : "FOR \(s) – \(f.string(from: end).uppercased())"
             return Toast(label: "// SCHEDULED \(range)", tone: .success)
         }
+        /// Drag-reschedule with crew/dependency cascade — `count` = total jobs moved
+        /// (the dropped job plus every cascaded one).
+        static func scheduleUpdatedCascade(count: Int) -> Toast {
+            Toast(label: "// SCHEDULE UPDATED — \(count) JOBS MOVED", tone: .success)
+        }
     }
 
     // MARK: - Catalog

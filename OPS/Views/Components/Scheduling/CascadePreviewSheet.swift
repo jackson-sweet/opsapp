@@ -21,6 +21,16 @@ struct CascadePreviewSheet: View {
     let onConfirm: () -> Void
     let onCancel: () -> Void
 
+    /// Optional one-line context shown under the header (drag-drop crew/dependency
+    /// flow). Defaults nil so existing callers render unchanged.
+    var contextLine: String? = nil
+    /// Label for the primary (confirm) action. Defaults "CONFIRM".
+    var primaryLabel: String = "CONFIRM"
+    /// Optional third action: move only the dropped job, leaving the rest in place
+    /// (overlap allowed). Rendered as a full-width button above CANCEL / primary
+    /// only when provided.
+    var onMoveOnly: (() -> Void)? = nil
+
     @AppStorage("showCascadePreview") private var showCascadePreview: Bool = true
 
     private let dateFormatter: DateFormatter = {
@@ -49,6 +59,16 @@ struct CascadePreviewSheet: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.top, OPSStyle.Layout.spacing3)
+
+            // Optional context line (drag-drop crew/dependency prompt)
+            if let contextLine {
+                Text(contextLine)
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.top, OPSStyle.Layout.spacing1)
+            }
 
             // Task changes list
             ScrollView {
@@ -87,30 +107,47 @@ struct CascadePreviewSheet: View {
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
             // Action buttons
-            HStack(spacing: OPSStyle.Layout.spacing2_5) {
-                Button(action: {
-                    onCancel()
-                    dismiss()
-                }) {
-                    Text("CANCEL")
-                        .font(OPSStyle.Typography.button)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: OPSStyle.Layout.touchTargetStandard)
-                        .nestedCard()
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
+                // Optional third action — move only the dropped job (overlap allowed).
+                if let onMoveOnly {
+                    Button(action: {
+                        onMoveOnly()
+                        dismiss()
+                    }) {
+                        Text("MOVE ONLY THIS")
+                            .font(OPSStyle.Typography.button)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: OPSStyle.Layout.touchTargetStandard)
+                            .nestedCard()
+                    }
                 }
 
-                Button(action: {
-                    onConfirm()
-                    dismiss()
-                }) {
-                    Text("CONFIRM")
-                        .font(OPSStyle.Typography.button)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: OPSStyle.Layout.touchTargetStandard)
-                        .background(OPSStyle.Colors.primaryAccent)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                    Button(action: {
+                        onCancel()
+                        dismiss()
+                    }) {
+                        Text("CANCEL")
+                            .font(OPSStyle.Typography.button)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: OPSStyle.Layout.touchTargetStandard)
+                            .nestedCard()
+                    }
+
+                    Button(action: {
+                        onConfirm()
+                        dismiss()
+                    }) {
+                        Text(primaryLabel)
+                            .font(OPSStyle.Typography.button)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: OPSStyle.Layout.touchTargetStandard)
+                            .background(OPSStyle.Colors.primaryAccent)
+                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    }
                 }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)

@@ -4154,6 +4154,122 @@ class DataController: ObservableObject {
         }
     }
 
+    // MARK: - Drag-and-drop reschedule
+
+    /// Plan a cascade for a drop onto explicit target dates. Same engine as
+    /// `planCascade`, minus the `pushByDays` step — the dropped task lands exactly
+    /// on `targetStart` (the user chose that day). Crew/dependency packing of OTHER
+    /// tasks still honors the company weekend-skip inside the engine.
+    ///
+    /// Forward-only: crew consolidation runs only when moving later (the engine
+    /// never pulls work earlier — that can break customer/material commitments).
+    /// Returns nil when the task has no start date.
+    @MainActor
+    func planDropReschedule(for task: ProjectTask, targetStart: Date, targetEnd: Date) -> CascadePlan? {
+        guard let originalStart = task.startDate else { return nil }
+        let skip = currentCompanySkipsWeekends
+        let movingForward = Calendar.current.startOfDay(for: targetStart)
+            > Calendar.current.startOfDay(for: originalStart)
+
+        // Crew consolidation ripples the pushed task's crew across the whole company
+        // (their other jobs live on other projects). Forward pushes only.
+        let companyTasks = getActiveTasksForCompany()
+        let crewChanges: [SchedulingEngine.CascadeResult.TaskDateChange] = movingForward
+            ? SchedulingEngine.calculateCrewConsolidation(
+                pushedTask: task,
+                pushedOriginalStart: originalStart,
+                pushedNewStart: targetStart,
+                pushedNewEnd: targetEnd,
+                allTasks: companyTasks,
+                skipWeekends: skip)
+            : []
+
+        // Seed the dependency pass with the crew-shifted dates so a dependency can
+        // only push a task further out, never earlier than its crew slot. The
+        // dependency pass stays project-scoped.
+        let crewSeed = Dictionary(
+            crewChanges.map { ($0.id, (start: $0.newStartDate, end: $0.newEndDate)) },
+            uniquingKeysWith: { current, _ in current })
+
+        let dependency = SchedulingEngine.calculateCascade(
+            pushedTaskId: task.id,
+            newStartDate: targetStart,
+            newEndDate: targetEnd,
+            allProjectTasks: getTasksForProject(task.projectId),
+            skipWeekends: skip,
+            seededDates: crewSeed)
+
+        // Merge crew + dependency; a task touched by both takes the dependency result
+        // (which only ever lands later than the crew slot).
+        var changesById: [String: SchedulingEngine.CascadeResult.TaskDateChange] = [:]
+        for change in crewChanges { changesById[change.id] = change }
+        for change in dependency.changes { changesById[change.id] = change }
+        let merged = changesById.values.sorted { $0.newStartDate < $1.newStartDate }
+
+        return CascadePlan(
+            pushedNewStart: targetStart,
+            pushedNewEnd: targetEnd,
+            cascade: SchedulingEngine.CascadeResult(changes: merged))
+    }
+
+    /// Commit a drop reschedule. `cascade == false` moves only the dropped task
+    /// (overlap allowed); `cascade == true` also applies the planned crew +
+    /// dependency shifts. Every write goes through `updateTaskSchedule` (local save +
+    /// outbound sync + iPhone-calendar mirror + crew schedule-change notification).
+    /// `scheduleLocked` (user-pinned) tasks are never auto-shifted — the engine
+    /// already excludes them from the plan.
+    @MainActor
+    @discardableResult
+    func commitDropReschedule(_ task: ProjectTask, targetStart: Date, targetEnd: Date,
+                              cascade: Bool) async throws -> SchedulingEngine.CascadeResult {
+        if !cascade {
+            try await updateTaskSchedule(task: task, startDate: targetStart, endDate: targetEnd)
+            return SchedulingEngine.CascadeResult(changes: [])
+        }
+        guard let plan = planDropReschedule(for: task, targetStart: targetStart, targetEnd: targetEnd) else {
+            try await updateTaskSchedule(task: task, startDate: targetStart, endDate: targetEnd)
+            return SchedulingEngine.CascadeResult(changes: [])
+        }
+        // Resolve every task the plan may touch up front (company-wide, any status),
+        // before the first await, so a crew task that changes status mid-apply isn't
+        // silently skipped. Crew shifts can be cross-project.
+        let applyLookup = Dictionary(
+            getCompanyTasks().map { ($0.id, $0) },
+            uniquingKeysWith: { current, _ in current })
+
+        try await updateTaskSchedule(task: task, startDate: plan.pushedNewStart, endDate: plan.pushedNewEnd)
+        for change in plan.cascade.changes {
+            if let affected = applyLookup[change.id] {
+                try await updateTaskSchedule(task: affected, startDate: change.newStartDate,
+                                             endDate: change.newEndDate, manualEdit: false)
+            }
+        }
+        return plan.cascade
+    }
+
+    /// Reschedule a single (non-recurring) calendar user event, preserving its span
+    /// and all other fields. Routes through the existing `updateRecurringEvent`
+    /// edit path with `.thisOnly` scope (local mutation + Supabase mirror + refresh).
+    @MainActor
+    func commitUserEventReschedule(_ event: CalendarUserEvent, targetStart: Date, targetEnd: Date) {
+        let payload = CalendarUserEventEditPayload(
+            title: event.title,
+            notes: event.notes,
+            allDay: event.allDay,
+            startDate: targetStart,
+            endDate: targetEnd,
+            teamMemberIds: event.teamMemberIds)
+        updateRecurringEvent(event, payload: payload, scope: .thisOnly)
+    }
+
+    /// Fetch a single calendar user event by id from local SwiftData.
+    @MainActor
+    func getUserEvent(id: String) -> CalendarUserEvent? {
+        guard let ctx = modelContext else { return nil }
+        let predicate = #Predicate<CalendarUserEvent> { $0.id == id }
+        return try? ctx.fetch(FetchDescriptor<CalendarUserEvent>(predicate: predicate)).first
+    }
+
     /// Auto-schedule all unscheduled tasks in a project.
     @MainActor
     func autoScheduleProject(_ project: Project, anchorDate: Date) async throws -> SchedulingEngine.AutoScheduleResult {

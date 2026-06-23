@@ -259,6 +259,18 @@ struct OPSApp: App {
                             NotificationManager.shared.linkUserToOneSignal()
                         }
 
+                        // Refresh the share-extension session bridge and drain any
+                        // photos captured via the share sheet while we were away.
+                        // Runs on every foreground (including cold launch to active)
+                        // when signed in.
+                        if dataController.isAuthenticated {
+                            Task { @MainActor in
+                                await dataController.refreshShareSessionBridge()
+                                ShareUploadCoordinator.shared.activate()
+                                await ShareUploadCoordinator.shared.drainInbox()
+                            }
+                        }
+
                         // Only trigger sync on RETURN to foreground (not initial launch,
                         // which is handled by performAppLaunchSync)
                         if oldPhase == .background {

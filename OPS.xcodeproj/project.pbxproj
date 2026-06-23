@@ -39,7 +39,22 @@
 		E5C690512F4A7E7A0068CE31 /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = E5C690502F4A7E7A0068CE31 /* Realtime */; };
 		E5C690532F4A7E7A0068CE31 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = E5C690522F4A7E7A0068CE31 /* Storage */; };
 		E5C690552F4A7E7A0068CE31 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = E5C690542F4A7E7A0068CE31 /* Supabase */; };
+		FE51A0000000000000000041 /* OPSShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FE51A0000000000000000031 /* OPSShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		FE51A0000000000000000040 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				FE51A0000000000000000041 /* OPSShareExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXContainerItemProxy section */
 		E595DC172DB6CF9000B1413F /* PBXContainerItemProxy */ = {
@@ -56,12 +71,20 @@
 			remoteGlobalIDString = E595DC032DB6CF8F00B1413F;
 			remoteInfo = OPS;
 		};
+		FE51A0000000000000000050 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E595DBFC2DB6CF8F00B1413F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FE51A0000000000000000030;
+			remoteInfo = OPSShareExtension;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		E595DC042DB6CF8F00B1413F /* OPS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OPS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E595DC162DB6CF9000B1413F /* OPSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OPSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E595DC202DB6CF9000B1413F /* OPSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OPSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		FE51A0000000000000000031 /* OPSShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OPSShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -71,6 +94,13 @@
 				Info.plist,
 			);
 			target = E595DC032DB6CF8F00B1413F /* OPS */;
+		};
+		FE51A0000000000000000012 /* Exceptions for "OPSShareExtension" folder in "OPSShareExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = FE51A0000000000000000030 /* OPSShareExtension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -91,6 +121,19 @@
 		E595DC232DB6CF9000B1413F /* OPSUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = OPSUITests;
+			sourceTree = "<group>";
+		};
+		FE51A0000000000000000010 /* OPSShareExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FE51A0000000000000000012 /* Exceptions for "OPSShareExtension" folder in "OPSShareExtension" target */,
+			);
+			path = OPSShareExtension;
+			sourceTree = "<group>";
+		};
+		FE51A0000000000000000011 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -149,6 +192,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FE51A0000000000000000021 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -156,6 +206,8 @@
 			isa = PBXGroup;
 			children = (
 				E595DC062DB6CF8F00B1413F /* OPS */,
+				FE51A0000000000000000010 /* OPSShareExtension */,
+				FE51A0000000000000000011 /* Shared */,
 				E595DC192DB6CF9000B1413F /* OPSTests */,
 				E595DC232DB6CF9000B1413F /* OPSUITests */,
 				E5AF196D2E02308000CD46A1 /* Frameworks */,
@@ -169,6 +221,7 @@
 				E595DC042DB6CF8F00B1413F /* OPS.app */,
 				E595DC162DB6CF9000B1413F /* OPSTests.xctest */,
 				E595DC202DB6CF9000B1413F /* OPSUITests.xctest */,
+				FE51A0000000000000000031 /* OPSShareExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -190,14 +243,17 @@
 				E595DC002DB6CF8F00B1413F /* Sources */,
 				E595DC012DB6CF8F00B1413F /* Frameworks */,
 				E595DC022DB6CF8F00B1413F /* Resources */,
+				FE51A0000000000000000040 /* Embed Foundation Extensions */,
 				E5F1576C2F8F493A006972B9 /* Upload Symbols to Crashlytics */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				FE51A0000000000000000051 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				E595DC062DB6CF8F00B1413F /* OPS */,
+				FE51A0000000000000000011 /* Shared */,
 			);
 			name = OPS;
 			packageProductDependencies = (
@@ -284,6 +340,29 @@
 			productReference = E595DC202DB6CF9000B1413F /* OPSUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		FE51A0000000000000000030 /* OPSShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FE51A0000000000000000062 /* Build configuration list for PBXNativeTarget "OPSShareExtension" */;
+			buildPhases = (
+				FE51A0000000000000000020 /* Sources */,
+				FE51A0000000000000000021 /* Frameworks */,
+				FE51A0000000000000000022 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				FE51A0000000000000000010 /* OPSShareExtension */,
+				FE51A0000000000000000011 /* Shared */,
+			);
+			name = OPSShareExtension;
+			packageProductDependencies = (
+			);
+			productName = OPSShareExtension;
+			productReference = FE51A0000000000000000031 /* OPSShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -295,6 +374,9 @@
 				LastUpgradeCheck = 1620;
 				TargetAttributes = {
 					E595DC032DB6CF8F00B1413F = {
+						CreatedOnToolsVersion = 16.2;
+					};
+					FE51A0000000000000000030 = {
 						CreatedOnToolsVersion = 16.2;
 					};
 					E595DC152DB6CF9000B1413F = {
@@ -331,6 +413,7 @@
 			projectRoot = "";
 			targets = (
 				E595DC032DB6CF8F00B1413F /* OPS */,
+				FE51A0000000000000000030 /* OPSShareExtension */,
 				E595DC152DB6CF9000B1413F /* OPSTests */,
 				E595DC1F2DB6CF9000B1413F /* OPSUITests */,
 			);
@@ -353,6 +436,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		E595DC1E2DB6CF9000B1413F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FE51A0000000000000000022 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -408,6 +498,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FE51A0000000000000000020 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -420,6 +517,11 @@
 			isa = PBXTargetDependency;
 			target = E595DC032DB6CF8F00B1413F /* OPS */;
 			targetProxy = E595DC212DB6CF9000B1413F /* PBXContainerItemProxy */;
+		};
+		FE51A0000000000000000051 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FE51A0000000000000000030 /* OPSShareExtension */;
+			targetProxy = FE51A0000000000000000050 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -727,6 +829,60 @@
 			};
 			name = Release;
 		};
+		FE51A0000000000000000060 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = OPSShareExtension/OPSShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 3.0.3;
+				DEVELOPMENT_TEAM = X47H96M34K;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OPSShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Add to OPS";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 3.0.3;
+				PRODUCT_BUNDLE_IDENTIFIER = co.opsapp.ops.OPS.ShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		FE51A0000000000000000061 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = OPSShareExtension/OPSShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 3.0.3;
+				DEVELOPMENT_TEAM = X47H96M34K;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OPSShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Add to OPS";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 3.0.3;
+				PRODUCT_BUNDLE_IDENTIFIER = co.opsapp.ops.OPS.ShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -762,6 +918,15 @@
 			buildConfigurations = (
 				E595DC312DB6CF9000B1413F /* Debug */,
 				E595DC322DB6CF9000B1413F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FE51A0000000000000000062 /* Build configuration list for PBXNativeTarget "OPSShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FE51A0000000000000000060 /* Debug */,
+				FE51A0000000000000000061 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -1158,12 +1158,25 @@ class DataController: ObservableObject {
         // onboarding coordinator and render MainTabView — at which point
         // HomeView's loadTodaysProjects can safely read the context
         // without racing the InboundProcessor's writes.
+        // Publish the session bridge for the "Add to OPS" share extension now
+        // that identity, permissions, company, and (when online) the local
+        // project store are loaded. Cheap + idempotent; refreshed every foreground.
+        await refreshShareSessionBridge()
+
         if shouldFlipAuthentication {
             crashlytics.log("[AUTH] fetchUserFromAPI: flipping isAuthenticated (post-sync)")
             await MainActor.run {
                 self.isAuthenticated = true
             }
         }
+    }
+
+    /// Publishes the App Group session bridge consumed by the "Add to OPS"
+    /// share extension. Idempotent; safe to call on login and on every
+    /// foreground return.
+    @MainActor
+    func refreshShareSessionBridge() async {
+        await ShareSessionBridgeWriter.refresh(modelContext: modelContext, currentUser: currentUser)
     }
 
     @MainActor
@@ -1187,6 +1200,11 @@ class DataController: ObservableObject {
         // MainTabView when the lockout screen is dismissed by resetForLogout()
         // while ContentView still sees isAuthenticated = true.
         self.isAuthenticated = false
+
+        // Clear the share-extension session bridge + discard any captured-but-
+        // unfinalized share photos so a different account signing in next can
+        // never inherit the previous user's queued uploads.
+        ShareSessionBridgeWriter.clearForLogout()
 
         // Unlink user from OneSignal
         NotificationManager.shared.unlinkUserFromOneSignal()

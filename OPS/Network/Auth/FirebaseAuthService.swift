@@ -162,6 +162,19 @@ class FirebaseAuthService: ObservableObject {
         return try await user.getIDToken()
     }
 
+    /// Like `getIDToken()` but also returns the token's absolute expiry. Used by
+    /// the session bridge so the share extension can tell whether the cached
+    /// token still has enough life to presign an upload itself (it must never
+    /// refresh tokens). Returns a cached token or refreshes if expired — same
+    /// semantics as `getIDToken()`.
+    nonisolated func getIDTokenResult() async throws -> (token: String, expiresAt: Date) {
+        guard let user = Auth.auth().currentUser else {
+            throw FirebaseAuthServiceError.notAuthenticated
+        }
+        let result = try await user.getIDTokenResult()
+        return (result.token, result.expirationDate)
+    }
+
     /// Get the Firebase UID of the current user.
     /// Nonisolated because Auth.auth().currentUser is thread-safe in Firebase SDK.
     nonisolated var firebaseUID: String? {

@@ -114,7 +114,7 @@ struct DeckTabView: View {
     private func floatingDesignInfo(design: DeckDesign) -> some View {
         let chips = levelChips(for: design)
         return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            titlePill(design.title)
+            titlePill(project.title)
 
             ForEach(chips) { chip in
                 levelChipView(chip)

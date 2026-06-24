@@ -24,6 +24,11 @@ struct DeckBuilderView: View {
 
     let projectId: String?
     let companyId: String
+    /// The parent project's display name, passed as a primitive at the
+    /// boundary so the builder shows it WITHOUT importing/holding a `Project`
+    /// (keeps DeckBuilder extraction-ready for the standalone spin-off).
+    /// nil in a future standalone context, where the editable title returns.
+    let projectName: String?
 
     /// Top safe-area inset for the current key window. Read at usage time so
     /// devices with a Dynamic Island (top inset ~59pt) and notched iPhones
@@ -49,7 +54,7 @@ struct DeckBuilderView: View {
         max(0, OPSStyle.Layout.spacing3 - topSafeAreaInset)
     }
 
-    init(deckDesign: DeckDesign, modelContext: ModelContext, syncEngine: SyncEngine? = nil) {
+    init(deckDesign: DeckDesign, modelContext: ModelContext, syncEngine: SyncEngine? = nil, projectName: String? = nil) {
         // Bug ab554b5f — pass the SyncEngine to the view model so saves
         // enqueue Supabase pushes. Optional so test/preview call sites that
         // don't have a configured engine still compile and run.
@@ -60,6 +65,7 @@ struct DeckBuilderView: View {
         ))
         self.projectId = deckDesign.projectId
         self.companyId = deckDesign.companyId
+        self.projectName = projectName
     }
 
     var body: some View {
@@ -574,12 +580,23 @@ struct DeckBuilderView: View {
         }
     }
 
-    /// In-bar title editor. Read state shows `Title • pencil` (tap to edit
-    /// when allowed). Edit state shows a TextField with a confirm checkmark.
+    /// In-bar title editor. When `projectName` is non-nil (in-project context)
+    /// the name mirrors the parent project and is rendered read-only — no edit
+    /// affordance. When nil (future standalone context), falls back to the
+    /// existing editable flow: read state shows `Title • pencil` (tap to edit
+    /// when allowed), edit state shows a TextField with a confirm checkmark.
     /// Truncates with ellipsis on narrow screens.
     @ViewBuilder
     private var inlineTitleEditor: some View {
-        if viewModel.isEditingTitle {
+        if let projectName, !projectName.isEmpty {
+            // Name is locked to the parent project — read-only, no edit affordance.
+            Text(projectName)
+                .font(OPSStyle.Typography.bodyEmphasis)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if viewModel.isEditingTitle {
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 TextField("Design name", text: $editingTitleText)
                     .font(OPSStyle.Typography.bodyEmphasis)

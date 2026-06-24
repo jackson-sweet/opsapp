@@ -12,8 +12,11 @@
 import UIKit
 import SwiftUI
 import UniformTypeIdentifiers
+import os
 
 final class ShareViewController: UIViewController {
+
+    private static let log = Logger(subsystem: "co.opsapp.ops.share", category: "extension")
 
     private var model: SharePickerModel!
 
@@ -79,7 +82,11 @@ final class ShareViewController: UIViewController {
     /// next drain. Posts a Darwin nudge so a foregrounded app drains immediately.
     private func stageAndUpload(project: ShareProjectRef, bridge: ShareSessionBridge?, items: [NSExtensionItem]) async {
         let fileNames = await ShareImageProcessor.stageImages(from: items)
-        guard !fileNames.isEmpty, let bridge else { return }
+        Self.log.info("share: staged \(fileNames.count, privacy: .public) image(s) for project \(project.id, privacy: .public); session=\(bridge != nil, privacy: .public) tokenUsable=\(bridge?.isTokenUsable ?? false, privacy: .public)")
+        guard !fileNames.isEmpty, let bridge else {
+            Self.log.error("share: nothing staged (or no session) — aborting upload")
+            return
+        }
 
         let folder = "projects/\(bridge.companyId)/\(project.id)"
 
@@ -105,9 +112,11 @@ final class ShareViewController: UIViewController {
                 job.state = .uploadingS3
                 ShareUploadManifestStore.append(job)
                 ShareBackgroundUploader.shared.startUpload(fileURL: fileURL, uploadURL: uploadURL, jobId: jobId)
+                Self.log.info("share: job \(jobId, privacy: .public) presigned + background upload started")
             } else {
                 // No usable token / offline / presign failed — the app uploads it.
                 ShareUploadManifestStore.append(job)
+                Self.log.info("share: job \(jobId, privacy: .public) queued pending (token unusable/offline/presign failed)")
             }
         }
 

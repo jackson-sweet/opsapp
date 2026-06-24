@@ -256,7 +256,7 @@ final class RealtimeProcessor: ObservableObject {
                 // has already passed RLS and is valid to persist.
 
                 let model = dto.toModel()
-                let pendingFields = pendingFieldsForEntity(entityType: .project, entityId: dto.id, context: context)
+                let pendingFields = protectedFieldsForEntity(entityType: .project, entityId: dto.id, context: context)
                 try upsertProject(context: context, id: dto.id, dto: dto, model: model, pendingFields: pendingFields)
                 // Legacy path saves on mainContext, which never fires the
                 // actor's didSave rebroadcast — post the inbound signal
@@ -272,7 +272,7 @@ final class RealtimeProcessor: ObservableObject {
                 let id = dto.id.lowercased()
                 let model = dto.toModel()
                 model.id = id
-                let pendingFields = pendingFieldsForEntity(entityType: .projectTask, entityId: id, context: context)
+                let pendingFields = protectedFieldsForEntity(entityType: .projectTask, entityId: id, context: context)
                 try upsertProjectTask(context: context, id: id, model: model, pendingFields: pendingFields)
                 InboundChangeSignal.post(entityNames: ["ProjectTask"])
                 Task { @MainActor in
@@ -282,7 +282,7 @@ final class RealtimeProcessor: ObservableObject {
             case "users":
                 let dto = try record.decodeRecord(as: SupabaseUserDTO.self, decoder: decoder)
                 let model = dto.toModel()
-                let pendingFields = pendingFieldsForEntity(entityType: .user, entityId: dto.id, context: context)
+                let pendingFields = protectedFieldsForEntity(entityType: .user, entityId: dto.id, context: context)
                 try upsertUser(context: context, id: dto.id, model: model, pendingFields: pendingFields)
 
             case "clients":
@@ -294,26 +294,26 @@ final class RealtimeProcessor: ObservableObject {
                 // scope enforcement for "assigned" and "own" at the server level.
 
                 let model = dto.toModel()
-                let pendingFields = pendingFieldsForEntity(entityType: .client, entityId: dto.id, context: context)
+                let pendingFields = protectedFieldsForEntity(entityType: .client, entityId: dto.id, context: context)
                 try upsertClient(context: context, id: dto.id, model: model, pendingFields: pendingFields)
 
             case "companies":
                 let dto = try record.decodeRecord(as: SupabaseCompanyDTO.self, decoder: decoder)
                 let model = dto.toModel()
-                let pendingFields = pendingFieldsForEntity(entityType: .company, entityId: dto.id, context: context)
+                let pendingFields = protectedFieldsForEntity(entityType: .company, entityId: dto.id, context: context)
                 try upsertCompany(context: context, id: dto.id, model: model, pendingFields: pendingFields)
 
             case "task_types":
                 let dto = try record.decodeRecord(as: SupabaseTaskTypeDTO.self, decoder: decoder)
                 let model = dto.toModel()
-                let pendingFields = pendingFieldsForEntity(entityType: .taskType, entityId: dto.id, context: context)
+                let pendingFields = protectedFieldsForEntity(entityType: .taskType, entityId: dto.id, context: context)
                 try upsertTaskType(context: context, id: dto.id, model: model, pendingFields: pendingFields)
                 InboundChangeSignal.post(entityNames: ["TaskType"])
 
             case "sub_clients":
                 let dto = try record.decodeRecord(as: SupabaseSubClientDTO.self, decoder: decoder)
                 let model = dto.toModel()
-                let pendingFields = pendingFieldsForEntity(entityType: .subClient, entityId: dto.id, context: context)
+                let pendingFields = protectedFieldsForEntity(entityType: .subClient, entityId: dto.id, context: context)
                 // Link parent client relationship
                 let parentId = dto.parentClientId
                 let clientDescriptor = FetchDescriptor<Client>(predicate: #Predicate { $0.id == parentId })
@@ -325,7 +325,7 @@ final class RealtimeProcessor: ObservableObject {
             case "project_notes":
                 let dto = try record.decodeRecord(as: ProjectNoteDTO.self, decoder: decoder)
                 let model = dto.toModel()
-                let pendingFields = pendingFieldsForEntity(entityType: .projectNote, entityId: dto.id, context: context)
+                let pendingFields = protectedFieldsForEntity(entityType: .projectNote, entityId: dto.id, context: context)
                 try upsertProjectNote(context: context, id: dto.id, model: model, pendingFields: pendingFields)
                 // Notify views listening for new project notes
                 NotificationCenter.default.post(
@@ -341,18 +341,18 @@ final class RealtimeProcessor: ObservableObject {
             case "project_photos":
                 let dto = try record.decodeRecord(as: ProjectPhotoDTO.self, decoder: decoder)
                 let model = dto.toModel()
-                let pendingFields = pendingFieldsForEntity(entityType: .projectPhoto, entityId: dto.id, context: context)
+                let pendingFields = protectedFieldsForEntity(entityType: .projectPhoto, entityId: dto.id, context: context)
                 try upsertProjectPhoto(context: context, id: dto.id, model: model, pendingFields: pendingFields)
 
             case "project_photo_annotations":
                 let dto = try record.decodeRecord(as: PhotoAnnotationDTO.self, decoder: decoder)
                 let model = dto.toModel()
-                let pendingFields = pendingFieldsForEntity(entityType: .photoAnnotation, entityId: dto.id, context: context)
+                let pendingFields = protectedFieldsForEntity(entityType: .photoAnnotation, entityId: dto.id, context: context)
                 try upsertPhotoAnnotation(context: context, id: dto.id, model: model, pendingFields: pendingFields)
 
             case "deck_designs":
                 let dto = try record.decodeRecord(as: SupabaseDeckDesignDTO.self, decoder: decoder)
-                let pendingFields = pendingFieldsForEntity(entityType: .deckDesign, entityId: dto.id, context: context)
+                let pendingFields = protectedFieldsForEntity(entityType: .deckDesign, entityId: dto.id, context: context)
                 try upsertDeckDesign(context: context, id: dto.id, dto: dto, pendingFields: pendingFields)
 
             case "expenses", "expense_batches":
@@ -735,7 +735,7 @@ final class RealtimeProcessor: ObservableObject {
             do {
                 let dto = try await ProjectRepository(companyId: companyId).fetchOne(projectId)
                 let model = dto.toModel()
-                let pendingFields = self.pendingFieldsForEntity(
+                let pendingFields = self.protectedFieldsForEntity(
                     entityType: .project, entityId: dto.id, context: context
                 )
                 try self.upsertProject(context: context, id: dto.id, dto: dto, model: model, pendingFields: pendingFields)
@@ -747,6 +747,10 @@ final class RealtimeProcessor: ObservableObject {
         }
     }
 
+    /// Fields with a strictly-`pending` SyncOperation. Used ONLY to decide
+    /// whether `needsSync` may be cleared after a merge — that must stay keyed to
+    /// un-pushed work, not to the recent-write window, so a completed push still
+    /// clears the dirty flag promptly.
     private func pendingFieldsForEntity(
         entityType: SyncEntityType,
         entityId: String,
@@ -770,6 +774,29 @@ final class RealtimeProcessor: ObservableObject {
             }
         }
         return fields
+    }
+
+    /// Fields an incoming realtime row must NOT overwrite: those with a pending
+    /// OR recently in-flight / completed local write (see SyncFieldGuard). This
+    /// is the field-level analogue of the insert-branch `hasRecentLocalWrite`
+    /// guard, and closes the race where a websocket echo lands mid-push (op
+    /// already flipped past "pending") and reverts the just-saved edit.
+    private func protectedFieldsForEntity(
+        entityType: SyncEntityType,
+        entityId: String,
+        context: ModelContext
+    ) -> Set<String> {
+        let entityTypeRaw = entityType.rawValue
+        let descriptor = FetchDescriptor<SyncOperation>(
+            predicate: #Predicate<SyncOperation> {
+                $0.entityType == entityTypeRaw
+                && $0.entityId == entityId
+            }
+        )
+
+        guard let ops = try? context.fetch(descriptor) else { return [] }
+
+        return SyncFieldGuard.protectedFields(from: ops, now: Date())
     }
 
     /// Returns true if a SyncOperation for this entity had ANY lifecycle event

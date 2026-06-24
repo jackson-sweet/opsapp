@@ -3160,8 +3160,15 @@ actor DataActor {
     }
 
     /// Batch variant — returns the subset of `fields` that should accept server
-    /// values (i.e., fields without pending SyncOperations). One fetch per call.
-    /// Ported from InboundProcessor.acceptableFields.
+    /// values (i.e., fields without an un-reconciled local write). One fetch per
+    /// call. Ported from InboundProcessor.acceptableFields.
+    ///
+    /// Protects fields whose SyncOperation is pending OR in flight / recently
+    /// completed (see SyncFieldGuard). The status filter is deliberately omitted
+    /// from the fetch: under the actor path the outbound push has usually already
+    /// flipped the op to "completed" by the time this merge runs, so a
+    /// pending-only check would miss the just-saved edit and let a stale echo
+    /// revert it.
     private func acceptableFields(
         entityType: SyncEntityType,
         entityId: String,
@@ -3171,24 +3178,20 @@ actor DataActor {
         let descriptor = FetchDescriptor<SyncOperation>(
             predicate: #Predicate<SyncOperation> {
                 $0.entityType == entityTypeRaw &&
-                $0.entityId == entityId &&
-                $0.status == "pending"
+                $0.entityId == entityId
             }
         )
 
-        guard let pendingOps = try? modelContext.fetch(descriptor) else {
+        guard let ops = try? modelContext.fetch(descriptor) else {
             return Set(fields)
         }
 
-        var pendingFields = Set<String>()
-        for op in pendingOps {
-            pendingFields.formUnion(op.getChangedFields())
-        }
+        let pendingFields = SyncFieldGuard.protectedFields(from: ops, now: Date())
 
         var accepted = Set<String>()
         for field in fields {
             if pendingFields.contains(field) {
-                print("[DataActor] Field '\(field)' on \(entityType.rawValue) \(entityId): keeping local (pending operation exists)")
+                print("[DataActor] Field '\(field)' on \(entityType.rawValue) \(entityId): keeping local (pending/recent local write)")
             } else {
                 accepted.insert(field)
             }

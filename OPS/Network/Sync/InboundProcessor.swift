@@ -531,31 +531,30 @@ final class InboundProcessor {
         fields: [String],
         context: ModelContext
     ) -> Set<String> {
-        // Batch-fetch pending operations once for efficiency
+        // Batch-fetch this entity's operations once. We intentionally do NOT
+        // filter to status == "pending" here: a field is also protected while
+        // its push is in flight (status "inProgress") or just-completed within
+        // the recent window, otherwise a stale inbound echo silently reverts the
+        // just-saved edit. SyncFieldGuard encodes that lifecycle rule.
         let entityTypeRaw = entityType.rawValue
         let descriptor = FetchDescriptor<SyncOperation>(
             predicate: #Predicate<SyncOperation> {
                 $0.entityType == entityTypeRaw &&
-                $0.entityId == entityId &&
-                $0.status == "pending"
+                $0.entityId == entityId
             }
         )
 
-        guard let pendingOps = try? context.fetch(descriptor) else {
+        guard let ops = try? context.fetch(descriptor) else {
             return Set(fields)
         }
 
-        // Collect all changed fields from all pending operations
-        var pendingFields = Set<String>()
-        for op in pendingOps {
-            pendingFields.formUnion(op.getChangedFields())
-        }
+        let pendingFields = SyncFieldGuard.protectedFields(from: ops, now: Date())
 
-        // Return fields that are NOT in the pending set
+        // Return fields that are NOT locally protected
         var accepted = Set<String>()
         for field in fields {
             if pendingFields.contains(field) {
-                print("[InboundProcessor] Field '\(field)' on \(entityType.rawValue) \(entityId): keeping local (pending operation exists)")
+                print("[InboundProcessor] Field '\(field)' on \(entityType.rawValue) \(entityId): keeping local (pending/recent local write)")
             } else {
                 accepted.insert(field)
             }

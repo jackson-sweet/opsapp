@@ -23,11 +23,16 @@ import SceneKit
 
 struct DeckTab3DView: View {
     let drawingData: DeckDrawingData
+    /// Called on the main thread when the user starts or stops panning/zooming
+    /// the scene. `true` = gesture active; `false` = gesture ended (debounced
+    /// ~0.25s so back-to-back pan+pinch phases don't flicker the badges).
+    var onInteractingChange: (Bool) -> Void = { _ in }
 
     var body: some View {
         GeometryReader { geo in
             if geo.size.height > 0 {
-                DeckTab3DSceneView(drawingData: drawingData)
+                DeckTab3DSceneView(drawingData: drawingData,
+                                   onInteractingChange: onInteractingChange)
                     .transition(.opacity)
             }
         }
@@ -38,6 +43,60 @@ struct DeckTab3DView: View {
 
 private struct DeckTab3DSceneView: UIViewRepresentable {
     let drawingData: DeckDrawingData
+    var onInteractingChange: (Bool) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onInteractingChange: onInteractingChange)
+    }
+
+    // MARK: Coordinator — pan/pinch gesture handling
+
+    /// Adds a `UIPanGestureRecognizer` and `UIPinchGestureRecognizer` on top of
+    /// SceneKit's built-in `allowsCameraControl` recognizers. The coordinator
+    /// implements `UIGestureRecognizerDelegate.shouldRecognizeSimultaneouslyWith`
+    /// returning `true` so our recognizers coexist with SceneKit's internal ones
+    /// without blocking camera movement. It surfaces an `onInteractingChange`
+    /// callback: `true` on `.began`/`.changed`, `false` on `.ended`/`.cancelled`/
+    /// `.failed` with a 0.25s trailing debounce — preventing flicker when the user
+    /// transitions from a pan to a pinch phase mid-gesture.
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        let onInteractingChange: (Bool) -> Void
+        /// Pending "ended" work item — cancelled if a new began/changed fires
+        /// before the debounce window elapses.
+        private var endWork: DispatchWorkItem?
+
+        init(onInteractingChange: @escaping (Bool) -> Void) {
+            self.onInteractingChange = onInteractingChange
+        }
+
+        @objc func handle(_ gr: UIGestureRecognizer) {
+            switch gr.state {
+            case .began, .changed:
+                // Cancel any pending "ended" callback so a pan→pinch transition
+                // doesn't briefly flash the badges visible between the two phases.
+                endWork?.cancel()
+                onInteractingChange(true)
+            case .ended, .cancelled, .failed:
+                let work = DispatchWorkItem { [weak self] in
+                    self?.onInteractingChange(false)
+                }
+                endWork = work
+                // 0.25s trailing debounce per spec (Task 4, Step 2).
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+            default:
+                break
+            }
+        }
+
+        /// Allow our recognizers to fire simultaneously with SceneKit's
+        /// built-in camera-control recognizers. Without this, returning `false`
+        /// (the default) would cause one recognizer to cancel the other,
+        /// potentially blocking camera pan/zoom.
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool { true }
+    }
 
     func makeUIView(context: Context) -> SCNView {
         let scnView = SCNView()
@@ -46,6 +105,22 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         scnView.antialiasingMode = .multisampling4X
         scnView.backgroundColor = UIColor(red: 10/255, green: 10/255, blue: 10/255, alpha: 1)
         scnView.preferredFramesPerSecond = 60
+
+        // Pan recognizer — tracks single/two-finger drag (orbit + translate).
+        let pan = UIPanGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handle(_:))
+        )
+        pan.delegate = context.coordinator
+        scnView.addGestureRecognizer(pan)
+
+        // Pinch recognizer — tracks two-finger spread/pinch (zoom).
+        let pinch = UIPinchGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handle(_:))
+        )
+        pinch.delegate = context.coordinator
+        scnView.addGestureRecognizer(pinch)
 
         let scene = buildScene()
         scnView.scene = scene

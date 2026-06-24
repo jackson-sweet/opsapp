@@ -23,8 +23,15 @@ struct DeckTabView: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.modelContext) private var modelContext
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var viewMode: DeckTabViewMode = .threeD
     @State private var remoteFetchAttemptedProjectId: String?
+    /// `true` while the user is panning or pinching the 3D scene. Drives the
+    /// badge fade — badges hide during camera movement so they don't obstruct
+    /// the geometry the user is trying to inspect. Reset to `false` whenever
+    /// the view mode leaves `.threeD` so badges can't get stuck hidden.
+    @State private var is3DInteracting = false
 
     // Bug 4 fix: use @Query so SwiftData automatically invalidates this view
     // when a DeckDesign is inserted/updated for this project — no manual
@@ -80,7 +87,8 @@ struct DeckTabView: View {
                     // empty). `hasAnyClosedSurface` returns true as soon as
                     // any face is closed on any level. Bug ee787f29 follow-up.
                     if design.drawingData.hasAnyClosedSurface {
-                        DeckTab3DView(drawingData: design.drawingData)
+                        DeckTab3DView(drawingData: design.drawingData,
+                                      onInteractingChange: { is3DInteracting = $0 })
                     } else {
                         incompleteDesignMessage
                     }
@@ -98,6 +106,16 @@ struct DeckTabView: View {
                     .padding(.leading, OPSStyle.Layout.spacing2_5)
                     .padding(.top, OPSStyle.Layout.spacing2_5)
                     .allowsHitTesting(false)
+                    // Fade badges out while the user pans/zooms the 3D camera
+                    // so they don't obscure structural members being inspected.
+                    // Only active in 3D mode — 2D pans don't interact with these
+                    // recognizers, so `is3DInteracting` stays false there.
+                    // Reduce Motion: nil animation = instant snap (no fade at all),
+                    // which is correct — the opacity change itself still happens,
+                    // but without any motion that might cause vestibular discomfort.
+                    .opacity(is3DInteracting && viewMode == .threeD ? 0 : 1)
+                    .animation(reduceMotion ? nil : OPSStyle.Animation.standard,
+                               value: is3DInteracting)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .animation(OPSStyle.Animation.fast, value: viewMode)
@@ -220,6 +238,9 @@ struct DeckTabView: View {
             .frame(width: 120)
             .onChange(of: viewMode) { _, _ in
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                // Clear the interaction flag when leaving 3D so badges can't
+                // get stuck hidden after a mode switch mid-gesture.
+                is3DInteracting = false
             }
 
             Spacer()

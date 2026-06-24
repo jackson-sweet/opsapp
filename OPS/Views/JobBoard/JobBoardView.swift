@@ -220,6 +220,16 @@ struct JobBoardView: View {
             computeUnscheduledTasks()
             showUnscheduledReview = true
         }
+        // Live refresh: scheduledTasksDidChange fires on any local task mutation
+        // (complete / cancel / reschedule / reassign) AND on inbound/realtime
+        // task changes (via InboundChangeRouter). Keeps the header review badges
+        // current after a task is handled inside a review sheet, without waiting
+        // for the view to reappear or the app to relaunch.
+        .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
+            computeReviewProjects()
+            computeReviewableTasks()
+            computeUnscheduledTasks()
+        }
         .onChange(of: selectedProjectStatuses) { _, _ in
             showingFilters = hasActiveProjectFilters
         }

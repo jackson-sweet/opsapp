@@ -11,8 +11,10 @@ import SwiftUI
 
 struct PipelineSettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var dataController: DataController
 
     @AppStorage("autoLogOutboundCalls") private var autoLogOutboundCalls = true
+    @AppStorage("showLeadsOnIncomingCalls") private var showLeadsOnIncomingCalls = false
 
     var body: some View {
         ZStack {
@@ -30,6 +32,23 @@ struct PipelineSettingsView: View {
                                 description: "When you tap CALL on a lead, OPS logs the call for you when you come back. Turn off to be asked each time.",
                                 isOn: $autoLogOutboundCalls
                             )
+                        }
+
+                        SettingsCard(title: "INCOMING CALLS") {
+                            SettingsToggle(
+                                title: "Show OPS leads on incoming calls",
+                                description: "When a lead calls, their name shows on the call screen. Also turn on OPS under Settings → Phone → Call Blocking & Identification.",
+                                isOn: $showLeadsOnIncomingCalls
+                            )
+                            .onChange(of: showLeadsOnIncomingCalls) { _, on in
+                                if on {
+                                    CallDirectoryRefresher.refreshFromNetwork(
+                                        companyId: dataController.currentUser?.companyId ?? ""
+                                    )
+                                } else {
+                                    CallDirectoryRefresher.disable()
+                                }
+                            }
                         }
 
                         Text("// Only calls you place from a lead are logged. iPhone never shares your call history with apps, so calls from the keypad and incoming calls can't be logged automatically.")

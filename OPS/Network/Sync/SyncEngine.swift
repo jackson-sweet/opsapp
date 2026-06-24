@@ -187,7 +187,16 @@ final class SyncEngine {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if self.connectivity?.shouldAttemptSync == true {
-                    // Connectivity restored — realtime will auto-reconnect via startListening
+                    // Connectivity restored — actually re-establish Realtime. The
+                    // old code only commented that it "will auto-reconnect" but
+                    // never called startListening, so a device that lost and
+                    // regained network kept a dead channel until the next
+                    // foreground. ensureRealtime resubscribes + catch-up syncs.
+                    let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
+                    if !companyId.isEmpty {
+                        let userId = UserDefaults.standard.string(forKey: "currentUserId")
+                        await self.ensureRealtime(companyId: companyId, userId: userId)
+                    }
                 } else {
                     // Connectivity lost — mark realtime as disconnected for catch-up tracking
                     self.realtimeProcessor?.handleDisconnect()
@@ -238,10 +247,18 @@ final class SyncEngine {
         print("[SYNC_ENGINE] DataActor reference \(actor == nil ? "cleared" : "set — actor path now active")")
     }
 
-    /// Starts Realtime subscriptions for the given company.
+    /// Starts Realtime subscriptions for the given company (forced resubscribe).
     func startRealtime(companyId: String, userId: String? = nil) async {
         guard let modelContext else { return }
         await realtimeProcessor?.startListening(companyId: companyId, userId: userId, context: modelContext)
+    }
+
+    /// Ensures Realtime is live for the given company, subscribing only if it
+    /// isn't already. Idempotent — safe to call on cold launch, login, every
+    /// foreground, and connectivity-restore without churning the channel.
+    func ensureRealtime(companyId: String, userId: String? = nil) async {
+        guard let modelContext else { return }
+        await realtimeProcessor?.ensureListening(companyId: companyId, userId: userId, context: modelContext)
     }
 
     /// Stops Realtime subscriptions.

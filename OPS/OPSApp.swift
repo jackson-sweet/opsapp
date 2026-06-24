@@ -37,6 +37,11 @@ struct OPSApp: App {
     @StateObject private var permissionStore = PermissionStore.shared
     @StateObject private var updateGate = AppUpdateGate()
 
+    /// Pending "stop Realtime after 30s in background" task. Held so a quick
+    /// background→foreground bounce can CANCEL it — otherwise the delayed stop
+    /// fires after we've already resubscribed and silently kills a live channel.
+    @State private var realtimeStopTask: Task<Void, Never>?
+
     // Create the model container for SwiftData.
     // Schema is driven by the LATEST VersionedSchema (currently `OPSSchemaV9`)
     // and the container runs `OPSMigrationPlan` on launch so stores written by
@@ -254,6 +259,21 @@ struct OPSApp: App {
                 .onChange(of: scenePhase) { oldPhase, newPhase in
                     switch newPhase {
                     case .active:
+                        // Cancel any pending background-stop so a quick bounce
+                        // can't tear down the channel we're about to use.
+                        realtimeStopTask?.cancel()
+                        realtimeStopTask = nil
+
+                        // Ensure Realtime is live on EVERY foreground (and on the
+                        // cold-launch →active transition), not just on return from
+                        // background. Idempotent — no-op when already subscribed.
+                        if dataController.isAuthenticated,
+                           let companyId = dataController.currentUser?.companyId,
+                           !companyId.isEmpty {
+                            let userId = dataController.currentUser?.id
+                            Task { await dataController.syncEngine?.ensureRealtime(companyId: companyId, userId: userId) }
+                        }
+
                         // Update Gate: re-check on every foreground (throttled to
                         // once/60s) so a freshly-published force-update reaches
                         // users on resume, not only on a full relaunch.
@@ -279,25 +299,19 @@ struct OPSApp: App {
                         }
 
                         // Only trigger sync on RETURN to foreground (not initial launch,
-                        // which is handled by performAppLaunchSync)
+                        // which is handled by performAppLaunchSync). Realtime is
+                        // (re)established by the unconditional ensureRealtime above.
                         if oldPhase == .background {
-                            Task {
-                                await dataController.syncEngine?.triggerSync()
-                                // Restart realtime if authenticated
-                                if dataController.isAuthenticated,
-                                   let companyId = dataController.currentUser?.companyId,
-                                   !companyId.isEmpty {
-                                    let userId = dataController.currentUser?.id
-                                    await dataController.syncEngine?.startRealtime(companyId: companyId, userId: userId)
-                                }
-                            }
+                            Task { await dataController.syncEngine?.triggerSync() }
                         }
                     case .background:
                         // Schedule background sync tasks
                         dataController.syncEngine?.scheduleBackgroundSync()
-                        // Stop realtime after delay
-                        Task {
+                        // Stop realtime after a grace delay — but keep the handle so
+                        // a foreground within the window cancels it (see .active).
+                        realtimeStopTask = Task {
                             try? await Task.sleep(nanoseconds: 30_000_000_000) // 30 seconds
+                            if Task.isCancelled { return }
                             await dataController.syncEngine?.stopRealtime()
                         }
                     case .inactive:
@@ -311,6 +325,15 @@ struct OPSApp: App {
                     // (onAppear fires before auth completes, so this catches the transition)
                     if isAuth {
                         notificationManager.requestPermission()
+
+                        // Subscribe to Realtime as soon as the user authenticates
+                        // while the app is already running (login without a relaunch).
+                        // Idempotent with the cold-launch / foreground starts.
+                        if let companyId = dataController.currentUser?.companyId,
+                           !companyId.isEmpty {
+                            let userId = dataController.currentUser?.id
+                            Task { await dataController.syncEngine?.ensureRealtime(companyId: companyId, userId: userId) }
+                        }
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: ConnectivityManager.connectivityChangedNotification)) { _ in

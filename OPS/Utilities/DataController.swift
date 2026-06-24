@@ -381,6 +381,15 @@ class DataController: ObservableObject {
                 await syncEngine.fullSync()
                 print("[APP_LAUNCH_SYNC] ✅ Full sync completed")
 
+                // Subscribe to Realtime on cold launch. Previously Realtime was
+                // only started on background→foreground, so a freshly launched app
+                // that stayed foregrounded never received teammate edits live —
+                // a reschedule only surfaced on the next periodic sync. companyId
+                // is loaded by now (auth ran before this), so start it here.
+                if let companyId = currentUser?.companyId, !companyId.isEmpty {
+                    await syncEngine.ensureRealtime(companyId: companyId, userId: currentUser?.id)
+                }
+
                 // Then process pending photo uploads
                 await syncEngine.processPhotoUploads()
             } else {

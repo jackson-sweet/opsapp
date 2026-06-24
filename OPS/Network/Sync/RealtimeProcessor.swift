@@ -47,6 +47,20 @@ final class RealtimeProcessor: ObservableObject {
     private var userId: String?
     private var disconnectedAt: Date?
 
+    /// True between an explicit `startListening`/`ensureListening` and an explicit
+    /// `stopListening`. Distinguishes the internal teardown performed before a
+    /// resubscribe (intent stays true) from a real stop (logout / backgrounding —
+    /// intent clears). Drives whether a socket-status drop should auto-resubscribe.
+    private var intendsToListen = false
+
+    /// Socket-level status observation. A websocket can die silently — server
+    /// idle-close, NAT/proxy timeout, expired token — with NO ConnectivityManager
+    /// network change, leaving the channel subscribed-but-dead and `isConnected`
+    /// stuck true so postgres_changes silently stop arriving. Observing the
+    /// realtime client's connection status lets us detect that drop, mark it for
+    /// catch-up, and rebuild the subscription when the socket comes back.
+    private var socketStatusObservation: RealtimeSubscription?
+
     /// Background data actor used when FeatureFlags.useDataActor is on.
     /// Supabase's channel subscription must stay on @MainActor (this class),
     /// but the SwiftData write inside each event handler dispatches to this actor.
@@ -109,14 +123,32 @@ final class RealtimeProcessor: ObservableObject {
 
     // MARK: - Start Listening
 
+    /// Subscribe to Realtime only if not already live for this company. Safe to
+    /// call from every "the app is foregrounded / authenticated" trigger (cold
+    /// launch, login, foreground, connectivity-restore) — a redundant call while
+    /// already subscribed is a no-op, so the channel is never needlessly churned.
+    /// The previous code only ever started Realtime on background→foreground, so
+    /// a freshly launched app that stayed foregrounded never subscribed at all
+    /// and teammate edits only arrived on the next periodic sync.
+    func ensureListening(companyId: String, userId: String? = nil, context: ModelContext) async {
+        if isConnected, self.companyId == companyId, channel != nil {
+            return
+        }
+        await startListening(companyId: companyId, userId: userId, context: context)
+    }
+
     /// Subscribe to Supabase Realtime for all core entity tables scoped to a company.
     func startListening(companyId: String, userId: String? = nil, context: ModelContext) async {
         self.companyId = companyId
         self.userId = userId
         self.modelContext = context
+        intendsToListen = true
 
-        // Tear down any previous subscription
-        await stopListening()
+        // Tear down any previous channel (without clearing listen intent).
+        await teardownChannel()
+
+        // Observe socket-level status so a silent websocket drop self-heals.
+        observeSocketStatus()
 
         let channel = supabase.channel("company-\(companyId)")
 
@@ -166,13 +198,69 @@ final class RealtimeProcessor: ObservableObject {
 
     // MARK: - Stop Listening
 
+    /// Permanently stop Realtime (logout / backgrounding). Clears listen intent
+    /// and the socket-status observer so a later socket event can't resurrect a
+    /// subscription we deliberately tore down.
     func stopListening() async {
+        intendsToListen = false
+        socketStatusObservation?.cancel()
+        socketStatusObservation = nil
+        await teardownChannel()
+        print("[RealtimeProcessor] Unsubscribed")
+    }
+
+    /// Remove the current channel without touching listen intent or the socket
+    /// observer. Used both by the real stop above and by `startListening` before
+    /// it resubscribes — a resubscribe must keep `intendsToListen` true.
+    private func teardownChannel() async {
         guard let channel = channel else { return }
         await channel.unsubscribe()
         await supabase.removeChannel(channel)
         self.channel = nil
         isConnected = false
-        print("[RealtimeProcessor] Unsubscribed")
+    }
+
+    // MARK: - Socket-Status Recovery
+
+    /// Install a one-time observer on the realtime client's connection status.
+    /// Idempotent — repeated `startListening` calls won't stack observers.
+    private func observeSocketStatus() {
+        guard socketStatusObservation == nil else { return }
+        socketStatusObservation = supabase.realtimeV2.onStatusChange { [weak self] status in
+            Task { @MainActor [weak self] in
+                self?.handleSocketStatus(status)
+            }
+        }
+    }
+
+    private func handleSocketStatus(_ status: RealtimeClientStatus) {
+        guard intendsToListen else { return }
+        switch status {
+        case .disconnected:
+            // Record the drop so reconnect triggers a catch-up delta. Does not
+            // tear down the channel — the SDK owns reconnection of the socket.
+            handleDisconnect()
+        case .connected:
+            // Socket is back. If our channel went down with it, rebuild a clean
+            // subscription; startListening's reconnect path delta-syncs the gap.
+            if !isConnected {
+                Task { [weak self] in await self?.resubscribeAfterDrop() }
+            }
+        case .connecting:
+            break
+        @unknown default:
+            break
+        }
+    }
+
+    /// Rebuild the subscription after a silent socket drop, re-using the last
+    /// company/user/context. No-op if intent was cleared (logout) in the interim.
+    private func resubscribeAfterDrop() async {
+        guard intendsToListen,
+              let companyId = companyId,
+              let modelContext = modelContext else { return }
+        print("[RealtimeProcessor] Socket recovered — rebuilding subscription")
+        await startListening(companyId: companyId, userId: userId, context: modelContext)
     }
 
     // MARK: - Disconnect / Reconnect

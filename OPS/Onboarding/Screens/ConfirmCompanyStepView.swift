@@ -667,12 +667,20 @@ private struct ConfirmCompanyLogo: View {
 
 // MARK: - Avatar stack (28pt, −8 overlap, +N overflow)
 
+/// The overlapping team-avatar stack. Reads as CLEAN STACKED CIRCLES, not intersecting
+/// "Olympic rings": each circle carries a canvas-colored separator BAND on its outer
+/// edge (`stackedCircleBand`), and consistent front-to-back Z-ORDER (first member on
+/// top, each subsequent one behind, the +N badge at the very back) means the disc in
+/// front cuts a clean crescent out of the one behind it. The −8 overlap, 28pt side, and
+/// 2pt band all trace to `OPSStyle` tokens.
 private struct ConfirmAvatarStack: View {
     let members: [TeamMemberDTO]
     let teamSize: Int
 
     private let side: CGFloat = 28
     private let maxShown = 5
+    /// Width of the canvas-colored separator band (the crescent the front circle cuts).
+    private let ringWidth: CGFloat = OPSStyle.Layout.Border.thick // 2pt
 
     var body: some View {
         let shown = Array(members.prefix(maxShown))
@@ -680,12 +688,14 @@ private struct ConfirmAvatarStack: View {
 
         return HStack(spacing: -OPSStyle.Layout.spacing2) { // −8 overlap
             ForEach(Array(shown.enumerated()), id: \.offset) { index, member in
-                ConfirmMemberAvatar(member: member, side: side)
+                ConfirmMemberAvatar(member: member, side: side, ringWidth: ringWidth)
+                    // First member draws on top; each subsequent one falls behind so the
+                    // overlaps nest in a single clear front-to-back order.
                     .zIndex(Double(shown.count - index))
             }
             if overflow > 0 {
                 overflowBadge(overflow)
-                    .zIndex(0)
+                    .zIndex(0) // the +N badge sits at the very back of the stack
             }
         }
         .accessibilityHidden(true)
@@ -693,21 +703,27 @@ private struct ConfirmAvatarStack: View {
 
     private func overflowBadge(_ overflow: Int) -> some View {
         ZStack {
-            Circle().fill(OPSStyle.Colors.surfaceInput)
-            Circle().stroke(OPSStyle.Colors.background, lineWidth: OPSStyle.Layout.Border.thick)
+            OPSStyle.Colors.surfaceInput
             Text("+\(overflow)")
                 .font(OPSStyle.Typography.microLabel) // JetBrains Mono micro
                 .foregroundColor(OPSStyle.Colors.text2)
         }
-        .frame(width: side, height: side)
+        .stackedCircleBand(side: side, ringWidth: ringWidth)
     }
 }
 
 private struct ConfirmMemberAvatar: View {
     let member: TeamMemberDTO
     let side: CGFloat
+    /// Width of the canvas-colored separator band on the outer edge.
+    var ringWidth: CGFloat = OPSStyle.Layout.Border.thick
 
     var body: some View {
+        avatar
+            .stackedCircleBand(side: side, ringWidth: ringWidth)
+    }
+
+    private var avatar: some View {
         Group {
             if let urlString = member.profileImageUrl, let url = URL(string: urlString) {
                 AsyncImage(url: url) { phase in
@@ -722,9 +738,6 @@ private struct ConfirmMemberAvatar: View {
                 initialCircle
             }
         }
-        .frame(width: side, height: side)
-        .clipShape(Circle())
-        .overlay(Circle().stroke(OPSStyle.Colors.background, lineWidth: OPSStyle.Layout.Border.thick))
     }
 
     private var initialCircle: some View {
@@ -734,6 +747,39 @@ private struct ConfirmMemberAvatar: View {
                 .font(OPSStyle.Typography.microLabel) // JetBrains Mono micro
                 .foregroundColor(OPSStyle.Colors.text2)
         }
+    }
+}
+
+// MARK: - Stacked-circle separator band (clean crescents, not Olympic rings)
+
+/// Wraps circular avatar/badge content in a canvas-colored separator BAND so that, when
+/// overlapped in a stack, the element in front cuts a clean crescent out of the one
+/// behind — stacked circles, never intersecting "Olympic rings". The content fills the
+/// inner circle (`side − 2·ringWidth`); the outer `ringWidth` of the `side`-wide
+/// footprint is filled with the canvas/background color and clipped to a circle. Because
+/// the front element's full `side` disc (band included) draws on top, it occludes the
+/// element behind it cleanly. The footprint stays `side`, so the stack's overlap math is
+/// unchanged. ZERO shadows — pure occlusion. (NOT a centered stroke, which straddles the
+/// edge and leaves both outlines showing.)
+private struct StackedCircleBand: ViewModifier {
+    let side: CGFloat
+    let ringWidth: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .frame(width: side - ringWidth * 2, height: side - ringWidth * 2)
+            .clipShape(Circle())
+            .padding(ringWidth)
+            .background(OPSStyle.Colors.background) // the separator band (canvas color)
+            .clipShape(Circle())
+            .frame(width: side, height: side)
+    }
+}
+
+private extension View {
+    /// Apply the stacked-circle separator band (see `StackedCircleBand`).
+    func stackedCircleBand(side: CGFloat, ringWidth: CGFloat) -> some View {
+        modifier(StackedCircleBand(side: side, ringWidth: ringWidth))
     }
 }
 

@@ -2806,6 +2806,32 @@ final class OnboardingScreensTests: XCTestCase {
                 previewState: makeSparsePreview()
             ).snapshotBody
         }
+        // Dense avatar stack — 5 overlapping members + a "+N" overflow badge. The
+        // crescent-masking test: the overlaps must read as CLEAN STACKED CIRCLES with a
+        // clear front-to-back order, not intersecting "Olympic rings".
+        snapshot("confirmcompany_stack_dark") {
+            ConfirmCompanyStepView(
+                boundary: confirmBoundary,
+                companyName: "Sweet Deck & Rail",
+                previewState: ConfirmCompanyPreview(
+                    companyId: "co-1",
+                    companyName: "Sweet Deck & Rail",
+                    companyCode: "BR8K90ZT",
+                    companyLogoUrl: nil,
+                    industries: ["Carpentry", "Roofing"],
+                    teamMembers: [
+                        TeamMemberDTO(firstName: "Jack", lastName: "Sweet", profileImageUrl: nil),
+                        TeamMemberDTO(firstName: "Mara", lastName: "Lopez", profileImageUrl: nil),
+                        TeamMemberDTO(firstName: "Devon", lastName: "Reed", profileImageUrl: nil),
+                        TeamMemberDTO(firstName: "Tariq", lastName: "Hale", profileImageUrl: nil),
+                        TeamMemberDTO(firstName: "Nina", lastName: "Park", profileImageUrl: nil)
+                    ],
+                    teamSize: 8,
+                    roleName: "Crew",
+                    invitedByName: "Jack Sweet"
+                )
+            ).snapshotBody
+        }
         snapshot("confirmcompany_error_dark") {
             ConfirmCompanyStepView(
                 boundary: confirmBoundary,

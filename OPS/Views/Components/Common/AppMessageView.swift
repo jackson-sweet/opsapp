@@ -57,20 +57,21 @@ struct AppMessageView: View {
                     // Callout at top
                     Text("[ \(messageType.displayName.uppercased()) ]")
                         .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(accentColor.opacity(0.7))
+                        .foregroundColor(accentColor.opacity(OPSStyle.Layout.Opacity.strong))
                         .tracking(1)
 
                     // Header with icon inline
-                    HStack(spacing: 10) {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Image(systemName: messageType.iconName)
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                            .font(.system(size: OPSStyle.Layout.IconSize.lg))
                             .foregroundColor(accentColor)
 
                         if let title = message.title, !title.isEmpty {
                             Text(title.uppercased())
-                                .font(OPSStyle.Typography.captionBold)
+                                .font(OPSStyle.Typography.section)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .tracking(2)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
 
@@ -82,7 +83,7 @@ struct AppMessageView: View {
                     // Body - left aligned
                     if let body = message.body, !body.isEmpty {
                         Text(body)
-                            .font(OPSStyle.Typography.caption)
+                            .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .lineSpacing(6)
                             .fixedSize(horizontal: false, vertical: true)
@@ -119,7 +120,7 @@ struct AppMessageView: View {
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     .tracking(2)
                                     .frame(maxWidth: .infinity)
-                                    .frame(height: 44)
+                                    .frame(height: OPSStyle.Layout.bottomCTAHeight)
                                     .background(Color.clear)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -135,7 +136,7 @@ struct AppMessageView: View {
                                     .foregroundColor(accentColor)
                                     .tracking(2)
                                     .frame(maxWidth: .infinity)
-                                    .frame(height: 44)
+                                    .frame(height: OPSStyle.Layout.bottomCTAHeight)
                                     .background(Color.clear)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -145,7 +146,7 @@ struct AppMessageView: View {
                         } else {
                             Text("[ ACCESS SUSPENDED ]")
                                 .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.5))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(OPSStyle.Layout.Opacity.medium))
                                 .tracking(2)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, OPSStyle.Layout.spacing2)
@@ -153,8 +154,8 @@ struct AppMessageView: View {
                     }
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .padding(.vertical, 28)
-                .glassSurface()
+                .padding(.vertical, OPSStyle.Layout.spacing5)
+                .glassDense()
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                 Spacer()

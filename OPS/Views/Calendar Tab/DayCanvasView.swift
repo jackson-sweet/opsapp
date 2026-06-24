@@ -272,6 +272,29 @@ struct DayPageView: View {
     private func refreshDay() async {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         await viewModel.refreshCalendar()
+        // Warning haptic when the pull couldn't reach the server — the gesture
+        // is acknowledged through touch as well as the inline notice.
+        if viewModel.lastRefreshUnreachable {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        }
+    }
+
+    /// Inline "couldn't reach the server" acknowledgement under the day header.
+    private var offlineRefreshNotice: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(OPSStyle.Colors.warningStatus)
+            Text("Couldn't reach the server — showing last synced.")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassSurface()
     }
 
     var body: some View {
@@ -281,6 +304,15 @@ struct DayPageView: View {
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.top, OPSStyle.Layout.spacing2)
                 .padding(.bottom, OPSStyle.Layout.spacing2_5)
+
+            // Transient acknowledgement when a pull couldn't reach the server —
+            // so the gesture never silently appears to do nothing. Self-clears.
+            if viewModel.lastRefreshUnreachable {
+                offlineRefreshNotice
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
 
             // Scrollable task list
             if tasksForDate.isEmpty && userEventsForDate.isEmpty {

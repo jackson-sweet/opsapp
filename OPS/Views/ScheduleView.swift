@@ -102,6 +102,14 @@ struct ScheduleView: View {
                     )
                     .padding(.bottom, OPSStyle.Layout.spacing2)
 
+                    // Persistent offline / weak-signal status. Self-hides when the
+                    // connection is good, so it earns its space only while the
+                    // on-screen schedule might be stale.
+                    if let connectivity = dataController.connectivity {
+                        ScheduleConnectivityStrip(connectivity: connectivity)
+                            .animation(OPSStyle.Animation.standard, value: connectivity.shouldAttemptSync)
+                    }
+
                     // Phase-C suggested events (item 63144953) — only when there's
                     // something to review; otherwise fully dormant (no banner).
                     if !viewModel.suggestedEvents.isEmpty {

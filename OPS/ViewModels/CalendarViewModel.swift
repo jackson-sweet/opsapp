@@ -28,6 +28,12 @@ class CalendarViewModel: ObservableObject {
     /// the app never depends on the Phase C engine running.
     @Published var suggestedEvents: [SuggestedCalendarEventDTO] = []
 
+    /// Set when the most recent pull-to-refresh could NOT reach the server
+    /// (offline / unusable connection). Drives a transient inline banner so the
+    /// gesture is acknowledged instead of silently appearing to do nothing.
+    /// Self-clears on the next reachable refresh (or after a short timeout).
+    @Published var lastRefreshUnreachable = false
+
     // Computed properties to get fresh models
     var projectsForSelectedDate: [Project] {
         guard let dataController = dataController else { return [] }
@@ -605,8 +611,26 @@ class CalendarViewModel: ObservableObject {
             return
         }
 
-        // Pull the latest of everything from the backend (full sync).
-        await dataController.refreshProjectsFromBackend()
+        // If the server is unreachable, the full sync silently no-ops — surface
+        // that so pull-to-refresh isn't a dead gesture. Otherwise pull the
+        // latest of everything from the backend (full sync).
+        let reachable = dataController.connectivity?.shouldAttemptSync ?? dataController.isConnected
+        if reachable {
+            await dataController.refreshProjectsFromBackend()
+            if lastRefreshUnreachable {
+                withAnimation(OPSStyle.Animation.standard) { lastRefreshUnreachable = false }
+            }
+        } else {
+            withAnimation(OPSStyle.Animation.standard) { lastRefreshUnreachable = true }
+            // Auto-clear the transient acknowledgement; the persistent header
+            // strip continues to reflect the standing offline state.
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                await MainActor.run {
+                    withAnimation(OPSStyle.Animation.standard) { self?.lastRefreshUnreachable = false }
+                }
+            }
+        }
 
         // Invalidate ALL snapshot caches AFTER the sync writes land — not just
         // projectCountCache. dayTaskCache and cachedWeekStart must be cleared

@@ -757,7 +757,12 @@ struct UnscheduledTaskReviewView: View {
                 try await dataController.updateTaskSchedule(
                     task: task,
                     startDate: capturedStart,
-                    endDate: capturedEnd
+                    endDate: capturedEnd,
+                    // Auto-schedule: the SCHEDULER picked this date, not the
+                    // operator, so keep cascade auto-tracking intact. (Manual
+                    // scheduling via CalendarSchedulerSheet keeps the default
+                    // manualEdit: true, which locks the task as intended.)
+                    manualEdit: false
                 )
                 await MainActor.run {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()

@@ -692,7 +692,10 @@ struct UnscheduledTaskReviewView: View {
     }
 
     private func autoScheduleTask(_ task: ProjectTask) {
-        guard task.canEditSchedule else { return }
+        guard task.canEditSchedule else {
+            presentScheduleDenied()
+            return
+        }
         // Bug adc0feb3 — realtime sync can land a schedule on the task
         // between the operator opening this review and swiping the card.
         // Re-running the scheduler here would overwrite the dates that
@@ -789,7 +792,10 @@ struct UnscheduledTaskReviewView: View {
     }
 
     private func manuallySchedule(_ task: ProjectTask, startDate: Date, endDate: Date) {
-        guard task.canEditSchedule else { return }
+        guard task.canEditSchedule else {
+            presentScheduleDenied()
+            return
+        }
         Task {
             do {
                 try await dataController.updateTaskSchedule(
@@ -821,6 +827,18 @@ struct UnscheduledTaskReviewView: View {
                 }
             }
         }
+    }
+
+    /// The schedule affordance is shown to anyone holding any calendar.edit
+    /// grant (canEditAnySchedule), but the actual write is gated per-task on
+    /// canEditSchedule — own/assigned-scope operators may only schedule tasks
+    /// they're on. Without this, the swipe was a silent dead-end: the card flew
+    /// away, got counted reviewed, and nothing happened. Tell the operator.
+    private func presentScheduleDenied() {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        ToastCenter.shared.present(
+            Toast(label: "// CAN'T SCHEDULE — NOT ASSIGNED TO YOU", tone: .warning)
+        )
     }
 
     private func checkCompletion() {

@@ -64,6 +64,11 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         /// Pending "ended" work item — cancelled if a new began/changed fires
         /// before the debounce window elapses.
         private var endWork: DispatchWorkItem?
+        /// JSON of the drawing the scene was last built from. `updateUIView`
+        /// only rebuilds when this changes, so unrelated SwiftUI re-renders —
+        /// notably the badge-fade `@State` flip that fires at the start of every
+        /// pan/pinch — don't reset the camera out from under the user's gesture.
+        var lastDrawingJSON: String = ""
 
         init(onInteractingChange: @escaping (Bool) -> Void) {
             self.onInteractingChange = onInteractingChange
@@ -127,18 +132,26 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         if let cam = scene.rootNode.childNode(withName: "camera", recursively: true) {
             scnView.pointOfView = cam
         }
+        context.coordinator.lastDrawingJSON = drawingData.toJSON()
 
         return scnView
     }
 
     func updateUIView(_ uiView: SCNView, context: Context) {
-        // Rebuild when the drawing changes so edits in the editor flow through
-        // to the project tab without a full screen tear-down.
+        // Only rebuild when the drawing ACTUALLY changed. Rebuilding on every
+        // SwiftUI re-render — including the badge-fade `@State` flip in
+        // DeckTabView that fires at the START of every pan/pinch — would
+        // reassign the scene and reset `pointOfView`, snapping the camera home
+        // and fighting the gesture the user just made. Mirrors the JSON-diff
+        // guard in DeckScene3DView (the builder's viewer).
+        let currentJSON = drawingData.toJSON()
+        guard currentJSON != context.coordinator.lastDrawingJSON else { return }
         let scene = buildScene()
         uiView.scene = scene
         if let cam = scene.rootNode.childNode(withName: "camera", recursively: true) {
             uiView.pointOfView = cam
         }
+        context.coordinator.lastDrawingJSON = currentJSON
     }
 
     /// Render through the canonical `DeckSceneBuilder`. Calibrated designs use

@@ -395,24 +395,24 @@ private struct InlineQuickTaskComposer: View {
     // MARK: - Team picker
 
     private var crewPickerSheet: some View {
-        let recentIds: Set<String> = {
-            guard !draftTask.taskTypeId.isEmpty,
-                  let companyId = dataController.currentUser?.companyId else {
-                return []
+        let ranked: (ordered: [User], usualCrewIds: Set<String>) = {
+            guard let companyId = dataController.currentUser?.companyId else {
+                return (fetchedTeamUsers.sorted {
+                    $0.fullName.localizedCaseInsensitiveCompare($1.fullName) == .orderedAscending
+                }, [])
             }
-            return Set(dataController.recentTeamMemberIds(
+            return dataController.rankedTeamMembers(
                 forTaskType: draftTask.taskTypeId,
-                companyId: companyId
-            ))
+                companyId: companyId,
+                candidates: fetchedTeamUsers
+            )
         }()
-        let ordered = teamUsersOrdered(forTaskTypeId: draftTask.taskTypeId)
         return TeamMemberPickerSheet(
             selectedTeamMemberIds: $assignSelectedIds,
-            allTeamMembers: ordered,
-            recentMemberIds: recentIds
+            allTeamMembers: ranked.ordered,
+            recentMemberIds: ranked.usualCrewIds,
+            taskTypeName: allTaskTypes.first { $0.id == draftTask.taskTypeId }?.display
         )
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
     }
 
     private func presentCrewPicker() {
@@ -423,30 +423,6 @@ private struct InlineQuickTaskComposer: View {
 
     private func handleCrewPickerDismiss() {
         draftTask.teamMemberIds = Array(assignSelectedIds)
-    }
-
-    private func teamUsersOrdered(forTaskTypeId taskTypeId: String) -> [User] {
-        let alphaSorted = fetchedTeamUsers
-        guard !taskTypeId.isEmpty,
-              let companyId = dataController.currentUser?.companyId else {
-            return alphaSorted
-        }
-        let recentIds = dataController.recentTeamMemberIds(
-            forTaskType: taskTypeId,
-            companyId: companyId
-        )
-        guard !recentIds.isEmpty else { return alphaSorted }
-        let recencyIndex = Dictionary(
-            uniqueKeysWithValues: recentIds.enumerated().map { ($1, $0) }
-        )
-        let recentSet = Set(recentIds)
-        let recentTier = alphaSorted
-            .filter { recentSet.contains($0.id) }
-            .sorted { lhs, rhs in
-                (recencyIndex[lhs.id] ?? Int.max) < (recencyIndex[rhs.id] ?? Int.max)
-            }
-        let restTier = alphaSorted.filter { !recentSet.contains($0.id) }
-        return recentTier + restTier
     }
 
     // MARK: - Scheduler

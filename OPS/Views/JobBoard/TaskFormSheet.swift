@@ -93,52 +93,22 @@ struct TaskFormSheet: View {
         }
     }
 
-    /// Bug 9d5c2535 — team members sorted by who has most recently been
-    /// assigned to the currently-selected task type. Members never assigned
-    /// to this type fall to the bottom alphabetically. Fallback to plain
-    /// alphabetical when no task type is selected (e.g. user opens the
-    /// team picker before picking a type).
-    private var recencyOrderedTeamMembers: [User] {
-        let alphaSorted = uniqueTeamMembers.sorted {
-            $0.fullName.localizedCompare($1.fullName) == .orderedAscending
-        }
-
-        guard let taskTypeId = selectedTaskTypeId, !taskTypeId.isEmpty,
-              let companyId = dataController.currentUser?.companyId else {
-            return alphaSorted
-        }
-
-        let recentIds = dataController.recentTeamMemberIds(
-            forTaskType: taskTypeId,
-            companyId: companyId
-        )
-        guard !recentIds.isEmpty else { return alphaSorted }
-
-        let recencyIndex = Dictionary(
-            uniqueKeysWithValues: recentIds.enumerated().map { ($1, $0) }
-        )
-        let recentSet = Set(recentIds)
-
-        let recentTier = alphaSorted
-            .filter { recentSet.contains($0.id) }
-            .sorted { lhs, rhs in
-                (recencyIndex[lhs.id] ?? Int.max) < (recencyIndex[rhs.id] ?? Int.max)
+    /// Affinity-ranked crew for the active task type via the shared engine —
+    /// usual crew first (by how often they do this work, ties by recency), then
+    /// everyone else by overall-recent use, then alphabetical. `.ordered` feeds
+    /// the picker list; `.usualCrewIds` drives its USUAL section. One fetch.
+    private var rankedTeamMembers: (ordered: [User], usualCrewIds: Set<String>) {
+        guard let companyId = dataController.currentUser?.companyId else {
+            let alpha = uniqueTeamMembers.sorted {
+                $0.fullName.localizedCaseInsensitiveCompare($1.fullName) == .orderedAscending
             }
-        let restTier = alphaSorted.filter { !recentSet.contains($0.id) }
-        return recentTier + restTier
-    }
-
-    /// Set of team-member IDs that qualify as "recent" for the active task
-    /// type. Used by the picker to draw a RECENT tag on those rows.
-    private var recentTeamMemberIdSet: Set<String> {
-        guard let taskTypeId = selectedTaskTypeId, !taskTypeId.isEmpty,
-              let companyId = dataController.currentUser?.companyId else {
-            return []
+            return (alpha, [])
         }
-        return Set(dataController.recentTeamMemberIds(
-            forTaskType: taskTypeId,
-            companyId: companyId
-        ))
+        return dataController.rankedTeamMembers(
+            forTaskType: selectedTaskTypeId ?? "",
+            companyId: companyId,
+            candidates: uniqueTeamMembers
+        )
     }
 
     /// Bug 9d5c2535 — task types sorted by most-recently used across the
@@ -472,10 +442,12 @@ struct TaskFormSheet: View {
             .environmentObject(dataController)
         }
         .sheet(isPresented: $showingTeamPicker) {
+            let ranked = rankedTeamMembers
             TeamMemberPickerSheet(
                 selectedTeamMemberIds: $selectedTeamMemberIds,
-                allTeamMembers: recencyOrderedTeamMembers,
-                recentMemberIds: recentTeamMemberIdSet,
+                allTeamMembers: ranked.ordered,
+                recentMemberIds: ranked.usualCrewIds,
+                taskTypeName: selectedTaskType?.display,
                 onConfirm: {}
             )
         }
@@ -1872,11 +1844,14 @@ struct TeamMemberPickerSheet: View {
     /// is responsible for ordering (recency-first when a task type is
     /// selected, alphabetical otherwise).
     let allTeamMembers: [User]
-    /// Bug 9d5c2535 — IDs that have been assigned to the current task type
-    /// before. Rendered with a RECENT tag to mark the boundary between
-    /// "your usual crew" and the rest. Empty when no task type is selected
-    /// or no prior assignments exist.
+    /// IDs of the "usual crew" for the active task type — members with prior
+    /// assignments to it, surfaced under a USUAL section header above everyone
+    /// else. Empty when no task type is selected or there's no history.
+    /// (Caller computes this via `DataController.rankedTeamMembers`.)
     var recentMemberIds: Set<String> = []
+    /// Display name of the active task type, when known — lets the usual-crew
+    /// header read "USUAL FOR VINYL" instead of the generic "USUAL CREW".
+    var taskTypeName: String? = nil
     /// Bug 040e4482 — fired only when the operator taps DONE. Drag-to-dismiss
     /// does NOT call this, so callers that need to distinguish "explicit
     /// commit" from "swipe away" (e.g. the unscheduled review's swipe-right
@@ -1939,19 +1914,78 @@ struct TeamMemberPickerSheet: View {
                 emptyState
             } else {
                 ScrollView {
-                    VStack(spacing: OPSStyle.Layout.Border.standard) {
-                        ForEach(Array(allTeamMembers.enumerated()), id: \.element.id) { index, member in
-                            teamMemberRow(member: member, index: index)
-                        }
+                    LazyVStack(spacing: 0) {
+                        memberSections
                     }
-                    .padding(CGFloat(OPSStyle.Layout.spacing3))
+                    .padding(.bottom, CGFloat(OPSStyle.Layout.spacing3))
                 }
             }
         }
         .background(OPSStyle.Colors.background.ignoresSafeArea())
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
         .onAppear {
             selectionDraft = TeamMemberSelectionDraft(committedIds: selectedTeamMemberIds)
         }
+    }
+
+    // MARK: - Member List
+
+    /// Members previously assigned to the active task type (the "usual crew"),
+    /// preserving the caller's affinity ordering.
+    private var usualMembers: [User] {
+        allTeamMembers.filter { recentMemberIds.contains($0.id) }
+    }
+
+    /// Everyone else, in the caller's recency/alphabetical order.
+    private var restMembers: [User] {
+        allTeamMembers.filter { !recentMemberIds.contains($0.id) }
+    }
+
+    private var usualHeaderTitle: String {
+        if let name = taskTypeName, !name.isEmpty {
+            return "USUAL FOR \(name.uppercased())"
+        }
+        return "USUAL CREW"
+    }
+
+    @ViewBuilder
+    private var memberSections: some View {
+        if usualMembers.isEmpty {
+            // No type precedent — a single flat list (already recency-ordered).
+            rows(restMembers)
+        } else {
+            sectionHeader(usualHeaderTitle)
+            rows(usualMembers)
+            if !restMembers.isEmpty {
+                sectionHeader("EVERYONE ELSE")
+                rows(restMembers)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rows(_ members: [User]) -> some View {
+        ForEach(Array(members.enumerated()), id: \.element.id) { index, member in
+            teamMemberRow(member)
+            if index < members.count - 1 {
+                Rectangle()
+                    .fill(OPSStyle.Colors.line)
+                    .frame(height: OPSStyle.Layout.Border.standard)
+                    .padding(.leading, CGFloat(OPSStyle.Layout.spacing3) + 40 + CGFloat(OPSStyle.Layout.spacing2_5))
+            }
+        }
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(OPSStyle.Typography.sectionLabel)
+            .foregroundColor(OPSStyle.Colors.text3)
+            .tracking(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, CGFloat(OPSStyle.Layout.spacing3))
+            .padding(.top, CGFloat(OPSStyle.Layout.spacing3))
+            .padding(.bottom, CGFloat(OPSStyle.Layout.spacing2))
     }
 
     /// Bug 685e1d0e — OPS em-dash empty state for a company with no active
@@ -1972,58 +2006,37 @@ struct TeamMemberPickerSheet: View {
         .padding(CGFloat(OPSStyle.Layout.spacing3))
     }
 
-    private func teamMemberRow(member: User, index: Int) -> some View {
-        let isRecent = recentMemberIds.contains(member.id)
-        let nextIsRecent = (index + 1) < allTeamMembers.count
-            ? recentMemberIds.contains(allTeamMembers[index + 1].id)
-            : false
-        let isLastRecentRow = isRecent && !nextIsRecent && !recentMemberIds.isEmpty
+    private func teamMemberRow(_ member: User) -> some View {
+        let selected = activeSelectionIds.contains(member.id)
+        return Button(action: { toggle(member.id) }) {
+            HStack(spacing: CGFloat(OPSStyle.Layout.spacing2_5)) {
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(selected ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.text3)
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
 
-        return VStack(spacing: 0) {
-            Button(action: { toggle(member.id) }) {
-                HStack(spacing: CGFloat(OPSStyle.Layout.spacing2_5)) {
-                    Image(systemName: activeSelectionIds.contains(member.id) ? "checkmark.circle.fill" : "circle")
-                        .foregroundColor(activeSelectionIds.contains(member.id) ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
-                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+                UserAvatar(user: member, size: 40)
 
-                    UserAvatar(user: member, size: 40)
+                VStack(alignment: .leading, spacing: CGFloat(OPSStyle.Layout.spacing1)) {
+                    Text(member.fullName)
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.text)
 
-                    VStack(alignment: .leading, spacing: CGFloat(OPSStyle.Layout.spacing1)) {
-                        Text(member.fullName)
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.text)
-
-                        Text(member.role.displayName)
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.text3)
-                    }
-
-                    Spacer()
-
-                    if isRecent {
-                        Text("RECENT")
-                            .font(OPSStyle.Typography.badgeCake)
-                            .foregroundColor(OPSStyle.Colors.opsAccent)
-                            .padding(.horizontal, CGFloat(OPSStyle.Layout.spacing2))
-                            .padding(.vertical, CGFloat(OPSStyle.Layout.spacing1))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: CGFloat(OPSStyle.Layout.chipRadius))
-                                    .stroke(OPSStyle.Colors.opsAccent, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
-                    }
+                    Text(member.role.displayName)
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.text3)
                 }
-                .padding(CGFloat(OPSStyle.Layout.spacing3))
-                .background(OPSStyle.Colors.surfaceHover)
-            }
-            .buttonStyle(PlainButtonStyle())
 
-            if isLastRecentRow {
-                Rectangle()
-                    .fill(OPSStyle.Colors.line)
-                    .frame(height: OPSStyle.Layout.Border.thick)
-                    .padding(.vertical, CGFloat(OPSStyle.Layout.spacing1))
+                Spacer()
             }
+            // Glass-list row: hairline-separated on the sheet background with a
+            // quiet accent wash on selection, instead of the old solid
+            // surfaceHover block per row (which read as a stack of grey boxes).
+            .padding(.vertical, CGFloat(OPSStyle.Layout.spacing2_5))
+            .padding(.horizontal, CGFloat(OPSStyle.Layout.spacing3))
+            .background(selected ? OPSStyle.Colors.opsAccent.opacity(0.08) : Color.clear)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(PlainButtonStyle())
     }
 
     private func toggle(_ memberId: String) {

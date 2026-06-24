@@ -23,6 +23,10 @@ struct TaskReviewCardStack: View {
     @State private var dragOffset: CGSize = .zero
     @State private var dragDirection: SwipeDirection? = nil
     @State private var hasTriggeredThresholdHaptic: Bool = false
+    /// True from the moment a swipe commits until the stack advances 0.3s
+    /// later — locks hit-testing/gesture on the outgoing card so a second drag
+    /// can't fire against the same index while it animates away.
+    @State private var isCommitting: Bool = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -85,8 +89,8 @@ struct TaskReviewCardStack: View {
                     .offset(index == currentIndex ? dragOffset : .zero)
                     .rotationEffect(index == currentIndex ? dragRotation : .zero)
                     .zIndex(Double(tasks.count - index))
-                    .allowsHitTesting(index == currentIndex)
-                    .gesture(index == currentIndex ? dragGesture : nil)
+                    .allowsHitTesting(index == currentIndex && !isCommitting)
+                    .gesture(index == currentIndex && !isCommitting ? dragGesture : nil)
                     .animation(dragSettleAnimation, value: dragOffset)
                     .animation(stackShiftAnimation, value: currentIndex)
                     .modifier(WizardTargetModifier(
@@ -171,6 +175,9 @@ struct TaskReviewCardStack: View {
     }
 
     private func commitSwipe(_ direction: SwipeDirection) {
+        // Lock the outgoing card so a second gesture can't fire against the
+        // same index during the 0.3s fly-away before currentIndex advances.
+        isCommitting = true
         let flyAway = flyAwayOffset(for: direction)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
@@ -183,6 +190,7 @@ struct TaskReviewCardStack: View {
             currentIndex += 1
             dragOffset = .zero
             dragDirection = nil
+            isCommitting = false
             onSwipe(task, direction)
         }
     }

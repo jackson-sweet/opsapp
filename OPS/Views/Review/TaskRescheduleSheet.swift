@@ -112,8 +112,7 @@ struct TaskRescheduleSheet: View {
                     pushedTaskNewEnd: newEnd,
                     cascadeChanges: cascadeResult.changes,
                     onConfirm: {
-                        applyReschedule(newStart: newStart, newEnd: newEnd)
-                        applyCascade(cascadeResult)
+                        applyReschedule(newStart: newStart, newEnd: newEnd, cascade: cascadeResult)
                     },
                     onCancel: {
                         // User cancelled cascade preview — dismiss without changes
@@ -261,8 +260,7 @@ struct TaskRescheduleSheet: View {
             showDayDetail = false
             showCascadePreview = true
         } else if !cascadeResult.changes.isEmpty {
-            applyReschedule(newStart: newStart, newEnd: newEnd)
-            applyCascade(cascadeResult)
+            applyReschedule(newStart: newStart, newEnd: newEnd, cascade: cascadeResult)
         } else {
             applyReschedule(newStart: newStart, newEnd: newEnd)
         }
@@ -509,8 +507,7 @@ struct TaskRescheduleSheet: View {
             showCascadePreview = true
         } else if !cascadeResult.changes.isEmpty {
             // Cascade changes exist but preview disabled — apply immediately
-            applyReschedule(newStart: newDates.newStart, newEnd: newDates.newEnd)
-            applyCascade(cascadeResult)
+            applyReschedule(newStart: newDates.newStart, newEnd: newDates.newEnd, cascade: cascadeResult)
         } else {
             // No cascade — apply directly
             applyReschedule(newStart: newDates.newStart, newEnd: newDates.newEnd)
@@ -519,12 +516,19 @@ struct TaskRescheduleSheet: View {
 
     // MARK: - Apply
 
-    private func applyReschedule(newStart: Date, newEnd: Date) {
+    private func applyReschedule(
+        newStart: Date,
+        newEnd: Date,
+        cascade: SchedulingEngine.CascadeResult? = nil
+    ) {
         guard canModify else { return }
         // Canonical path — saves context, records SyncOperation, and sends
-        // schedule-change notifications to assigned team members. Direct
-        // mutation was losing every reschedule because neither the save nor
-        // the outbound push was running.
+        // schedule-change notifications to assigned team members. The sheet is
+        // only torn down (and the card counted reviewed) AFTER the write lands;
+        // a failure surfaces a RETRY toast instead of silently dismissing over
+        // a reschedule that never persisted. Any cascade runs sequentially
+        // inside the same Task so child writes finish — in deterministic order
+        // — before dismissal, rather than racing teardown in a detached Task.
         Task {
             do {
                 try await dataController.updateTaskSchedule(
@@ -532,35 +536,49 @@ struct TaskRescheduleSheet: View {
                     startDate: newStart,
                     endDate: newEnd
                 )
+                if let cascade {
+                    await runCascade(cascade)
+                }
+                await MainActor.run {
+                    onRescheduled()
+                    dismiss()
+                }
             } catch {
                 print("[TASK_RESCHEDULE] Failed to apply reschedule: \(error)")
-            }
-            await MainActor.run {
-                onRescheduled()
-                dismiss()
+                await MainActor.run {
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    ToastCenter.shared.present(
+                        Toast(
+                            label: "// COULDN'T RESCHEDULE — TRY AGAIN",
+                            tone: .error,
+                            autoDismissAfter: 0,
+                            action: ToastAction(label: "RETRY") {
+                                applyReschedule(newStart: newStart, newEnd: newEnd, cascade: cascade)
+                            }
+                        )
+                    )
+                }
             }
         }
     }
 
-    private func applyCascade(_ cascadeResult: SchedulingEngine.CascadeResult) {
+    /// Apply cascade child-task date shifts sequentially. A single child
+    /// failure is logged but doesn't abort the rest — the primary task has
+    /// already moved, so the remaining children should still follow.
+    private func runCascade(_ cascadeResult: SchedulingEngine.CascadeResult) async {
         let projectTasks = getProjectTasks()
-        // Resolve each affected task on the main actor, then dispatch one
-        // canonical update per change. Sequential to preserve ordering and
-        // avoid race conditions on the shared sync queue.
-        Task {
-            for change in cascadeResult.changes {
-                // Own-scope users only shift tasks they may move; "all" passes all.
-                guard let affectedTask = projectTasks.first(where: { $0.id == change.id }),
-                      affectedTask.canEditSchedule else { continue }
-                do {
-                    try await dataController.updateTaskSchedule(
-                        task: affectedTask,
-                        startDate: change.newStartDate,
-                        endDate: change.newEndDate
-                    )
-                } catch {
-                    print("[TASK_RESCHEDULE] Cascade update failed for \(change.id): \(error)")
-                }
+        for change in cascadeResult.changes {
+            // Own-scope users only shift tasks they may move; "all" passes all.
+            guard let affectedTask = projectTasks.first(where: { $0.id == change.id }),
+                  affectedTask.canEditSchedule else { continue }
+            do {
+                try await dataController.updateTaskSchedule(
+                    task: affectedTask,
+                    startDate: change.newStartDate,
+                    endDate: change.newEndDate
+                )
+            } catch {
+                print("[TASK_RESCHEDULE] Cascade update failed for \(change.id): \(error)")
             }
         }
     }

@@ -14,6 +14,12 @@ struct DeveloperDashboard: View {
     @Environment(\.wizardStateManager) private var wizardStateManager
     @State private var selectedTool: DeveloperTool? = nil
 
+    #if DEBUG
+    /// DEBUG-only — drives the rebuilt-onboarding screen previewer cover. Compiled
+    /// out of release builds so the previewer is structurally unreachable when shipped.
+    @State private var showRebuiltOnboarding = false
+    #endif
+
     enum DeveloperTool: String, CaseIterable, Identifiable {
         var id: String { self.rawValue }
 
@@ -178,6 +184,12 @@ struct DeveloperDashboard: View {
                                 ToolCard(tool: .dataActorBenchmark) {
                                     selectedTool = .dataActorBenchmark
                                 }
+
+                                #if DEBUG
+                                RebuiltOnboardingLaunchCard {
+                                    showRebuiltOnboarding = true
+                                }
+                                #endif
                             }
                         }
                         .padding(.horizontal)
@@ -188,6 +200,17 @@ struct DeveloperDashboard: View {
                             .padding(.bottom, OPSStyle.Layout.spacing3_5)
                     }
                 }
+                #if DEBUG
+                .fullScreenCover(isPresented: $showRebuiltOnboarding) {
+                    // The previewer's stubs touch no network; the live controller is
+                    // forwarded only so a pre-existing secondary sheet (Login's
+                    // forgot-password) renders instead of crashing on a missing
+                    // @EnvironmentObject. It adds no new network and the previewer
+                    // never creates accounts/companies.
+                    RebuiltOnboardingPreviewView()
+                        .environmentObject(dataController)
+                }
+                #endif
             }
         }
         .fullScreenCover(item: $selectedTool) { tool in

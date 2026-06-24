@@ -2861,6 +2861,18 @@ final class OnboardingScreensTests: XCTestCase {
                 previewAvatarStatus: .failed(image: avatarImage, message: "photo didn't upload")
             ).snapshotBody
         }
+        // Avatar SETTLED (uploaded) — the ratcheting spin's resting frame. The motion
+        // itself can't be captured statically; this confirms the final state renders
+        // upright (avatarSpin rests at 0) with the committed photo + neutral ring.
+        snapshot("profile_avatar_uploaded_dark") {
+            ProfileStepView(
+                boundary: profileBoundary,
+                previewFirstName: "Jack",
+                previewLastName: "Sweet",
+                previewPhone: "778-555-1234",
+                previewAvatarStatus: .uploaded(image: avatarImage, url: "https://example.com/p.jpg")
+            ).snapshotBody
+        }
         snapshot("profile_required_errors_dark") {
             ProfileStepView(
                 boundary: profileBoundary,

@@ -18,6 +18,7 @@ enum OnboardingHaptics {
 
     private static let light = UIImpactFeedbackGenerator(style: .light)
     private static let medium = UIImpactFeedbackGenerator(style: .medium)
+    private static let rigid = UIImpactFeedbackGenerator(style: .rigid)
     private static let notification = UINotificationFeedbackGenerator()
 
     /// Warm up the generators so the first fire has no latency. Call from the
@@ -25,6 +26,7 @@ enum OnboardingHaptics {
     static func prepare() {
         light.prepare()
         medium.prepare()
+        rigid.prepare()
         notification.prepare()
     }
 
@@ -38,6 +40,16 @@ enum OnboardingHaptics {
     static func commit() {
         medium.impactOccurred()
         medium.prepare()
+    }
+
+    /// One crisp mechanical detent — a single click of a ratchet locking into place.
+    /// Sharper than `.light` (rigid actuator) for a tactical, tool-like feel.
+    /// `intensity` is caller-controlled so a bounded settle sequence can decelerate
+    /// (lighter as it slows) and punctuate the final detent. NEVER spammed outside a
+    /// short, deliberate settle sequence — each tick is one detent.
+    static func ratchetTick(intensity: CGFloat) {
+        rigid.impactOccurred(intensity: intensity)
+        rigid.prepare()
     }
 
     /// Success notification — code copied, account created, joined a crew.

@@ -188,6 +188,15 @@ struct ProfileStepView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hasAppeared = false
 
+    /// The avatar's rotation (degrees) for the ratcheting settle on a successful
+    /// upload. Rests at 0 (≡ 360 — its natural orientation); driven through a short
+    /// sequence of decelerating detents by `runAvatarSettle()`.
+    @State private var avatarSpin: Double = 0
+
+    /// The in-flight settle sequence — cancelled on disappear / before a new run so a
+    /// teardown never leaves a detached animation loop running.
+    @State private var avatarSettleTask: Task<Void, Never>?
+
     var body: some View {
         ZStack {
             OPSStyle.Colors.background.ignoresSafeArea()
@@ -200,6 +209,9 @@ struct ProfileStepView: View {
         .onAppear {
             OnboardingHaptics.prepare()
             runEntrance()
+        }
+        .onDisappear {
+            avatarSettleTask?.cancel() // never leave a detached settle loop running
         }
         .sheet(isPresented: $showPhotoPicker) {
             ProfilePhotoPickerSheet(onPicked: { image in handlePicked(image) })
@@ -267,6 +279,7 @@ struct ProfileStepView: View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
             ProfileAvatarPicker(
                 status: avatarStatus,
+                spin: avatarSpin,
                 onTap: {
                     OnboardingHaptics.selection()
                     showPhotoPicker = true
@@ -414,9 +427,53 @@ struct ProfileStepView: View {
             switch outcome {
             case .uploaded(let url):
                 avatarStatus = .uploaded(image: image, url: url)
+                runAvatarSettle() // ratcheting settle — fires ONCE per successful upload
             case .failed(let message):
                 avatarStatus = .failed(image: image, message: message)
                 OnboardingHaptics.error()
+            }
+        }
+    }
+
+    /// The "locked in" beat. On a SUCCESSFUL upload the avatar advances through a short
+    /// sequence of decelerating rotation DETENTS and settles at its natural orientation
+    /// — a mechanical ratchet, not a consumer spinner (no spring, no bounce: each detent
+    /// rides the single OPS curve, fast start → confident stop). A light rigid tick
+    /// punctuates each detent for the tool-like feel. Fires exactly once per success
+    /// (called from the `.uploaded` branch, never on render).
+    ///
+    /// Reduce Motion: the avatar simply appears settled — no rotation, no ticks. The
+    /// committed photo already conveys the success; motion is the only thing suppressed.
+    private func runAvatarSettle() {
+        guard !reduceMotion else { return }
+
+        // Detents decelerate in magnitude (200° → +100° → +48° → +12°), summing to one
+        // full turn so the avatar lands at its natural orientation (360 ≡ 0). The
+        // shrinking steps + brief holds read as a ratchet winding down to rest. The
+        // final detent gets the firmest tick to punctuate the lock.
+        let detents: [(angle: Double, snap: Double, hold: Double, tick: CGFloat)] = [
+            (200, 0.13, 0.05, 0.55),
+            (300, 0.11, 0.05, 0.45),
+            (348, 0.10, 0.04, 0.40),
+            (360, 0.09, 0.0,  0.65),
+        ]
+
+        avatarSettleTask?.cancel()
+        avatarSpin = 0 // 360 ≡ 0 — reset invisibly so every settle winds FORWARD
+        avatarSettleTask = Task { @MainActor in
+            for detent in detents {
+                if Task.isCancelled { return }
+                // The single OPS curve via the sanctioned token accessor (fast start,
+                // confident stop — the mechanical "click" into the next detent). Reduce
+                // Motion is already handled by the early-return above, so `curve` always
+                // resolves to the OPS timing curve here.
+                withAnimation(OPSStyle.Animation.curve(detent.snap)) {
+                    avatarSpin = detent.angle
+                }
+                OnboardingHaptics.ratchetTick(intensity: detent.tick) // tick AT the click
+                // Hold between detents (sequences the next click). Discrete event
+                // scheduling — the rotation itself is driven by the animation system.
+                try? await Task.sleep(for: .seconds(detent.snap + detent.hold))
             }
         }
     }
@@ -583,6 +640,11 @@ struct ProfileValidation: Equatable {
 /// beneath, owned by the screen). NO accent — the ring is neutral / rose only.
 private struct ProfileAvatarPicker: View {
     let status: AvatarStatus
+    /// Rotation (degrees) for the ratcheting settle on a successful upload. The ring
+    /// stays fixed (it is a circle); only the PHOTO winds and locks into place. Rests
+    /// at 0 (natural orientation) in every other state, so snapshots/previews render
+    /// upright. Defaulted so non-animated call sites need not pass it.
+    var spin: Double = 0
     let onTap: () -> Void
 
     private let side: CGFloat = 112
@@ -603,6 +665,7 @@ private struct ProfileAvatarPicker: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(width: side, height: side)
                         .clipShape(Circle())
+                        .rotationEffect(.degrees(spin)) // ratcheting settle on upload
                 } else {
                     Circle()
                         .fill(OPSStyle.Colors.surfaceInput)

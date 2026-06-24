@@ -316,6 +316,7 @@ struct OPSApp: App {
                         if dataController.isAuthenticated {
                             Task { @MainActor in
                                 await dataController.refreshShareSessionBridge()
+                                ShareUploadCoordinator.shared.connectivity = dataController.connectivity
                                 ShareUploadCoordinator.shared.activate()
                                 await ShareUploadCoordinator.shared.drainInbox()
                             }
@@ -360,6 +361,14 @@ struct OPSApp: App {
                             let userId = dataController.currentUser?.id
                             Task { await dataController.syncEngine?.ensureRealtime(companyId: companyId, userId: userId) }
                         }
+
+                        // Drain any share-sheet photos queued before sign-in completed
+                        // (cold launch with a pending share).
+                        Task { @MainActor in
+                            ShareUploadCoordinator.shared.connectivity = dataController.connectivity
+                            ShareUploadCoordinator.shared.activate()
+                            await ShareUploadCoordinator.shared.drainInbox()
+                        }
                     }
                 }
                 .onChange(of: dataController.currentUser?.companyId) { _, _ in
@@ -375,6 +384,10 @@ struct OPSApp: App {
                        dataController.isAuthenticated {
                         Task {
                             await dataController.syncEngine?.triggerSync()
+                        }
+                        // Upload any share-sheet photos that were waiting for a connection.
+                        Task { @MainActor in
+                            await ShareUploadCoordinator.shared.drainInbox()
                         }
                     }
                 }

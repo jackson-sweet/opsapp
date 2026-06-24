@@ -71,26 +71,46 @@ enum SharePhotoFinalizer {
         // 2) Mirror into project_photos so the web portal renders them. Source
         //    "in_progress" matches the in-app gallery add (the photo_source enum
         //    has no share-specific label, and the semantics are identical).
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-        let photoRows = publicURLs.map { url in
-            ProjectPhotoInsert(
-                project_id: projectId,
-                company_id: companyId,
-                url: url,
-                source: "in_progress",
-                uploaded_by: uploadedBy,
-                is_client_visible: false,
-                taken_at: timestamp
-            )
-        }
+        //    Idempotent: skip URLs already present so a finalize retry (same URL)
+        //    can't insert a duplicate row.
+        struct URLRow: Decodable { let url: String }
+        var existingPhotoURLs: Set<String> = []
         do {
-            try await client
+            let rows: [URLRow] = try await client
                 .from("project_photos")
-                .insert(photoRows)
+                .select("url")
+                .eq("project_id", value: projectId)
                 .execute()
+                .value
+            existingPhotoURLs = Set(rows.map { $0.url })
         } catch {
-            print("[SHARE_FINALIZE] project_photos insert failed for \(projectId): \(error)")
-            return false
+            // Existence check failed — fall through and insert; a rare duplicate
+            // portal row is better than a missing one.
+        }
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let photoRows = publicURLs
+            .filter { !existingPhotoURLs.contains($0) }
+            .map { url in
+                ProjectPhotoInsert(
+                    project_id: projectId,
+                    company_id: companyId,
+                    url: url,
+                    source: "in_progress",
+                    uploaded_by: uploadedBy,
+                    is_client_visible: false,
+                    taken_at: timestamp
+                )
+            }
+        if !photoRows.isEmpty {
+            do {
+                try await client
+                    .from("project_photos")
+                    .insert(photoRows)
+                    .execute()
+            } catch {
+                print("[SHARE_FINALIZE] project_photos insert failed for \(projectId): \(error)")
+                return false
+            }
         }
 
         // 3) Completion notification to the uploader — confirms the share landed,

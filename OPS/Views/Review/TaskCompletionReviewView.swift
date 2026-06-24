@@ -123,15 +123,7 @@ struct TaskCompletionReviewView: View {
             }
             Button("Cancel Task", role: .destructive) {
                 if let task = pendingCancelTask {
-                    // Canonical path — updates locally, saves context, records
-                    // SyncOperation, and triggers immediate push if online.
-                    Task {
-                        do {
-                            try await dataController.updateTaskStatus(task: task, to: .cancelled)
-                        } catch {
-                            print("[TASK_REVIEW] Failed to cancel task: \(error)")
-                        }
-                    }
+                    cancelTask(task)
                 }
                 reviewedCount += 1
                 pendingCancelTask = nil
@@ -434,6 +426,34 @@ struct TaskCompletionReviewView: View {
                             autoDismissAfter: 0,
                             action: ToastAction(label: "RETRY") {
                                 completeTask(capturedTask)
+                            }
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    /// Cancel a task via the canonical path with a RETRY toast on failure —
+    /// the cancel confirmation already advanced the queue, so without feedback
+    /// a failed cancel would leave the task active with no explanation (same
+    /// gap the complete path had).
+    private func cancelTask(_ task: ProjectTask) {
+        Task {
+            do {
+                try await dataController.updateTaskStatus(task: task, to: .cancelled)
+            } catch {
+                print("[TASK_REVIEW] Failed to cancel task: \(error)")
+                let capturedTask = task
+                await MainActor.run {
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    ToastCenter.shared.present(
+                        Toast(
+                            label: "// COULDN'T CANCEL — TRY AGAIN",
+                            tone: .error,
+                            autoDismissAfter: 0,
+                            action: ToastAction(label: "RETRY") {
+                                cancelTask(capturedTask)
                             }
                         )
                     )

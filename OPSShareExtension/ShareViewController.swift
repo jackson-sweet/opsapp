@@ -92,6 +92,7 @@ final class ShareViewController: UIViewController {
             return
         }
 
+        let tokenUsable = bridge.isTokenUsable
         for fileName in fileNames {
             let jobId = (fileName as NSString).deletingPathExtension
             let job = ShareUploadJob(
@@ -104,6 +105,20 @@ final class ShareViewController: UIViewController {
                 createdAt: Date()
             )
             ShareUploadManifestStore.append(job)
+
+            // Best-effort INSTANT path: fire the photo at the server endpoint on a
+            // background transfer so it can land even if OPS is never opened. The
+            // queued job above is the guaranteed backstop; the endpoint is
+            // idempotent by jobId so the app's drain won't double-upload it.
+            if tokenUsable, let token = bridge.idToken, let fileURL = job.fileURL {
+                ShareBackgroundUploader.shared.startUpload(
+                    fileURL: fileURL,
+                    projectId: project.id,
+                    jobId: jobId,
+                    idToken: token
+                )
+                Self.log.info("share: job \(jobId, privacy: .public) sent to instant endpoint")
+            }
         }
         Self.log.info("share: queued \(fileNames.count, privacy: .public) job(s) for the app to upload")
 

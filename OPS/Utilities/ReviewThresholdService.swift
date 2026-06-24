@@ -158,22 +158,12 @@ enum ReviewThresholdService {
     }
 
     // MARK: - Count Sources
-    // Mirrors the filters used by FloatingActionMenu.computeFAB*() and
-    // JobBoardView.computeUnscheduledTasks() so the rail count agrees with
-    // the FAB badge and the in-app review sheets.
+    // Task counts delegate to TaskReviewQuery — the single source of truth the
+    // FAB badge, JobBoard entries, and periodic push all share — so every rail
+    // count agrees with the in-app review stack the user actually opens.
 
     private static func computeTaskReviewCount(dataController: DataController) -> Int {
-        let calendar = Calendar.current
-        let endOfToday = calendar.startOfDay(
-            for: calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-        )
-
-        let allTasks = scopedTasks(dataController: dataController)
-        return allTasks.filter { task in
-            guard task.status == .active, task.deletedAt == nil else { return false }
-            guard let scheduledDate = task.endDate ?? task.startDate else { return false }
-            return scheduledDate < endOfToday
-        }.count
+        TaskReviewQuery.overdueReviewTasks(dataController: dataController).count
     }
 
     private static func computePaymentReviewCount(dataController: DataController) -> Int {
@@ -200,26 +190,6 @@ enum ReviewThresholdService {
     }
 
     private static func computeUnscheduledReviewCount(dataController: DataController) -> Int {
-        let allTasks = scopedTasks(dataController: dataController)
-        return allTasks.filter { task in
-            task.status == .active
-                && task.deletedAt == nil
-                && (task.startDate == nil || task.getTeamMemberIds().isEmpty)
-        }.count
-    }
-
-    /// Mirrors the permission-scoped task list used by the FAB and JobBoard:
-    /// users with `tasks.view` full access see every task; others see only
-    /// tasks they're assigned to.
-    private static func scopedTasks(dataController: DataController) -> [ProjectTask] {
-        if PermissionStore.shared.hasFullAccess("tasks.view") {
-            return dataController.getAllTasks()
-        }
-        if let userId = dataController.currentUser?.id {
-            return dataController.getAllTasks().filter { task in
-                task.getTeamMemberIds().contains(userId)
-            }
-        }
-        return []
+        TaskReviewQuery.unscheduledReviewTasks(dataController: dataController).count
     }
 }

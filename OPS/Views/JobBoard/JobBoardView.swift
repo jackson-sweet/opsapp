@@ -508,32 +508,7 @@ struct JobBoardView: View {
     // MARK: - Task Review
 
     private func computeReviewableTasks() {
-        let calendar = Calendar.current
-        let endOfToday = calendar.startOfDay(for: calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date())
-
-        let allTasks: [ProjectTask]
-        if PermissionStore.shared.hasFullAccess("tasks.view") {
-            allTasks = dataController.getAllTasks()
-        } else if let userId = dataController.currentUser?.id {
-            allTasks = dataController.getAllTasks().filter { task in
-                task.getTeamMemberIds().contains(userId)
-            }
-        } else {
-            allTasks = []
-        }
-
-        reviewableTasks = allTasks.filter { task in
-            guard task.status == .active, task.deletedAt == nil else { return false }
-            // Prefer scheduled completion (endDate), fall back to startDate if unavailable
-            guard let scheduledDate = task.endDate ?? task.startDate else { return false }
-            return scheduledDate < endOfToday
-        }
-        .sorted {
-            let a = $0.endDate ?? $0.startDate ?? .distantPast
-            let b = $1.endDate ?? $1.startDate ?? .distantPast
-            return a < b
-        }
-
+        reviewableTasks = TaskReviewQuery.overdueReviewTasks(dataController: dataController)
         reviewableTaskCount = reviewableTasks.count
     }
 
@@ -557,29 +532,7 @@ struct JobBoardView: View {
     }
 
     private func computeUnscheduledTasks() {
-        let allTasks: [ProjectTask]
-        if PermissionStore.shared.hasFullAccess("tasks.view") {
-            allTasks = dataController.getAllTasks()
-        } else if let userId = dataController.currentUser?.id {
-            allTasks = dataController.getAllTasks().filter { task in
-                task.getTeamMemberIds().contains(userId)
-            }
-        } else {
-            allTasks = []
-        }
-
-        unscheduledTasks = allTasks.filter { task in
-            // Only surface schedulable work for ACTIVE projects. A project that
-            // hasn't been accepted yet (`.rfq`/`.estimated`) or is finished
-            // (`.completed`/`.closed`/`.archived`) must not feed the review/
-            // auto-schedule flow — mirrors `isJobBoardTaskListVisible`.
-            task.status == .active
-                && task.deletedAt == nil
-                && (task.project?.status.isActive ?? false)
-                && (task.startDate == nil || task.getTeamMemberIds().isEmpty)
-        }
-        .sorted { ($0.project?.title ?? "") < ($1.project?.title ?? "") }
-
+        unscheduledTasks = TaskReviewQuery.unscheduledReviewTasks(dataController: dataController)
         unscheduledTaskCount = unscheduledTasks.count
     }
 }

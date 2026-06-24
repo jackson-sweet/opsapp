@@ -440,17 +440,12 @@ class AppState: ObservableObject {
     /// Check for tasks past their scheduled completion date and notify if there are any
     /// stacking up in the completion review queue. Called from checkOverdueProjects.
     func checkOverdueTasks(dataController: DataController, frequencyDays: Int) {
-        let allTasks = dataController.getAllTasks()
-        let calendar = Calendar.current
-        let endOfToday = calendar.startOfDay(for: calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date())
-
-        // Match the filter used by JobBoardView.computeReviewableTasks and
-        // FloatingActionMenu so the count agrees with the badge.
-        let reviewableCount = allTasks.filter { task in
-            guard task.status == .active, task.deletedAt == nil else { return false }
-            guard let scheduledDate = task.endDate ?? task.startDate else { return false }
-            return scheduledDate < endOfToday
-        }.count
+        // Permission-scoped, identical to the review stack the user opens — a
+        // crew member is notified about THEIR overdue tasks, not the whole
+        // company's. (Previously this counted every task via getAllTasks() with
+        // no scope, so the push read e.g. "15 tasks" while the scoped stack the
+        // user then opened showed only their own ~4.)
+        let reviewableCount = TaskReviewQuery.overdueReviewTasks(dataController: dataController).count
 
         NotificationManager.shared.checkAndScheduleTaskReviewNotifications(
             taskCount: reviewableCount,

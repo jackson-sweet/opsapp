@@ -7,15 +7,18 @@
 //  user signs back in — it touches LIVE auth, so it is built surgically and the
 //  screen itself owns NO auth logic.
 //
-//  Design spec §4.2 Login. Layout (top → bottom):
+//  Design spec §4.2 Login. Layout (top → bottom) — decluttered: the email path
+//  leads (returning users type), the social fallback is demoted below a single
+//  quiet cue (no loud full-width divider):
 //    • Header — Back → welcome (login.backEdge is .welcome), Cake Mono title "LOG IN".
 //    • Email form — Email + Password (with show/hide), inline field-level errors,
-//      a "Forgot password?" affordance (presents `ForgotPasswordView`, email
-//      prefilled).
-//    • "OR" hairline divider.
-//    • Social auth — Apple + Google (the shared `OnboardingSocialAuthButtons`).
+//      a quiet "Forgot password?" utility link (presents `ForgotPasswordView`,
+//      email prefilled).
 //    • Primary CTA — "Log in" (the one accented control), loading + disabled-until
 //      -valid (email + password present).
+//    • A single quiet "OR" cue (calm mono section label) heading the demoted
+//      social fallback — NOT a full-width hairline divider.
+//    • Social auth — Apple + Google (the shared `OnboardingSocialAuthButtons`).
 //
 //  COMMIT CONTRACT — exactly the S3 pattern. The screen funnels every data op
 //  through an injected `LoginBoundary` whose async methods return a `LoginOutcome`;
@@ -230,20 +233,25 @@ struct LoginStepView: View {
     /// reports a zero intrinsic size for a `ScrollView` and would capture a blank
     /// frame. The live screen always wraps this in the scroll view.
     private var scrollContent: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing5) {
             header
 
+            // Email path leads — returning users mostly type. The CTA closes the
+            // primary path, then a single quiet "OR" cue (no loud full-width
+            // divider) demotes the social fallback below it.
             formFields
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             ctaBlock
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
-            orDivider
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-
-            socialBlock
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            // Cue + social buttons travel as one tight group so the "OR" reads as
+            // the social block's header, not a band floating between two sections.
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+                socialPathCue
+                socialBlock
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
         .padding(.bottom, OPSStyle.Layout.spacing5)
         .opacity(hasAppeared ? 1 : 0)
@@ -305,15 +313,18 @@ struct LoginStepView: View {
             // Forgot password — ghost affordance, trailing-aligned. Never accent.
             forgotPassword
 
-            // No-account handoff — email login to a non-existent address.
+            // No-account guidance. The Email field already carries the located
+            // rose error ("// ERROR — NO ACCOUNT FOR THAT EMAIL"); this is the calm
+            // Mohave "what to do" line (MOBILE.md §10), NOT a second rose error band
+            // repeating it.
             if noAccount {
-                Text("// ERROR — NO ACCOUNT FOR THAT EMAIL — CHECK IT OR SIGN UP")
-                    .font(OPSStyle.Typography.metadata)
-                    .tracking(1.4)
-                    .foregroundColor(OPSStyle.Colors.rose)
+                Text("Check the address, or go back to create an account.")
+                    .font(OPSStyle.Typography.smallBody) // Mohave Light 14pt
+                    .foregroundColor(OPSStyle.Colors.text2)
+                    .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityLabel("No account for that email. Check it or sign up.")
+                    .accessibilityLabel("Check the address, or go back to create an account.")
             }
 
             // Top-level failure (wrong password / network / server) — inline, never silent.
@@ -334,9 +345,11 @@ struct LoginStepView: View {
             OnboardingHaptics.selection()
             showForgotPassword = true
         } label: {
+            // Quiet utility link — recedes to a lighter weight + tertiary tone so
+            // it reads as a fallback, not a third competing row. 44pt target kept.
             Text("Forgot password?")
-                .font(OPSStyle.Typography.body) // Mohave
-                .foregroundColor(OPSStyle.Colors.text2) // ghost link, never accent (§9)
+                .font(OPSStyle.Typography.smallBody) // Mohave Light 14pt
+                .foregroundColor(OPSStyle.Colors.text3) // recedes; never accent (§9)
                 .frame(minHeight: OPSStyle.Layout.touchTargetMin, alignment: .trailing)
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .contentShape(Rectangle())
@@ -345,24 +358,18 @@ struct LoginStepView: View {
         .accessibilityLabel("Forgot password")
     }
 
-    // MARK: - OR divider (hairline + centered label)
+    // MARK: - Social-path cue (calm section label, not a loud full-width divider)
 
-    private var orDivider: some View {
-        HStack(spacing: OPSStyle.Layout.spacing3) {
-            hairline
-            Text("OR")
-                .font(OPSStyle.Typography.metadata) // JetBrains Mono 11pt
-                .foregroundColor(OPSStyle.Colors.text3)
-                .tracking(1.4)
-            hairline
-        }
-        .accessibilityHidden(true)
-    }
-
-    private var hairline: some View {
-        Rectangle()
-            .fill(OPSStyle.Colors.line) // standard hairline (white@0.10)
-            .frame(height: OPSStyle.Layout.Border.standard)
+    /// A single quiet mono cue marking the demoted social fallback. Replaces the
+    /// old full-width "OR" hairline divider that competed between the CTA and the
+    /// social buttons — the section label alone separates the two paths.
+    private var socialPathCue: some View {
+        Text("OR")
+            .font(OPSStyle.Typography.metadata) // JetBrains Mono 11pt — tactical micro-label
+            .foregroundColor(OPSStyle.Colors.text3)
+            .tracking(1.4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityHidden(true) // the buttons below carry their own labels
     }
 
     // MARK: - Social auth (shared component)

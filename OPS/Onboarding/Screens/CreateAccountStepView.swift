@@ -9,12 +9,17 @@
 //  (owner / crew) — the role is still UNCOMMITTED here, so Back returns to role
 //  pick (the wrong-role escape).
 //
-//  Layout (top → bottom):
+//  Layout (top → bottom) — decluttered: the fastest path leads, every band earns
+//  its place (no bracketed micro-line, no standalone password-rule hint, no
+//  loud full-width divider):
 //    • Header — Back → role pick (the role is uncommitted), Cake Mono title.
-//    • Social auth — Apple + Google (the shared `OnboardingSocialAuthButtons`).
-//    • "OR" hairline divider.
-//    • Email form — First name + Last name (inline pair), Email, Password with a
-//      show/hide toggle and a BEFORE-submit "8+ characters" rule hint.
+//    • Social auth — Apple + Google (the shared `OnboardingSocialAuthButtons`),
+//      the one-tap path, leading.
+//    • A single quiet "OR WITH EMAIL" cue (calm mono section label) demoting the
+//      email path below — NOT a full-width hairline divider.
+//    • Email form — First name + Last name (inline pair, labels only, no doubled
+//      placeholders), Email, Password with a show/hide toggle. The 8-char rule
+//      lives in the placeholder + the field error, not a separate hint band.
 //    • Primary CTA — "Create account" (the one accented control), loading +
 //      disabled-until-valid.
 //
@@ -249,25 +254,31 @@ struct CreateAccountStepView: View {
     /// reports a zero intrinsic size for a `ScrollView` and would capture a blank
     /// frame. The live screen always wraps this in the scroll view.
     private var scrollContent: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing5) {
             header
 
-            instruction
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-
-            // The social/divider block is hidden once we drop into the
-            // social-name-completion sub-state: at that point the user is
-            // already authenticated and only owes us a name.
+            // The fastest path leads: one-tap Apple / Google. Hidden once we drop
+            // into the social-name-completion sub-state — the user is already
+            // authenticated there and only owes us a name. A single quiet
+            // "Or with email" cue (no loud full-width divider) separates the
+            // demoted email path below.
             if !isCompletingSocialName {
                 socialBlock
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
-                orDivider
+                // Cue + email form travel as one tight group so "OR WITH EMAIL"
+                // reads as the form's header, not a band floating between sections.
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+                    emailPathCue
+                    formFields
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            } else {
+                // Social-name completion: no social block / cue — only the name
+                // fields are outstanding, so the form stands alone.
+                formFields
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             }
-
-            formFields
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             ctaBlock
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -298,17 +309,6 @@ struct CreateAccountStepView: View {
         )
     }
 
-    // MARK: - Bracketed micro-instruction
-
-    private var instruction: some View {
-        Text("[ LOCK IT IN — 30 SECONDS ]")
-            .font(OPSStyle.Typography.metadata) // JetBrains Mono 11pt
-            .foregroundColor(OPSStyle.Colors.text3)
-            .tracking(1.4)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityHidden(true) // decorative; the title carries the label
-    }
-
     // MARK: - Social auth (shared component)
 
     private var socialBlock: some View {
@@ -320,24 +320,18 @@ struct CreateAccountStepView: View {
         )
     }
 
-    // MARK: - OR divider (hairline + centered label)
+    // MARK: - Email-path cue (calm section label, not a loud full-width divider)
 
-    private var orDivider: some View {
-        HStack(spacing: OPSStyle.Layout.spacing3) {
-            hairline
-            Text("OR")
-                .font(OPSStyle.Typography.metadata) // JetBrains Mono 11pt
-                .foregroundColor(OPSStyle.Colors.text3)
-                .tracking(1.4)
-            hairline
-        }
-        .accessibilityHidden(true)
-    }
-
-    private var hairline: some View {
-        Rectangle()
-            .fill(OPSStyle.Colors.line) // standard hairline (white@0.10)
-            .frame(height: OPSStyle.Layout.Border.standard)
+    /// A single quiet mono cue marking the demoted email path. Replaces the old
+    /// full-width "OR" hairline divider that competed mid-screen — the section
+    /// label alone separates the two paths without a second loud band.
+    private var emailPathCue: some View {
+        Text("OR WITH EMAIL")
+            .font(OPSStyle.Typography.metadata) // JetBrains Mono 11pt — tactical micro-label
+            .foregroundColor(OPSStyle.Colors.text3)
+            .tracking(1.4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityHidden(true) // the fields below carry their own labels
     }
 
     // MARK: - Email form
@@ -349,10 +343,13 @@ struct CreateAccountStepView: View {
             // social path once a provider returned no name. The inline pair keeps
             // the once-only identity entry compact.
             HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                // Placeholders intentionally omitted — the label above each field
+                // already reads "First name" / "Last name"; a matching placeholder
+                // is doubled text. The field falls back to its label as the empty
+                // hint, so nothing is lost and the pair reads calmer.
                 OPSOnboardingField(
                     label: "First name",
                     text: $firstName,
-                    placeholder: "First name",
                     kind: .name,
                     error: didAttemptSubmit ? firstNameError : nil,
                     submitLabel: .next,
@@ -363,7 +360,6 @@ struct CreateAccountStepView: View {
                 OPSOnboardingField(
                     label: "Last name",
                     text: $lastName,
-                    placeholder: "Last name",
                     kind: .name,
                     error: didAttemptSubmit ? lastNameError : nil,
                     submitLabel: .next,
@@ -391,28 +387,21 @@ struct CreateAccountStepView: View {
                     if emailAlreadyRegistered { emailAlreadyRegistered = false }
                 }
 
-                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1 + 2) {
-                    OPSOnboardingField(
-                        label: "Password",
-                        text: $password,
-                        placeholder: "Min 8 characters",
-                        kind: .password,
-                        error: didAttemptSubmit ? passwordError : nil,
-                        submitLabel: .go,
-                        onSubmit: { attemptEmailSignup() }
-                    )
-                    .focused($focusedField, equals: .password)
-
-                    // Rule hint shown BEFORE submit (spec): only while there is no
-                    // password error yet, so it never stacks under the error line.
-                    if !(didAttemptSubmit && passwordError != nil) {
-                        Text("// 8+ CHARACTERS")
-                            .font(OPSStyle.Typography.metadata) // JetBrains Mono 11pt
-                            .tracking(1.4)
-                            .foregroundColor(OPSStyle.Colors.textMute)
-                            .accessibilityLabel("Password must be at least 8 characters")
-                    }
-                }
+                // The 8-character rule lives in the placeholder ("Min 8 characters")
+                // and, the moment it's broken, in the field's own error line — so
+                // the old standalone "// 8+ CHARACTERS" hint band was redundant
+                // noise stacked under the field. Cut it; the placeholder teaches
+                // the rule up front and the error teaches it when it matters.
+                OPSOnboardingField(
+                    label: "Password",
+                    text: $password,
+                    placeholder: "Min 8 characters",
+                    kind: .password,
+                    error: didAttemptSubmit ? passwordError : nil,
+                    submitLabel: .go,
+                    onSubmit: { attemptEmailSignup() }
+                )
+                .focused($focusedField, equals: .password)
             }
 
             // Email-already-registered handoff — inline error + one-tap SIGN IN.
@@ -437,13 +426,16 @@ struct CreateAccountStepView: View {
 
     private var existingAccountHandoff: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
-            Text("// ERROR — THAT EMAIL ALREADY HAS AN ACCOUNT")
-                .font(OPSStyle.Typography.metadata)
-                .tracking(1.4)
-                .foregroundColor(OPSStyle.Colors.rose)
+            // The Email field already carries the located rose error ("// ERROR —
+            // THAT EMAIL ALREADY HAS AN ACCOUNT"); this is the calm Mohave recovery
+            // prompt (MOBILE.md §10) bridging to the SIGN IN handoff — not a second
+            // rose error band repeating the field.
+            Text("Already have an account?")
+                .font(OPSStyle.Typography.smallBody) // Mohave Light 14pt
+                .foregroundColor(OPSStyle.Colors.text2)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityLabel("That email already has an account")
+                .accessibilityLabel("Already have an account?")
 
             // Ghost SIGN IN — carries the typed email into Login (set just before
             // the handoff fires). Never accented.

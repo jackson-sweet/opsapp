@@ -15,6 +15,7 @@ import Combine
 /// Where a call-capture was initiated. Persisted to `activities.call_source`.
 enum CallCaptureSource: String {
     case postCallPrompt = "post_call_prompt" // returned to OPS after an in-app call
+    case autoOutbound   = "auto_outbound"    // auto-logged on return (no prompt)
     case fab            = "fab"              // FAB → "Log a call"
     case appShortcut    = "app_shortcut"     // Siri / Action Button / Spotlight
 }

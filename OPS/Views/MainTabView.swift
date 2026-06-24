@@ -47,6 +47,8 @@ struct MainTabView: View {
     @ObservedObject private var callCaptureCoordinator = CallCaptureCoordinator.shared
     @State private var userRole: UserRole? = nil // Track user role changes explicitly
     @State private var capturePumpActive = false // around-call shortcut drain retry guard (154cb8a3)
+    // Auto-log calls placed from OPS instead of showing the post-call prompt (154cb8a3).
+    @AppStorage("autoLogOutboundCalls") private var autoLogOutboundCalls = true
 
     // member_joined push → AssignMemberRoleSheet state
     @State private var showAssignRoleSheet = false
@@ -1250,8 +1252,67 @@ struct MainTabView: View {
               PermissionStore.shared.isFeatureEnabled("pipeline"),
               PermissionStore.shared.can("pipeline.manage"),
               CallCaptureCoordinator.shared.activeRequest == nil else { return }
-        if let pending = CallLogStore.shared.consumeRecent() {
+        guard let pending = CallLogStore.shared.consumeRecent() else { return }
+        // Auto-log mode: when the call was placed against a known lead, log it
+        // straight away (no prompt) with an UNDO escape hatch. Falls back to the
+        // manual sheet for raw-number dials or when auto-log is off.
+        if autoLogOutboundCalls, let opportunityId = pending.opportunityId {
+            autoLogOutboundCall(pending, opportunityId: opportunityId)
+        } else {
             CallCaptureCoordinator.shared.present(.postCall(pending))
+        }
+    }
+
+    /// Auto-log an outbound call placed from OPS against a known lead, then show
+    /// a dismissible "logged — UNDO" toast. On failure (offline) fall back to the
+    /// manual prompt so the call isn't silently lost. Around-call capture (154cb8a3).
+    private func autoLogOutboundCall(_ pending: PendingOutboundCall, opportunityId: String) {
+        guard let companyId = dataController.currentUser?.companyId, !companyId.isEmpty else {
+            CallCaptureCoordinator.shared.present(.postCall(pending))
+            return
+        }
+        let name = (pending.contactName ?? "").trimmingCharacters(in: .whitespaces)
+        Task { @MainActor in
+            do {
+                let repo = OpportunityRepository(companyId: companyId)
+                let dto = CreateActivityDTO(
+                    opportunityId: opportunityId,
+                    companyId: companyId,
+                    type: ActivityType.call.rawValue,
+                    subject: name.isEmpty ? "Call" : "Call with \(name)",
+                    bodyText: nil,
+                    direction: "outbound",
+                    outcome: nil,
+                    durationMinutes: nil,
+                    callSource: CallCaptureSource.autoOutbound.rawValue,
+                    callerNumber: PhoneNumber.normalize(pending.phoneNumber),
+                    callStartedAt: SupabaseDate.format(pending.startedAt)
+                )
+                let created = try await repo.logActivity(dto)
+                NotificationCenter.default.post(
+                    name: Notification.Name("LeadActivityLoggedSuccess"),
+                    object: nil, userInfo: ["leadId": opportunityId]
+                )
+                let label = name.isEmpty ? "// CALL LOGGED" : "// CALL LOGGED — \(name.uppercased())"
+                ToastCenter.shared.present(Toast(
+                    label: label,
+                    tone: .success,
+                    autoDismissAfter: 6,
+                    action: ToastAction(label: "UNDO", accessibilityLabel: "Undo call log") {
+                        Task { @MainActor in
+                            try? await OpportunityRepository(companyId: companyId).deleteActivity(created.id)
+                            NotificationCenter.default.post(
+                                name: Notification.Name("LeadActivityLoggedSuccess"),
+                                object: nil, userInfo: ["leadId": opportunityId]
+                            )
+                            ToastCenter.shared.present(Toast(label: "// CALL LOG REMOVED", tone: .warning))
+                        }
+                    }
+                ))
+            } catch {
+                // Couldn't auto-log (likely offline) — let the operator do it manually.
+                CallCaptureCoordinator.shared.present(.postCall(pending))
+            }
         }
     }
 

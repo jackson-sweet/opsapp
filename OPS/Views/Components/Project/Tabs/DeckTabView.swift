@@ -23,8 +23,15 @@ struct DeckTabView: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.modelContext) private var modelContext
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var viewMode: DeckTabViewMode = .threeD
     @State private var remoteFetchAttemptedProjectId: String?
+    /// `true` while the user is panning or pinching the 3D scene. Drives the
+    /// badge fade — badges hide during camera movement so they don't obstruct
+    /// the geometry the user is trying to inspect. Reset to `false` whenever
+    /// the view mode leaves `.threeD` so badges can't get stuck hidden.
+    @State private var is3DInteracting = false
 
     // Bug 4 fix: use @Query so SwiftData automatically invalidates this view
     // when a DeckDesign is inserted/updated for this project — no manual
@@ -80,9 +87,10 @@ struct DeckTabView: View {
                     // empty). `hasAnyClosedSurface` returns true as soon as
                     // any face is closed on any level. Bug ee787f29 follow-up.
                     if design.drawingData.hasAnyClosedSurface {
-                        DeckTab3DView(drawingData: design.drawingData)
+                        DeckTab3DView(drawingData: design.drawingData,
+                                      onInteractingChange: { is3DInteracting = $0 })
                     } else {
-                        incompleteDesignMessage
+                        incompleteDesignMessage(openEnds: design.drawingData.openEndpointCount)
                     }
                 case .twoD:
                     DeckTab2DView(drawingData: design.drawingData)
@@ -98,6 +106,16 @@ struct DeckTabView: View {
                     .padding(.leading, OPSStyle.Layout.spacing2_5)
                     .padding(.top, OPSStyle.Layout.spacing2_5)
                     .allowsHitTesting(false)
+                    // Fade badges out while the user pans/zooms the 3D camera
+                    // so they don't obscure structural members being inspected.
+                    // Only active in 3D mode — 2D pans don't interact with these
+                    // recognizers, so `is3DInteracting` stays false there.
+                    // Reduce Motion: nil animation = instant snap (no fade at all),
+                    // which is correct — the opacity change itself still happens,
+                    // but without any motion that might cause vestibular discomfort.
+                    .opacity(is3DInteracting && viewMode == .threeD ? 0 : 1)
+                    .animation(reduceMotion ? nil : OPSStyle.Animation.standard,
+                               value: is3DInteracting)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .animation(OPSStyle.Animation.fast, value: viewMode)
@@ -114,7 +132,7 @@ struct DeckTabView: View {
     private func floatingDesignInfo(design: DeckDesign) -> some View {
         let chips = levelChips(for: design)
         return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            titlePill(design.title)
+            titlePill(project.title)
 
             ForEach(chips) { chip in
                 levelChipView(chip)
@@ -220,6 +238,9 @@ struct DeckTabView: View {
             .frame(width: 120)
             .onChange(of: viewMode) { _, _ in
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                // Clear the interaction flag when leaving 3D so badges can't
+                // get stuck hidden after a mode switch mid-gesture.
+                is3DInteracting = false
             }
 
             Spacer()
@@ -295,22 +316,40 @@ struct DeckTabView: View {
 
     // MARK: - Incomplete Design Message
 
-    private var incompleteDesignMessage: some View {
+    private func incompleteDesignMessage(openEnds: Int) -> some View {
+        // The 3D model is gated on a closed surface. When the outline has loose
+        // ends (the common, fixable case) name how many and send the user to 2D
+        // to join them — a dead-end becomes a one-step fix. When nothing
+        // closeable has been drawn yet, fall back to "keep drawing".
         VStack(spacing: OPSStyle.Layout.spacing2_5) {
             Spacer()
             Image(systemName: "square.dashed")
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Text("CLOSE THE POLYGON TO SEE THE 3D MODEL")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .tracking(1)
-            Text("Switch to 2D to see the current design")
-                .font(OPSStyle.Typography.cardBody)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            if openEnds > 0 {
+                Text("OUTLINE ISN'T CLOSED YET")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .tracking(1)
+                Text("\(openEnds) open \(openEnds == 1 ? "end" : "ends") left. Switch to 2D and join them — the 3D model builds the moment the outline closes.")
+                    .font(OPSStyle.Typography.cardBody)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("NOTHING TO BUILD YET")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .tracking(1)
+                Text("Draw the deck outline in 2D. The 3D model appears once the shape closes.")
+                    .font(OPSStyle.Typography.cardBody)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .multilineTextAlignment(.center)
+            }
             Spacer()
         }
         .frame(maxWidth: .infinity)
+        .padding(.horizontal, OPSStyle.Layout.spacing4)
     }
 
     // MARK: - Helpers

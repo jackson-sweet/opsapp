@@ -947,7 +947,25 @@ class DeckBuilderViewModel: ObservableObject {
         // snap to an existing vertex (preferred — closes the polygon when the
         // user finishes near the first vertex) or we use the resolved point.
         let exclude: Set<String> = fromId.map { [$0] } ?? []
+
+        // Close detection runs against the RAW release first, then the resolved
+        // point. The raw finger position is the true record of "where the user
+        // meant to end"; angle/length/grid snapping is cosmetic cleanup that can
+        // displace the resolved endpoint a whole grid cell away from the start
+        // vertex (far previous corner + wide grid pitch), pushing it outside the
+        // snap radius even though the finger landed inside it. Querying the raw
+        // release too means a perimeter the user closed onto the first vertex
+        // reuses that vertex id and the loop actually closes — instead of
+        // committing a fresh, coincident-but-distinct end that leaves the
+        // perimeter topologically open and the 3D model un-renderable. Deck
+        // Drop 1, Task 5. The radius and exclusion are identical to the resolved
+        // query, so a genuinely-far release still can't false-close.
         let snapEndId = SnapEngine.findSnapTarget(
+            point: rawEnd,
+            vertices: activeVertices,
+            snapRadius: drawingData.config.endpointSnapRadius,
+            excludeVertexIds: exclude
+        ) ?? SnapEngine.findSnapTarget(
             point: snapped,
             vertices: activeVertices,
             snapRadius: drawingData.config.endpointSnapRadius,

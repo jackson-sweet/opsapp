@@ -849,7 +849,8 @@ struct ProjectDetailsView: View {
             DeckBuilderView(
                 deckDesign: design,
                 modelContext: modelContext,
-                syncEngine: dataController.syncEngine
+                syncEngine: dataController.syncEngine,
+                projectName: project.title
             )
         }
     }

@@ -878,7 +878,8 @@ struct ProjectFormSheet: View {
                 DeckBuilderView(
                     deckDesign: design,
                     modelContext: mc,
-                    syncEngine: dataController.syncEngine
+                    syncEngine: dataController.syncEngine,
+                    projectName: mode.project?.title ?? title
                 )
             }
         }

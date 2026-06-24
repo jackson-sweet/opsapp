@@ -787,6 +787,21 @@ struct DeckDrawingData: Codable {
 
     // MARK: - Polygon State
 
+    /// Count of vertices whose edge-degree ≠ 2 — i.e. loose/open ends that
+    /// keep the perimeter from forming a closed face. 0 ⇒ topologically closed.
+    /// Drives the actionable "incomplete design" message in the 3D tab: a deck
+    /// that won't render almost always has a small, nameable number of unjoined
+    /// ends, and telling the user exactly how many turns a dead-end into a fix.
+    var openEndpointCount: Int {
+        guard !vertices.isEmpty else { return 0 }
+        var degree: [String: Int] = [:]
+        for edge in edges {
+            degree[edge.startVertexId, default: 0] += 1
+            degree[edge.endVertexId, default: 0] += 1
+        }
+        return vertices.reduce(0) { $0 + ((degree[$1.id] ?? 0) == 2 ? 0 : 1) }
+    }
+
     var isClosed: Bool {
         guard vertices.count >= 3, edges.count >= 3 else { return false }
 

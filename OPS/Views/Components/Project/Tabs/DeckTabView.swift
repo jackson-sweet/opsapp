@@ -90,7 +90,7 @@ struct DeckTabView: View {
                         DeckTab3DView(drawingData: design.drawingData,
                                       onInteractingChange: { is3DInteracting = $0 })
                     } else {
-                        incompleteDesignMessage
+                        incompleteDesignMessage(openEnds: design.drawingData.openEndpointCount)
                     }
                 case .twoD:
                     DeckTab2DView(drawingData: design.drawingData)
@@ -316,22 +316,40 @@ struct DeckTabView: View {
 
     // MARK: - Incomplete Design Message
 
-    private var incompleteDesignMessage: some View {
+    private func incompleteDesignMessage(openEnds: Int) -> some View {
+        // The 3D model is gated on a closed surface. When the outline has loose
+        // ends (the common, fixable case) name how many and send the user to 2D
+        // to join them — a dead-end becomes a one-step fix. When nothing
+        // closeable has been drawn yet, fall back to "keep drawing".
         VStack(spacing: OPSStyle.Layout.spacing2_5) {
             Spacer()
             Image(systemName: "square.dashed")
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Text("CLOSE THE POLYGON TO SEE THE 3D MODEL")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .tracking(1)
-            Text("Switch to 2D to see the current design")
-                .font(OPSStyle.Typography.cardBody)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            if openEnds > 0 {
+                Text("OUTLINE ISN'T CLOSED YET")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .tracking(1)
+                Text("\(openEnds) open \(openEnds == 1 ? "end" : "ends") left. Switch to 2D and join them — the 3D model builds the moment the outline closes.")
+                    .font(OPSStyle.Typography.cardBody)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("NOTHING TO BUILD YET")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .tracking(1)
+                Text("Draw the deck outline in 2D. The 3D model appears once the shape closes.")
+                    .font(OPSStyle.Typography.cardBody)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .multilineTextAlignment(.center)
+            }
             Spacer()
         }
         .frame(maxWidth: .infinity)
+        .padding(.horizontal, OPSStyle.Layout.spacing4)
     }
 
     // MARK: - Helpers

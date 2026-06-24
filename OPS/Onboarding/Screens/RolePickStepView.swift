@@ -67,14 +67,12 @@ struct RolePickStepView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 // The header carries the control row (Back / SIGN OUT) AND the
-                // screen title — the question IS the title, so there is no second
-                // stacked title beneath it. Only the bracketed micro-instruction
-                // follows, in the body.
+                // screen title — the question ("How will you use OPS?") IS the
+                // title, and the two cards below answer it, so nothing is stacked
+                // between them. The old bracketed `[ PICK YOUR LANE ]` micro-line
+                // was cut: it only restated the choice the title + cards already
+                // make obvious (ruthless omission — every element earns its place).
                 header
-
-                instruction
-                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                    .padding(.top, OPSStyle.Layout.spacing2)
 
                 Spacer(minLength: OPSStyle.Layout.spacing4)
 
@@ -129,18 +127,6 @@ struct RolePickStepView: View {
         }
     }
 
-    // MARK: - Bracketed micro-instruction (sits under the title)
-
-    private var instruction: some View {
-        // Bracketed micro-instruction per the OPS voice (`[ … ]`).
-        Text("[ PICK YOUR LANE ]")
-            .font(OPSStyle.Typography.metadata) // JetBrains Mono 11pt
-            .foregroundColor(OPSStyle.Colors.text3)
-            .tracking(1.4)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .opacity(hasAppeared ? 1 : 0)
-            .offset(y: (hasAppeared || reduceMotion) ? 0 : OPSStyle.Layout.spacing3)
-    }
 }
 
 // MARK: - Role model (flow-local copy, locked via ops-copywriter)
@@ -206,12 +192,17 @@ private struct RoleCard: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing3) {
-                // Leading glyph — metadata color, never accent.
+            // Vertically center the three columns — leading glyph, text block,
+            // trailing chevron — against the card's text block (owner feedback:
+            // icon + chevron must sit centered, not top-anchored).
+            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing3_5) {
+                // Leading glyph — metadata color, never accent. Centered inside a
+                // fixed-width box so the gap to the text block is consistent across
+                // both glyphs (the wider `person.3.fill` vs `person.badge.plus`).
                 Image(systemName: role.icon)
                     .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .regular))
                     .foregroundColor(OPSStyle.Colors.text2)
-                    .frame(width: OPSStyle.Layout.IconSize.xl, alignment: .leading)
+                    .frame(width: OPSStyle.Layout.IconSize.xl, alignment: .center)
 
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     Text(role.label)
@@ -234,10 +225,11 @@ private struct RoleCard: View {
                 Spacer(minLength: 0)
 
                 // Affordance chevron — `text3`, NOT accent (accent = primary CTA).
+                // Vertically centered with the row (no top padding) per owner
+                // feedback; the HStack's `.center` alignment carries it.
                 Image(systemName: OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.text3)
-                    .padding(.top, OPSStyle.Layout.spacing1)
             }
             .padding(OPSStyle.Layout.spacing3) // 16pt — §1 m-card-inset
             .frame(maxWidth: .infinity, alignment: .leading)

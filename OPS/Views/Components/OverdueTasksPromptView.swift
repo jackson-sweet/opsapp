@@ -158,9 +158,11 @@ struct OverdueTasksPromptView: View {
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             Spacer()
+            // The single urgency signal. `rose` is the system's overdue/error
+            // TEXT token (#B58289); brick (`errorStatus`) is border/dot only.
             Text("\(overdueTasks.count)")
                 .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.errorStatus)
+                .foregroundColor(OPSStyle.Colors.rose)
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.top, OPSStyle.Layout.spacing1)
@@ -171,10 +173,12 @@ struct OverdueTasksPromptView: View {
 
     private func overdueCard(_ task: ProjectTask) -> some View {
         HStack(spacing: 0) {
-            // Left accent bar — error color signals the overdue state, mirroring
-            // the company-setup card's completion bar.
+            // Left edge — structural only. Every row shares the one overdue
+            // state, so a per-card brick bar just repeats the alarm down the
+            // list. Neutral, mirroring the sibling CompanySetupPromptView's
+            // not-yet-complete card. (Brick is a border/dot token, not a fill.)
             RoundedRectangle(cornerRadius: 1.5)
-                .fill(OPSStyle.Colors.errorStatus)
+                .fill(OPSStyle.Colors.cardBorder)
                 .frame(width: 3)
                 .padding(.vertical, OPSStyle.Layout.spacing2)
 
@@ -185,7 +189,9 @@ struct OverdueTasksPromptView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
 
-                // Task badge + overdue meta
+                // Task badge + overdue meta + the close-it-out action, on one
+                // row so the card stays compact and the action reads as a quiet
+                // affordance instead of a full-width bar.
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     TaskBadge(
                         name: task.taskType?.display ?? "Task",
@@ -193,28 +199,35 @@ struct OverdueTasksPromptView: View {
                         size: .medium
                     )
 
+                    // `rose` (#B58289) is the system's overdue/error TEXT token;
+                    // brick (`errorStatus`) is border/dot only.
                     Text(overdueLabel(for: task))
                         .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.errorStatus)
+                        .foregroundColor(OPSStyle.Colors.rose)
 
-                    Spacer()
-                }
+                    Spacer(minLength: OPSStyle.Layout.spacing2)
 
-                // Primary action — close it out.
-                Button(action: { markDone(task) }) {
-                    HStack(spacing: OPSStyle.Layout.spacing2) {
-                        Image(systemName: OPSStyle.Icons.checkmark)
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .bold))
-                        Text("MARK DONE")
-                            .font(OPSStyle.Typography.captionBold)
+                    // Primary action — a quiet accent chip, not a solid
+                    // full-width fill. With one action per card, repeated solid
+                    // accent bars are the loudness; the chip keeps the tap
+                    // obvious (44pt, accent, checkmark) while staying calm.
+                    // Mirrors the sibling's USE MINE / ADD chip vocabulary.
+                    Button(action: { markDone(task) }) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
+                            Image(systemName: OPSStyle.Icons.checkmark)
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .bold))
+                            Text("MARK DONE")
+                                .font(OPSStyle.Typography.captionBold)
+                        }
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                        .frame(height: OPSStyle.Layout.touchTargetMin)
+                        .background(OPSStyle.Colors.primaryAccent.opacity(0.12))
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
-                    .foregroundColor(OPSStyle.Colors.invertedText)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: OPSStyle.Layout.touchTargetMin)
-                    .background(OPSStyle.Colors.primaryAccent)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel("Mark done: \(task.project?.title ?? "task")")
                 }
-                .buttonStyle(PlainButtonStyle())
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing3)

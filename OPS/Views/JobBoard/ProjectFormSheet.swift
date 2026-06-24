@@ -414,38 +414,6 @@ struct ProjectFormSheet: View {
         return recencyOrderedTaskTypes
     }
 
-    /// Team-member `User` list ordered alphabetically, recency-promoted by the
-    /// row's selected task type when available. Used to seed
-    /// `TeamMemberPickerSheet` when launched from a row.
-    private func teamUsersOrdered(forTaskTypeId taskTypeId: String?) -> [User] {
-        let alphaSorted = fetchedTeamUsers.sorted {
-            $0.fullName.localizedCompare($1.fullName) == .orderedAscending
-        }
-
-        guard let taskTypeId, !taskTypeId.isEmpty,
-              let companyId = dataController.currentUser?.companyId else {
-            return alphaSorted
-        }
-
-        let recentIds = dataController.recentTeamMemberIds(
-            forTaskType: taskTypeId,
-            companyId: companyId
-        )
-        guard !recentIds.isEmpty else { return alphaSorted }
-
-        let recencyIndex = Dictionary(
-            uniqueKeysWithValues: recentIds.enumerated().map { ($1, $0) }
-        )
-        let recentSet = Set(recentIds)
-        let recentTier = alphaSorted
-            .filter { recentSet.contains($0.id) }
-            .sorted { lhs, rhs in
-                (recencyIndex[lhs.id] ?? Int.max) < (recencyIndex[rhs.id] ?? Int.max)
-            }
-        let restTier = alphaSorted.filter { !recentSet.contains($0.id) }
-        return recentTier + restTier
-    }
-
     /// `Set<String>` binding into a specific row's `teamMemberIds`, looked up
     /// by `LocalTask.id` so insertions/deletions during sheet presentation
     /// can't shift the binding onto the wrong row.
@@ -1110,21 +1078,23 @@ struct ProjectFormSheet: View {
     private func rowTeamPickerSheet(forTaskId id: UUID) -> some View {
         if let idx = localTasks.firstIndex(where: { $0.id == id }) {
             let typeId = localTasks[idx].taskTypeId
-            let ordered = teamUsersOrdered(forTaskTypeId: typeId)
-            let recentIds: Set<String> = {
-                guard !typeId.isEmpty,
-                      let companyId = dataController.currentUser?.companyId else {
-                    return []
+            let ranked: (ordered: [User], usualCrewIds: Set<String>) = {
+                guard let companyId = dataController.currentUser?.companyId else {
+                    return (fetchedTeamUsers.sorted {
+                        $0.fullName.localizedCaseInsensitiveCompare($1.fullName) == .orderedAscending
+                    }, [])
                 }
-                return Set(dataController.recentTeamMemberIds(
+                return dataController.rankedTeamMembers(
                     forTaskType: typeId,
-                    companyId: companyId
-                ))
+                    companyId: companyId,
+                    candidates: fetchedTeamUsers
+                )
             }()
             TeamMemberPickerSheet(
                 selectedTeamMemberIds: teamSelectionBinding(forTaskId: id),
-                allTeamMembers: ordered,
-                recentMemberIds: recentIds
+                allTeamMembers: ranked.ordered,
+                recentMemberIds: ranked.usualCrewIds,
+                taskTypeName: allTaskTypes.first { $0.id == typeId }?.display
             )
             .environmentObject(dataController)
         }

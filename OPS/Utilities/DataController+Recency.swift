@@ -105,4 +105,74 @@ extension DataController {
             .sorted { $0.value > $1.value }
             .map { $0.key }
     }
+
+    /// Ranks `candidates` for the team-member picker by affinity to the given
+    /// task type — the crew you routinely put on this kind of work first
+    /// (ranked by how often, ties broken by recency), then everyone else by
+    /// most-recent overall use, then alphabetically. Returns the ordered users
+    /// and the set that qualifies as the "usual crew" for the type (for the
+    /// picker's section header + badge). Single source of truth: replaces the
+    /// recency-only ordering that was duplicated across every picker caller.
+    ///
+    /// An empty `taskTypeId` (picker opened before a type is chosen) yields no
+    /// type affinity, so the list falls back to recently-used-then-alphabetical.
+    func rankedTeamMembers(
+        forTaskType taskTypeId: String,
+        companyId: String,
+        candidates: [User]
+    ) -> (ordered: [User], usualCrewIds: Set<String>) {
+        guard !candidates.isEmpty else { return ([], []) }
+
+        // De-dupe by id, keeping first occurrence — defends the ranking against
+        // a caller that passes a list with repeats.
+        var byId: [String: User] = [:]
+        for user in candidates where byId[user.id] == nil { byId[user.id] = user }
+
+        func alphabetical() -> [User] {
+            byId.values.sorted {
+                $0.fullName.localizedCaseInsensitiveCompare($1.fullName) == .orderedAscending
+            }
+        }
+
+        guard let context = modelContext, !companyId.isEmpty else {
+            return (alphabetical(), [])
+        }
+
+        // One fetch of the company's live tasks; tally assignment history per
+        // member in a single pass.
+        let predicate = #Predicate<ProjectTask> { task in
+            task.companyId == companyId && task.deletedAt == nil
+        }
+        let tasks = (try? context.fetch(FetchDescriptor<ProjectTask>(predicate: predicate))) ?? []
+
+        var typeCount: [String: Int] = [:]
+        var lastForType: [String: Date] = [:]
+        var lastOverall: [String: Date] = [:]
+
+        for task in tasks {
+            let stamp = task.createdAt ?? task.lastSyncedAt ?? .distantPast
+            let isTargetType = !taskTypeId.isEmpty && task.taskTypeId == taskTypeId
+            for memberId in task.getTeamMemberIds() where !memberId.isEmpty {
+                if (lastOverall[memberId] ?? .distantPast) < stamp { lastOverall[memberId] = stamp }
+                if isTargetType {
+                    typeCount[memberId, default: 0] += 1
+                    if (lastForType[memberId] ?? .distantPast) < stamp { lastForType[memberId] = stamp }
+                }
+            }
+        }
+
+        let stats = byId.values.map { user in
+            CrewAffinityStats(
+                memberId: user.id,
+                fullName: user.fullName,
+                typeAssignmentCount: typeCount[user.id] ?? 0,
+                lastAssignedToType: lastForType[user.id] ?? .distantPast,
+                lastAssignedOverall: lastOverall[user.id] ?? .distantPast
+            )
+        }
+
+        let ranking = CrewAffinityRanker.rank(stats)
+        let ordered = ranking.orderedIds.compactMap { byId[$0] }
+        return (ordered, ranking.usualCrewIds)
+    }
 }

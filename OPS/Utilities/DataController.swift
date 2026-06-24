@@ -3546,6 +3546,14 @@ class DataController: ObservableObject {
         task.needsSync = true
         try? modelContext?.save()
 
+        // Notify calendar + review-count surfaces (task/completion/unscheduled
+        // badges in the header and quick-actions FAB) to refresh immediately. A
+        // status change alters review eligibility, so without this the badges
+        // stay stale until the owning view reappears or the app relaunches.
+        DispatchQueue.main.async { [weak self] in
+            self?.scheduledTasksDidChange.toggle()
+        }
+
         // Record for async sync
         var changedFields: [String: Any] = ["status": newStatus.rawValue]
         if newStatus == .completed {
@@ -4491,6 +4499,13 @@ class DataController: ObservableObject {
         task.needsSync = true
         try? modelContext?.save()
         print("[UPDATE_TASK_TEAM] ✅ Task local state updated (IDs string + relationship)")
+
+        // Notify calendar + review-count surfaces to refresh immediately. An
+        // assignment clears a task out of the "unassigned" review, so the
+        // unscheduled/header badges must drop without waiting for a reappear.
+        DispatchQueue.main.async { [weak self] in
+            self?.scheduledTasksDidChange.toggle()
+        }
 
         // Mirror to iPhone Calendar — team change may add/remove eligibility for the current user
         let mirrorTaskId = task.id

@@ -632,12 +632,24 @@ struct TaskDetailsView: View {
             // Save team changes when sheet is dismissed
             saveTeamChanges()
         }) {
+            let ranked: (ordered: [User], usualCrewIds: Set<String>) = {
+                guard let companyId = dataController.currentUser?.companyId else {
+                    return (allTeamMembers.sorted {
+                        $0.fullName.localizedCaseInsensitiveCompare($1.fullName) == .orderedAscending
+                    }, [])
+                }
+                return dataController.rankedTeamMembers(
+                    forTaskType: task.taskTypeId,
+                    companyId: companyId,
+                    candidates: allTeamMembers
+                )
+            }()
             TeamMemberPickerSheet(
                 selectedTeamMemberIds: $selectedTeamMemberIds,
-                allTeamMembers: allTeamMembers
+                allTeamMembers: ranked.ordered,
+                recentMemberIds: ranked.usualCrewIds,
+                taskTypeName: task.taskType?.display
             )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
         }
     }
 

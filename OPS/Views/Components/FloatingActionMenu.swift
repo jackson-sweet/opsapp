@@ -864,6 +864,14 @@ struct FloatingActionMenu: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("DataSyncCompleted"))) { _ in
             refreshReviewCounts()
         }
+        // Live refresh: scheduledTasksDidChange fires on any local task mutation
+        // (complete / cancel / reschedule / reassign) AND on inbound/realtime
+        // task changes (via InboundChangeRouter). Without this the cached badge
+        // counts only refreshed on .onAppear, which does not re-fire when a
+        // review sheet dismisses over the FAB.
+        .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
+            refreshReviewCounts()
+        }
     }
 
     // MARK: - Review Count Refresh

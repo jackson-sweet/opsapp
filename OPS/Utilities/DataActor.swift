@@ -1356,17 +1356,24 @@ actor DataActor {
                 ]
             )
 
-            if accept.contains("annotationURL") { existing.annotationURL = dto.annotationUrl }
             if accept.contains("renderedPhotoURL") { existing.renderedPhotoURL = dto.renderedPhotoUrl }
             if accept.contains("note") { existing.note = dto.note ?? "" }
             if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
-            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
             if accept.contains("dimensions"), let dimensionsData = dto.dimensionsData {
                 existing.dimensionsData = dimensionsData
             }
 
+            // Collaborative markup — shared per-layer recency union (see
+            // PhotoAnnotationInboundMarkup), identical to InboundProcessor /
+            // RealtimeProcessor so the three sync paths cannot drift.
+            let unpushedLocalLayer = existing.applyInboundMarkup(
+                dto.markupServerState,
+                acceptLegacyAnnotationURL: accept.contains("annotationURL"),
+                acceptLegacyDeletedAt: accept.contains("deletedAt")
+            )
+
             existing.lastSyncedAt = Date()
-            if !hasPendingOperations(entityType: .photoAnnotation, entityId: existing.id) {
+            if !hasPendingOperations(entityType: .photoAnnotation, entityId: existing.id) && !unpushedLocalLayer {
                 existing.needsSync = false
             }
         } else {

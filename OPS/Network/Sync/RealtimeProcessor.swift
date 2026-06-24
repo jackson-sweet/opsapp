@@ -1242,16 +1242,23 @@ final class RealtimeProcessor: ObservableObject {
     private func upsertPhotoAnnotation(context: ModelContext, id: String, model: PhotoAnnotation, pendingFields: Set<String>) throws {
         let descriptor = FetchDescriptor<PhotoAnnotation>(predicate: #Predicate { $0.id == id })
         if let existing = try context.fetch(descriptor).first {
-            if !pendingFields.contains("annotationURL")     { existing.annotationURL = model.annotationURL }
             if !pendingFields.contains("renderedPhotoURL")  { existing.renderedPhotoURL = model.renderedPhotoURL }
             if !pendingFields.contains("note")              { existing.note = model.note }
             if !pendingFields.contains("updatedAt")         { existing.updatedAt = model.updatedAt }
-            if !pendingFields.contains("deletedAt")         { existing.deletedAt = model.deletedAt }
             if !pendingFields.contains("dimensions"), let dimensionsData = model.dimensionsData {
                 existing.dimensionsData = dimensionsData
             }
+
+            // Collaborative markup — shared per-layer recency union (see
+            // PhotoAnnotationInboundMarkup), identical across all inbound paths.
+            let unpushedLocalLayer = existing.applyInboundMarkup(
+                model.markupServerState,
+                acceptLegacyAnnotationURL: !pendingFields.contains("annotationURL"),
+                acceptLegacyDeletedAt: !pendingFields.contains("deletedAt")
+            )
+
             existing.lastSyncedAt = Date()
-            existing.needsSync = false
+            existing.needsSync = unpushedLocalLayer
         } else {
             model.lastSyncedAt = Date()
             model.needsSync = false

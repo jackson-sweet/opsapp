@@ -1425,18 +1425,25 @@ final class InboundProcessor {
                 context: context
             )
 
-            if accept.contains("annotationURL") { existing.annotationURL = dto.annotationUrl }
             if accept.contains("renderedPhotoURL") { existing.renderedPhotoURL = dto.renderedPhotoUrl }
             if accept.contains("note") { existing.note = dto.note ?? "" }
             if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
-            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
             if accept.contains("dimensions"), let dimensionsData = dto.dimensionsData {
                 existing.dimensionsData = dimensionsData
             }
 
+            // Collaborative markup — shared per-layer recency union (see
+            // PhotoAnnotationInboundMarkup). Returns true if a local layer is
+            // still un-pushed, which must keep needsSync set.
+            let unpushedLocalLayer = existing.applyInboundMarkup(
+                dto.markupServerState,
+                acceptLegacyAnnotationURL: accept.contains("annotationURL"),
+                acceptLegacyDeletedAt: accept.contains("deletedAt")
+            )
+
             existing.lastSyncedAt = Date()
             let hasPending = hasPendingOperations(entityType: .photoAnnotation, entityId: existing.id, context: context)
-            if !hasPending {
+            if !hasPending && !unpushedLocalLayer {
                 existing.needsSync = false
             }
         } else {

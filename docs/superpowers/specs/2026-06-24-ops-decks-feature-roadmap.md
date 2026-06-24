@@ -201,7 +201,7 @@ Complexity: **L** low · **M** medium · **H** high · **VH** very-high. Tier: *
 
 1. **Framing data model** — *critical path.* First-class joist/beam/post/ledger/rim/blocking, serialized into `drawing_data`. **Nothing in structure, footings, outputs, fasteners, or roofs ships until this exists.** Build first.
 2. **Auto-framing engine** — derives a default frame from outline + house edge + elevation. Delivers BOTH-tier value early; substrate every sizing engine edits.
-3. **Code-table store (versioned, jurisdiction-aware)** — verbatim IRC/DCA6/NBC/BCBC tables, keyed by adopted edition. Shared by every sizing engine *and* the compliance engine. Foundational; build alongside #1. Never hand-type table cells into UI.
+3. **Code-rule packages (downloadable, versioned, jurisdiction-keyed)** — verbatim IRC/DCA6/NBC/BCBC tables + rules as *data packages*, keyed by jurisdiction (country/province/state) + adopted edition, **stored in Supabase and delivered via ops-web**, downloaded for the user's selected jurisdiction and cached offline. Updatable on code revision **without an App Store release**; the app shows "code data current to [edition/date]." Shared by every sizing engine, the compliance engine, *and* the as-built audit. Foundational; build the package format + loader alongside #1. Never hand-type table cells into UI.
 4. **Structural sizing + load engine** — joist span, beam/post back-solve, tributary load, cantilever. Consumes #1–#3.
 5. **Footing engine** — sizes from per-post load + soil + frost. Downstream of #4.
 6. **Code-compliance rules engine** — pass/fail per cited section + out-of-envelope detection → "requires engineer." Powers both design-time checks *and* the as-built audit (§3). Headline differentiator and biggest liability.
@@ -219,7 +219,7 @@ Each phase is coherent and shippable. The spine: **model → auto-derive → siz
 
 - **Phase 1 — Foundation / carve-out (already specced).** Standalone app, shared `DeckKit`, capability-gated `drawing_data` schema + LIGHT↔FULL round-trip. Land the two no-new-engineering wins: **per-pattern waste factor** (fixes under-ordering) + **brand-neutral catalog model**. Ship **client proposal + upgraded render** for early standalone revenue while engineering is built.
 - **Phase 2 — Framing foundation (BOTH).** Framing data model + species/load presets + auto-framing + real framing 3D render + rough framing BOM + textured ground + ground-type selection. *First "serious tool" moment; shared value, no compliance claim yet.*
-- **Phase 3 — Structural engineering (FULL).** Code-table store + joist span + beam/post engine + **per-column load calc** + cantilever + manual member editor. *RedX parity.*
+- **Phase 3 — Structural engineering (FULL).** Code-rule packages (jurisdiction-keyed, Supabase-delivered, offline-cached) + jurisdiction selection UI + joist span + beam/post engine + **per-column load calc** + cantilever + manual member editor. *RedX parity.*
 - **Phase 4 — Footings, terrain & connections (FULL).** Grade capture (first) + height-above-grade (30″ guard) + frost/soil + footing sizing + post-footing/uplift hardware + ledger + lateral-connection design + Simpson hardware + full BOM.
 - **Phase 5 — House attachment & openings (FULL).** Floor-line datum + door/window placement + wall cutouts + cladding-driven ledger (brick/stone → freestanding fallback) + elevation view + door/window schedule + multi-story stairs-to-grade.
 - **Phase 6 — Surface features, patterns & overhead (FULL).** Decking patterns + picture-frame + board-nesting optimizer + fastener/finish takeoff; railing breakdown/families; stair tread types + stringer count + landings/winders; fascia/skirting/built-ins; pergolas/covers (reuse Phase 3 engine); lighting/electrical.
@@ -239,17 +239,18 @@ Each phase is coherent and shippable. The spine: **model → auto-derive → siz
 
 ---
 
-## 7. Liability & compliance posture (recommended)
+## 7. Liability & compliance posture (LOCKED 2026-06-24)
 
-The highest-risk part of the product is any claim that a deck "meets code" or is "safe." Recommended guardrails (non-negotiable if we make compliance claims at all):
+The highest-risk part of the product is any claim that a deck "meets code" or is "safe." **Decision (Jackson): the app makes only _objective negative_ claims, never positive guarantees.** Code failures are objective and safe to assert; "this deck is safe / will pass" is not. The locked guardrails:
 
-1. **Never assert "safe" or "compliant" unconditionally.** The defensible claim is *"prescriptive-compliant per AWC DCA-6"* for **in-envelope** decks only.
-2. **Every structural/footing output surfaces its assumptions** — assumed load, species, soil, and **code edition**.
-3. **Out-of-envelope conditions hard-stop** to "requires a licensed engineer" rather than emitting a number (e.g. >100 sq ft tributary, soil < 1500 psf / BCBC < 75 kPa, unusual/elevated geometry).
-4. **All outputs labeled advisory** pending licensed-engineer / AHJ review; the **PE-stamp workflow** makes explicit the app never self-certifies.
-5. **As-built audit** never outputs a clean pass; hidden elements are tagged "not assessable — verify on site" (§3).
-6. **Code tables ingested verbatim, versioned, treated as data** — this research confirmed structure + key thresholds but did **not** transcribe span/footing/connection tables cell-by-cell.
-7. **Jurisdiction-aware from day one** — IRC/DCA6 (US) vs NBC/BCBC Part 9 (Canada, kPa); frost depth + setbacks are AHJ/zoning-delegated; any bundled zip→frost/setback table is a convenience, surface "verify with your AHJ."
+1. **Objective negative claims only.** The app flags what *objectively fails* the selected jurisdiction's code, and reports **"no code failures detected"** when it finds none in assessable items. It never says "safe," "compliant," "guaranteed," or "will pass."
+2. **Disclaimer on every compliance/structural output.** "This is not a guarantee of full code adherence. Have plans reviewed by a licensed engineer in your jurisdiction." Acknowledged in-app before a compliance report or permit set generates.
+3. **Jurisdiction selection drives the ruleset.** The user picks country + province/state (e.g. BC, AB, US-IRC states); the compliance + sizing engines evaluate *that jurisdiction's* package. IRC/DCA6 (US) vs NBC/BCBC Part 9 (Canada, kPa); frost depth + setbacks are AHJ/zoning-delegated — any bundled zip→frost/setback table is a convenience, surfaced as "verify with your AHJ."
+4. **Downloadable, versioned code-rule packages (see engine #3).** Code rules are *data*, stored in Supabase and delivered via ops-web, downloaded per selected jurisdiction and cached for offline use. This lets us push code-revision updates **without an App Store release**, and stamp every report **"code data current to [edition/date]."**
+5. **Out-of-envelope conditions hard-stop** to "requires a licensed engineer" rather than emitting a number (e.g. > tributary/area limits, soil < 1500 psf / BCBC < 75 kPa, unusual/elevated geometry). The **PE-stamp workflow** makes explicit the app never self-certifies.
+6. **Every structural/footing output surfaces its assumptions** — assumed load, species, soil, and the **code package edition** in force.
+7. **As-built audit** never outputs a clean pass; hidden elements are tagged "not assessable — verify on site" (§3).
+8. **Code tables ingested verbatim, versioned, treated as data** — this research confirmed structure + key thresholds but did **not** transcribe span/footing/connection tables cell-by-cell; each package is built from the adopted edition's actual tables.
 
 ---
 
@@ -262,9 +263,8 @@ The highest-risk part of the product is any claim that a deck "meets code" or is
 
 ---
 
-## 9. Open decisions for Jackson
+## 9. Decisions (resolved 2026-06-24, Jackson)
 
-1. **Compliance posture** (§7): make prescriptive code-compliance *claims* (with the guardrails) vs the more conservative "engineer-reviewable only — never assert compliance." Recommended: claims **with** guardrails — it's the RedX bar and the headline value — but it's a real legal call.
-2. **Scope appetite:** confirm the full 7-phase vision (this is a large, multi-phase, largely-greenfield engineering build) vs trimming the tail (e.g. defer overhead/lighting/CAD).
-3. **The EXCLUDEs in §8** — confirm or override.
-4. **As-built audit priority:** it's slotted in Phase 7 (needs the code engine), but it's also the most differentiated single feature — option to pull a *visible-geometry-only* version earlier as a standalone hook.
+1. **Compliance posture — RESOLVED:** objective negative claims only ("no code failures detected," never "safe/guaranteed"), jurisdiction-selectable, with downloadable versioned code packages + disclaimer + licensed-engineer recommendation. See §7.
+2. **Scope — RESOLVED:** plan the **full 7-phase vision in detail now** (single comprehensive implementation plan), not a trimmed core. The EXCLUDEs in §8 stand (survey/contour import out; DWG/DXF export cost-flagged; photoreal deferred late).
+3. **As-built audit — RESOLVED:** lands in **Phase 7** with the full code engine (reuses it; cheapest + most correct).

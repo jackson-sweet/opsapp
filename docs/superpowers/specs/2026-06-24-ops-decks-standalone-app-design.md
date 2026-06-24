@@ -13,7 +13,7 @@ The OPS iOS app contains a full deck designer (`OPS/DeckBuilder/`, 73 Swift file
 
 **Decision (Jackson):** spin the deck designer out as **OPS Decks** — a standalone iOS app with its own cheaper subscription, usable *without* a full OPS subscription. Two goals at once: (1) a standalone revenue product, and (2) a top-of-funnel wedge that upsells deck contractors into full OPS.
 
-**Why this is fundamentally a re-housing, not a new build:** the deck functionality already exists and works. The novel, risky engineering is the *carve-out* — extracting the designer into a shared module, standing up a second app target, and wiring standalone auth, a "company of one", billing, offline, and the upgrade path. This spec covers **only that foundation (Phase 1)**. Designing the standalone app's actual screens, flows, gating UX, and output polish is **Phase 2** (its own spec → plan cycle, §13).
+**What this spec is (and is not):** the standalone "OPS Decks" is a **major, multi-phase engineering buildout**, not a re-housing — the deck designer in OPS today is only ~10% of the intended product (it has zero structural engineering, code-compliance, footings, roofs, openings, or terrain). The full power-user feature set, the LIGHT(OPS)/FULL(standalone) split, the new engines, and the 7-phase build are mapped in the companion **feature roadmap** (`docs/superpowers/specs/2026-06-24-ops-decks-feature-roadmap.md`). **This spec covers Phase 1 only: the foundation/carve-out** — extracting the designer into a shared module, standing up a second app target, and wiring standalone auth, a "company of one", billing, offline, and the upgrade path — the platform every later phase builds on. Phase 1 also lands two no-new-engineering wins (the estimate waste-factor fix and the brand-neutral material catalog model) and the client proposal/render for early revenue. Per Jackson (2026-06-24), all 7 phases are planned in full now in the implementation plan.
 
 **Phase 1 success definition:** the *existing* deck designer runs end-to-end as a standalone, signed-in, billed iOS app — a user installs OPS Decks, designs a deck, signs in with Apple, saves it (as their own one-person company), and is correctly gated at the free/Pro boundary — with their data living in the same Supabase backend a full-OPS customer's would, ready to light up the rest of OPS on upgrade.
 
@@ -168,7 +168,7 @@ Phase 1 stands up what's structurally required; the *creative* (screenshots, cop
 
 **In scope (Phase 1):** `OPSDesignKit` + `DeckKit` packages; the extraction/decoupling; the OPS Decks app target booting the existing designer; Sign in with Apple; company-of-one provisioning; RevenueCat entitlement + 1-deck gate enforcement hook; same-backend sync; offline/autosave; the `deck_subscriptions` mirror + RevenueCat webhook; account deletion; the structural upgrade-to-OPS continuity.
 
-**Out of scope (Phase 2, §13):** the standalone deck **library/home** screen, onboarding-to-first-deck flow, the **paywall** and gating UX, estimate/cut-list/permit-PDF output **tuned for a solo contractor**, material breadth/catalog UX, the full **upgrade-to-OPS** offer UX, ASO/screenshots/marketing copy, and any net-new deck *features*.
+**Out of scope (Phases 2–7, see roadmap & §13):** the *polished* standalone deck **library/home**, the refined onboarding-to-first-deck flow, the full **paywall**/gating UX, estimate/cut-list/permit-PDF output **tuned for a solo contractor**, material breadth/catalog UX, the full **upgrade-to-OPS** offer UX, ASO/screenshots/marketing copy, and all net-new deck *features* (structure, code-compliance, footings, roofs, openings, terrain, advanced stairs, etc.). Phase 1 ships only the minimal shell needed to create/open/save a deck.
 
 ---
 
@@ -198,9 +198,9 @@ Rough net contribution per Pro sub: ~$12.74 (Apple 15%) − ~$0.13 (RevenueCat) 
 
 ---
 
-## 13. Phase 2 preview (not part of this spec)
+## 13. Beyond Phase 1 (see the feature roadmap)
 
-Phase 2 = the standalone **experience**: deck library/home, onboarding-to-first-value, paywall + gating UX, the priced estimate / cut list / permit PDF presented for a solo contractor, material catalog UX, the OPS upsell offer, and all ASO/marketing creative. It gets its own brainstorming → spec → plan cycle (`STANDALONE DECK DESIGNER - P2`) once the Phase 1 foundation stands.
+Phases 2–7 — the actual power-user functionality buildout (framing model, structural engineering, footings/terrain, house openings, surface features, compliance engine + as-built audit + permit outputs) — are defined in the companion roadmap (`2026-06-24-ops-decks-feature-roadmap.md`) and planned in full in the implementation plan. The standalone **experience** layer (polished deck library/home, onboarding-to-first-value, paywall + gating UX, OPS upsell surface, ASO/marketing creative) is woven across those phases, beginning with the minimal app shell in Phase 1. Phase 1 stands up only the *minimum* library/create/open surface needed for the app to function; the refined experience is layered in as the feature set grows.
 
 ---
 

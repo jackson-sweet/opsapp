@@ -24,6 +24,7 @@
 
 import Foundation
 import os
+import UIKit
 
 final class ShareUploadCoordinator: NSObject {
     static let shared = ShareUploadCoordinator()
@@ -131,23 +132,39 @@ final class ShareUploadCoordinator: NSObject {
         }
     }
 
-    /// Re-drive `.uploadingS3` jobs whose background task is no longer live: a lost
-    /// or never-delivered completion, a silently-failed transfer, or a handoff from
-    /// the dismissed extension that never landed. These are reset to pending so the
-    /// drain re-uploads them via the app's reliable path — opening OPS lands the
-    /// photo instead of waiting out a multi-hour window.
+    /// Recover `.uploadingS3` jobs so a captured photo reliably lands.
+    ///
+    /// - **Foreground (app active):** the reliable in-app upload path is available
+    ///   now, so don't wait on the flaky in-extension background transfer at all —
+    ///   cancel any still-live task (which prevents a duplicate finalize) and
+    ///   re-drive every in-flight job through the app pipeline immediately.
+    /// - **Background relaunch (handling a transfer's completion):** be
+    ///   conservative — only recover jobs whose task is gone AND older than a short
+    ///   grace (a lost / never-delivered completion). Live or just-finished tasks
+    ///   finalize through `didCompleteWithError` normally.
     @MainActor
     private func reconcileInFlightUploads() async {
         let inFlight = ShareUploadManifestStore.allJobs().filter { $0.state == .uploadingS3 }
         guard !inFlight.isEmpty else { return }
 
-        let liveIds = Set(await liveBackgroundTaskIDs())
+        let tasks = await liveBackgroundTasks()
+        var taskByID: [String: URLSessionTask] = [:]
+        for task in tasks { if let id = task.taskDescription { taskByID[id] = task } }
+
+        let appActive = UIApplication.shared.applicationState == .active
         let now = Date()
+
         for job in inFlight {
-            let stillRunning = liveIds.contains(job.id)
-            let agedOut = now.timeIntervalSince(job.createdAt) > Self.uploadGrace
-            if !stillRunning && agedOut {
-                log.info("drain: re-driving stalled upload \(job.id, privacy: .public)")
+            let task = taskByID[job.id]
+            if appActive {
+                task?.cancel()   // stop the background transfer; the app re-uploads
+                log.info("drain: foreground re-drive of \(job.id, privacy: .public)")
+                ShareUploadManifestStore.update(id: job.id) { j in
+                    j.state = .pendingPresign
+                    j.s3UploadUrl = nil
+                }
+            } else if task == nil && now.timeIntervalSince(job.createdAt) > Self.uploadGrace {
+                log.info("drain: recovering stalled upload \(job.id, privacy: .public)")
                 ShareUploadManifestStore.update(id: job.id) { j in
                     j.state = .pendingPresign
                     j.s3UploadUrl = nil
@@ -156,15 +173,12 @@ final class ShareUploadCoordinator: NSObject {
         }
     }
 
-    /// `taskDescription`s of tasks the background session still considers live
-    /// (running or suspended). A task that finished — successfully or not — is
-    /// absent, which is exactly the signal `reconcileInFlightUploads` needs.
+    /// Tasks the background session still considers live (running or suspended).
+    /// A task that finished — successfully or not — is absent.
     @MainActor
-    private func liveBackgroundTaskIDs() async -> [String] {
-        await withCheckedContinuation { (cont: CheckedContinuation<[String], Never>) in
-            backgroundSession.getAllTasks { tasks in
-                cont.resume(returning: tasks.compactMap { $0.taskDescription })
-            }
+    private func liveBackgroundTasks() async -> [URLSessionTask] {
+        await withCheckedContinuation { (cont: CheckedContinuation<[URLSessionTask], Never>) in
+            backgroundSession.getAllTasks { cont.resume(returning: $0) }
         }
     }
 

@@ -45,13 +45,25 @@ enum ShareSessionBridgeWriter {
             ? editableProjectRefs(modelContext: modelContext, userId: userId, fullAccess: fullAccess)
             : []
 
+        // Best-effort fresh token for the extension's instant background POST to
+        // the share-photo endpoint. Absent/expired is fine — the extension just
+        // queues and the app uploads on next open with its own fresh token.
+        var idToken: String?
+        var tokenExpiresAt: Date?
+        if let result = try? await FirebaseAuthService.shared.getIDTokenResult() {
+            idToken = result.token
+            tokenExpiresAt = result.expiresAt
+        }
+
         let bridge = ShareSessionBridge(
             userId: userId,
             companyId: companyId,
             canEditProjects: canEdit,
             userDisplayName: currentUser?.fullName,
             editableProjects: refs,
-            updatedAt: Date()
+            updatedAt: Date(),
+            idToken: idToken,
+            tokenExpiresAt: tokenExpiresAt
         )
         ShareSessionBridgeStore.write(bridge)
     }

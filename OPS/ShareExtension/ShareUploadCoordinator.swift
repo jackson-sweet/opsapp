@@ -112,6 +112,11 @@ final class ShareUploadCoordinator: NSObject {
             return
         }
 
+        // The instant endpoint (the extension's background POST) may already have
+        // filed some of these jobs. It's idempotent by jobId, so detect those and
+        // clear them — never double-upload what the server already has.
+        let alreadyFiled = await Self.endpointFiledJobIds(projectId: reference.projectId)
+
         // (jobId, url) for every photo whose bytes are on S3 and ready to finalize.
         var resolved: [(jobId: String, url: String)] = []
 
@@ -120,6 +125,13 @@ final class ShareUploadCoordinator: NSObject {
             // re-finalize the SAME URL, never re-upload.
             if let url = job.uploadedURL {
                 resolved.append((job.id, url))
+                continue
+            }
+
+            // The server already filed this one via the instant endpoint.
+            if alreadyFiled.contains(job.id) {
+                log.info("drain: job \(job.id, privacy: .public) already filed by instant endpoint — clearing")
+                ShareUploadManifestStore.remove(id: job.id)
                 continue
             }
 
@@ -217,6 +229,29 @@ final class ShareUploadCoordinator: NSObject {
             }
         }
         return false
+    }
+
+    /// Job ids the instant share-photo endpoint has already filed for a project —
+    /// their `project_photos` URL filename is `share-{jobId}.jpg`. Used to skip
+    /// jobs the extension's background POST already landed (idempotent dedup).
+    private static func endpointFiledJobIds(projectId: String) async -> Set<String> {
+        struct Row: Decodable { let url: String }
+        guard let rows: [Row] = try? await SupabaseService.shared.client
+            .from("project_photos")
+            .select("url")
+            .eq("project_id", value: projectId)
+            .execute()
+            .value
+        else { return [] }
+
+        var ids = Set<String>()
+        for row in rows {
+            let name = (row.url as NSString).lastPathComponent
+            guard name.hasPrefix("share-"), name.hasSuffix(".jpg") else { continue }
+            let id = String(name.dropFirst(6).dropLast(4)) // "share-" = 6, ".jpg" = 4
+            if !id.isEmpty { ids.insert(id) }
+        }
+        return ids
     }
 
     /// True for transient failures that should NOT count against a job's attempt

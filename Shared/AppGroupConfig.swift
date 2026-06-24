@@ -25,11 +25,6 @@ enum AppGroupConfig {
     /// (`co.opsapp.ops`) so it sorts under the same App ID family in the portal.
     static let identifier = "group.co.opsapp.ops"
 
-    /// Background `URLSession` identifier used by the extension to push image
-    /// bytes to S3. The app re-creates a session with the SAME identifier so iOS
-    /// hands completion events to the app when the extension is gone.
-    static let backgroundSessionIdentifier = "co.opsapp.ops.OPS.ShareExtension.upload"
-
     /// Darwin notification posted by the extension after it enqueues work, so a
     /// foregrounded app can drain immediately instead of waiting for the next
     /// launch. Darwin notifications carry no payload — they are a pure "wake up".

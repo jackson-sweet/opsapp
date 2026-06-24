@@ -2,35 +2,20 @@
 //  ShareUploadManifest.swift
 //  Shared between the OPS app and the OPSShareExtension.
 //
-//  The manifest is the single source of truth for every photo the share
-//  extension has captured but not yet fully landed in a project. The extension
-//  writes the image bytes into the App Group inbox and appends a job; the app
-//  (via its background-upload session delegate and its launch/foreground drain)
-//  advances each job to completion and removes it. All mutations go through
+//  The manifest is a simple, durable queue of photos the share extension has
+//  captured but the app has not yet uploaded. The extension writes the image
+//  bytes into the App Group inbox and appends a job; the app drains the queue on
+//  next open / when back online, uploading each through its proven pipeline and
+//  removing the job once it lands. All mutations go through
 //  `ShareUploadManifestStore` under `NSFileCoordinator`, so the two processes
 //  never corrupt the file.
 //
 
 import Foundation
 
-/// Lifecycle of a single captured image on its way into a project.
-enum ShareUploadState: String, Codable {
-    /// Bytes are on disk in the inbox; still needs presign + S3 upload. The app
-    /// owns this work (the extension could not presign — offline or token expired,
-    /// or the background PUT failed and was reset here for retry).
-    case pendingPresign
-    /// The extension presigned and started a background S3 PUT; bytes are in
-    /// flight. The app's background-session delegate resolves the outcome.
-    case uploadingS3
-    /// Bytes are confirmed on S3; the project_photos row + project_images CSV +
-    /// notification still need to be written by the app.
-    case s3Complete
-}
-
-/// One captured image awaiting upload/finalization.
+/// One captured photo awaiting upload by the app.
 struct ShareUploadJob: Codable, Identifiable {
-    /// Stable UUID string. Also the inbox filename stem and the background
-    /// URLSession task's `taskDescription`, so completions map back to the job.
+    /// Stable UUID string; also the inbox filename stem.
     let id: String
     /// Filename (not full path) of the JPEG inside `AppGroupConfig.inboxDirectoryURL`.
     let fileName: String
@@ -40,13 +25,13 @@ struct ShareUploadJob: Codable, Identifiable {
     /// `users.id` of the uploader — stamped as `uploaded_by`.
     let uploadedBy: String
     let createdAt: Date
-    var state: ShareUploadState
-    /// Public (CDN/S3) URL once known from presign.
-    var s3PublicUrl: String?
-    /// Presigned PUT URL (may expire; the app re-presigns if a retry is needed).
-    var s3UploadUrl: String?
-    /// Number of times upload has been attempted (caps retry churn).
+    /// Online upload attempts that failed for a non-connectivity reason. Offline
+    /// retries do not count. Caps pathological retry loops.
     var attempts: Int
+    /// Public S3 URL once the bytes are uploaded. Persisted BEFORE finalize so a
+    /// finalize failure is retried against the SAME URL — never a re-upload, which
+    /// would create a duplicate photo.
+    var uploadedURL: String?
 
     init(
         id: String,
@@ -56,10 +41,8 @@ struct ShareUploadJob: Codable, Identifiable {
         companyId: String,
         uploadedBy: String,
         createdAt: Date,
-        state: ShareUploadState,
-        s3PublicUrl: String? = nil,
-        s3UploadUrl: String? = nil,
-        attempts: Int = 0
+        attempts: Int = 0,
+        uploadedURL: String? = nil
     ) {
         self.id = id
         self.fileName = fileName
@@ -68,10 +51,8 @@ struct ShareUploadJob: Codable, Identifiable {
         self.companyId = companyId
         self.uploadedBy = uploadedBy
         self.createdAt = createdAt
-        self.state = state
-        self.s3PublicUrl = s3PublicUrl
-        self.s3UploadUrl = s3UploadUrl
         self.attempts = attempts
+        self.uploadedURL = uploadedURL
     }
 
     /// Absolute URL of this job's image bytes in the shared inbox.
@@ -83,9 +64,10 @@ struct ShareUploadJob: Codable, Identifiable {
 /// Cross-process, file-coordinated store for the upload manifest.
 enum ShareUploadManifestStore {
 
-    /// Hard cap on retry attempts before a job is abandoned (and its bytes
-    /// removed) to avoid an unkillable poison job.
-    static let maxAttempts = 6
+    /// Online failures before a job is abandoned (and its bytes removed) to avoid
+    /// an unkillable poison job. Generous — losing a photo is worse than a few
+    /// extra retries — and offline never counts against it.
+    static let maxAttempts = 10
 
     private static var encoder: JSONEncoder {
         let e = JSONEncoder()
@@ -114,7 +96,6 @@ enum ShareUploadManifestStore {
 
     /// Atomically reads, transforms, and writes the whole manifest under a single
     /// coordinated write — the core primitive every other mutation builds on.
-    /// Returns the post-mutation job list.
     @discardableResult
     static func mutate(_ transform: (inout [ShareUploadJob]) -> Void) -> [ShareUploadJob] {
         guard let url = AppGroupConfig.manifestURL else { return [] }

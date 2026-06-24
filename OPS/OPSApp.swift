@@ -266,6 +266,7 @@ struct OPSApp: App {
                         if dataController.isAuthenticated {
                             Task { @MainActor in
                                 await dataController.refreshShareSessionBridge()
+                                ShareUploadCoordinator.shared.connectivity = dataController.connectivity
                                 ShareUploadCoordinator.shared.activate()
                                 await ShareUploadCoordinator.shared.drainInbox()
                             }
@@ -304,6 +305,13 @@ struct OPSApp: App {
                     // (onAppear fires before auth completes, so this catches the transition)
                     if isAuth {
                         notificationManager.requestPermission()
+                        // Drain any share-sheet photos queued before sign-in completed
+                        // (cold launch with a pending share).
+                        Task { @MainActor in
+                            ShareUploadCoordinator.shared.connectivity = dataController.connectivity
+                            ShareUploadCoordinator.shared.activate()
+                            await ShareUploadCoordinator.shared.drainInbox()
+                        }
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: ConnectivityManager.connectivityChangedNotification)) { _ in
@@ -313,6 +321,10 @@ struct OPSApp: App {
                        dataController.isAuthenticated {
                         Task {
                             await dataController.syncEngine?.triggerSync()
+                        }
+                        // Upload any share-sheet photos that were waiting for a connection.
+                        Task { @MainActor in
+                            await ShareUploadCoordinator.shared.drainInbox()
                         }
                     }
                 }

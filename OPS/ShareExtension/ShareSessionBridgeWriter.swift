@@ -35,16 +35,6 @@ enum ShareSessionBridgeWriter {
             return
         }
 
-        // Best-effort fresh token + expiry. An empty token is fine — the
-        // extension then queues for the app to upload on next drain rather than
-        // presigning itself.
-        var idToken = ""
-        var tokenExpiresAt = Date()
-        if let result = try? await FirebaseAuthService.shared.getIDTokenResult() {
-            idToken = result.token
-            tokenExpiresAt = result.expiresAt
-        }
-
         // Same gate that guards every project-level write in OPS.
         let canEdit = PermissionStore.shared.can("projects.edit")
         // Full-access roles (scope "all") can attach to any project; scoped roles
@@ -58,8 +48,6 @@ enum ShareSessionBridgeWriter {
         let bridge = ShareSessionBridge(
             userId: userId,
             companyId: companyId,
-            idToken: idToken,
-            tokenExpiresAt: tokenExpiresAt,
             canEditProjects: canEdit,
             userDisplayName: currentUser?.fullName,
             editableProjects: refs,

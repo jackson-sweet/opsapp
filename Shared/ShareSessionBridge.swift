@@ -3,16 +3,14 @@
 //  Shared between the OPS app and the OPSShareExtension.
 //
 //  The "session bridge" is the snapshot the main app writes into the App Group
-//  container so the share extension can operate WITHOUT running Firebase, the
-//  Supabase SDK, or SwiftData. The extension reads it to know who is signed in,
-//  which projects it may attach photos to, and (for the instant-upload path) a
-//  short-lived Firebase ID token to presign S3 uploads.
+//  container so the share extension can present its picker WITHOUT running
+//  Firebase, the Supabase SDK, or SwiftData. The extension only reads it to know
+//  who is signed in and which projects it may attach photos to — it never
+//  uploads, so no auth token is ever placed in shared storage.
 //
-//  Security note: the ID token here is the SAME short-lived bearer token the app
-//  already sends on every API request (~1h lifetime, never refreshed by the
-//  extension). It is confined to the sandboxed App Group container shared only
-//  by the OPS app and this extension. The app rewrites it on login and on every
-//  foreground; on logout the bridge is cleared.
+//  Upload is owned entirely by the app: the extension saves the photo to the
+//  shared inbox + manifest, and the app uploads it through its proven pipeline on
+//  next open / when back online.
 //
 
 import Foundation
@@ -31,21 +29,14 @@ struct ShareProjectRef: Codable, Identifiable, Hashable {
 /// Snapshot of the signed-in session the app publishes for the share extension.
 struct ShareSessionBridge: Codable {
     /// Canonical `users.id` UUID (NOT the Firebase uid). Stamped on uploads as
-    /// `uploaded_by`.
+    /// `uploaded_by` when the app drains the queue.
     let userId: String
     let companyId: String
-    /// Short-lived Firebase ID token used to presign S3 uploads from the
-    /// extension. Empty when unavailable (extension then falls back to the
-    /// app-drains-later path).
-    let idToken: String
-    /// Absolute expiry of `idToken`.
-    let tokenExpiresAt: Date
     /// Whether the user holds `projects.edit` — the same gate that guards every
     /// project-level write in OPS. When false the extension shows a no-permission
     /// state and offers no projects.
     let canEditProjects: Bool
-    /// Display name for the uploader, used in the completion copy when the app
-    /// finalizes from a background launch and the roster is not yet loaded.
+    /// Display name for the uploader (currently informational).
     let userDisplayName: String?
     /// Projects the user may attach photos to, already filtered by the app.
     let editableProjects: [ShareProjectRef]
@@ -55,13 +46,6 @@ struct ShareSessionBridge: Codable {
     /// True when there is a usable signed-in session.
     var hasSession: Bool {
         !userId.isEmpty && !companyId.isEmpty
-    }
-
-    /// True when `idToken` is present and has comfortable life left. A 2-minute
-    /// skew avoids starting an upload with a token that dies mid-flight; if false
-    /// the extension enqueues for the app to presign on next drain.
-    var isTokenUsable: Bool {
-        !idToken.isEmpty && tokenExpiresAt.timeIntervalSinceNow > 120
     }
 }
 

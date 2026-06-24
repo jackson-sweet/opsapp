@@ -32,9 +32,9 @@ A message **applies** to a given install only if ALL hold:
   - bounds null = open; comparison is **semantic**, not lexical
 - user role ∈ `target_user_types` (null/empty = all roles) — only enforced once a role is known (post-auth)
 
-**Self-resolving force-update:** publish `mandatory_update`, `dismissable=false`, `minimum_version="3.1.0"`, `app_store_url`. Everyone below 3.1.0 is hard-walled; the instant a user updates past 3.1.0 they no longer match and are unblocked — no admin cleanup. Leaving `minimum_version` null still hard-blocks everyone (a deliberate "block all" escape hatch).
+**Self-resolving force-update:** publish `mandatory_update`, `dismissable=false`, `maximum_version="3.1.0"` (the build with the fix), `app_store_url`. Everyone **below** 3.1.0 is in range and hard-walled; the instant a user updates to 3.1.0+ they fall out of the range (`installed >= maximum_version`) and are unblocked — no admin cleanup. Leaving **both** bounds null hard-blocks every version (a deliberate "block all" escape hatch). `minimum_version` is the optional inclusive lower bound for narrow targeting (e.g. a notice only for a specific version band).
 
-**Semantic comparison:** Swift `installed.compare(bound, options: .numeric)`. `.numeric` compares digit-runs as numbers, so `"3.10.0" > "3.9.0"` (lexical compare would get this wrong). Encapsulated in a pure, unit-tested function.
+**Semantic comparison:** component-wise numeric compare (split on `.`, pad missing components with 0), so `"3.10.0" > "3.9.0"` and `"3.1" == "3.1.0"` (a lexical or naive compare gets the double-digit case wrong). Encapsulated in a pure, unit-tested function.
 
 ### 2. Pure evaluator unit
 

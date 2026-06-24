@@ -8,29 +8,38 @@
 //     delivers S3-upload completions to the app (the extension is long gone by
 //     then). On completion we mark the manifest, then drain.
 //  2. Drain the App Group share inbox: for each project, upload any still-pending
-//     photos (token expired / offline at capture time) and finalize every photo
-//     that's on S3 (project_images + project_photos + notification). Runs on app
-//     launch, on every foreground, on a Darwin nudge from the extension, and when
-//     background-session events finish.
+//     photos and finalize every photo that's on S3 (project_images + project_photos
+//     + notification). Runs on launch, every foreground, a Darwin nudge from the
+//     extension, and when background-session events arrive.
+//
+//  Reliability contract: **opening OPS always lands a captured photo.** The
+//  in-extension background upload is a best-effort fast path; if its completion is
+//  lost, never delivered, or the transfer stalled, the foreground drain reconciles
+//  the job against the session's actually-live tasks and re-drives it through the
+//  app's proven upload pipeline rather than waiting out a long stale window.
 //
 //  The manifest is the source of truth; all transitions go through the
-//  file-coordinated ShareUploadManifestStore, so the background delegate and the
-//  foreground drain never corrupt it.
+//  file-coordinated ShareUploadManifestStore.
 //
 
 import Foundation
+import os
 
 final class ShareUploadCoordinator: NSObject {
     static let shared = ShareUploadCoordinator()
 
-    /// Stale-upload threshold: a job stuck in `.uploadingS3` with no completion
-    /// after this long is reset to pending so the app re-presigns + re-uploads
-    /// (covers a presigned URL that expired before iOS ran the transfer).
-    private static let staleUploadInterval: TimeInterval = 2 * 60 * 60
+    private let log = Logger(subsystem: "co.opsapp.ops.share", category: "drain")
+
+    /// Grace after capture before a still-`.uploadingS3` job whose background task
+    /// is no longer live gets re-driven through the reliable foreground upload.
+    /// Long enough for a just-finished task's completion to deliver first (avoids a
+    /// duplicate upload), short enough that reopening OPS lands the photo promptly.
+    private static let uploadGrace: TimeInterval = 60
 
     private var backgroundCompletionHandler: (() -> Void)?
     private var darwinObserverRegistered = false
     private var isDraining = false
+    private var rerunRequested = false
 
     private lazy var backgroundSession: URLSession = {
         let config = URLSessionConfiguration.background(withIdentifier: AppGroupConfig.backgroundSessionIdentifier)
@@ -79,26 +88,28 @@ final class ShareUploadCoordinator: NSObject {
         )
     }
 
-    // MARK: - Drain
+    // MARK: - Drain (serialized + coalescing)
 
-    /// Uploads pending photos and finalizes on-S3 photos for every project with
-    /// queued work. Serialized by `isDraining`; safe to call from any trigger.
+    /// Drains the inbox to quiescence. Serialized by `isDraining`; a call that
+    /// arrives mid-drain requests one more pass (so an upload completion delivered
+    /// while a drain is running still gets finalized). Safe to call from any trigger.
     @MainActor
     func drainInbox() async {
-        guard !isDraining else { return }
-        isDraining = true
-        defer { isDraining = false }
-
-        // Recover stale in-flight uploads.
-        let now = Date()
-        for job in ShareUploadManifestStore.allJobs() where job.state == .uploadingS3 {
-            if now.timeIntervalSince(job.createdAt) > Self.staleUploadInterval {
-                ShareUploadManifestStore.update(id: job.id) { job in
-                    job.state = .pendingPresign
-                    job.s3UploadUrl = nil
-                }
-            }
+        if isDraining {
+            rerunRequested = true
+            return
         }
+        isDraining = true
+        repeat {
+            rerunRequested = false
+            await drainPass()
+        } while rerunRequested
+        isDraining = false
+    }
+
+    @MainActor
+    private func drainPass() async {
+        await reconcileInFlightUploads()
 
         let actionable = ShareUploadManifestStore.allJobs()
             .filter { $0.state == .pendingPresign || $0.state == .s3Complete }
@@ -106,18 +117,54 @@ final class ShareUploadCoordinator: NSObject {
 
         // Defense-in-depth: drop jobs for projects the user can no longer edit —
         // but only when the permission set is actually loaded. In a background
-        // launch PermissionStore isn't populated; trust the capture-time gate
-        // (the bridge only ever offered editable projects).
-        let permissionsLoaded = PermissionStore.shared.initialized
-        let canEdit = !permissionsLoaded || PermissionStore.shared.can("projects.edit")
-        if permissionsLoaded && !canEdit {
+        // launch PermissionStore isn't populated; trust the capture-time gate.
+        if PermissionStore.shared.initialized && !PermissionStore.shared.can("projects.edit") {
+            log.info("drain: dropping \(actionable.count, privacy: .public) job(s) — projects.edit not granted")
             for job in actionable { ShareUploadManifestStore.remove(id: job.id) }
             return
         }
 
+        log.info("drain: \(actionable.count, privacy: .public) actionable job(s)")
         let byProject = Dictionary(grouping: actionable, by: { $0.projectId })
         for (_, jobs) in byProject {
             await drainProject(jobs)
+        }
+    }
+
+    /// Re-drive `.uploadingS3` jobs whose background task is no longer live: a lost
+    /// or never-delivered completion, a silently-failed transfer, or a handoff from
+    /// the dismissed extension that never landed. These are reset to pending so the
+    /// drain re-uploads them via the app's reliable path — opening OPS lands the
+    /// photo instead of waiting out a multi-hour window.
+    @MainActor
+    private func reconcileInFlightUploads() async {
+        let inFlight = ShareUploadManifestStore.allJobs().filter { $0.state == .uploadingS3 }
+        guard !inFlight.isEmpty else { return }
+
+        let liveIds = Set(await liveBackgroundTaskIDs())
+        let now = Date()
+        for job in inFlight {
+            let stillRunning = liveIds.contains(job.id)
+            let agedOut = now.timeIntervalSince(job.createdAt) > Self.uploadGrace
+            if !stillRunning && agedOut {
+                log.info("drain: re-driving stalled upload \(job.id, privacy: .public)")
+                ShareUploadManifestStore.update(id: job.id) { j in
+                    j.state = .pendingPresign
+                    j.s3UploadUrl = nil
+                }
+            }
+        }
+    }
+
+    /// `taskDescription`s of tasks the background session still considers live
+    /// (running or suspended). A task that finished — successfully or not — is
+    /// absent, which is exactly the signal `reconcileInFlightUploads` needs.
+    @MainActor
+    private func liveBackgroundTaskIDs() async -> [String] {
+        await withCheckedContinuation { (cont: CheckedContinuation<[String], Never>) in
+            backgroundSession.getAllTasks { tasks in
+                cont.resume(returning: tasks.compactMap { $0.taskDescription })
+            }
         }
     }
 
@@ -137,23 +184,29 @@ final class ShareUploadCoordinator: NSObject {
 
             // pendingPresign — upload the bytes via the app's tested pipeline.
             if job.attempts >= ShareUploadManifestStore.maxAttempts {
+                log.error("drain: abandoning job \(job.id, privacy: .public) after \(job.attempts, privacy: .public) attempts")
                 ShareUploadManifestStore.remove(id: job.id)   // abandon poison job
                 continue
             }
             ShareUploadManifestStore.update(id: job.id) { $0.attempts += 1 }
 
             guard let fileURL = job.fileURL, let data = try? Data(contentsOf: fileURL) else {
+                log.error("drain: bytes missing for job \(job.id, privacy: .public); dropping")
                 ShareUploadManifestStore.remove(id: job.id)   // bytes are gone
                 continue
             }
             let folder = "projects/\(job.companyId)/\(job.projectId)"
-            if let url = try? await PresignedURLUploadService.shared.uploadImageData(
-                data, filename: job.fileName, folder: folder
-            ) {
+            do {
+                let url = try await PresignedURLUploadService.shared.uploadImageData(
+                    data, filename: job.fileName, folder: folder
+                )
                 publicURLs.append(url)
                 doneJobIds.append(job.id)
+                log.info("drain: uploaded job \(job.id, privacy: .public)")
+            } catch {
+                log.error("drain: upload failed for job \(job.id, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                // Leave pending (attempts already bumped) for the next drain.
             }
-            // On failure: leave pending (attempts already bumped) for the next drain.
         }
 
         guard !publicURLs.isEmpty else { return }
@@ -165,13 +218,14 @@ final class ShareUploadCoordinator: NSObject {
             projectTitle: reference.projectTitle,
             uploadedBy: reference.uploadedBy
         )
+        log.info("drain: finalize \(landed ? "ok" : "FAILED", privacy: .public) for project \(reference.projectId, privacy: .public) — \(publicURLs.count, privacy: .public) photo(s)")
         if landed {
             for id in doneJobIds { ShareUploadManifestStore.remove(id: id) }
         }
     }
 
     @MainActor
-    private func callBackgroundCompletionHandler() {
+    private func releaseBackgroundCompletionHandler() {
         let handler = backgroundCompletionHandler
         backgroundCompletionHandler = nil
         handler?()
@@ -200,6 +254,9 @@ extension ShareUploadCoordinator: URLSessionDataDelegate {
                 job.s3UploadUrl = nil
             }
         }
+        // Finalize/re-upload promptly — covers the foreground-reopen case where
+        // urlSessionDidFinishEvents is never called.
+        Task { @MainActor in await self.drainInbox() }
     }
 
     nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
@@ -207,7 +264,7 @@ extension ShareUploadCoordinator: URLSessionDataDelegate {
         // done so it doesn't suspend us mid-write.
         Task { @MainActor in
             await self.drainInbox()
-            self.callBackgroundCompletionHandler()
+            self.releaseBackgroundCompletionHandler()
         }
     }
 }

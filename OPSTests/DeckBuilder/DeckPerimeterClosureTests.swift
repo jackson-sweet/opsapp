@@ -165,4 +165,40 @@ final class DeckPerimeterClosureTests: XCTestCase {
         XCTAssertEqual(data.openEndpointCount, 2)
         XCTAssertFalse(data.isClosed)
     }
+
+    func testOpenEndpointCount_sumsLooseEndsAcrossLevels() {
+        // Multi-level geometry lives in `levels`, not the top-level arrays.
+        // A closed level contributes 0; an open level contributes its loose ends.
+        var closedLevel = DeckLevel(name: "Closed")
+        closedLevel.vertices = [
+            DeckVertex(id: "c1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "c2", position: CGPoint(x: 100, y: 0)),
+            DeckVertex(id: "c3", position: CGPoint(x: 100, y: 100)),
+            DeckVertex(id: "c4", position: CGPoint(x: 0, y: 100)),
+        ]
+        closedLevel.edges = [
+            DeckEdge(id: "ce1", startVertexId: "c1", endVertexId: "c2"),
+            DeckEdge(id: "ce2", startVertexId: "c2", endVertexId: "c3"),
+            DeckEdge(id: "ce3", startVertexId: "c3", endVertexId: "c4"),
+            DeckEdge(id: "ce4", startVertexId: "c4", endVertexId: "c1"),
+        ]
+
+        var openLevel = DeckLevel(name: "Open")
+        openLevel.vertices = [
+            DeckVertex(id: "o1", position: CGPoint(x: 0, y: 200)),
+            DeckVertex(id: "o2", position: CGPoint(x: 100, y: 200)),
+            DeckVertex(id: "o3", position: CGPoint(x: 100, y: 300)),
+        ]
+        openLevel.edges = [
+            DeckEdge(id: "oe1", startVertexId: "o1", endVertexId: "o2"),
+            DeckEdge(id: "oe2", startVertexId: "o2", endVertexId: "o3"),
+        ]
+
+        var data = DeckDrawingData()
+        data.levels = [closedLevel, openLevel]
+
+        // Top-level arrays empty; the count must read through `levels`.
+        // Closed level → 0; open level → o1 and o3 (degree 1) → 2.
+        XCTAssertEqual(data.openEndpointCount, 2)
+    }
 }

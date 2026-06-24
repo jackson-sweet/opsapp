@@ -793,13 +793,20 @@ struct DeckDrawingData: Codable {
     /// that won't render almost always has a small, nameable number of unjoined
     /// ends, and telling the user exactly how many turns a dead-end into a fix.
     var openEndpointCount: Int {
-        guard !vertices.isEmpty else { return 0 }
+        // Use allVertices/allEdges so the count is correct in BOTH single-level
+        // (top-level vertices/edges) and multi-level designs (geometry lives in
+        // `levels`, top-level arrays empty). Reading only the top-level arrays
+        // made multi-level always report 0, so the actionable 3D-tab message
+        // could never name the open ends there.
+        let countVertices = allVertices
+        let countEdges = allEdges
+        guard !countVertices.isEmpty else { return 0 }
         var degree: [String: Int] = [:]
-        for edge in edges {
+        for edge in countEdges {
             degree[edge.startVertexId, default: 0] += 1
             degree[edge.endVertexId, default: 0] += 1
         }
-        return vertices.reduce(0) { $0 + ((degree[$1.id] ?? 0) == 2 ? 0 : 1) }
+        return countVertices.reduce(0) { $0 + ((degree[$1.id] ?? 0) == 2 ? 0 : 1) }
     }
 
     var isClosed: Bool {

@@ -42,10 +42,26 @@ struct ShareSessionBridge: Codable {
     let editableProjects: [ShareProjectRef]
     /// When this snapshot was written.
     let updatedAt: Date
+    /// Short-lived Firebase ID token used ONLY by the extension to authenticate
+    /// its best-effort background POST to the share-photo endpoint (the
+    /// instant-even-if-OPS-is-closed path). Optional: when absent/expired the
+    /// extension just queues and the app uploads on next open. The app always has
+    /// its own fresh token, so the queue-drain backstop never depends on this.
+    var idToken: String?
+    /// Absolute expiry of `idToken`.
+    var tokenExpiresAt: Date?
 
     /// True when there is a usable signed-in session.
     var hasSession: Bool {
         !userId.isEmpty && !companyId.isEmpty
+    }
+
+    /// True when the bridged token has comfortable life left for the extension to
+    /// presign-free POST. A 2-minute skew avoids starting a transfer with a token
+    /// about to die.
+    var isTokenUsable: Bool {
+        guard let idToken, let tokenExpiresAt, !idToken.isEmpty else { return false }
+        return tokenExpiresAt.timeIntervalSinceNow > 120
     }
 }
 

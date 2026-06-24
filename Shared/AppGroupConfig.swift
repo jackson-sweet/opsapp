@@ -25,6 +25,11 @@ enum AppGroupConfig {
     /// (`co.opsapp.ops`) so it sorts under the same App ID family in the portal.
     static let identifier = "group.co.opsapp.ops"
 
+    /// Background `URLSession` identifier the extension uses to POST a shared
+    /// photo to the ops-web share-photo endpoint — iOS keeps the transfer running
+    /// after the share sheet closes (the instant-even-if-OPS-is-closed path).
+    static let backgroundSessionIdentifier = "co.opsapp.ops.OPS.ShareExtension.upload"
+
     /// Darwin notification posted by the extension after it enqueues work, so a
     /// foregrounded app can drain immediately instead of waiting for the next
     /// launch. Darwin notifications carry no payload — they are a pure "wake up".

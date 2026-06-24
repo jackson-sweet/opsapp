@@ -696,7 +696,7 @@ class ProjectNotesViewModel: ObservableObject {
                     companyId: companyId,
                     type: "mention",
                     title: "\(authorName) mentioned you",
-                    body: "\"\(preview)\" on \(projectName)",
+                    body: preview.isEmpty ? "on \(projectName)" : "\"\(preview)\" on \(projectName)",
                     projectId: projectId,
                     noteId: noteId,
                     expenseId: nil,
@@ -752,7 +752,14 @@ class ProjectNotesViewModel: ObservableObject {
 
         let authorName = allTeamMembers.first(where: { $0.id == currentUserId })?.fullName ?? "A team member"
         let firstImageUrl = attachmentURLs.first
-        let preview = noteText.count > 100 ? String(noteText.prefix(100)) + "..." : noteText
+        // Photo-only posts read "added a photo" (was "added a note" with an empty
+        // "" body — the quotation-marks bug); a caption/text is carried through.
+        let copy = NoteActivityNotificationCopy(
+            authorName: authorName,
+            noteText: noteText,
+            photoCount: attachmentURLs.count,
+            projectName: project.title
+        )
         let notificationRepo = NotificationRepository()
 
         // 1. Create in-app notifications in Supabase for each recipient
@@ -762,8 +769,8 @@ class ProjectNotesViewModel: ObservableObject {
                     userId: recipientId,
                     companyId: companyId,
                     type: "project_note",
-                    title: "\(authorName) added a note",
-                    body: "\"\(preview)\" on \(project.title)",
+                    title: copy.title,
+                    body: copy.body,
                     projectId: projectId,
                     noteId: noteId,
                     expenseId: nil,
@@ -782,6 +789,7 @@ class ProjectNotesViewModel: ObservableObject {
                 userIds: recipientIds,
                 authorName: authorName,
                 notePreview: noteText,
+                photoCount: attachmentURLs.count,
                 projectName: project.title,
                 projectId: projectId,
                 noteId: noteId,
@@ -790,5 +798,28 @@ class ProjectNotesViewModel: ObservableObject {
         } catch {
             print("[PROJECT NOTES] Failed to send push note-added notification: \(error)")
         }
+    }
+}
+
+/// OPS-voice copy for a project note/photo activity notification. Photo-only
+/// posts read "added a photo" (or "added N photos"); text-only posts read
+/// "added a note". The body carries the caption/text when present and never
+/// renders an empty "" — the bug where a photo-only post notified with just
+/// quotation marks.
+private struct NoteActivityNotificationCopy {
+    let title: String
+    let body: String
+
+    init(authorName: String, noteText: String, photoCount: Int, projectName: String) {
+        let trimmed = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let preview = trimmed.count > 100 ? String(trimmed.prefix(100)) + "..." : trimmed
+        let action: String
+        if photoCount > 0 {
+            action = photoCount == 1 ? "added a photo" : "added \(photoCount) photos"
+        } else {
+            action = "added a note"
+        }
+        self.title = "\(authorName) \(action)"
+        self.body = preview.isEmpty ? "on \(projectName)" : "\"\(preview)\" on \(projectName)"
     }
 }

@@ -588,6 +588,7 @@ struct PINGatedView: View {
     @ObservedObject var pinManager: SimplePINManager
     @ObservedObject var appState: AppState
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
+    @EnvironmentObject private var updateGate: AppUpdateGate
     let dataController: DataController
     let locationManager: LocationManager
 
@@ -596,8 +597,8 @@ struct PINGatedView: View {
     @State private var unassignedUsers: [UnassignedUser] = []
     @State private var hasCheckedForUnassignedRoles = false
 
-    // State for app messages
-    @State private var activeAppMessage: AppMessageDTO?
+    // State for app messages — blocking messages render from the root gate;
+    // this view shows the role-aware dismissable overlay via `updateGate`.
     @State private var hasCheckedForAppMessage = false
 
     // State for task creation success message
@@ -658,16 +659,10 @@ struct PINGatedView: View {
 
     var body: some View {
         Group {
-            // Check for blocking app message first (mandatory updates, etc.)
-            if let message = activeAppMessage, !(message.dismissable ?? true) {
-                // Non-dismissable message blocks the entire app
-                AppMessageView(
-                    message: message,
-                    onDismiss: nil
-                )
-            }
+            // Blocking app messages (force-update / maintenance walls) render at
+            // the app root (OPSApp) so they reach users before sign-in.
             // Check subscription lockout next
-            else if subscriptionManager.shouldShowLockout {
+            if subscriptionManager.shouldShowLockout {
                 SubscriptionLockoutView()
                     .environmentObject(subscriptionManager)
                     .environmentObject(dataController)
@@ -899,12 +894,12 @@ struct PINGatedView: View {
                     .transition(.opacity)
                 }
 
-                // Dismissable app message overlay
-                if let message = activeAppMessage, message.dismissable ?? true {
+                // Dismissable app message overlay (role-aware, post-auth)
+                if let message = updateGate.dismissableMessage {
                     AppMessageView(
                         message: message,
                         onDismiss: {
-                            activeAppMessage = nil
+                            updateGate.dismiss(message)
                         }
                     )
                     .zIndex(4)
@@ -921,7 +916,7 @@ struct PINGatedView: View {
                 }
             }
                 .animation(OPSStyle.Animation.standard, value: showUnassignedRolesOverlay)
-                .animation(OPSStyle.Animation.standard, value: activeAppMessage?.id)
+                .animation(OPSStyle.Animation.standard, value: updateGate.dismissableMessage?.id)
                 .animation(OPSStyle.Animation.standard, value: showPermissionChangeOverlay)
                 .onReceive(NotificationCenter.default.publisher(for: .permissionScopeContracted)) { _ in
                     withAnimation(OPSStyle.Animation.standard) {
@@ -931,10 +926,12 @@ struct PINGatedView: View {
             }
         }
         .task {
-            // Check for app messages on view load (only once per session)
+            // Post-auth refresh: re-evaluate with the user's role known so
+            // role-targeted messages resolve. Blocking messages already show
+            // from the root gate. Runs once per session.
             if !hasCheckedForAppMessage {
                 hasCheckedForAppMessage = true
-                await checkForAppMessage()
+                await updateGate.refresh(userRole: dataController.currentUser?.role, force: true)
             }
         }
         // Deep-link resume trigger: when the user unlocks their PIN, any
@@ -1102,37 +1099,6 @@ struct PINGatedView: View {
         DebugLogger.shared.log("Bug report triggered via shake", level: .info, category: "BugReport")
     }
 
-    /// Check for active app messages and filter by user role
-    private func checkForAppMessage() async {
-        print("[APP_MESSAGE] 🔍 Checking for active app messages...")
-
-        let service = AppMessageService()
-
-        guard let message = await service.fetchActiveMessage() else {
-            print("[APP_MESSAGE] ❌ No active message found")
-            return
-        }
-
-        print("[APP_MESSAGE] ✅ Found message: \(message.title ?? "No title")")
-        print("[APP_MESSAGE]   - ID: \(message.id)")
-        print("[APP_MESSAGE]   - Type: \(message.messageType ?? "unknown")")
-        print("[APP_MESSAGE]   - Dismissable: \(message.dismissable ?? true)")
-        print("[APP_MESSAGE]   - Target users: \(message.targetUserTypes ?? [])")
-
-        // Check if message should be shown to this user's role
-        let userRole = dataController.currentUser?.role
-        print("[APP_MESSAGE]   - Current user role: \(String(describing: userRole))")
-
-        guard service.shouldShowMessage(message, forUserRole: userRole) else {
-            print("[APP_MESSAGE] ⚠️ Message not targeted at user role: \(String(describing: userRole))")
-            return
-        }
-
-        print("[APP_MESSAGE] 🎯 Showing message to user")
-        await MainActor.run {
-            activeAppMessage = message
-        }
-    }
 }
 
 #Preview {

@@ -35,6 +35,7 @@ struct OPSApp: App {
     @StateObject private var subscriptionManager = SubscriptionManager.shared
     @StateObject private var variantManager = OnboardingVariantManager.shared
     @StateObject private var permissionStore = PermissionStore.shared
+    @StateObject private var updateGate = AppUpdateGate()
 
     // Create the model container for SwiftData.
     // Schema is driven by the LATEST VersionedSchema (currently `OPSSchemaV9`)
@@ -124,6 +125,7 @@ struct OPSApp: App {
                 .environmentObject(subscriptionManager)
                 .environmentObject(variantManager)
                 .environmentObject(permissionStore)
+                .environmentObject(updateGate)
                 .onAppear {
                     // Check if this is a fresh install
                     if !UserDefaults.standard.bool(forKey: "has_launched_before") {
@@ -252,6 +254,11 @@ struct OPSApp: App {
                 .onChange(of: scenePhase) { oldPhase, newPhase in
                     switch newPhase {
                     case .active:
+                        // Update Gate: re-check on every foreground (throttled to
+                        // once/60s) so a freshly-published force-update reaches
+                        // users on resume, not only on a full relaunch.
+                        Task { await updateGate.refresh(userRole: dataController.currentUser?.role, force: false) }
+
                         // Re-link OneSignal on every foreground return to ensure
                         // the device is registered for push notifications.
                         // OneSignal.login() is idempotent — safe to call repeatedly.
@@ -339,6 +346,21 @@ struct OPSApp: App {
                     guard url.scheme == "https" else { return }
                     handleUniversalLink(url)
                 }
+                // MARK: - Update Gate (force/optional update + pre-auth kill-switch)
+                .task {
+                    // Cold-launch check. Runs at the root before sign-in so a
+                    // blocking force-update reaches users even if a bug broke login.
+                    await updateGate.refresh(userRole: dataController.currentUser?.role, force: true)
+                }
+                .overlay {
+                    // A blocking (non-dismissable) message covers the entire app —
+                    // above login, onboarding, tabs, everything.
+                    if let blocking = updateGate.blockingMessage {
+                        AppMessageView(message: blocking, onDismiss: nil)
+                            .transition(.opacity)
+                    }
+                }
+                .animation(OPSStyle.Animation.standard, value: updateGate.blockingMessage?.id)
         .modelContainer(sharedModelContainer)
     }
 

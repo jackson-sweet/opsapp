@@ -35,6 +35,22 @@ The OPS iOS app contains a full deck designer (`OPS/DeckBuilder/`, 73 Swift file
 
 ---
 
+## 2a. Platforms (locked 2026-06-24)
+
+**Apple-first, all three from the start, shipped in sequence.** OPS Decks targets **iPhone, iPad, and Mac** — designed for all three now (adaptive layouts), built on the shared `DeckKit` package + SwiftUI as one codebase, and **shipped iPhone → iPad → Mac** (one form factor polished at a time, no simultaneous-launch crunch). The platforms map to the workflow:
+- **iPhone** — field capture on site (AR measure, photos, quick edits).
+- **iPad** — field + design; the drawing canvas shines with **Apple Pencil** (a real UX advantage for deck drawing).
+- **Mac** — the desk/office power surface: structural editor, multi-sheet permit plan sets, calc reports, as-built review on a big screen.
+
+**Platform constraints baked into the architecture:**
+- **AR is iPhone/iPadOS-only** — macOS has no ARKit (no world-tracking camera). AR capture is hidden on Mac; Mac uses manual entry / import. Guard AR code with `#if os(iOS)`.
+- **SceneKit, SwiftUI, SwiftData, PDFKit** are cross-Apple — the 3D viewer, canvas, engines, and drawing/PDF output run on all three.
+- **DeckKit + the engines are platform-agnostic logic;** every platform-specific surface (AR, scene/window management, some input handling) lives in the app targets behind the seams.
+
+**Android = future Kotlin port (not in scope; architecture preserves it).** Android is a separate, later front-end build (Kotlin/Compose UI, ARCore for ARKit, an Android 3D engine for SceneKit). We deliberately do **not** build a cross-platform engine core now — that would discard the reason the carve-out is cheap (reusing existing Swift) and slow Apple delivery. The **pure engines + code-rules-as-data-packages** design keeps the eventual port cheap: the engine logic is mechanical to re-implement in Kotlin and verifiable against the same test fixtures, and the code packages are reused as-is.
+
+---
+
 ## 3. Verified ground truth (live Supabase + code, 2026-06-24)
 
 **`deck_designs` table** (the spine — one row per deck, fully self-contained):

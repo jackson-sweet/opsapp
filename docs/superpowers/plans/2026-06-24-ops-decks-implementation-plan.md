@@ -8,6 +8,8 @@
 
 **Tech Stack:** Swift / SwiftUI / SwiftData, SceneKit (3D) + ARKit (measure), Vision (OCR), Firebase Auth, Supabase (sync + code packages), RevenueCat + StoreKit 2 (billing), PDFKit/Core Graphics (drawings). iOS build: `xcodebuild -scheme OPS -destination 'generic/platform=iOS'`; tests on the iPhone 17 / OS 26.5 simulator.
 
+**Platforms (locked 2026-06-24):** **iPhone + iPad + Mac** — one shared `DeckKit` + adaptive SwiftUI, designed for all three now, shipped **iPhone → iPad → Mac**. AR is **iPhone/iPadOS-only** (no ARKit on Mac → manual/import fallback, guard `#if os(iOS)`). Workflow split: iPhone = field capture, iPad = design (Apple Pencil), Mac = desk/engineering/permits. **Android** is a future Kotlin/Compose + ARCore port — not built now; the pure engines + data-driven code packages keep it cheap (no cross-platform core today).
+
 ---
 
 ## The document set
@@ -56,6 +58,7 @@ Each phase ships standalone value; P1–P2 fund the long engineering tail.
 - **Compliance posture (locked):** objective negative claims only ("no code failures detected," never "safe/guaranteed"), jurisdiction-selectable, downloadable versioned code-rule packages (Supabase-delivered, offline-cached, updatable without an App Store release, stamped "current to [edition]"), disclaimer + licensed-engineer recommendation, out-of-envelope → "requires a licensed engineer," PE-stamp workflow. See contract §6 + roadmap §7.
 - **Schema discipline:** one `drawing_data` blob, versioned, additive, backward-decodable — an unknown/failed sub-block must never fail the whole-design decode. LIGHT preserves blocks it can't render (never strips). Make `DeckDesign.version` live.
 - **Engines are pure, table-driven, offline, unit-tested** (the `StairCalculator` precedent). All sizing/compliance runs on-device against bundled/cached code packages — no network round-trip.
+- **Platforms:** all surfaces are built **platform-agnostic in `DeckKit` + adaptive SwiftUI** so iPhone/iPad/Mac share one codebase; AR lives behind `#if os(iOS)` (no Mac AR). Design for all three from the start; ship iPhone → iPad → Mac. Keep every engine pure + platform-free so a future Android (Kotlin/Compose + ARCore) port re-implements only the UI/3D/AR layer.
 - **Cost prerequisites:** **Supabase → Pro ($25/mo) before any standalone customer data lands** (no backups on free tier today). Apple 15% (<$1M, SBP)/30%; RevenueCat free <~$2.5k/mo then ~1%. DWG/DXF export carries unverified third-party cost — flag before committing.
 - **Parallel-work hazard:** the in-flight deck-overhaul Drops 1–6 touch the same `DeckBuilder/` files. **Sequence: land the current Drop, then do the Phase 1 package extraction as one coherent branch, then continue.** Coordinate against sibling sessions before extracting (memory: shared-tree branch-switch hazard).
 - **Cross-phase consistency:** reviewed and reconciled 2026-06-24 — PermitMeta (P1-owned, incl. `disclaimerAcknowledgedAt`), `JurisdictionDescriptor` superset (P1-owned), the engine-result envelope + `MemberSizingResult` (P2-owned), `TerrainModel` (P2-owned, P4 fills grade), `CodePackageLoaderError` (P1-owned). The architecture contract is authoritative on any residual drift.

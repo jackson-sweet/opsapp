@@ -89,14 +89,7 @@ struct TaskBadge: View {
             .lineLimit(1)
             .padding(.horizontal, size.paddingH)
             .padding(.vertical, size.paddingV)
-            .background(
-                RoundedRectangle(cornerRadius: size.cornerRadius)
-                    .fill(color.opacity(0.12))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: size.cornerRadius)
-                    .stroke(color, lineWidth: size.borderWidth)
-            )
+            .frostedBadgeFill(color, cornerRadius: size.cornerRadius, lineWidth: size.borderWidth)
             .opacity(faded ? 0.4 : 1.0)
     }
 }
@@ -115,13 +108,32 @@ struct StatusBadgePill: View {
             .lineLimit(1)
             .padding(.horizontal, size.paddingH)
             .padding(.vertical, size.paddingV)
+            .frostedBadgeFill(color, cornerRadius: size.cornerRadius, lineWidth: size.borderWidth)
+    }
+}
+
+extension View {
+    /// Frosted-glass badge fill. A material backdrop blurs whatever sits behind
+    /// the badge — e.g. an overlapping card title — tinted with the badge color
+    /// and finished with the hairline border. Replaces the old flat low-opacity
+    /// fill so badges read cleanly over content and titles no longer need to
+    /// truncate to avoid them. `.ultraThinMaterial` honors Reduce Transparency
+    /// automatically (falls back to an opaque surface).
+    func frostedBadgeFill(_ tint: Color, cornerRadius: CGFloat, lineWidth: CGFloat = OPSStyle.Layout.Border.standard) -> some View {
+        self
+            // Color wash sits in front of the material (tints the frost).
             .background(
-                RoundedRectangle(cornerRadius: size.cornerRadius)
-                    .fill(color.opacity(0.12))
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(tint.opacity(0.12))
+            )
+            // Material is the backmost layer, so it blurs the content behind the badge.
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(.ultraThinMaterial)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: size.cornerRadius)
-                    .stroke(color, lineWidth: size.borderWidth)
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(tint, lineWidth: lineWidth)
             )
     }
 }

@@ -187,10 +187,9 @@ Call `CallDirectoryRefresher.refresh(from: allOpportunities)` wherever the pipel
 These are done once, in Xcode + the developer portal (a few minutes), then the code above compiles and ships:
 
 1. **Apple Developer portal**
-   - Register an **App Group** (e.g. `group.co.opsapp.ops`).
-   - Create an **App ID** for the extension (e.g. `co.opsapp.ops.CallDirectory`) with the App Groups capability.
-   - Add the App Group capability to the **main app's** App ID too.
-   - Regenerate/automatic-manage provisioning profiles for both.
+   - ✅ **App Group already exists** — `group.co.opsapp.ops`, already on the main app (in `OPS.entitlements`, from the share-extension work). `CallDirectoryStore.appGroupID` is already set to it. Nothing to do here.
+   - Create an **App ID** for the extension (e.g. `co.opsapp.ops.CallDirectory`) and check the **App Groups** capability, selecting the existing `group.co.opsapp.ops`.
+   - Regenerate/automatic-manage the extension's provisioning profile.
 2. **Xcode**
    - File → New → Target → **Call Directory Extension** → name `OPSCallDirectory`, bundle id `co.opsapp.ops.CallDirectory`.
    - Replace the generated `CallDirectoryHandler.swift` with §3 above.

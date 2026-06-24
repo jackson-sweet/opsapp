@@ -1,6 +1,6 @@
 # Call Directory caller-ID — "OPS lead: Jane" on the incoming-call screen
 
-**Status:** Code ready to drop in. Blocked only on Apple Developer portal provisioning + a real-device test (the externally-gated piece flagged in feature 154cb8a3). This doc is the complete package: the extension is delivered as source + a precise checklist rather than committed as a live Xcode target, because adding a target hand-edits the shared `OPS.xcodeproj` (risky for parallel sessions) and the extension can't sign/function without the App Group + App IDs from the OPS Apple Developer account.
+**Status:** ✅ **Built and committed to the branch.** The `OPSCallDirectory` app-extension target + all code are in the project and the whole app builds clean (`generic/platform=iOS`, `CODE_SIGNING_ALLOWED=NO`) with `OPSCallDirectory.appex` compiled, Info.plist processed, and embedded into OPS via the Embed Foundation Extensions phase. Canonical code lives in the repo now (this doc's source listings are reference); the target mirrors the existing `OPSShareExtension`. **Remaining (needs the OPS Apple Developer account + a device):** register the extension's App ID and run it on a real iPhone — see the checklist at the bottom. Until then the feature is dormant (its Settings toggle defaults off).
 
 ## What the user gets
 
@@ -121,7 +121,7 @@ import CallKit
 
 enum CallDirectoryRefresher {
     /// MUST match the extension target's bundle identifier.
-    static let extensionID = "co.opsapp.ops.CallDirectory"
+    static let extensionID = "co.opsapp.ops.OPS.CallDirectory"
 
     /// Toggle that mirrors the Settings switch.
     @inline(__always) static var isEnabled: Bool {
@@ -138,7 +138,7 @@ enum CallDirectoryRefresher {
             return .init(number: number, label: "OPS lead: \(name)")
         }
         CallDirectoryStore.save(entries)
-        CXCallDirectoryManager.shared.reloadExtension(withIdentifier: extensionID) { error in
+        CXCallDirectoryManager.sharedInstance.reloadExtension(withIdentifier: extensionID) { error in
             if let error { print("[CALL_DIR] reload failed: \(error)") }
         }
     }
@@ -146,13 +146,13 @@ enum CallDirectoryRefresher {
     /// Clear the directory (Settings toggle off).
     static func disable() {
         CallDirectoryStore.save([])
-        CXCallDirectoryManager.shared.reloadExtension(withIdentifier: extensionID, completionHandler: nil)
+        CXCallDirectoryManager.sharedInstance.reloadExtension(withIdentifier: extensionID, completionHandler: nil)
     }
 
     /// Whether the user has enabled OPS under Settings → Phone → Call Blocking
     /// & Identification. Drive an in-app "turn it on" hint from this.
     static func fetchEnabledStatus(_ completion: @escaping (CXCallDirectoryManager.EnabledStatus) -> Void) {
-        CXCallDirectoryManager.shared.getEnabledStatusForExtension(withIdentifier: extensionID) { status, _ in
+        CXCallDirectoryManager.sharedInstance.getEnabledStatusForExtension(withIdentifier: extensionID) { status, _ in
             DispatchQueue.main.async { completion(status) }
         }
     }
@@ -188,15 +188,9 @@ These are done once, in Xcode + the developer portal (a few minutes), then the c
 
 1. **Apple Developer portal**
    - ✅ **App Group already exists** — `group.co.opsapp.ops`, already on the main app (in `OPS.entitlements`, from the share-extension work). `CallDirectoryStore.appGroupID` is already set to it. Nothing to do here.
-   - Create an **App ID** for the extension (e.g. `co.opsapp.ops.CallDirectory`) and check the **App Groups** capability, selecting the existing `group.co.opsapp.ops`.
+   - Create an **App ID** for the extension (e.g. `co.opsapp.ops.OPS.CallDirectory`) and check the **App Groups** capability, selecting the existing `group.co.opsapp.ops`.
    - Regenerate/automatic-manage the extension's provisioning profile.
-2. **Xcode**
-   - File → New → Target → **Call Directory Extension** → name `OPSCallDirectory`, bundle id `co.opsapp.ops.CallDirectory`.
-   - Replace the generated `CallDirectoryHandler.swift` with §3 above.
-   - Add `CallDirectoryStore.swift` (§2) to **both** the app and extension targets (Target Membership).
-   - Add `CallDirectoryRefresher.swift` (§4) + the `PhoneNumber` extension (§1) to the **app** target.
-   - On **both** targets: Signing & Capabilities → **App Groups** → check `group.co.opsapp.ops`.
-   - Set `CallDirectoryStore.appGroupID` and `CallDirectoryRefresher.extensionID` to the real values.
+2. **Xcode** — ✅ **already done in the project** (target `OPSCallDirectory`, bundle id `co.opsapp.ops.OPS.CallDirectory`, files wired, App Group entitlement set on the extension, embedded in the app). The only Xcode action left is to confirm automatic signing picks up the new extension App ID once it's registered in step 1 (it will, with `CODE_SIGN_STYLE = Automatic`).
 3. **Test on a real iPhone**
    - Build/run on device, enable OPS under Settings → Phone → Call Blocking & Identification.
    - Have a number that matches a lead call the phone → the call screen should read "OPS lead: <name>".

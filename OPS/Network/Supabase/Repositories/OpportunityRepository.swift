@@ -138,6 +138,16 @@ class OpportunityRepository {
             .value
     }
 
+    /// Hard-delete an activity row. Used to UNDO an auto-logged call (the
+    /// activities table has no soft-delete column). Company-scoped by RLS.
+    func deleteActivity(_ activityId: String) async throws {
+        try await client
+            .from("activities")
+            .delete()
+            .eq("id", value: activityId)
+            .execute()
+    }
+
     func createFollowUp(_ dto: CreateFollowUpDTO) async throws -> FollowUpDTO {
         try await client
             .from("follow_ups")

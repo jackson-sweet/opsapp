@@ -44,6 +44,7 @@ struct SettingsView: View {
         case manageTeam
         case taskTypes
         case inventorySettings
+        case pipelineSettings
 
         var id: String { rawValue }
     }
@@ -192,7 +193,7 @@ struct SettingsView: View {
                             // Operations section — workflow rules. Bug 4014b472 moved these out
                             // of BUSINESS: task taxonomy, scheduling, project review rules, and
                             // inventory are app-behavior config, not company identity.
-                            if isAdminOrOffice || permissionStore.can("catalog.view") {
+                            if isAdminOrOffice || permissionStore.can("catalog.view") || permissionStore.can("pipeline.manage") {
                                 settingsSection(title: "OPERATIONS") {
                                     if isAdminOrOffice {
                                         settingsRow(
@@ -225,6 +226,19 @@ struct SettingsView: View {
                                     // Inventory screen (top "TRACKING" section) and
                                     // the Catalog Setup review step — both gated to
                                     // catalog.manage. No separate top-level row.
+
+                                    // Calls — around-call auto-log preference (154cb8a3),
+                                    // gated to pipeline managers.
+                                    if permissionStore.can("pipeline.manage") {
+                                        if isAdminOrOffice || permissionStore.can("catalog.view") {
+                                            sectionDivider
+                                        }
+                                        settingsRow(
+                                            icon: OPSStyle.Icons.phone,
+                                            title: "Calls",
+                                            action: { activeDestination = .pipelineSettings }
+                                        )
+                                    }
                                 }
                                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             }
@@ -623,6 +637,11 @@ struct SettingsView: View {
         case .inventorySettings:
             NavigationStack {
                 InventorySettingsView()
+                    .environmentObject(dataController)
+            }
+        case .pipelineSettings:
+            NavigationStack {
+                PipelineSettingsView()
                     .environmentObject(dataController)
             }
         }

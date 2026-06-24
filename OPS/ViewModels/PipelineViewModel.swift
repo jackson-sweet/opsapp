@@ -51,6 +51,9 @@ class PipelineViewModel: ObservableObject {
             let (oppDtos, txDtos) = try await (oppsTask, txTask)
             allOpportunities    = oppDtos.map { $0.toModel() }
             allStageTransitions = txDtos.map { $0.toModel() }
+            // Keep the incoming-call caller-ID directory fresh (154cb8a3).
+            // No-op unless the operator has the toggle on.
+            CallDirectoryRefresher.refresh(from: oppDtos)
         } catch {
             if !error.isCancellation {
                 print("[Pipeline] Load failed: \(error)")

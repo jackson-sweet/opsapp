@@ -36,4 +36,14 @@ enum PhoneNumber {
         guard let na = normalize(a), let nb = normalize(b) else { return false }
         return na == nb
     }
+
+    /// CallKit-ready E.164 as `Int64` (NANP-centric: a 10-digit number gets a `1`
+    /// country code). Used to feed the Call Directory extension. Returns `nil`
+    /// when the result isn't a plausible phone integer.
+    static func e164Int64(_ raw: String?) -> Int64? {
+        guard let digits = normalize(raw) else { return nil }
+        let withCountry = digits.count == 10 ? "1" + digits : digits
+        guard withCountry.count >= 11, withCountry.count <= 15 else { return nil }
+        return Int64(withCountry)
+    }
 }

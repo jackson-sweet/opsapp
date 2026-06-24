@@ -53,8 +53,9 @@ final class CallCaptureCoordinator: ObservableObject {
     private let shortcutQueueKey = "ops.callCapture.pendingShortcut"
 
     /// A queued shortcut older than this is dropped (the operator's intent has
-    /// gone stale). Matches the post-call prompt window.
-    nonisolated static let shortcutMaxAge: TimeInterval = 2 * 60
+    /// gone stale). Wide enough to survive a cold launch + login/PIN before the
+    /// surface is ready to present.
+    nonisolated static let shortcutMaxAge: TimeInterval = 5 * 60
 
     private init() {}
 
@@ -72,6 +73,16 @@ final class CallCaptureCoordinator: ObservableObject {
     /// Queue an App Shortcut capture for the next ready moment.
     func queueShortcutCapture() {
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: shortcutQueueKey)
+        print("[CALL_CAPTURE] App Shortcut queued")
+    }
+
+    /// Whether a fresh (un-expired) App Shortcut capture is waiting — peek WITHOUT
+    /// consuming, so the drain pump knows to keep retrying until the surface is
+    /// ready or the request expires.
+    var hasQueuedShortcut: Bool {
+        let ts = UserDefaults.standard.double(forKey: shortcutQueueKey)
+        guard ts > 0 else { return false }
+        return Date().timeIntervalSince1970 - ts <= Self.shortcutMaxAge
     }
 
     /// Consume a queued shortcut. Returns true only when one was queued AND is

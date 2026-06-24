@@ -46,6 +46,7 @@ struct MainTabView: View {
     // shared by the post-call prompt, the FAB, and the App Shortcut.
     @ObservedObject private var callCaptureCoordinator = CallCaptureCoordinator.shared
     @State private var userRole: UserRole? = nil // Track user role changes explicitly
+    @State private var capturePumpActive = false // around-call shortcut drain retry guard (154cb8a3)
 
     // member_joined push → AssignMemberRoleSheet state
     @State private var showAssignRoleSheet = false
@@ -924,15 +925,17 @@ struct MainTabView: View {
             // Around-call lead capture (154cb8a3) — if the operator just called
             // a lead from inside OPS and returned, offer to log it; and drain any
             // App Shortcut capture queued before the app was ready.
-            presentPostCallPromptIfNeeded()
-            drainQueuedCaptureIfNeeded()
+            pumpCaptureDrain()
         }
         // Around-call lead capture (154cb8a3): re-drain the capture pipeline the
-        // moment the PIN unlocks (the capture helpers defer while locked, and the
-        // 2-min shortcut TTL can lapse before the next foreground cycle).
+        // moment the PIN unlocks (the capture helpers defer while locked).
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OPSCaptureSurfaceUnlocked"))) { _ in
-            presentPostCallPromptIfNeeded()
-            drainQueuedCaptureIfNeeded()
+            pumpCaptureDrain()
+        }
+        // Re-drain once auth settles — an App Shortcut can queue during a cold
+        // launch before the session/permissions hydrate (154cb8a3).
+        .onChange(of: dataController.isAuthenticated) { _, authed in
+            if authed { pumpCaptureDrain() }
         }
         // When a capture sheet closes, surface anything that deferred behind it
         // (e.g. an App Shortcut shadowed by the post-call prompt) immediately,
@@ -963,8 +966,7 @@ struct MainTabView: View {
             CallStateObserver.shared.onForegroundCallEnded {
                 presentPostCallPromptIfNeeded()
             }
-            presentPostCallPromptIfNeeded()
-            drainQueuedCaptureIfNeeded()
+            pumpCaptureDrain()
 
             // Initialize user role
             userRole = dataController.currentUser?.role
@@ -1258,12 +1260,42 @@ struct MainTabView: View {
     /// The real gate is applied HERE — where permissions are loaded and the
     /// surface is unlocked — not in the AppIntent.
     private func drainQueuedCaptureIfNeeded() {
-        guard isCaptureSurfaceReady,
-              PermissionStore.shared.isFeatureEnabled("pipeline"),
-              PermissionStore.shared.can("pipeline.manage"),
-              CallCaptureCoordinator.shared.activeRequest == nil else { return }
+        guard CallCaptureCoordinator.shared.hasQueuedShortcut else { return }
+        let ready = isCaptureSurfaceReady
+        let feature = PermissionStore.shared.isFeatureEnabled("pipeline")
+        let manage = PermissionStore.shared.can("pipeline.manage")
+        let free = CallCaptureCoordinator.shared.activeRequest == nil
+        guard ready, feature, manage, free else {
+            print("[CALL_CAPTURE] drain deferred — ready=\(ready) pipeline=\(feature) manage=\(manage) free=\(free)")
+            return
+        }
         if CallCaptureCoordinator.shared.consumeQueuedShortcut() {
+            print("[CALL_CAPTURE] presenting App Shortcut capture")
             CallCaptureCoordinator.shared.present(.capture(.appShortcut))
+        }
+    }
+
+    /// Drive a queued App Shortcut capture to presentation as soon as the app is
+    /// ready. The shortcut's `perform()` only writes a UserDefaults flag and can
+    /// run out-of-process at an unpredictable time relative to launch, so a single
+    /// drain at onAppear/didBecomeActive can miss it (queued moments later) or run
+    /// before auth/permissions hydrate. Re-check for a short window until the
+    /// request presents or expires. Idempotent — safe to call from every trigger.
+    private func pumpCaptureDrain() {
+        presentPostCallPromptIfNeeded()
+        drainQueuedCaptureIfNeeded()
+        guard !capturePumpActive, CallCaptureCoordinator.shared.hasQueuedShortcut else { return }
+        capturePumpActive = true
+        Task { @MainActor in
+            defer { capturePumpActive = false }
+            var ticks = 0
+            while ticks < 20 { // ~10s
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                ticks += 1
+                drainQueuedCaptureIfNeeded()
+                if callCaptureCoordinator.activeRequest != nil { return }      // presented
+                if !CallCaptureCoordinator.shared.hasQueuedShortcut { return } // expired / consumed
+            }
         }
     }
 

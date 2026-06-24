@@ -66,7 +66,7 @@ final class ShareViewController: UIViewController {
 
     private func confirm(project: ShareProjectRef, bridge: ShareSessionBridge?, items: [NSExtensionItem]) {
         Task { @MainActor in
-            await self.stageAndUpload(project: project, bridge: bridge, items: items)
+            await self.stageAndQueue(project: project, bridge: bridge, items: items)
             self.model.confirmedTitle = project.title
             self.model.phase = .done
             ShareHaptics.success()
@@ -80,46 +80,34 @@ final class ShareViewController: UIViewController {
     /// if the bridged token is usable it presigns and starts a background S3
     /// upload; otherwise it leaves the job pending for the app to upload on its
     /// next drain. Posts a Darwin nudge so a foregrounded app drains immediately.
-    private func stageAndUpload(project: ShareProjectRef, bridge: ShareSessionBridge?, items: [NSExtensionItem]) async {
+    /// Downscales every shared image into the App Group inbox, appends a job to
+    /// the shared manifest, and nudges a running app to drain. The app uploads
+    /// each through its proven pipeline on next open / when back online — the
+    /// extension never uploads, so this works offline and needs no auth token.
+    private func stageAndQueue(project: ShareProjectRef, bridge: ShareSessionBridge?, items: [NSExtensionItem]) async {
         let fileNames = await ShareImageProcessor.stageImages(from: items)
-        Self.log.info("share: staged \(fileNames.count, privacy: .public) image(s) for project \(project.id, privacy: .public); session=\(bridge != nil, privacy: .public) tokenUsable=\(bridge?.isTokenUsable ?? false, privacy: .public)")
+        Self.log.info("share: staged \(fileNames.count, privacy: .public) image(s) for project \(project.id, privacy: .public); session=\(bridge != nil, privacy: .public)")
         guard !fileNames.isEmpty, let bridge else {
-            Self.log.error("share: nothing staged (or no session) — aborting upload")
+            Self.log.error("share: nothing staged (or no session) — aborting")
             return
         }
 
-        let folder = "projects/\(bridge.companyId)/\(project.id)"
-
         for fileName in fileNames {
             let jobId = (fileName as NSString).deletingPathExtension
-            var job = ShareUploadJob(
+            let job = ShareUploadJob(
                 id: jobId,
                 fileName: fileName,
                 projectId: project.id,
                 projectTitle: project.title,
                 companyId: bridge.companyId,
                 uploadedBy: bridge.userId,
-                createdAt: Date(),
-                state: .pendingPresign
+                createdAt: Date()
             )
-
-            if bridge.isTokenUsable,
-               let fileURL = job.fileURL,
-               let presigned = await SharePresignClient.presign(filename: fileName, folder: folder, idToken: bridge.idToken),
-               let uploadURL = URL(string: presigned.uploadUrl) {
-                job.s3PublicUrl = presigned.publicUrl
-                job.s3UploadUrl = presigned.uploadUrl
-                job.state = .uploadingS3
-                ShareUploadManifestStore.append(job)
-                ShareBackgroundUploader.shared.startUpload(fileURL: fileURL, uploadURL: uploadURL, jobId: jobId)
-                Self.log.info("share: job \(jobId, privacy: .public) presigned + background upload started")
-            } else {
-                // No usable token / offline / presign failed — the app uploads it.
-                ShareUploadManifestStore.append(job)
-                Self.log.info("share: job \(jobId, privacy: .public) queued pending (token unusable/offline/presign failed)")
-            }
+            ShareUploadManifestStore.append(job)
         }
+        Self.log.info("share: queued \(fileNames.count, privacy: .public) job(s) for the app to upload")
 
+        // Nudge a running app to drain immediately; otherwise it drains on next open.
         ShareDarwinNotifier.post()
     }
 

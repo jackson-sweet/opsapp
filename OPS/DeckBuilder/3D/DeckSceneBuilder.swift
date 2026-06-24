@@ -1108,8 +1108,13 @@ struct DeckSceneBuilder {
         let edgeLen = sqrt(edgeDx * edgeDx + edgeDz * edgeDz)
         guard edgeLen > 0 else { return }
 
-        let nx = -edgeDz / edgeLen
-        let nz = edgeDx / edgeLen
+        // Honor the stair flip toggle here too. The per-edge buildStairs path
+        // (see ~line 883) inverts BOTH perpendicular components on
+        // flipDirection; this connection path previously hardcoded the default
+        // side, so multi-level connecting stairs ignored the swap. Mirror it.
+        let rawN = (x: -edgeDz / edgeLen, z: edgeDx / edgeLen)
+        let nx = connection.stairConfig.flipDirection ? -rawN.x : rawN.x
+        let nz = connection.stairConfig.flipDirection ? -rawN.z : rawN.z
         let tx = edgeDx / edgeLen
         let tz = edgeDz / edgeLen
         let midX = (start3D.x + end3D.x) / 2

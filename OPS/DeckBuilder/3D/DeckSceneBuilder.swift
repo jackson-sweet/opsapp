@@ -1283,10 +1283,10 @@ struct DeckSceneBuilder {
         directionalLight.type = .directional
         directionalLight.color = UIColor.white
         directionalLight.intensity = 800
-        directionalLight.castsShadow = true
-        directionalLight.shadowMode = .deferred
-        directionalLight.shadowRadius = 3
-        directionalLight.shadowMapSize = CGSize(width: 1024, height: 1024)
+        // Shadows intentionally disabled. This is schematic CAD, not photoreal —
+        // cast shadows muddied structural member reads (posts, joists, stringers)
+        // and added nothing to comprehension. Deck Drop 1.
+        directionalLight.castsShadow = false
         let directionalNode = SCNNode()
         directionalNode.light = directionalLight
         directionalNode.eulerAngles = SCNVector3(-Float.pi / 4, Float.pi / 6, 0) // From above-left

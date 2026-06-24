@@ -552,7 +552,7 @@ private struct ProjectPhotosCarousel: View {
     var body: some View {
         // Canonical gallery list: synced project_photos ∪ legacy CSV, deduped.
         // @Query keeps it live as inbound/realtime sync lands teammates' photos.
-        let photos = project.mergedGalleryImageURLs(syncedPhotoURLs: syncedPhotos.map(\.url))
+        let photos = project.mergedGalleryImageURLs(syncedPhotoURLs: syncedPhotos.galleryURLs())
         let pending = imageSyncManager.currentInFlightUploads(for: project.id)
         // Split in-flight tiles into actively-uploading vs failed. The
         // UPLOADING badge counts only the spinners; failed tiles show

@@ -17,6 +17,28 @@
 import Foundation
 import SwiftData
 
+extension ProjectPhoto {
+    /// `project_photos.source` values that are NOT real gallery photos and must
+    /// never appear in the project photo carousel. Deck-builder 3D render
+    /// snapshots (`deck_design`) live under a separate `deck_designs/` S3 prefix
+    /// that isn't web-readable, so merging them into the gallery rendered them
+    /// as blank tiles. They belong in the Deck tab, not the photo strip.
+    static let nonGallerySources: Set<String> = ["deck_design"]
+
+    /// True when this row is a real, displayable gallery photo.
+    var isGalleryEligible: Bool {
+        deletedAt == nil && !ProjectPhoto.nonGallerySources.contains(source)
+    }
+}
+
+extension Sequence where Element == ProjectPhoto {
+    /// URLs of the gallery-eligible photos, in sequence order. Filters out
+    /// non-photo sources (e.g. deck renders) so they don't pollute the carousel.
+    func galleryURLs() -> [String] {
+        filter { $0.isGalleryEligible }.map { $0.url }
+    }
+}
+
 extension Project {
     /// Merge already-fetched synced photo URLs with the legacy CSV. Legacy
     /// order first (preserves the uploader's existing ordering), then any
@@ -45,7 +67,7 @@ extension Project {
             predicate: #Predicate { $0.projectId == pid && $0.deletedAt == nil },
             sortBy: [SortDescriptor(\.createdAt, order: .forward)]
         )
-        let urls = (try? context.fetch(descriptor))?.map { $0.url } ?? []
+        let urls = (try? context.fetch(descriptor))?.galleryURLs() ?? []
         return mergedGalleryImageURLs(syncedPhotoURLs: urls)
     }
 }

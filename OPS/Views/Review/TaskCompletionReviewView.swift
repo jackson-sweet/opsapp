@@ -366,20 +366,12 @@ struct TaskCompletionReviewView: View {
 
         switch direction {
         case .right:
-            // Complete — go through DataController so the change is saved,
-            // a SyncOperation is recorded, and the push fires immediately.
-            // Direct mutation was losing every swipe because autosave didn't
-            // fire before view dismissal and no outbound push was recorded.
-            Task {
-                do {
-                    try await dataController.updateTaskStatus(task: task, to: .completed)
-                    await MainActor.run {
-                        ToastCenter.shared.present(Feedback.Task.completed)
-                    }
-                } catch {
-                    print("[TASK_REVIEW] Failed to complete task: \(error)")
-                }
-            }
+            // Complete via the canonical path (saves, records a SyncOperation,
+            // pushes). Mirrors UnscheduledTaskReviewView.markTaskComplete: a
+            // realtime-race guard so a task already completed elsewhere doesn't
+            // re-fire the team notification storm, and a RETRY toast on failure
+            // instead of silently leaving the task active to reappear next time.
+            completeTask(task)
             NotificationCenter.default.post(name: Notification.Name("WizardTaskSwipedRight"), object: nil)
         case .left:
             // Skip — no changes
@@ -407,6 +399,47 @@ struct TaskCompletionReviewView: View {
         }
 
         checkCompletion()
+    }
+
+    /// Complete a task via the canonical DataController path with the same
+    /// rigor as `UnscheduledTaskReviewView.markTaskComplete`: a realtime-race
+    /// guard (bug adc0feb3) so a task already completed on another device
+    /// doesn't re-emit the team notification/push/analytics storm, the success
+    /// haptic deferred until the write actually resolves, and a persistent
+    /// RETRY toast on failure so a swipe that didn't persist isn't silently
+    /// counted as done (it would otherwise reappear in the next review stack
+    /// with no explanation).
+    private func completeTask(_ task: ProjectTask) {
+        if task.status == .completed {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            ToastCenter.shared.present(Feedback.Task.alreadyComplete(task.displayTitle))
+            return
+        }
+        Task {
+            do {
+                try await dataController.updateTaskStatus(task: task, to: .completed)
+                await MainActor.run {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    ToastCenter.shared.present(Feedback.Task.completed)
+                }
+            } catch {
+                print("[TASK_REVIEW] Failed to complete task: \(error)")
+                let capturedTask = task
+                await MainActor.run {
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    ToastCenter.shared.present(
+                        Toast(
+                            label: "// COULDN'T MARK COMPLETE — TRY AGAIN",
+                            tone: .error,
+                            autoDismissAfter: 0,
+                            action: ToastAction(label: "RETRY") {
+                                completeTask(capturedTask)
+                            }
+                        )
+                    )
+                }
+            }
+        }
     }
 
     private func checkCompletion() {

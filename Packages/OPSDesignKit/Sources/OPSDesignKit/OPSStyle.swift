@@ -96,6 +96,15 @@ public enum OPSStyle {
         public static let statusCompleted = opsColor("StatusCompleted")
         public static let statusClosed = opsColor("StatusClosed")
         public static let statusArchived = opsColor("StatusArchived")
+        public static let pipelineNewLead = Color(red: 0.416, green: 0.478, blue: 0.541)
+        public static let pipelineQualifying = Color(red: 0.435, green: 0.580, blue: 0.690)
+        public static let pipelineQuoting = Color(red: 0.486, green: 0.647, blue: 0.722)
+        public static let pipelineQuoted = Color(red: 0.749, green: 0.682, blue: 0.541)
+        public static let pipelineFollowUp = Color(red: 0.769, green: 0.659, blue: 0.408)
+        public static let pipelineNegotiation = Color(red: 0.792, green: 0.588, blue: 0.439)
+        public static let pipelineWon = Color(red: 0.616, green: 0.710, blue: 0.510)
+        public static let pipelineLost = Color(red: 0.710, green: 0.510, blue: 0.537)
+        public static let pipelineDiscarded = Color(red: 0.353, green: 0.369, blue: 0.400)
 
         // Mobile-bright status tag variants (outdoor glare set, per MOBILE.md).
         // Use on tags/badges that need to read in direct sunlight.
@@ -360,6 +369,7 @@ public enum OPSStyle {
         public static let smallButton = Font.custom("Mohave-Medium", size: 14)
         public static let smallButtonBold = Font.custom("Mohave-Medium", size: 14).weight(.bold)
         public static let buttonLarge = Font.custom("Mohave-SemiBold", size: 18)
+        public static let iconAction = Font.system(size: OPSStyle.Layout.IconSize.lg)
 
         // Compact UI labels (legacy Kosugi → remapped to JetBrains Mono)
         public static let miniLabel = Font.custom("JetBrainsMono-Regular", size: 10)
@@ -627,6 +637,23 @@ public enum OPSStyle {
         public static var spring:     SwiftUI.Animation { curve(0.300) }
         public static var springFast: SwiftUI.Animation { curve(0.200) }
     }
+
+#if canImport(UIKit)
+    public enum NavigationBarAppearance {
+        public static let textColor = UIColor(OPSStyle.Colors.text)
+        public static let secondaryTextColor = UIColor(OPSStyle.Colors.text2)
+        public static let inlineTitleFont = UIFont(name: "CakeMono-Light", size: 18)
+            ?? .systemFont(ofSize: 18, weight: .light)
+        public static let largeTitleFont = UIFont(name: "CakeMono-Light", size: 28)
+            ?? .systemFont(ofSize: 28, weight: .light)
+        public static let backLabelFont = UIFont(name: "JetBrainsMono-Regular", size: 13)
+            ?? .systemFont(ofSize: 13)
+        public static let backLabelKern = 0.6
+        public static let scrolledBackgroundColor = UIColor(red: 10.0 / 255.0, green: 10.0 / 255.0, blue: 10.0 / 255.0, alpha: 0.80)
+        public static let scrolledBackgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
+        public static let scrolledShadowColor = UIColor.white.withAlphaComponent(0.10)
+    }
+#endif
 
     // MARK: - Icons
     public enum Icons {

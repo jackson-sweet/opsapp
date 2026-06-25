@@ -161,4 +161,25 @@ extension PhotoAnnotation {
     func activeAuthorLayers() -> [MarkupLayer] {
         layers.filter { $0.isActive }.sorted { $0.zIndex < $1.zIndex }
     }
+
+    /// Real layers, or a single SYNTHESIZED layer for a legacy `annotation_url`-only
+    /// row (so a legacy overlay is treated as its original author's layer for
+    /// display, peer compositing, and author-scoped clear). The RPC's server-side
+    /// legacy-seed persists this shape the first time any layer is written.
+    func effectiveMarkupLayers() -> [MarkupLayer] {
+        if !layers.isEmpty { return layers }
+        guard let url = annotationURL,
+              !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+        return [MarkupLayer(
+            layerId: authorId,
+            authorId: authorId,
+            authorName: "",
+            overlayUrl: url,
+            strokeRef: nil,
+            visibleDefault: true,
+            zIndex: 0,
+            createdAt: createdAt,
+            updatedAt: updatedAt ?? createdAt
+        )]
+    }
 }

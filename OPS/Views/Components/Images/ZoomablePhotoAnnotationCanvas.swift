@@ -26,6 +26,11 @@ struct ZoomablePhotoAnnotationCanvas: UIViewRepresentable {
     let image: UIImage
     @Binding var drawing: PKDrawing
     @Binding var displayedCanvasSize: CGSize
+    /// Flattened composite of every visible PEER author's overlay (collaborative
+    /// markup). Rendered as a non-interactive base between the photo and the
+    /// current user's PencilKit canvas so a teammate's marks are visible — and
+    /// never overwritten. Nil for the legacy single-author flow / PhotoCommentViewer.
+    var peerOverlayImage: UIImage? = nil
 
     func makeUIView(context: Context) -> UIScrollView {
         let scrollView = UIScrollView()
@@ -49,6 +54,12 @@ struct ZoomablePhotoAnnotationCanvas: UIViewRepresentable {
         imageView.contentMode = .scaleAspectFit
         imageView.isUserInteractionEnabled = false
 
+        // Peer-overlay base — visible teammates' marks, NOT editable. Sits between
+        // the photo and the current user's canvas so peers stay in the base image.
+        let peerOverlayView = UIImageView(image: peerOverlayImage)
+        peerOverlayView.contentMode = .scaleAspectFit
+        peerOverlayView.isUserInteractionEnabled = false
+
         let canvas = PKCanvasView()
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
@@ -66,12 +77,15 @@ struct ZoomablePhotoAnnotationCanvas: UIViewRepresentable {
         canvas.isScrollEnabled = false
 
         container.addSubview(imageView)
+        container.addSubview(peerOverlayView)
         container.addSubview(canvas)
         scrollView.addSubview(container)
 
         context.coordinator.scrollView = scrollView
         context.coordinator.container = container
         context.coordinator.imageView = imageView
+        context.coordinator.peerOverlayView = peerOverlayView
+        context.coordinator.lastPeerOverlay = peerOverlayImage
         context.coordinator.canvas = canvas
 
         // Defer initial layout + tool picker until the scroll view has
@@ -89,6 +103,9 @@ struct ZoomablePhotoAnnotationCanvas: UIViewRepresentable {
 
         // Re-fit if the scroll bounds changed (rotation, sheet resize).
         context.coordinator.layoutForCurrentBounds()
+
+        // Crossfade the peer-overlay base when the visible set changes (toggle).
+        context.coordinator.updatePeerOverlay(peerOverlayImage)
 
         if context.coordinator.isInternalUpdate {
             context.coordinator.isInternalUpdate = false
@@ -112,7 +129,11 @@ struct ZoomablePhotoAnnotationCanvas: UIViewRepresentable {
         weak var scrollView: UIScrollView?
         weak var container: UIView?
         weak var imageView: UIImageView?
+        weak var peerOverlayView: UIImageView?
         weak var canvas: PKCanvasView?
+        /// Identity of the currently-shown peer overlay, so a re-render only
+        /// crossfades when the visible peer set actually changed.
+        var lastPeerOverlay: UIImage?
 
         private var toolPicker: PKToolPicker?
         var isInternalUpdate = false
@@ -156,6 +177,7 @@ struct ZoomablePhotoAnnotationCanvas: UIViewRepresentable {
 
             container.frame = CGRect(origin: .zero, size: fitted)
             imageView.frame = container.bounds
+            peerOverlayView?.frame = container.bounds
             canvas.frame = container.bounds
             parent.displayedCanvasSize = fitted
 
@@ -171,6 +193,23 @@ struct ZoomablePhotoAnnotationCanvas: UIViewRepresentable {
             frame.origin.x = max(0, (boundsSize.width - frame.size.width) / 2)
             frame.origin.y = max(0, (boundsSize.height - frame.size.height) / 2)
             container.frame = frame
+        }
+
+        /// Swap the peer-overlay base, crossfading only when it actually changed
+        /// (toggling a peer in the change-log sheet). Discovery beat — instant,
+        /// restrained. Honors Reduce Motion with a shorter opacity-only fade.
+        func updatePeerOverlay(_ image: UIImage?) {
+            guard let peerOverlayView else { return }
+            if image === lastPeerOverlay { return }
+            lastPeerOverlay = image
+            let duration = UIAccessibility.isReduceMotionEnabled ? 0.15 : 0.20
+            UIView.transition(
+                with: peerOverlayView,
+                duration: duration,
+                options: [.transitionCrossDissolve, .allowUserInteraction]
+            ) {
+                peerOverlayView.image = image
+            }
         }
 
         // MARK: UIScrollViewDelegate

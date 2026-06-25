@@ -7,6 +7,11 @@
 //  photo + canvas lives in ZoomablePhotoAnnotationCanvas (shared with
 //  PhotoCommentViewer's inline markup).
 //
+//  Collaborative markup (spec 2026-06-23): each author owns a layer. Peers'
+//  overlays composite as a non-editable base UNDER the current user's canvas
+//  (the #1 fix — a teammate's marks are visible and never overwritten). A
+//  change-log sheet lists every author with a per-viewer show/hide toggle.
+//
 
 import SwiftUI
 import PencilKit
@@ -29,17 +34,61 @@ struct PhotoAnnotationView: View {
     @State private var error: String? = nil
     @State private var displayedCanvasSize: CGSize = .zero
 
+    // MARK: Collaborative markup state
+    /// Flattened composite of every visible PEER layer — the non-editable base.
+    @State private var peerOverlayImage: UIImage? = nil
+    /// Per-viewer show/hide selections (local-only — never synced).
+    @State private var hiddenAuthorIds: Set<String> = []
+    @State private var showingChangeLog = false
+    @State private var didResolveOwnStroke = false
+    @State private var didFireArrivalHaptic = false
+
     init(photoURL: String, projectId: String, existingAnnotation: PhotoAnnotation? = nil) {
         self.photoURL = photoURL
         self.projectId = projectId
         self.existingAnnotation = existingAnnotation
         self._noteText = State(initialValue: existingAnnotation?.note ?? "")
 
-        // Restore drawing from local data if available
+        // Optimistic seed from the device-local drawing (fast path for the
+        // author's own device). The .task reconciles against the synced
+        // strokeRef when the canvas is otherwise empty (cross-device resume).
         if let data = existingAnnotation?.localDrawingData,
            let restoredDrawing = try? PKDrawing(data: data) {
             self._drawing = State(initialValue: restoredDrawing)
         }
+        self._hiddenAuthorIds = State(initialValue: existingAnnotation?.hiddenAuthorIds ?? [])
+    }
+
+    // MARK: - Derived layer state
+
+    private var currentUserId: String { dataController.currentUser?.id ?? "" }
+
+    /// Layers to reason about — real layers, or a synthesized legacy layer (see
+    /// PhotoAnnotation.effectiveMarkupLayers).
+    private var effectiveLayers: [MarkupLayer] {
+        existingAnnotation?.effectiveMarkupLayers() ?? []
+    }
+
+    private var ownLayer: MarkupLayer? {
+        effectiveLayers.first { $0.layerId == currentUserId }
+    }
+
+    /// Visible peers (active, not me, not locally hidden), in z-order.
+    private var peerLayers: [MarkupLayer] {
+        effectiveLayers
+            .filter { $0.layerId != currentUserId && $0.isActive && !hiddenAuthorIds.contains($0.authorId) }
+            .sorted { $0.zIndex < $1.zIndex }
+    }
+
+    /// Distinct active authors — drives the toolbar badge + change-log sheet.
+    private var activeAuthorLayers: [MarkupLayer] {
+        effectiveLayers.filter { $0.isActive }.sorted { $0.zIndex < $1.zIndex }
+    }
+
+    /// Only surface the change-log control when there's a collaborator to reason
+    /// about — a solo author never sees a trivial one-row sheet.
+    private var hasPeers: Bool {
+        effectiveLayers.contains { $0.layerId != currentUserId && $0.isActive }
     }
 
     var body: some View {
@@ -60,10 +109,12 @@ struct PhotoAnnotationView: View {
                             // markup behaviour). One-finger touches still
                             // route to PencilKit for drawing; the scroll
                             // view's pan only engages with two fingers.
+                            // The peer-overlay base layers UNDER the canvas.
                             ZoomablePhotoAnnotationCanvas(
                                 image: image,
                                 drawing: $drawing,
-                                displayedCanvasSize: $displayedCanvasSize
+                                displayedCanvasSize: $displayedCanvasSize,
+                                peerOverlayImage: peerOverlayImage
                             )
                             .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
                         } else if loadFailed {
@@ -84,6 +135,25 @@ struct PhotoAnnotationView: View {
         }
         .task {
             await loadImage()
+            await resolveOwnStrokeIfNeeded()
+            await recomputePeerOverlay()
+            fireArrivalHapticIfNeeded()
+        }
+        .onChange(of: hiddenAuthorIds) { _, newValue in
+            // Persist the per-viewer preference locally (never synced).
+            if let annotation = existingAnnotation {
+                annotation.hiddenAuthorIds = newValue
+                try? modelContext.save()
+            }
+            Task { await recomputePeerOverlay() }
+        }
+        .sheet(isPresented: $showingChangeLog) {
+            MarkupChangeLogSheet(
+                authorLayers: activeAuthorLayers,
+                changeLog: (existingAnnotation?.changeLog ?? []),
+                currentUserId: currentUserId,
+                hiddenAuthorIds: $hiddenAuthorIds
+            )
         }
     }
 
@@ -120,6 +190,40 @@ struct PhotoAnnotationView: View {
         }
     }
 
+    /// Resume the current user's own editable strokes from the synced stroke blob
+    /// when the local canvas is empty (e.g. a fresh device that never authored
+    /// here). Never overwrites a non-empty canvas — the local seed / live edits win.
+    private func resolveOwnStrokeIfNeeded() async {
+        guard !didResolveOwnStroke else { return }
+        didResolveOwnStroke = true
+        guard drawing.strokes.isEmpty,
+              let strokeRef = ownLayer?.strokeRef,
+              let restored = await MarkupStrokeStore.loadDrawing(strokeRef: strokeRef) else { return }
+        await MainActor.run {
+            if self.drawing.strokes.isEmpty { self.drawing = restored }
+        }
+    }
+
+    /// Flatten the visible peers' overlays into the non-editable base image.
+    private func recomputePeerOverlay() async {
+        let layers = peerLayers
+        guard !layers.isEmpty, let sourceSize = loadedImage?.size else {
+            await MainActor.run { self.peerOverlayImage = nil }
+            return
+        }
+        let composited = await MarkupOverlayCompositor.compositePeerOverlays(layers, sourceSize: sourceSize)
+        await MainActor.run { self.peerOverlayImage = composited }
+    }
+
+    /// A single light impact when entering markup that ALREADY carries a
+    /// collaborator's marks — earned ("someone else worked this photo"), not spam.
+    private func fireArrivalHapticIfNeeded() {
+        guard !didFireArrivalHaptic, hasPeers else { return }
+        didFireArrivalHaptic = true
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+    }
+
     // MARK: - Toolbar
 
     private var toolbar: some View {
@@ -130,6 +234,25 @@ struct PhotoAnnotationView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
             .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+
+            // Change-log / layers — only when a collaborator's marks are present.
+            if hasPeers {
+                Button(action: { showingChangeLog = true }) {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "square.stack.3d.up")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        Text("\(activeAuthorLayers.count)")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.background)
+                            .frame(minWidth: 16, minHeight: 16)
+                            .background(Circle().fill(OPSStyle.Colors.primaryAccent))
+                            .offset(x: 8, y: -8)
+                    }
+                }
+                .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+                .accessibilityLabel("Markup authors")
+            }
 
             Spacer()
 
@@ -234,6 +357,7 @@ struct PhotoAnnotationView: View {
                 projectId: projectId,
                 companyId: companyId,
                 authorId: user.id,
+                authorName: user.fullName,
                 existingAnnotationId: existingAnnotation?.id,
                 modelContext: modelContext
             )

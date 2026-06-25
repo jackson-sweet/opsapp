@@ -59,6 +59,18 @@ final class RealtimeProcessor: ObservableObject {
     /// and tear down each other's in-flight channel.
     private var isSubscribing = false
 
+    /// Bounded auto-retry for a channel join that fails while the socket is UP.
+    /// `subscribeWithError()` throws "Maximum retry attempts reached" when the
+    /// server can't establish the postgres_changes subscription — e.g. a transient
+    /// server-side hiccup (a Supabase Realtime infra-migration window, broker
+    /// overload, a brief CDC restart). The socket-status observer only rebuilds on
+    /// a socket DROP, so a join that fails with the socket still CONNECTED would
+    /// otherwise leave realtime silently dead until the next foreground. This task
+    /// re-attempts the subscribe with capped exponential backoff so it self-heals
+    /// without user intervention.
+    private var subscribeRetryTask: Task<Void, Never>?
+    private var subscribeFailureCount = 0
+
     /// Socket-level status observation. A websocket can die silently — server
     /// idle-close, NAT/proxy timeout, expired token — with NO ConnectivityManager
     /// network change, leaving the channel subscribed-but-dead and `isConnected`
@@ -155,6 +167,10 @@ final class RealtimeProcessor: ObservableObject {
         isSubscribing = true
         defer { isSubscribing = false }
 
+        // A fresh subscribe attempt (from any trigger) supersedes a scheduled retry.
+        subscribeRetryTask?.cancel()
+        subscribeRetryTask = nil
+
         // Tear down any previous channel (without clearing listen intent).
         await teardownChannel()
 
@@ -196,6 +212,10 @@ final class RealtimeProcessor: ObservableObject {
             try await channel.subscribeWithError()
             self.channel = channel
             self.isConnected = true
+            // Clean slate: a healthy join resets the backoff and drops any pending retry.
+            subscribeFailureCount = 0
+            subscribeRetryTask?.cancel()
+            subscribeRetryTask = nil
             print("[RT_TRACE] ✅ SUBSCRIBED for company \(companyId) — \(companyFilteredTables.count + 4) tables")
 
             // If we had a previous disconnect, trigger catch-up
@@ -206,6 +226,9 @@ final class RealtimeProcessor: ObservableObject {
         } catch {
             print("[RT_TRACE] ❌ SUBSCRIBE FAILED for company \(companyId): \(error)")
             self.isConnected = false
+            // Socket is up but the join failed — self-heal with backed-off retries
+            // (the socket-status observer only fires on a socket drop, not this).
+            scheduleSubscribeRetry(error: error)
         }
     }
 
@@ -216,6 +239,9 @@ final class RealtimeProcessor: ObservableObject {
     /// subscription we deliberately tore down.
     func stopListening() async {
         intendsToListen = false
+        subscribeRetryTask?.cancel()
+        subscribeRetryTask = nil
+        subscribeFailureCount = 0
         socketStatusObservation?.cancel()
         socketStatusObservation = nil
         await teardownChannel()
@@ -275,6 +301,41 @@ final class RealtimeProcessor: ObservableObject {
               let modelContext = modelContext else { return }
         print("[RealtimeProcessor] Socket recovered — rebuilding subscription")
         await startListening(companyId: companyId, userId: userId, context: modelContext)
+    }
+
+    // MARK: - Subscribe Retry (transient join failure)
+
+    /// Schedule a bounded, backed-off re-attempt of `startListening` after a channel
+    /// join failed while we still intend to listen. Capped exponential backoff
+    /// (5s → 10s → 20s → 40s → 60s, then every 60s) recovers a brief server hiccup
+    /// in seconds and keeps a longer outage retrying without churn. Superseded by
+    /// any fresh subscribe (lifecycle trigger), reset on a healthy join, and
+    /// canceled on stopListening.
+    private func scheduleSubscribeRetry(error: Error) {
+        guard intendsToListen else { return }
+        subscribeFailureCount += 1
+        let attempt = subscribeFailureCount
+        let delay = Self.subscribeRetryDelay(attempt: attempt)
+        print("[RealtimeProcessor] Subscribe failed (attempt \(attempt)) — retrying in \(Int(delay))s: \(error)")
+
+        subscribeRetryTask?.cancel()
+        subscribeRetryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled, let self else { return }
+            // Only re-attempt if still intended and not already healed by another trigger.
+            guard self.intendsToListen, !self.isConnected,
+                  let companyId = self.companyId,
+                  let context = self.modelContext else { return }
+            await self.startListening(companyId: companyId, userId: self.userId, context: context)
+        }
+    }
+
+    /// Capped exponential backoff (seconds) for subscribe retries. `nonisolated` +
+    /// `internal` so the schedule (5 → 10 → 20 → 40 → 60, clamped) is unit-testable
+    /// off the main actor — it's a pure calculation with no actor state.
+    nonisolated static func subscribeRetryDelay(attempt: Int) -> TimeInterval {
+        let base = 5.0 * pow(2.0, Double(max(0, attempt - 1)))
+        return min(base, 60.0)
     }
 
     // MARK: - Disconnect / Reconnect

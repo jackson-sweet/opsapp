@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E5C0D4032FE5000000A10001 /* OPSDesignKit in Frameworks */ = {isa = PBXBuildFile; productRef = E5C0D4022FE5000000A10001 /* OPSDesignKit */; };
+		E5C0D4042FE5000000A10001 /* OPSDesignKit in Frameworks */ = {isa = PBXBuildFile; productRef = E5C0D4022FE5000000A10001 /* OPSDesignKit */; };
 		E50559F02F53784E007F4AF0 /* MapboxMaps in Frameworks */ = {isa = PBXBuildFile; productRef = E5D0A1022F60B100006DB0A2 /* MapboxMaps */; };
 		E5055E3D2F54B72A007F4AF0 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = E5055E3C2F54B72A007F4AF0 /* FirebaseRemoteConfig */; };
 		E521056F2F4E6CFE0051FA9C /* CoreXLSX in Frameworks */ = {isa = PBXBuildFile; productRef = E521056E2F4E6CFE0051FA9C /* CoreXLSX */; };
@@ -168,6 +170,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E5C0D4032FE5000000A10001 /* OPSDesignKit in Frameworks */,
 				E50559F02F53784E007F4AF0 /* MapboxMaps in Frameworks */,
 				E56A01362EE75DE2008DACCF /* OneSignalFramework in Frameworks */,
 				E521FD1B2F4E1CEC0051FA9C /* FirebaseAnalyticsIdentitySupport in Frameworks */,
@@ -207,6 +210,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E5C0D4042FE5000000A10001 /* OPSDesignKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -292,6 +296,7 @@
 			);
 			name = OPS;
 			packageProductDependencies = (
+				E5C0D4022FE5000000A10001 /* OPSDesignKit */,
 				E5AF196E2E02308000CD46A1 /* GoogleSignIn */,
 				E5AF19702E02308000CD46A1 /* GoogleSignInSwift */,
 				E598F3C32E78F599000D6F65 /* Stripe */,
@@ -347,6 +352,7 @@
 			);
 			name = OPSTests;
 			packageProductDependencies = (
+				E5C0D4022FE5000000A10001 /* OPSDesignKit */,
 			);
 			productName = OPSTests;
 			productReference = E595DC162DB6CF9000B1413F /* OPSTests.xctest */;
@@ -460,6 +466,7 @@
 			mainGroup = E595DBFB2DB6CF8F00B1413F;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				E5C0D4012FE5000000A10001 /* XCLocalSwiftPackageReference "OPSDesignKit" */,
 				E5AF196C2E022E7500CD46A1 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				E598F3C22E78F599000D6F65 /* XCRemoteSwiftPackageReference "stripe-ios" */,
 				E56B44692ED55AAC005DED59 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
@@ -1077,6 +1084,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		E5C0D4012FE5000000A10001 /* XCLocalSwiftPackageReference "OPSDesignKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/OPSDesignKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		E521056D2F4E6CFE0051FA9C /* XCRemoteSwiftPackageReference "CoreXLSX" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -1137,6 +1151,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		E5C0D4022FE5000000A10001 /* OPSDesignKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E5C0D4012FE5000000A10001 /* XCLocalSwiftPackageReference "OPSDesignKit" */;
+			productName = OPSDesignKit;
+		};
 		E5055E3C2F54B72A007F4AF0 /* FirebaseRemoteConfig */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E56B44692ED55AAC005DED59 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;

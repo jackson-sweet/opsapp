@@ -37,4 +37,11 @@ final class RealtimeSubscribeRetryTests: XCTestCase {
         XCTAssertEqual(RealtimeProcessor.subscribeRetryDelay(attempt: 0), 5)
         XCTAssertGreaterThanOrEqual(RealtimeProcessor.subscribeRetryDelay(attempt: 1), 5)
     }
+
+    func testRealtimeTopicMatchesSupabaseCachedChannelKey() {
+        XCTAssertEqual(
+            RealtimeProcessor.realtimeTopic(forChannelName: "company-ddee107c"),
+            "realtime:company-ddee107c"
+        )
+    }
 }

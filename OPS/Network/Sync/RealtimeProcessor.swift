@@ -156,7 +156,12 @@ final class RealtimeProcessor: ObservableObject {
     }
 
     /// Subscribe to Supabase Realtime for all core entity tables scoped to a company.
-    func startListening(companyId: String, userId: String? = nil, context: ModelContext) async {
+    func startListening(
+        companyId: String,
+        userId: String? = nil,
+        context: ModelContext,
+        cancelPendingRetry: Bool = true
+    ) async {
         self.companyId = companyId
         self.userId = userId
         self.modelContext = context
@@ -168,9 +173,13 @@ final class RealtimeProcessor: ObservableObject {
         isSubscribing = true
         defer { isSubscribing = false }
 
-        // A fresh subscribe attempt (from any trigger) supersedes a scheduled retry.
-        subscribeRetryTask?.cancel()
-        subscribeRetryTask = nil
+        // A fresh subscribe attempt from lifecycle/socket events supersedes a
+        // scheduled retry. A retry task calling this method must not cancel
+        // itself before it reaches `subscribeWithError()`.
+        if cancelPendingRetry {
+            subscribeRetryTask?.cancel()
+            subscribeRetryTask = nil
+        }
 
         // Realtime MUST join with the user's Firebase JWT, never the anon apikey.
         // supabase-swift builds the channel-join's access_token from
@@ -203,13 +212,16 @@ final class RealtimeProcessor: ObservableObject {
             return
         }
 
+        let channelName = "company-\(companyId)"
+
         // Tear down any previous channel (without clearing listen intent).
         await teardownChannel()
+        await removeRetainedChannels(named: channelName)
 
         // Observe socket-level status so a silent websocket drop self-heals.
         observeSocketStatus()
 
-        let channel = supabase.channel("company-\(companyId)")
+        let channel = supabase.channel(channelName)
 
         // Core entity tables filtered by company_id
         for table in companyFilteredTables {
@@ -257,6 +269,7 @@ final class RealtimeProcessor: ObservableObject {
             }
         } catch {
             self.isConnected = false
+            await discardFailedChannel(channel)
             // Socket is up but the join failed — self-heal with backed-off retries
             // (the socket-status observer only fires on a socket drop, not this).
             scheduleSubscribeRetry(reason: "join failed: \(error)")
@@ -288,6 +301,25 @@ final class RealtimeProcessor: ObservableObject {
         await supabase.removeChannel(channel)
         self.channel = nil
         isConnected = false
+    }
+
+    private func removeRetainedChannels(named channelName: String) async {
+        let topic = Self.realtimeTopic(forChannelName: channelName)
+        let retainedChannels = supabase.channels.filter { $0.topic == topic }
+
+        for retainedChannel in retainedChannels {
+            if self.channel === retainedChannel {
+                self.channel = nil
+            }
+            await supabase.removeChannel(retainedChannel)
+        }
+    }
+
+    private func discardFailedChannel(_ failedChannel: RealtimeChannelV2) async {
+        if self.channel === failedChannel {
+            self.channel = nil
+        }
+        await supabase.removeChannel(failedChannel)
     }
 
     // MARK: - Socket-Status Recovery
@@ -358,7 +390,12 @@ final class RealtimeProcessor: ObservableObject {
             guard self.intendsToListen, !self.isConnected,
                   let companyId = self.companyId,
                   let context = self.modelContext else { return }
-            await self.startListening(companyId: companyId, userId: self.userId, context: context)
+            await self.startListening(
+                companyId: companyId,
+                userId: self.userId,
+                context: context,
+                cancelPendingRetry: false
+            )
         }
     }
 
@@ -368,6 +405,10 @@ final class RealtimeProcessor: ObservableObject {
     nonisolated static func subscribeRetryDelay(attempt: Int) -> TimeInterval {
         let base = 5.0 * pow(2.0, Double(max(0, attempt - 1)))
         return min(base, 60.0)
+    }
+
+    nonisolated static func realtimeTopic(forChannelName channelName: String) -> String {
+        "realtime:\(channelName)"
     }
 
     // MARK: - Disconnect / Reconnect

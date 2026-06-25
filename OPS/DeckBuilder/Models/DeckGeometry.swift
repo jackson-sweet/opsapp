@@ -723,8 +723,13 @@ struct DeckDrawingData: Codable {
     /// for rendering. Absent on legacy JSON; backfilled on first load
     /// (deck-catalog integration spec § 3.2 + § 4.2).
     var components: [DesignComponentRow]? = nil
+    /// Opaque top-level `drawing_data` blocks that newer deck runtimes may
+    /// write before this app understands them. Preserve them byte-for-byte at
+    /// the JSON value level so future framing/zoning/code/rendering payloads
+    /// survive round trips during the DeckKit extraction.
+    var futureBlocks: [String: DeckJSONValue] = [:]
 
-    enum CodingKeys: String, CodingKey {
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case vertices
         case edges
         case footprint
@@ -755,6 +760,38 @@ struct DeckDrawingData: Codable {
         self.levels = try c.decodeIfPresent([DeckLevel].self, forKey: .levels) ?? []
         self.levelConnections = try c.decodeIfPresent([LevelConnection].self, forKey: .levelConnections) ?? []
         self.components = try c.decodeIfPresent([DesignComponentRow].self, forKey: .components)
+
+        let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+        let dynamic = try decoder.container(keyedBy: DeckDynamicCodingKey.self)
+        self.futureBlocks = dynamic.allKeys.reduce(into: [:]) { result, key in
+            guard !knownKeys.contains(key.stringValue),
+                  let value = try? dynamic.decode(DeckJSONValue.self, forKey: key) else {
+                return
+            }
+            result[key.stringValue] = value
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(vertices, forKey: .vertices)
+        try c.encode(edges, forKey: .edges)
+        try c.encode(footprint, forKey: .footprint)
+        try c.encode(surfaces, forKey: .surfaces)
+        try c.encode(config, forKey: .config)
+        try c.encodeIfPresent(overallElevation, forKey: .overallElevation)
+        try c.encodeIfPresent(scaleFactor, forKey: .scaleFactor)
+        try c.encodeIfPresent(poolDiameter, forKey: .poolDiameter)
+        try c.encodeIfPresent(photoOverlay, forKey: .photoOverlay)
+        try c.encode(levels, forKey: .levels)
+        try c.encode(levelConnections, forKey: .levelConnections)
+        try c.encodeIfPresent(components, forKey: .components)
+
+        var dynamic = encoder.container(keyedBy: DeckDynamicCodingKey.self)
+        for (key, value) in futureBlocks.sorted(by: { $0.key < $1.key }) {
+            guard let codingKey = DeckDynamicCodingKey(stringValue: key) else { continue }
+            try dynamic.encode(value, forKey: codingKey)
+        }
     }
 
     // MARK: - Vertex Helpers

@@ -1587,6 +1587,10 @@ struct CanvasGestureView: UIViewRepresentable {
     @Binding var scale: CGFloat
     @Binding var offset: CGSize
     var isDrawing: Bool
+    /// Reports `true` on gesture begin and `false` (debounced) on end so a host
+    /// can fade overlays during pan/zoom. Defaults to no-op — the editor passes
+    /// nothing and is unaffected.
+    var onInteractingChange: (Bool) -> Void = { _ in }
 
     func makeUIView(context: Context) -> GesturePassthroughView {
         let view = GesturePassthroughView()
@@ -1604,6 +1608,7 @@ struct CanvasGestureView: UIViewRepresentable {
     func updateUIView(_ uiView: GesturePassthroughView, context: Context) {
         context.coordinator.scaleBinding = $scale
         context.coordinator.offsetBinding = $offset
+        context.coordinator.onInteractingChange = onInteractingChange
         context.coordinator.pinchGesture?.isEnabled = !isDrawing
     }
 
@@ -1612,9 +1617,11 @@ struct CanvasGestureView: UIViewRepresentable {
     class Coordinator: NSObject {
         var scaleBinding: Binding<CGFloat>
         var offsetBinding: Binding<CGSize>
+        var onInteractingChange: (Bool) -> Void = { _ in }
         weak var pinchGesture: UIPinchGestureRecognizer?
         private var baseScale: CGFloat = 1.0
         private var lastMidpoint: CGPoint = .zero
+        private var endWork: DispatchWorkItem?
 
         init(scale: Binding<CGFloat>, offset: Binding<CGSize>) {
             self.scaleBinding = scale
@@ -1627,6 +1634,8 @@ struct CanvasGestureView: UIViewRepresentable {
 
             switch gesture.state {
             case .began:
+                endWork?.cancel()
+                onInteractingChange(true)
                 baseScale = scaleBinding.wrappedValue
                 lastMidpoint = mid
 
@@ -1660,6 +1669,9 @@ struct CanvasGestureView: UIViewRepresentable {
 
             case .ended, .cancelled:
                 baseScale = scaleBinding.wrappedValue
+                let work = DispatchWorkItem { [weak self] in self?.onInteractingChange(false) }
+                endWork = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
             default: break
             }
         }

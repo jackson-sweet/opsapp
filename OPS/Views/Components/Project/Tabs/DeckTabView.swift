@@ -27,11 +27,11 @@ struct DeckTabView: View {
 
     @State private var viewMode: DeckTabViewMode = .threeD
     @State private var remoteFetchAttemptedProjectId: String?
-    /// `true` while the user is panning or pinching the 3D scene. Drives the
-    /// badge fade — badges hide during camera movement so they don't obstruct
-    /// the geometry the user is trying to inspect. Reset to `false` whenever
-    /// the view mode leaves `.threeD` so badges can't get stuck hidden.
-    @State private var is3DInteracting = false
+    /// `true` while the user is actively panning/zooming the visible viewport
+    /// (the 3D camera OR the 2D blueprint). Drives the badge fade — badges hide
+    /// during viewport movement so they don't obstruct the geometry being
+    /// inspected. Reset on a view-mode switch so badges can't get stuck hidden.
+    @State private var isViewportInteracting = false
 
     // Bug 4 fix: use @Query so SwiftData automatically invalidates this view
     // when a DeckDesign is inserted/updated for this project — no manual
@@ -88,12 +88,13 @@ struct DeckTabView: View {
                     // any face is closed on any level. Bug ee787f29 follow-up.
                     if design.drawingData.hasAnyClosedSurface {
                         DeckTab3DView(drawingData: design.drawingData,
-                                      onInteractingChange: { is3DInteracting = $0 })
+                                      onInteractingChange: { isViewportInteracting = $0 })
                     } else {
                         incompleteDesignMessage(openEnds: design.drawingData.openEndpointCount)
                     }
                 case .twoD:
-                    DeckTab2DView(drawingData: design.drawingData)
+                    DeckTab2DView(drawingData: design.drawingData,
+                                  onInteractingChange: { isViewportInteracting = $0 })
                 }
             }
             .frame(maxWidth: .infinity)
@@ -106,16 +107,16 @@ struct DeckTabView: View {
                     .padding(.leading, OPSStyle.Layout.spacing2_5)
                     .padding(.top, OPSStyle.Layout.spacing2_5)
                     .allowsHitTesting(false)
-                    // Fade badges out while the user pans/zooms the 3D camera
-                    // so they don't obscure structural members being inspected.
-                    // Only active in 3D mode — 2D pans don't interact with these
-                    // recognizers, so `is3DInteracting` stays false there.
-                    // Reduce Motion: nil animation = instant snap (no fade at all),
-                    // which is correct — the opacity change itself still happens,
-                    // but without any motion that might cause vestibular discomfort.
-                    .opacity(is3DInteracting && viewMode == .threeD ? 0 : 1)
+                    // Fade badges out while the user pans/zooms EITHER viewport
+                    // (3D camera or 2D blueprint) so they don't obscure the
+                    // geometry being inspected. Only the visible view reports
+                    // interaction, so one flag covers both; the view-mode switch
+                    // resets it so badges can't get stuck hidden.
+                    // Reduce Motion: nil animation = instant snap (no fade),
+                    // avoiding motion that might cause vestibular discomfort.
+                    .opacity(isViewportInteracting ? 0 : 1)
                     .animation(reduceMotion ? nil : OPSStyle.Animation.standard,
-                               value: is3DInteracting)
+                               value: isViewportInteracting)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .animation(OPSStyle.Animation.fast, value: viewMode)
@@ -238,9 +239,9 @@ struct DeckTabView: View {
             .frame(width: 120)
             .onChange(of: viewMode) { _, _ in
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                // Clear the interaction flag when leaving 3D so badges can't
-                // get stuck hidden after a mode switch mid-gesture.
-                is3DInteracting = false
+                // Clear the interaction flag on a mode switch so badges can't
+                // get stuck hidden after switching mid-gesture.
+                isViewportInteracting = false
             }
 
             Spacer()

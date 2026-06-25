@@ -60,7 +60,7 @@ SELF-REVIEW NOTES:
 STATUS: DONE_WITH_CONCERNS
 
 COMMITS MADE:
-- `d294a9fe` — `fix: preserve exact future deck drawing numbers`
+- `25f342f5` — `fix: preserve exact future deck drawing numbers`
 
 FILES CHANGED:
 - `OPS/DeckBuilder/Models/DeckDrawingFutureBlocks.swift`

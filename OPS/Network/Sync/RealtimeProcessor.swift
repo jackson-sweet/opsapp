@@ -14,6 +14,61 @@ import SwiftData
 import Supabase
 import FirebaseAuth
 
+private struct RealtimeBinding: Sendable {
+    let table: String
+    let filter: String
+
+    var description: String {
+        "public.\(table)[\(filter)]"
+    }
+
+    var joinPayload: [String: Any] {
+        [
+            "event": "*",
+            "schema": "public",
+            "table": table,
+            "filter": filter
+        ]
+    }
+}
+
+private struct RealtimeJoinReply {
+    let ref: String?
+    let status: String
+    let reason: String?
+    let postgresChangesCount: Int?
+
+    init?(text: String) {
+        guard let data = text.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let json = object as? [String: Any],
+              json["event"] as? String == "phx_reply",
+              let payload = json["payload"] as? [String: Any],
+              let status = payload["status"] as? String else {
+            return nil
+        }
+
+        let response = payload["response"] as? [String: Any]
+        self.ref = json["ref"] as? String
+        self.status = status
+        self.reason = response?["reason"] as? String
+        self.postgresChangesCount = (response?["postgres_changes"] as? [[String: Any]])?.count
+    }
+
+    var summary: String {
+        if status == "ok" {
+            return "status=ok postgres_changes=\(postgresChangesCount.map(String.init) ?? "—")"
+        }
+        return "status=\(status) reason=\(reason ?? "—")"
+    }
+}
+
+private enum RealtimeDiagnosticError: Error {
+    case invalidURL
+    case invalidPayload
+    case timeout
+}
+
 // MARK: - Notification Names
 
 extension Notification.Name {
@@ -71,6 +126,7 @@ final class RealtimeProcessor: ObservableObject {
     /// without user intervention.
     private var subscribeRetryTask: Task<Void, Never>?
     private var subscribeFailureCount = 0
+    private var suppressSocketRecoveryUntilRetry = false
 
     /// Socket-level status observation. A websocket can die silently — server
     /// idle-close, NAT/proxy timeout, expired token — with NO ConnectivityManager
@@ -79,6 +135,7 @@ final class RealtimeProcessor: ObservableObject {
     /// realtime client's connection status lets us detect that drop, mark it for
     /// catch-up, and rebuild the subscription when the socket comes back.
     private var socketStatusObservation: RealtimeSubscription?
+    private var channelStatusObservation: RealtimeSubscription?
 
     /// Background data actor used when FeatureFlags.useDataActor is on.
     /// Supabase's channel subscription must stay on @MainActor (this class),
@@ -202,8 +259,11 @@ final class RealtimeProcessor: ObservableObject {
             scheduleSubscribeRetry(reason: "Firebase session not ready")
             return
         }
+        let realtimeAccessToken: String
         do {
             let token = try await firebaseUser.getIDToken()
+            realtimeAccessToken = token
+            print("[RealtimeProcessor] Firebase JWT ready — \(Self.describeJWT(token, firebaseUID: firebaseUser.uid))")
             await supabase.realtimeV2.setAuth(token)
         } catch {
             isConnected = false
@@ -222,6 +282,9 @@ final class RealtimeProcessor: ObservableObject {
         observeSocketStatus()
 
         let channel = supabase.channel(channelName)
+        observeChannelStatus(channel)
+        let diagnosticBindings = makeRealtimeBindings(companyId: companyId, userId: userId)
+        print("[RealtimeProcessor] Joining authenticated channel \(channelName) — \(diagnosticBindings.count) bindings: \(diagnosticBindings.map(\.description).joined(separator: ", "))")
 
         // Core entity tables filtered by company_id
         for table in companyFilteredTables {
@@ -253,14 +316,17 @@ final class RealtimeProcessor: ObservableObject {
         }
 
         do {
+            let subscribeStartedAt = Date()
             try await channel.subscribeWithError()
+            let elapsed = Date().timeIntervalSince(subscribeStartedAt)
             self.channel = channel
             self.isConnected = true
             // Clean slate: a healthy join resets the backoff and drops any pending retry.
             subscribeFailureCount = 0
+            suppressSocketRecoveryUntilRetry = false
             subscribeRetryTask?.cancel()
             subscribeRetryTask = nil
-            print("[RealtimeProcessor] Subscribed (authenticated) — \(companyFilteredTables.count + 4) tables")
+            print("[RealtimeProcessor] Subscribed (authenticated) — \(diagnosticBindings.count) bindings in \(Self.formatSeconds(elapsed))s")
 
             // If we had a previous disconnect, trigger catch-up
             if let disconnected = disconnectedAt {
@@ -270,6 +336,11 @@ final class RealtimeProcessor: ObservableObject {
         } catch {
             self.isConnected = false
             await discardFailedChannel(channel)
+            await diagnoseJoinFailure(
+                channelName: channelName,
+                bindings: diagnosticBindings,
+                accessToken: realtimeAccessToken
+            )
             // Socket is up but the join failed — self-heal with backed-off retries
             // (the socket-status observer only fires on a socket drop, not this).
             scheduleSubscribeRetry(reason: "join failed: \(error)")
@@ -286,8 +357,11 @@ final class RealtimeProcessor: ObservableObject {
         subscribeRetryTask?.cancel()
         subscribeRetryTask = nil
         subscribeFailureCount = 0
+        suppressSocketRecoveryUntilRetry = false
         socketStatusObservation?.cancel()
         socketStatusObservation = nil
+        channelStatusObservation?.cancel()
+        channelStatusObservation = nil
         await teardownChannel()
         print("[RealtimeProcessor] Unsubscribed")
     }
@@ -297,6 +371,8 @@ final class RealtimeProcessor: ObservableObject {
     /// it resubscribes — a resubscribe must keep `intendsToListen` true.
     private func teardownChannel() async {
         guard let channel = channel else { return }
+        channelStatusObservation?.cancel()
+        channelStatusObservation = nil
         await channel.unsubscribe()
         await supabase.removeChannel(channel)
         self.channel = nil
@@ -319,6 +395,8 @@ final class RealtimeProcessor: ObservableObject {
         if self.channel === failedChannel {
             self.channel = nil
         }
+        channelStatusObservation?.cancel()
+        channelStatusObservation = nil
         await supabase.removeChannel(failedChannel)
     }
 
@@ -346,6 +424,10 @@ final class RealtimeProcessor: ObservableObject {
             // Socket is back. If our channel went down with it, rebuild a clean
             // subscription; startListening's reconnect path delta-syncs the gap.
             if !isConnected {
+                guard !suppressSocketRecoveryUntilRetry else {
+                    print("[RealtimeProcessor] Socket recovered — waiting for scheduled subscribe retry")
+                    return
+                }
                 Task { [weak self] in await self?.resubscribeAfterDrop() }
             }
         case .connecting:
@@ -378,6 +460,7 @@ final class RealtimeProcessor: ObservableObject {
     private func scheduleSubscribeRetry(reason: String) {
         guard intendsToListen else { return }
         subscribeFailureCount += 1
+        suppressSocketRecoveryUntilRetry = true
         let attempt = subscribeFailureCount
         let delay = Self.subscribeRetryDelay(attempt: attempt)
         print("[RealtimeProcessor] Subscribe not completed (attempt \(attempt), \(reason)) — retrying in \(Int(delay))s")
@@ -390,6 +473,7 @@ final class RealtimeProcessor: ObservableObject {
             guard self.intendsToListen, !self.isConnected,
                   let companyId = self.companyId,
                   let context = self.modelContext else { return }
+            self.suppressSocketRecoveryUntilRetry = false
             await self.startListening(
                 companyId: companyId,
                 userId: self.userId,
@@ -444,6 +528,213 @@ final class RealtimeProcessor: ObservableObject {
                 self?.handleChange(table: table, action: action)
             }
         }
+    }
+
+    private func observeChannelStatus(_ channel: RealtimeChannelV2) {
+        channelStatusObservation?.cancel()
+        channelStatusObservation = channel.onStatusChange { status in
+            print("[RealtimeProcessor] Channel status → \(status)")
+        }
+    }
+
+    private func makeRealtimeBindings(companyId: String, userId: String?) -> [RealtimeBinding] {
+        var bindings = companyFilteredTables.map {
+            RealtimeBinding(table: $0, filter: "company_id=eq.\(companyId)")
+        }
+        bindings.append(RealtimeBinding(table: "companies", filter: "id=eq.\(companyId)"))
+        bindings.append(RealtimeBinding(table: "expenses", filter: "company_id=eq.\(companyId)"))
+        bindings.append(RealtimeBinding(table: "expense_batches", filter: "company_id=eq.\(companyId)"))
+        bindings.append(RealtimeBinding(table: "calendar_user_events", filter: "company_id=eq.\(companyId)"))
+        if let userId {
+            bindings.append(RealtimeBinding(table: "notifications", filter: "user_id=eq.\(userId)"))
+        }
+        return bindings
+    }
+
+    private func diagnoseJoinFailure(
+        channelName: String,
+        bindings: [RealtimeBinding],
+        accessToken: String
+    ) async {
+        let startedAt = Date()
+        do {
+            let reply = try await Self.probeRealtimeJoin(
+                channelName: channelName,
+                bindings: bindings,
+                accessToken: accessToken,
+                timeout: 12
+            )
+            let elapsed = Self.formatSeconds(Date().timeIntervalSince(startedAt))
+            print("[RealtimeProcessor] Direct join diagnostic — \(reply.summary) in \(elapsed)s")
+        } catch {
+            let elapsed = Self.formatSeconds(Date().timeIntervalSince(startedAt))
+            print("[RealtimeProcessor] Direct join diagnostic failed after \(elapsed)s — \(error)")
+        }
+    }
+
+    private nonisolated static func probeRealtimeJoin(
+        channelName: String,
+        bindings: [RealtimeBinding],
+        accessToken: String,
+        timeout: TimeInterval
+    ) async throws -> RealtimeJoinReply {
+        var components = URLComponents(url: SupabaseConfig.url, resolvingAgainstBaseURL: false)!
+        components.scheme = "wss"
+        components.path = "/realtime/v1/websocket"
+        components.queryItems = [
+            URLQueryItem(name: "apikey", value: SupabaseConfig.anonKey),
+            URLQueryItem(name: "vsn", value: "1.0.0")
+        ]
+
+        guard let url = components.url else {
+            throw RealtimeDiagnosticError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(SupabaseConfig.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("ops-ios-realtime-diagnostic", forHTTPHeaderField: "X-Client-Info")
+
+        let task = URLSession.shared.webSocketTask(with: request)
+        task.resume()
+        defer {
+            task.cancel(with: .goingAway, reason: nil)
+        }
+
+        let ref = "1"
+        let topic = "realtime:diagnostic-\(channelName)-\(UUID().uuidString)"
+        let payload: [String: Any] = [
+            "topic": topic,
+            "event": "phx_join",
+            "payload": [
+                "config": [
+                    "broadcast": ["ack": false, "self": false],
+                    "presence": ["key": "", "enabled": false],
+                    "private": false,
+                    "postgres_changes": bindings.map(\.joinPayload)
+                ],
+                "access_token": accessToken,
+                "version": "ops-ios-realtime-diagnostic"
+            ],
+            "ref": ref,
+            "join_ref": ref
+        ]
+
+        let data = try JSONSerialization.data(withJSONObject: payload)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw RealtimeDiagnosticError.invalidPayload
+        }
+
+        try await task.send(.string(text))
+
+        while true {
+            let replyText = try await receiveWebSocketText(task, timeout: timeout)
+            guard let reply = RealtimeJoinReply(text: replyText) else {
+                continue
+            }
+            if reply.ref == ref {
+                return reply
+            }
+        }
+    }
+
+    private nonisolated static func receiveWebSocketText(
+        _ task: URLSessionWebSocketTask,
+        timeout: TimeInterval
+    ) async throws -> String {
+        try await withCheckedThrowingContinuation { continuation in
+            let lock = NSLock()
+            var didResume = false
+
+            func resume(_ result: Result<String, Error>) {
+                lock.lock()
+                defer { lock.unlock() }
+                guard !didResume else { return }
+                didResume = true
+                continuation.resume(with: result)
+            }
+
+            task.receive { result in
+                switch result {
+                case .success(.string(let text)):
+                    resume(.success(text))
+                case .success(.data(let data)):
+                    if let text = String(data: data, encoding: .utf8) {
+                        resume(.success(text))
+                    } else {
+                        resume(.failure(RealtimeDiagnosticError.invalidPayload))
+                    }
+                case .failure(let error):
+                    resume(.failure(error))
+                @unknown default:
+                    resume(.failure(RealtimeDiagnosticError.invalidPayload))
+                }
+            }
+
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                resume(.failure(RealtimeDiagnosticError.timeout))
+            }
+        }
+    }
+
+    private nonisolated static func describeJWT(_ token: String, firebaseUID: String) -> String {
+        let parts = token.split(separator: ".")
+        guard parts.count >= 2,
+              let header = decodeJWTJSONSegment(parts[0]),
+              let claims = decodeJWTJSONSegment(parts[1]) else {
+            return "uid=\(firebaseUID), token=unparseable"
+        }
+
+        let kid = stringValue(header["kid"]) ?? "—"
+        let alg = stringValue(header["alg"]) ?? "—"
+        let issuer = stringValue(claims["iss"]) ?? "—"
+        let audience = stringValue(claims["aud"]) ?? "—"
+        let subject = stringValue(claims["sub"]) ?? "—"
+        let role = stringValue(claims["role"]) ?? "—"
+        let expiresAt = timestampDescription(claims["exp"])
+        let subjectMatches = subject == firebaseUID ? "yes" : "no"
+
+        return "uid=\(firebaseUID), sub=\(subject), sub_matches_uid=\(subjectMatches), iss=\(issuer), aud=\(audience), role=\(role), exp=\(expiresAt), kid=\(kid), alg=\(alg)"
+    }
+
+    private nonisolated static func decodeJWTJSONSegment(_ segment: Substring) -> [String: Any]? {
+        var base64 = String(segment)
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let padding = (4 - (base64.count % 4)) % 4
+        base64.append(String(repeating: "=", count: padding))
+
+        guard let data = Data(base64Encoded: base64),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let json = object as? [String: Any] else {
+            return nil
+        }
+        return json
+    }
+
+    private nonisolated static func stringValue(_ value: Any?) -> String? {
+        if let string = value as? String {
+            return string
+        }
+        if let array = value as? [Any] {
+            return array.compactMap { stringValue($0) }.joined(separator: ",")
+        }
+        if let number = value as? NSNumber {
+            return number.stringValue
+        }
+        return nil
+    }
+
+    private nonisolated static func timestampDescription(_ value: Any?) -> String {
+        guard let seconds = (value as? NSNumber)?.doubleValue else {
+            return "—"
+        }
+        return ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: seconds))
+    }
+
+    private nonisolated static func formatSeconds(_ value: TimeInterval) -> String {
+        String(format: "%.2f", value)
     }
 
     // MARK: - Change Routing

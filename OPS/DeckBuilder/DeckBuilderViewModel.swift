@@ -13,6 +13,31 @@ enum VinylOrderSurfaceScope: Equatable {
 }
 
 @MainActor
+final class OPSDeckStore: DeckStore {
+    private let modelContext: ModelContext?
+    private weak var syncEngine: SyncEngine?
+
+    init(modelContext: ModelContext?, syncEngine: SyncEngine?) {
+        self.modelContext = modelContext
+        self.syncEngine = syncEngine
+    }
+
+    func save(deckDesign: DeckDesign, drawingData: DeckDrawingData) throws {
+        deckDesign.drawingData = drawingData
+        if deckDesign.modelContext == nil {
+            modelContext?.insert(deckDesign)
+        }
+        try modelContext?.save()
+    }
+
+    func delete(deckDesign: DeckDesign) throws {
+        deckDesign.deletedAt = Date()
+        deckDesign.markForSync()
+        try modelContext?.save()
+    }
+}
+
+@MainActor
 class DeckBuilderViewModel: ObservableObject {
 
     // MARK: - Dependencies
@@ -30,6 +55,7 @@ class DeckBuilderViewModel: ObservableObject {
     /// Subsequent edits enqueue updates instead. Persists across app launches
     /// implicitly via `lastSyncedAt` on the model — see `enqueueDeckDesignSync`.
     private var hasEnqueuedCreate: Bool = false
+    private let runtime: DeckRuntime?
 
     // MARK: - Drawing State
 
@@ -537,68 +563,24 @@ class DeckBuilderViewModel: ObservableObject {
         self.deckDesign = deckDesign
         self.modelContext = modelContext
         self.syncEngine = syncEngine
-        var loaded = deckDesign.drawingData
-        // Backfill the catalog-facing `components` projection on legacy
-        // designs that were saved before the deck-catalog vocabulary
-        // landed. The projection is derived, not stored — recomputing it
-        // here costs sub-millisecond on a typical deck and lets the
-        // adapter consume the in-memory state without going through a
-        // round-trip save first. The next save persists the projection;
-        // designs the user never reopens stay legacy on disk forever and
-        // the adapter no-ops on them, which is fine.
-        if loaded.components == nil {
-            loaded.components = ComponentEmitter.emit(loaded)
-        }
+        self.runtime = nil
+        let loaded = Self.loadedDrawingData(from: deckDesign)
         self.drawingData = loaded
-        // If the model has already been pushed to Supabase at least once,
-        // future saves enqueue updates rather than creates. Bug ab554b5f.
         self.hasEnqueuedCreate = deckDesign.lastSyncedAt != nil
-        // A drawing is "new" if it has no committed geometry yet — both
-        // single-level and multi-level forms must be empty.
-        let hasSingleGeometry = !deckDesign.drawingData.vertices.isEmpty
-            || !deckDesign.drawingData.edges.isEmpty
-        let hasMultiGeometry = deckDesign.drawingData.levels.contains { level in
-            !level.vertices.isEmpty || !level.edges.isEmpty
-        }
-        self.isNewDrawing = !(hasSingleGeometry || hasMultiGeometry)
-        setupLaserSubscription()
-        // New drawings auto-enable autosave silently. Existing drawings
-        // apply the persisted user choice if one exists, otherwise wait
-        // for the first edit to surface the prompt (handled in `save()`).
-        // The persisted choice lives in UserDefaults so the prompt never
-        // re-asks once the user has answered (either way) on this device.
-        if self.isNewDrawing {
-            self.autosaveEnabled = true
-            startAutosaveTimer()
-        } else {
-            let defaults = UserDefaults.standard
-            if defaults.bool(forKey: Self.autosaveDecisionMadeKey) {
-                let saved = defaults.bool(forKey: Self.autosavePreferenceKey)
-                self.autosaveEnabled = saved
-                self.hasPromptedForAutosave = true
-                if saved {
-                    startAutosaveTimer()
-                }
-            }
-        }
+        self.isNewDrawing = Self.isNewDrawing(for: loaded)
+        finishInitialization()
+    }
 
-        // DECK-NEW-1 follow-up — migrate legacy single-`footprint` payloads
-        // to the per-surface store on first load. Reconciler is idempotent
-        // and safe to run on already-migrated drawings; this just ensures
-        // a user who opens an OLD drawing without editing still sees the
-        // correct per-surface materials in 2D and 3D.
-        reconcileSurfaces()
-
-        // Bug ab554b5f — designs that arrive in the builder with geometry but
-        // have NEVER been synced (template / sketch / AR creation paths)
-        // need an immediate enqueue so the upload happens even if the user
-        // dismisses the builder without editing further. The autosave timer
-        // would catch this eventually for new drawings, but a user who opens
-        // a freshly-created template-design and immediately backs out would
-        // otherwise leave the design only on-device.
-        if !self.hasEnqueuedCreate && !self.isNewDrawing {
-            self.enqueueDeckDesignSync()
-        }
+    init(deckDesign: DeckDesign, runtime: DeckRuntime) {
+        self.deckDesign = deckDesign
+        self.modelContext = nil
+        self.syncEngine = nil
+        self.runtime = runtime
+        let loaded = Self.loadedDrawingData(from: deckDesign)
+        self.drawingData = loaded
+        self.hasEnqueuedCreate = deckDesign.lastSyncedAt != nil
+        self.isNewDrawing = Self.isNewDrawing(for: loaded)
+        finishInitialization()
     }
 
     deinit {
@@ -2988,16 +2970,20 @@ class DeckBuilderViewModel: ObservableObject {
         reconcileSurfaces()
 
         isLocallySaved = false
-        deckDesign.drawingData = drawingData  // triggers needsSync via setter
-        // Insert on first save if the design was created via the blank-canvas
-        // path (which defers insertion until there's real geometry to persist).
-        // SwiftData rejects insert on an already-inserted model, so check first.
-        // Bug 7c2bd6be.
-        if deckDesign.modelContext == nil {
-            modelContext?.insert(deckDesign)
-        }
         do {
-            try modelContext?.save()
+            if let store = runtime?.store {
+                try store.save(deckDesign: deckDesign, drawingData: drawingData)
+            } else {
+                deckDesign.drawingData = drawingData  // triggers needsSync via setter
+                // Insert on first save if the design was created via the blank-canvas
+                // path (which defers insertion until there's real geometry to persist).
+                // SwiftData rejects insert on an already-inserted model, so check first.
+                // Bug 7c2bd6be.
+                if deckDesign.modelContext == nil {
+                    modelContext?.insert(deckDesign)
+                }
+                try modelContext?.save()
+            }
             isLocallySaved = true
         } catch {
             print("[DeckBuilder] Save failed: \(error)")
@@ -3709,5 +3695,71 @@ class DeckBuilderViewModel: ObservableObject {
 
     private func hapticSuccess() {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    private static func loadedDrawingData(from deckDesign: DeckDesign) -> DeckDrawingData {
+        var loaded = deckDesign.drawingData
+        // Backfill the catalog-facing `components` projection on legacy
+        // designs that were saved before the deck-catalog vocabulary
+        // landed. The projection is derived, not stored — recomputing it
+        // here costs sub-millisecond on a typical deck and lets the
+        // adapter consume the in-memory state without going through a
+        // round-trip save first. The next save persists the projection;
+        // designs the user never reopens stay legacy on disk forever and
+        // the adapter no-ops on them, which is fine.
+        if loaded.components == nil {
+            loaded.components = ComponentEmitter.emit(loaded)
+        }
+        return loaded
+    }
+
+    private static func isNewDrawing(for drawingData: DeckDrawingData) -> Bool {
+        let hasSingleGeometry = !drawingData.vertices.isEmpty
+            || !drawingData.edges.isEmpty
+        let hasMultiGeometry = drawingData.levels.contains { level in
+            !level.vertices.isEmpty || !level.edges.isEmpty
+        }
+        return !(hasSingleGeometry || hasMultiGeometry)
+    }
+
+    private func finishInitialization() {
+        setupLaserSubscription()
+        // New drawings auto-enable autosave silently. Existing drawings
+        // apply the persisted user choice if one exists, otherwise wait
+        // for the first edit to surface the prompt (handled in `save()`).
+        // The persisted choice lives in UserDefaults so the prompt never
+        // re-asks once the user has answered (either way) on this device.
+        if self.isNewDrawing {
+            self.autosaveEnabled = true
+            startAutosaveTimer()
+        } else {
+            let defaults = UserDefaults.standard
+            if defaults.bool(forKey: Self.autosaveDecisionMadeKey) {
+                let saved = defaults.bool(forKey: Self.autosavePreferenceKey)
+                self.autosaveEnabled = saved
+                self.hasPromptedForAutosave = true
+                if saved {
+                    startAutosaveTimer()
+                }
+            }
+        }
+
+        // DECK-NEW-1 follow-up — migrate legacy single-`footprint` payloads
+        // to the per-surface store on first load. Reconciler is idempotent
+        // and safe to run on already-migrated drawings; this just ensures
+        // a user who opens an OLD drawing without editing still sees the
+        // correct per-surface materials in 2D and 3D.
+        reconcileSurfaces()
+
+        // Bug ab554b5f — designs that arrive in the builder with geometry but
+        // have NEVER been synced (template / sketch / AR creation paths)
+        // need an immediate enqueue so the upload happens even if the user
+        // dismisses the builder without editing further. The autosave timer
+        // would catch this eventually for new drawings, but a user who opens
+        // a freshly-created template-design and immediately backs out would
+        // otherwise leave the design only on-device.
+        if !self.hasEnqueuedCreate && !self.isNewDrawing {
+            self.enqueueDeckDesignSync()
+        }
     }
 }

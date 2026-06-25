@@ -105,7 +105,12 @@ final class RealtimeProcessor: ObservableObject {
         "task_types",
         "project_notes",
         "project_photos",
-        "project_photo_annotations"
+        "project_photo_annotations",
+        // Added to the supabase_realtime publication + REPLICA IDENTITY FULL
+        // (migration enable_realtime_for_deck_designs) so crew see a teammate's
+        // deck edits live. The realtime merge reuses mergeDeckDesign →
+        // applyServerSnapshot, so a stale echo can't revert a fresh local edit.
+        "deck_designs"
     ]
 
     // MARK: - Init

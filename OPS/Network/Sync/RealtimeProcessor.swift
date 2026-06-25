@@ -183,7 +183,7 @@ final class RealtimeProcessor: ObservableObject {
             try await channel.subscribeWithError()
             self.channel = channel
             self.isConnected = true
-            print("[RealtimeProcessor] Subscribed for company \(companyId)")
+            print("[RT_TRACE] ✅ SUBSCRIBED for company \(companyId) — \(companyFilteredTables.count + 4) tables")
 
             // If we had a previous disconnect, trigger catch-up
             if let disconnected = disconnectedAt {
@@ -191,7 +191,7 @@ final class RealtimeProcessor: ObservableObject {
                 disconnectedAt = nil
             }
         } catch {
-            print("[RealtimeProcessor] Subscribe error: \(error)")
+            print("[RT_TRACE] ❌ SUBSCRIBE FAILED for company \(companyId): \(error)")
             self.isConnected = false
         }
     }
@@ -234,6 +234,7 @@ final class RealtimeProcessor: ObservableObject {
     }
 
     private func handleSocketStatus(_ status: RealtimeClientStatus) {
+        print("[RT_TRACE] 🔌 socket status: \(status)")
         guard intendsToListen else { return }
         switch status {
         case .disconnected:
@@ -305,15 +306,15 @@ final class RealtimeProcessor: ObservableObject {
 
         switch action {
         case .insert(let insertAction):
-            print("[RealtimeProcessor] INSERT on \(table)")
+            print("[RT_TRACE] ⚡️ EVENT received: INSERT \(table)")
             handleUpsert(table: table, record: insertAction)
 
         case .update(let updateAction):
-            print("[RealtimeProcessor] UPDATE on \(table)")
+            print("[RT_TRACE] ⚡️ EVENT received: UPDATE \(table)")
             handleUpsert(table: table, record: updateAction)
 
         case .delete(let deleteAction):
-            print("[RealtimeProcessor] DELETE on \(table)")
+            print("[RT_TRACE] ⚡️ EVENT received: DELETE \(table)")
             handleDelete(table: table, action: deleteAction)
         }
     }

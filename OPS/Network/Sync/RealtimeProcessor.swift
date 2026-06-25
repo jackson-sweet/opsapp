@@ -12,6 +12,7 @@
 import Foundation
 import SwiftData
 import Supabase
+import FirebaseAuth
 
 // MARK: - Notification Names
 
@@ -171,6 +172,37 @@ final class RealtimeProcessor: ObservableObject {
         subscribeRetryTask?.cancel()
         subscribeRetryTask = nil
 
+        // Realtime MUST join with the user's Firebase JWT, never the anon apikey.
+        // supabase-swift builds the channel-join's access_token from
+        // `_getAccessToken()`, which wraps our token closure in `try?` and, on
+        // ANY failure, silently falls back to the anon apikey (the connection
+        // header default). At cold launch the SwiftData `currentUser` that gates
+        // realtime start is ready BEFORE Firebase restores its session from the
+        // keychain — so the join can fire while `Auth.auth().currentUser` is nil,
+        // the closure throws, and the channel subscribes as ANON. The server
+        // accepts that join (valid apikey) and reports SUBSCRIBED, but Postgres
+        // Changes RLS resolves an anon identity to zero rows, so NO events are
+        // ever delivered — and because the join "succeeded" the channel never
+        // re-subscribes. Delta sync masks it, so the calendar still updates on
+        // pull/foreground while live updates are silently dead. Gate the subscribe
+        // on a real, fetchable ID token and pin it onto the realtime client first;
+        // if it isn't ready, defer and let the retry loop re-attempt.
+        guard let firebaseUser = Auth.auth().currentUser else {
+            isConnected = false
+            print("[RealtimeProcessor] Deferring subscribe — Firebase session not ready yet")
+            scheduleSubscribeRetry(reason: "Firebase session not ready")
+            return
+        }
+        do {
+            let token = try await firebaseUser.getIDToken()
+            await supabase.realtimeV2.setAuth(token)
+        } catch {
+            isConnected = false
+            print("[RealtimeProcessor] Deferring subscribe — could not obtain ID token: \(error)")
+            scheduleSubscribeRetry(reason: "ID token unavailable")
+            return
+        }
+
         // Tear down any previous channel (without clearing listen intent).
         await teardownChannel()
 
@@ -216,7 +248,7 @@ final class RealtimeProcessor: ObservableObject {
             subscribeFailureCount = 0
             subscribeRetryTask?.cancel()
             subscribeRetryTask = nil
-            print("[RealtimeProcessor] Subscribed — \(companyFilteredTables.count + 4) tables")
+            print("[RealtimeProcessor] Subscribed (authenticated) — \(companyFilteredTables.count + 4) tables")
 
             // If we had a previous disconnect, trigger catch-up
             if let disconnected = disconnectedAt {
@@ -227,7 +259,7 @@ final class RealtimeProcessor: ObservableObject {
             self.isConnected = false
             // Socket is up but the join failed — self-heal with backed-off retries
             // (the socket-status observer only fires on a socket drop, not this).
-            scheduleSubscribeRetry(error: error)
+            scheduleSubscribeRetry(reason: "join failed: \(error)")
         }
     }
 
@@ -303,18 +335,20 @@ final class RealtimeProcessor: ObservableObject {
 
     // MARK: - Subscribe Retry (transient join failure)
 
-    /// Schedule a bounded, backed-off re-attempt of `startListening` after a channel
-    /// join failed while we still intend to listen. Capped exponential backoff
-    /// (5s → 10s → 20s → 40s → 60s, then every 60s) recovers a brief server hiccup
-    /// in seconds and keeps a longer outage retrying without churn. Superseded by
+    /// Schedule a bounded, backed-off re-attempt of `startListening` when a
+    /// subscribe could not complete while we still intend to listen — either the
+    /// channel join failed (transient server hiccup) or the Firebase session
+    /// wasn't ready to authenticate the join yet. Capped exponential backoff
+    /// (5s → 10s → 20s → 40s → 60s, then every 60s) recovers a brief gap in
+    /// seconds and keeps a longer outage retrying without churn. Superseded by
     /// any fresh subscribe (lifecycle trigger), reset on a healthy join, and
     /// canceled on stopListening.
-    private func scheduleSubscribeRetry(error: Error) {
+    private func scheduleSubscribeRetry(reason: String) {
         guard intendsToListen else { return }
         subscribeFailureCount += 1
         let attempt = subscribeFailureCount
         let delay = Self.subscribeRetryDelay(attempt: attempt)
-        print("[RealtimeProcessor] Subscribe failed (attempt \(attempt)) — retrying in \(Int(delay))s: \(error)")
+        print("[RealtimeProcessor] Subscribe not completed (attempt \(attempt), \(reason)) — retrying in \(Int(delay))s")
 
         subscribeRetryTask?.cancel()
         subscribeRetryTask = Task { [weak self] in

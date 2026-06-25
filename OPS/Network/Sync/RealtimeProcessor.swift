@@ -53,6 +53,12 @@ final class RealtimeProcessor: ObservableObject {
     /// intent clears). Drives whether a socket-status drop should auto-resubscribe.
     private var intendsToListen = false
 
+    /// True while a subscribe is in flight. The lifecycle fires `ensureListening`
+    /// from several triggers (cold launch, login, foreground, connectivity, socket
+    /// recovery); without this guard two could interleave at the subscribe `await`
+    /// and tear down each other's in-flight channel.
+    private var isSubscribing = false
+
     /// Socket-level status observation. A websocket can die silently — server
     /// idle-close, NAT/proxy timeout, expired token — with NO ConnectivityManager
     /// network change, leaving the channel subscribed-but-dead and `isConnected`
@@ -77,15 +83,19 @@ final class RealtimeProcessor: ObservableObject {
 
     /// Tables that filter on `company_id=eq.<companyId>`.
     ///
-    /// Catalog Option A — only parent tables (those with a direct `company_id`
-    /// column) are subscribed here. Child tables that lack `company_id`
-    /// (`catalog_options`, `catalog_option_values`, `catalog_variant_option_values`,
-    /// `catalog_item_tags`, `catalog_snapshot_items`, `product_options`,
-    /// `product_option_values`, `product_pricing_modifiers`, `product_materials`,
-    /// `catalog_order_items`) intentionally fall through to the next pullDelta
-    /// for refresh. This keeps the realtime path simple while still pushing
-    /// edits the user is most likely to notice (variant quantity, family edits,
-    /// order status, default product changes) live to the device.
+    /// ⚠️ EVERY table here MUST be a member of the `supabase_realtime` publication.
+    /// Subscribing to a NON-published table makes the server's CDC
+    /// `create_subscription` fail (Postgrex EncodeError) — and because all
+    /// postgres_changes bindings share one channel join, a single bad table
+    /// fails the ENTIRE channel ("Maximum retry attempts reached"), so NO realtime
+    /// events arrive for ANY table (including the schedule). That is exactly what
+    /// happened: `deck_designs`, the `catalog_*` tables, `company_default_products`,
+    /// and the permission tables were subscribed here but were NOT in the
+    /// publication, so live updates never worked. Those tables still sync via
+    /// delta/full pull; only their (dead) realtime bindings were removed. Before
+    /// adding a table here, confirm it is in the publication:
+    ///   SELECT 1 FROM pg_publication_tables
+    ///   WHERE pubname='supabase_realtime' AND schemaname='public' AND tablename='<t>';
     private let companyFilteredTables = [
         "projects",
         "project_tasks",
@@ -95,17 +105,7 @@ final class RealtimeProcessor: ObservableObject {
         "task_types",
         "project_notes",
         "project_photos",
-        "project_photo_annotations",
-        "deck_designs",
-        // Catalog parents
-        "catalog_categories",
-        "catalog_units",
-        "catalog_tags",
-        "catalog_items",
-        "catalog_variants",
-        "catalog_snapshots",
-        "catalog_orders",
-        "company_default_products"
+        "project_photo_annotations"
     ]
 
     // MARK: - Init
@@ -144,6 +144,12 @@ final class RealtimeProcessor: ObservableObject {
         self.modelContext = context
         intendsToListen = true
 
+        // Serialize subscribes — a concurrent caller must not tear down the
+        // channel this one is mid-way through establishing.
+        guard !isSubscribing else { return }
+        isSubscribing = true
+        defer { isSubscribing = false }
+
         // Tear down any previous channel (without clearing listen intent).
         await teardownChannel()
 
@@ -171,12 +177,14 @@ final class RealtimeProcessor: ObservableObject {
         if let userId = userId {
             subscribeToTable(channel: channel, table: "notifications", filter: "user_id=eq.\(userId)")
 
-            // Permission change detection — subscribe to tables that affect the current user's permissions
-            subscribeToTable(channel: channel, table: "user_roles", filter: "user_id=eq.\(userId)")
-            subscribeToTable(channel: channel, table: "user_permission_overrides", filter: "user_id=eq.\(userId)")
-            if let roleId = PermissionStore.shared.roleId {
-                subscribeToTable(channel: channel, table: "role_permissions", filter: "role_id=eq.\(roleId)")
-            }
+            // NOTE: the permission tables (user_roles, user_permission_overrides,
+            // role_permissions) are intentionally NOT subscribed here — they are
+            // NOT in the supabase_realtime publication, so their bindings failed
+            // the whole channel join (role_permissions crashed the server's
+            // create_subscription outright). Permission changes are rare and
+            // admin-driven; they are picked up on the next foreground / periodic
+            // sync. Re-add a live subscription ONLY after adding the table to the
+            // publication and verifying the channel still subscribes.
         }
 
         do {

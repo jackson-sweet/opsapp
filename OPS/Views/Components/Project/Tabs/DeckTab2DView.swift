@@ -10,6 +10,9 @@ import SwiftUI
 
 struct DeckTab2DView: View {
     let drawingData: DeckDrawingData
+    /// Reports `true` while the user is actively pinching/panning the blueprint
+    /// so the parent can fade the floating badges (parity with the 3D viewer).
+    var onInteractingChange: (Bool) -> Void = { _ in }
 
     @State private var canvasScale: CGFloat = 1.0
     @State private var canvasOffset: CGSize = .zero
@@ -57,7 +60,8 @@ struct DeckTab2DView: View {
                 CanvasGestureView(
                     scale: $canvasScale,
                     offset: $canvasOffset,
-                    isDrawing: false
+                    isDrawing: false,
+                    onInteractingChange: onInteractingChange
                 )
             }
             // Tap gesture for measurement / surface inspection. Only active

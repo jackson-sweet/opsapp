@@ -188,7 +188,6 @@ final class InboundChangeRouter {
         guard !names.isEmpty else { return }
 
         if !names.isDisjoint(with: Self.calendarEntityNames) {
-            print("[RT_TRACE] 🔁 router → calendar repaint (entities: \(names.sorted()))")
             onCalendarTasksChanged()
         }
         if names.contains(Self.userEventEntityName) {

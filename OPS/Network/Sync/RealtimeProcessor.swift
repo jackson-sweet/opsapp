@@ -216,7 +216,7 @@ final class RealtimeProcessor: ObservableObject {
             subscribeFailureCount = 0
             subscribeRetryTask?.cancel()
             subscribeRetryTask = nil
-            print("[RT_TRACE] ✅ SUBSCRIBED for company \(companyId) — \(companyFilteredTables.count + 4) tables")
+            print("[RealtimeProcessor] Subscribed — \(companyFilteredTables.count + 4) tables")
 
             // If we had a previous disconnect, trigger catch-up
             if let disconnected = disconnectedAt {
@@ -224,7 +224,6 @@ final class RealtimeProcessor: ObservableObject {
                 disconnectedAt = nil
             }
         } catch {
-            print("[RT_TRACE] ❌ SUBSCRIBE FAILED for company \(companyId): \(error)")
             self.isConnected = false
             // Socket is up but the join failed — self-heal with backed-off retries
             // (the socket-status observer only fires on a socket drop, not this).
@@ -273,7 +272,6 @@ final class RealtimeProcessor: ObservableObject {
     }
 
     private func handleSocketStatus(_ status: RealtimeClientStatus) {
-        print("[RT_TRACE] 🔌 socket status: \(status)")
         guard intendsToListen else { return }
         switch status {
         case .disconnected:
@@ -380,15 +378,12 @@ final class RealtimeProcessor: ObservableObject {
 
         switch action {
         case .insert(let insertAction):
-            print("[RT_TRACE] ⚡️ EVENT received: INSERT \(table)")
             handleUpsert(table: table, record: insertAction)
 
         case .update(let updateAction):
-            print("[RT_TRACE] ⚡️ EVENT received: UPDATE \(table)")
             handleUpsert(table: table, record: updateAction)
 
         case .delete(let deleteAction):
-            print("[RT_TRACE] ⚡️ EVENT received: DELETE \(table)")
             handleDelete(table: table, action: deleteAction)
         }
     }

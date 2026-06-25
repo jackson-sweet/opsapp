@@ -205,7 +205,6 @@ struct ScheduleView: View {
         }
         // Watch for calendar event changes and reload data
         .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
-            print("[RT_TRACE] 🗓️ ScheduleView observed change → reloadCalendarData")
             viewModel.reloadCalendarData()
         }
         // Universal search sheet

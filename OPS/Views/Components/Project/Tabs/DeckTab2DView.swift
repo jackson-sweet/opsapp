@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import DeckKit
 
 struct DeckTab2DView: View {
     let drawingData: DeckDrawingData

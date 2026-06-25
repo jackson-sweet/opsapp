@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/AssignmentWheelView.swift
 
 import SwiftUI
+import DeckKit
 import SwiftData
 
 struct AssignmentWheelView: View {

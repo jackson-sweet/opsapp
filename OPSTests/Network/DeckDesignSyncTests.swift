@@ -8,6 +8,7 @@
 //
 
 import SwiftData
+import DeckKit
 import XCTest
 @testable import OPS
 

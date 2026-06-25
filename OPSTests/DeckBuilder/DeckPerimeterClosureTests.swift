@@ -33,6 +33,7 @@
 //
 
 import CoreGraphics
+import DeckKit
 import XCTest
 @testable import OPS
 

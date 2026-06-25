@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/SketchCaptureView.swift
 
 import SwiftUI
+import DeckKit
 import VisionKit
 import UIKit
 import PhotosUI

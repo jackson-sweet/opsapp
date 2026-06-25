@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/DimensionInputView.swift
 
 import SwiftUI
+import DeckKit
 
 struct DimensionInputView: View {
     @ObservedObject var viewModel: DeckBuilderViewModel

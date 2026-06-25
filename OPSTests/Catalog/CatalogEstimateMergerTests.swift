@@ -8,6 +8,7 @@
 //
 
 import XCTest
+import DeckKit
 @testable import OPS
 
 final class CatalogEstimateMergerTests: XCTestCase {

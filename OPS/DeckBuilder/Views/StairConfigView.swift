@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/StairConfigView.swift
 
 import SwiftUI
+import DeckKit
 
 struct StairConfigView: View {
     @ObservedObject var viewModel: DeckBuilderViewModel

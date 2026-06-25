@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/PhotoOverlayEditorView.swift
 
 import SwiftUI
+import DeckKit
 import Supabase
 
 struct PhotoOverlayEditorView: View {

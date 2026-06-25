@@ -6,6 +6,7 @@
 //
 
 import CoreGraphics
+import DeckKit
 import SwiftUI
 
 struct DeckStairRenderPlan {

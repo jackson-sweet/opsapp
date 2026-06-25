@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/3D/DeckScene3DView.swift
 
 import SwiftUI
+import DeckKit
 import SceneKit
 
 // MARK: - Scene Controller (shared between 3D view and parent)

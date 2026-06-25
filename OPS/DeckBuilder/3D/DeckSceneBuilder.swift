@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/3D/DeckSceneBuilder.swift
 
 import Foundation
+import DeckKit
 import SceneKit
 import simd
 import UIKit

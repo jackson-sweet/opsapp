@@ -1,4 +1,5 @@
 import Foundation
+import DeckKit
 
 enum DeckAppSurface: Equatable {
     case ops

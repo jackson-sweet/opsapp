@@ -13,6 +13,7 @@
 //
 
 import Foundation
+import DeckKit
 import SwiftData
 
 struct DesignToEstimateAdapter {

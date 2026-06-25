@@ -20,6 +20,7 @@
 //
 
 import Foundation
+import DeckKit
 
 enum CatalogEstimateMerger {
 

@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/MaterialPickerSheet.swift
 
 import SwiftUI
+import DeckKit
 import SwiftData
 
 struct MaterialPickerSheet: View {

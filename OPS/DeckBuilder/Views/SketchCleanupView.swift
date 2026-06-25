@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/SketchCleanupView.swift
 
 import SwiftUI
+import DeckKit
 import SwiftData
 
 /// Cleanup view where users review and correct detection results before importing to canvas.

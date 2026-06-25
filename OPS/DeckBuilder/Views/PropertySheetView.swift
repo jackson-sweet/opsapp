@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/PropertySheetView.swift
 
 import SwiftUI
+import DeckKit
 import SwiftData
 
 struct PropertySheetView: View {

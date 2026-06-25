@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/DeckBuilderViewModel.swift
 
 import Foundation
+import DeckKit
 import SwiftUI
 import SwiftData
 import Supabase

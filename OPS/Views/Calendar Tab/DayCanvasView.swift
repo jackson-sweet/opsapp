@@ -262,13 +262,14 @@ struct DayPageView: View {
     }
 
     /// Pull-to-refresh action for the day list. `viewModel.refreshCalendar()`
-    /// runs a full SyncEngine pass via DataController.refreshProjectsFromBackend
-    /// then reloads both the day's tasks and the user's calendar events, so one
-    /// gesture surfaces new assignments, rescheduled work, and updated time-off /
-    /// personal events. Light haptic on commit — a meaningful interaction per the
-    /// OPS haptic principles. Wired on both populated and empty days (bug
-    /// 6e7c63a9): an empty or stale day is exactly when the operator reaches for
-    /// pull-to-refresh.
+    /// runs a schedule-scoped SyncEngine pass via DataController.refreshScheduleFromBackend
+    /// (projects, tasks, task types, calendar events only — a fast "check for
+    /// schedule updates") then reloads both the day's tasks and the user's
+    /// calendar events, so one gesture surfaces new assignments, rescheduled
+    /// work, and updated time-off / personal events. Light haptic on commit — a
+    /// meaningful interaction per the OPS haptic principles. Wired on both
+    /// populated and empty days (bug 6e7c63a9): an empty or stale day is exactly
+    /// when the operator reaches for pull-to-refresh.
     private func refreshDay() async {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         await viewModel.refreshCalendar()

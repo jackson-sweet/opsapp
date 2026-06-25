@@ -2184,14 +2184,18 @@ class DataController: ObservableObject {
     
     /// Force refresh projects from backend
     @MainActor
-    func refreshProjectsFromBackend() async {
+    /// Schedule pull-to-refresh: a lightweight "check for schedule updates"
+    /// (projects, tasks, task types, calendar events) — NOT a full all-entity
+    /// sync. This is the operator's fallback for when realtime hasn't delivered
+    /// a teammate's reschedule, so it must be fast and scoped to the calendar.
+    func refreshScheduleFromBackend() async {
         guard isConnected, isAuthenticated else {
             return
         }
 
-        print("[MANUAL_SYNC] 🔄 Starting comprehensive manual sync via SyncEngine...")
-        await syncEngine.fullSync()
-        print("[MANUAL_SYNC] ✅ Manual sync completed")
+        print("[SCHEDULE_SYNC] 🔄 Checking for schedule updates via SyncEngine...")
+        await syncEngine.refreshScheduleData()
+        print("[SCHEDULE_SYNC] ✅ Schedule check completed")
     }
     
     // MARK: - All Tasks

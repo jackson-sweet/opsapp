@@ -343,6 +343,54 @@ actor DataActor {
         return failedEntities
     }
 
+    /// Focused pull of ONLY the schedule-relevant entities — projects, tasks,
+    /// task types, and calendar events. Backs the schedule pull-to-refresh: a
+    /// lightweight "check for schedule updates" for when realtime hasn't
+    /// delivered, instead of dragging the entire catalog / estimates / invoices
+    /// / photos down on every pull. Full pull (`since: nil`) of just these
+    /// entities, so a stale delta cursor can never hide a reschedule. Returns
+    /// the entity types whose sync THREW (isolated per-entity).
+    @discardableResult
+    func syncScheduleEntities(companyId: String) async throws -> Set<SyncEntityType> {
+        guard !companyId.isEmpty else {
+            print("[DataActor] SCHEDULE SYNC ABORTED — no companyId available")
+            return []
+        }
+
+        let entities: [SyncEntityType] = [.project, .projectTask, .taskType, .calendarUserEvent]
+        print("[DataActor] ======== SCHEDULE SYNC STARTED ========")
+        var failedEntities = Set<SyncEntityType>()
+
+        spotlightDirty.removeAll()
+        spotlightDeleted.removeAll()
+        inboundMergedEntityNames.removeAll()
+
+        let capabilities = await CatalogSchemaCapabilityGate.refresh(companyId: companyId)
+        let repos = repositories(companyId: companyId)
+
+        for entityType in entities where capabilities.supportsSync(entityType) {
+            do {
+                try await syncEntityType(entityType, since: nil, repos: repos)
+            } catch {
+                print("[DataActor] FAILED schedule \(entityType.rawValue): \(error)")
+                failedEntities.insert(entityType)
+                SyncTelemetry.logError(
+                    entityType: entityType.rawValue,
+                    error: error,
+                    isFullSync: false,
+                    companyId: companyId,
+                    userId: SupabaseService.shared.currentUserId
+                )
+            }
+        }
+
+        linkAllRelationships()
+        flushInboundChangeSignal()
+
+        print("[DataActor] ======== SCHEDULE SYNC COMPLETE ========")
+        return failedEntities
+    }
+
     /// Posts the entity names accumulated by this batch sync as a single
     /// `.inboundDataMerged` signal — AFTER linkAllRelationships so the
     /// resulting repaint can never observe unlinked relationships.

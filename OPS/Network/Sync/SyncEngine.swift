@@ -717,6 +717,68 @@ final class SyncEngine {
         await retryPendingOnboardingCompletion()
     }
 
+    /// Schedule-only refresh backing pull-to-refresh — projects, tasks, task
+    /// types, and calendar events. A lean "check for schedule updates" for when
+    /// realtime hasn't delivered an edit, instead of a full all-entity sync that
+    /// drags the whole catalog/estimates/invoices/photos down on every pull.
+    /// Still pushes pending local ops so an offline edit isn't stranded.
+    func refreshScheduleData() async {
+        // Briefly defer to an in-flight sync rather than racing it.
+        if syncInProgress {
+            for _ in 0..<30 {
+                try? await Task.sleep(for: .milliseconds(100))
+                if !syncInProgress { break }
+            }
+            guard !syncInProgress else {
+                print("[SYNC_ENGINE] Sync in progress — skipping schedule refresh")
+                return
+            }
+        }
+
+        guard connectivity?.shouldAttemptSync == true else {
+            print("[SYNC_ENGINE] Network not available — skipping schedule refresh")
+            statusText = "Offline — schedule refresh deferred"
+            return
+        }
+
+        syncInProgress = true
+        isSyncing = true
+        hasError = false
+        statusText = "Checking for schedule updates…"
+
+        defer {
+            syncInProgress = false
+            isSyncing = false
+            refreshPendingCount()
+        }
+
+        guard let ctx = modelContext else { return }
+        do {
+            if FeatureFlags.useDataActor, let actor = dataActor {
+                let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
+                _ = try await actor.syncScheduleEntities(companyId: companyId)
+            } else {
+                // Legacy path has no scoped pull — fall back to a full inbound
+                // sync (rare: the actor path is the default).
+                _ = try await inboundProcessor?.fullSync(context: ctx, onProgress: { _, _ in })
+            }
+        } catch {
+            print("[SYNC_ENGINE] Schedule refresh error: \(error)")
+            hasError = true
+            let classified = classifySyncError(error)
+            if case .authExpired = classified {
+                NotificationCenter.default.post(name: .syncAuthExpired, object: nil)
+                return
+            }
+        }
+
+        // Push any pending local schedule edits so a manual refresh reconciles
+        // both directions, not just inbound.
+        await pushPending()
+
+        statusText = hasError ? "Sync error" : "Schedule up to date"
+    }
+
     /// Re-sends the onboarding-completion ACK (POST /api/onboarding/complete) when a
     /// prior attempt was queued offline, clearing `onboarding_completion_pending` on
     /// success. No-op when nothing is queued. Best-effort: failures are swallowed and

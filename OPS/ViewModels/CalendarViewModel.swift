@@ -595,10 +595,11 @@ class CalendarViewModel: ObservableObject {
         userEventsForCurrentPeriod.filter { $0.overlaps(date: date) }
     }
 
-    /// Full calendar refresh, driven by pull-to-refresh on the day list. Runs a
-    /// comprehensive backend sync — projects, tasks, and calendar user events
-    /// all come down via SyncEngine.fullSync — then reloads BOTH layers of the
-    /// day view from the freshly-synced local store:
+    /// Calendar refresh, driven by pull-to-refresh on the day list. Runs a
+    /// schedule-scoped backend sync — projects, tasks, task types, and calendar
+    /// user events only (a fast "check for schedule updates", the fallback for
+    /// when realtime hasn't delivered) — then reloads BOTH layers of the day
+    /// view from the freshly-synced local store:
     ///   • loadProjectsForDate rebuilds the week task cache, so newly-assigned
     ///     and rescheduled tasks surface on the day.
     ///   • loadUserEvents refreshes the published user-event array, so new or
@@ -616,7 +617,7 @@ class CalendarViewModel: ObservableObject {
         // latest of everything from the backend (full sync).
         let reachable = dataController.connectivity?.shouldAttemptSync ?? dataController.isConnected
         if reachable {
-            await dataController.refreshProjectsFromBackend()
+            await dataController.refreshScheduleFromBackend()
             if lastRefreshUnreachable {
                 withAnimation(OPSStyle.Animation.standard) { lastRefreshUnreachable = false }
             }

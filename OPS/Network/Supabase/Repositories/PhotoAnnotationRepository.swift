@@ -174,6 +174,9 @@ class PhotoAnnotationRepository {
             "overlayUrl": layer.overlayUrl.map(AnyJSON.string) ?? .null,
             "strokeRef": layer.strokeRef.map(AnyJSON.string) ?? .null
         ]
+        if let strokeCount = layer.strokeCount {
+            object["strokeCount"] = .integer(strokeCount)
+        }
         // Omit clearedAt when nil so the RPC reads `->> 'clearedAt'` as NULL = active.
         if let clearedAt = layer.clearedAt {
             object["clearedAt"] = .string(SupabaseDate.format(clearedAt))

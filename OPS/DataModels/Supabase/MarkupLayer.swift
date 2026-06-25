@@ -35,6 +35,10 @@ struct MarkupLayer: Codable, Equatable, Identifiable {
     var strokeRef: String?
     var visibleDefault: Bool
     var zIndex: Int
+    /// Current stroke count for this author's layer — drives the change-log
+    /// "<n> marks" label without decoding the strokeRef blob. Nil for a
+    /// synthesized legacy layer (count unknown).
+    var strokeCount: Int?
     var createdAt: Date
     var updatedAt: Date
     /// Set when the author cleared their own marks. A layer is "active" while nil.
@@ -52,6 +56,7 @@ struct MarkupLayer: Codable, Equatable, Identifiable {
         strokeRef: String?,
         visibleDefault: Bool = true,
         zIndex: Int = 0,
+        strokeCount: Int? = nil,
         createdAt: Date,
         updatedAt: Date,
         clearedAt: Date? = nil
@@ -63,6 +68,7 @@ struct MarkupLayer: Codable, Equatable, Identifiable {
         self.strokeRef = strokeRef
         self.visibleDefault = visibleDefault
         self.zIndex = zIndex
+        self.strokeCount = strokeCount
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.clearedAt = clearedAt
@@ -70,7 +76,7 @@ struct MarkupLayer: Codable, Equatable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case layerId, authorId, authorName, overlayUrl, strokeRef
-        case visibleDefault, zIndex, createdAt, updatedAt, clearedAt
+        case visibleDefault, zIndex, strokeCount, createdAt, updatedAt, clearedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -83,6 +89,7 @@ struct MarkupLayer: Codable, Equatable, Identifiable {
         strokeRef = try c.decodeIfPresent(String.self, forKey: .strokeRef)
         visibleDefault = (try? c.decodeIfPresent(Bool.self, forKey: .visibleDefault)) ?? true
         zIndex = (try? c.decodeIfPresent(Int.self, forKey: .zIndex)) ?? 0
+        strokeCount = try? c.decodeIfPresent(Int.self, forKey: .strokeCount)
         createdAt = MarkupCoding.decodeDate(c, .createdAt) ?? Date(timeIntervalSince1970: 0)
         updatedAt = MarkupCoding.decodeDate(c, .updatedAt) ?? createdAt
         clearedAt = MarkupCoding.decodeDate(c, .clearedAt)
@@ -97,6 +104,7 @@ struct MarkupLayer: Codable, Equatable, Identifiable {
         try c.encodeIfPresent(strokeRef, forKey: .strokeRef)
         try c.encode(visibleDefault, forKey: .visibleDefault)
         try c.encode(zIndex, forKey: .zIndex)
+        try c.encodeIfPresent(strokeCount, forKey: .strokeCount)
         try c.encode(SupabaseDate.format(createdAt), forKey: .createdAt)
         try c.encode(SupabaseDate.format(updatedAt), forKey: .updatedAt)
         // Omit clearedAt when nil so the RPC's `->> 'clearedAt' is null` active

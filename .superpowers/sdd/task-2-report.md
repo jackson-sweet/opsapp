@@ -54,3 +54,47 @@ SELF-REVIEW NOTES:
 - Unknown top-level blocks decode opaquely through `DeckJSONValue` and re-encode in sorted key order without introducing any framing/zoning/rendering behavior.
 - No UI, styling, DeckKit packaging, or unrelated branch files were touched.
 - Remaining concern is verification, not implementation shape: the shared `OPS` test host currently crashes before the focused unit test bundle can complete.
+
+---
+
+STATUS: DONE_WITH_CONCERNS
+
+COMMITS MADE:
+- `d294a9fe` — `fix: preserve exact future deck drawing numbers`
+
+FILES CHANGED:
+- `OPS/DeckBuilder/Models/DeckDrawingFutureBlocks.swift`
+- `OPS/DeckBuilder/Models/DeckGeometry.swift`
+- `OPSTests/DeckBuilder/DeckDrawingFutureBlocksTests.swift`
+- `.superpowers/sdd/task-2-report.md`
+
+COMMANDS RUN:
+1. `scripts/verify-ops-decks-style-tokens.sh .`
+   - Result: passed with no output after the review-fix patch.
+2. `xcodebuild build-for-testing -project OPS.xcodeproj -scheme OPS -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:OPSTests/DeckDrawingFutureBlocksTests -only-testing:OPSTests/DeckBuilderRegressionTests -derivedDataPath /private/tmp/ops-decks-p1-2-tests -clonedSourcePackagesDirPath /Users/jacksonsweet/Projects/OPS/ops-ios/.dd-ptr-fix/SourcePackages -disableAutomaticPackageResolution CODE_SIGNING_ALLOWED=NO`
+   - Result: first rerun failed in `DeckDrawingFutureBlocks.swift` with `error: value of type 'UnicodeScalar' (aka 'Unicode.Scalar') has no member 'hexDigitValue'`.
+3. `xcodebuild build-for-testing ... > /private/tmp/ops-decks-p1-2-build.log 2>&1`
+   - Result: captured the focused build log, isolated the parser compile failure, then reran after replacing `hexDigitValue` with explicit ASCII hex decoding.
+4. `xcodebuild build-for-testing -project OPS.xcodeproj -scheme OPS -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:OPSTests/DeckDrawingFutureBlocksTests -only-testing:OPSTests/DeckBuilderRegressionTests -derivedDataPath /private/tmp/ops-decks-p1-2-tests -clonedSourcePackagesDirPath /Users/jacksonsweet/Projects/OPS/ops-ios/.dd-ptr-fix/SourcePackages -disableAutomaticPackageResolution CODE_SIGNING_ALLOWED=NO`
+   - Result: `** TEST BUILD SUCCEEDED **`.
+5. `xcodebuild test-without-building -project OPS.xcodeproj -scheme OPS -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:OPSTests/DeckDrawingFutureBlocksTests -only-testing:OPSTests/DeckBuilderRegressionTests -derivedDataPath /private/tmp/ops-decks-p1-2-tests CODE_SIGNING_ALLOWED=NO > /private/tmp/ops-decks-p1-2-test.log 2>&1`
+   - Result: compile artifacts launched into XCTest, but the shared host crashed before the test bundle connected: `OPS (82093) encountered an error (Early unexpected exit, operation never finished bootstrapping - no restart will be attempted. (Underlying Error: Test crashed with signal trap before establishing connection.))`
+6. `git diff --check -- OPS/DeckBuilder/Models/DeckDrawingFutureBlocks.swift OPS/DeckBuilder/Models/DeckGeometry.swift OPSTests/DeckBuilder/DeckDrawingFutureBlocksTests.swift .superpowers/sdd/task-2-report.md`
+   - Result: passed.
+
+COMMAND RESULTS SUMMARY:
+- Style-token scanner: PASS
+- Focused `build-for-testing`: PASS
+- Focused `test-without-building`: FAILED AT XCTest host bootstrap with exact crash string preserved above
+- Diff hygiene (`git diff --check`): PASS
+
+FOCUSED VERIFICATION EVIDENCE:
+- Unknown future-block numbers now preserve raw JSON tokens as strings inside `DeckJSONValue.number(String)` instead of `Double`.
+- `DeckDrawingData.fromJSON(_:)` now harvests unknown top-level blocks with the custom parser after decoding known fields, so future blocks keep nested arrays/objects/nulls plus exact numeric lexemes.
+- `DeckDrawingData.toJSON()` now encodes known keys first, then merges only non-colliding, validated future blocks back into the JSON object with raw-number rendering intact.
+- `DeckDrawingFutureBlocksTests` now asserts structural round-trip equality and exact numeric-token preservation, and it explicitly checks that `futureBlocks` cannot override known `DeckDrawingData` keys on encode.
+
+SELF-REVIEW NOTES:
+- Scope stayed inside the task-2 model/test files plus this report.
+- Unknown/future block handling remains opaque; no framing/zoning/code/rendering behavior was added.
+- Remaining concern is outside this patch: focused XCTest still cannot execute because the shared `OPS` host crashes before establishing the test connection, even after the focused build succeeds.

@@ -724,9 +724,9 @@ struct DeckDrawingData: Codable {
     /// (deck-catalog integration spec § 3.2 + § 4.2).
     var components: [DesignComponentRow]? = nil
     /// Opaque top-level `drawing_data` blocks that newer deck runtimes may
-    /// write before this app understands them. Preserve them byte-for-byte at
-    /// the JSON value level so future framing/zoning/code/rendering payloads
-    /// survive round trips during the DeckKit extraction.
+    /// write before this app understands them. `fromJSON(_:)` parses these
+    /// blocks outside `JSONDecoder` so raw JSON number tokens survive exact
+    /// round-trips through older builds.
     var futureBlocks: [String: DeckJSONValue] = [:]
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -760,16 +760,7 @@ struct DeckDrawingData: Codable {
         self.levels = try c.decodeIfPresent([DeckLevel].self, forKey: .levels) ?? []
         self.levelConnections = try c.decodeIfPresent([LevelConnection].self, forKey: .levelConnections) ?? []
         self.components = try c.decodeIfPresent([DesignComponentRow].self, forKey: .components)
-
-        let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
-        let dynamic = try decoder.container(keyedBy: DeckDynamicCodingKey.self)
-        self.futureBlocks = dynamic.allKeys.reduce(into: [:]) { result, key in
-            guard !knownKeys.contains(key.stringValue),
-                  let value = try? dynamic.decode(DeckJSONValue.self, forKey: key) else {
-                return
-            }
-            result[key.stringValue] = value
-        }
+        self.futureBlocks = [:]
     }
 
     func encode(to encoder: Encoder) throws {
@@ -786,12 +777,6 @@ struct DeckDrawingData: Codable {
         try c.encode(levels, forKey: .levels)
         try c.encode(levelConnections, forKey: .levelConnections)
         try c.encodeIfPresent(components, forKey: .components)
-
-        var dynamic = encoder.container(keyedBy: DeckDynamicCodingKey.self)
-        for (key, value) in futureBlocks.sorted(by: { $0.key < $1.key }) {
-            guard let codingKey = DeckDynamicCodingKey(stringValue: key) else { continue }
-            try dynamic.encode(value, forKey: codingKey)
-        }
     }
 
     // MARK: - Vertex Helpers
@@ -1201,12 +1186,32 @@ struct DeckDrawingData: Codable {
               let json = String(data: data, encoding: .utf8) else {
             return "{}"
         }
-        return json
+        guard !copy.futureBlocks.isEmpty else { return json }
+
+        guard var merged = try? DeckJSONValue.parseObject(from: json) else {
+            return json
+        }
+
+        let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+        for (key, value) in copy.futureBlocks.sorted(by: { $0.key < $1.key }) {
+            guard !knownKeys.contains(key), value.isValidJSONObject else { continue }
+            merged[key] = value
+        }
+
+        return (try? DeckJSONValue.object(merged).renderedJSONString()) ?? json
     }
 
     static func fromJSON(_ json: String) -> DeckDrawingData? {
         guard let data = json.data(using: .utf8) else { return nil }
         guard var decoded = try? JSONDecoder().decode(DeckDrawingData.self, from: data) else { return nil }
+
+        if let root = try? DeckJSONValue.parseObject(from: json) {
+            let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+            decoded.futureBlocks = root.reduce(into: [:]) { result, entry in
+                guard !knownKeys.contains(entry.key) else { return }
+                result[entry.key] = entry.value
+            }
+        }
 
         // Referential integrity, single-level: drop edges that reference
         // missing vertices, then drop vertices that no surviving edge

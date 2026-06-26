@@ -184,6 +184,9 @@ struct PhotoCommentViewer: View {
         .onChange(of: isComposeFocused) { _, focused in
             if focused { cancelAutoHide() } else { scheduleAutoHide() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .projectPhotoAnnotationsChanged)) { _ in
+            Task { await refreshProjectAnnotationComposites() }
+        }
         .onDisappear {
             cancelAutoHide()
         }
@@ -883,6 +886,16 @@ struct PhotoCommentViewer: View {
     private func cancelAutoHide() {
         autoHideTask?.cancel()
         autoHideTask = nil
+    }
+
+    @MainActor
+    private func refreshProjectAnnotationComposites() async {
+        guard let modelContext = dataController.modelContext else { return }
+        await PhotoAnnotationSyncManager.shared.preCompositeAnnotations(
+            projectId: projectId,
+            modelContext: modelContext
+        )
+        imageRefreshToken += 1
     }
 
     // MARK: - Remote Annotation Loading

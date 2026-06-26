@@ -5872,7 +5872,14 @@ class DataController: ObservableObject {
             case "notes":
                 if case .string(let v) = value { project.notes = v }
             case "description":
-                if case .string(let v) = value { project.projectDescription = v }
+                switch value {
+                case .string(let v):
+                    project.projectDescription = v
+                case .null:
+                    project.projectDescription = nil
+                default:
+                    break
+                }
             case "client_id":
                 if case .string(let v) = value { project.clientId = v }
             default:

@@ -125,6 +125,37 @@ Updated: 2026-06-26
   channel, cancels those tokens on teardown / failed join / stop, and logs
   `[RealtimeProcessor] Event received - table=<table>, action=<action>` before
   routing the event to the DataActor or legacy merge path.
+- Follow-up feature-specific fixes after live realtime was confirmed for deck
+  designs, clients, job addresses, photos, and photo deletes:
+  - Project description edits were not realtime because
+    `ProjectDetailsViewModel.saveDescription()` only saved local SwiftData and
+    set `project.needsSync = true` after that save. It never called
+    `DataController.updateProjectFields(projectId:fields:)`, so no outbound
+    `SyncOperation` and no server `projects.description` update were produced.
+    The fix routes description saves through `updateProjectFields` and teaches
+    `applyProjectFieldsLocally` to handle `.null` by clearing
+    `project.projectDescription`.
+  - Marked-up photos were not repainting live because
+    `project_photo_annotations` rows did merge through realtime, but
+    `InboundChangeRouter` ignored `"PhotoAnnotation"`. The annotation image
+    compositor only ran on local saves / screen appearance, so remote markup
+    could sit in SwiftData without regenerating cached composited thumbnails.
+    The fix routes `"PhotoAnnotation"` inbound merges to
+    `.projectPhotoAnnotationsChanged`; mounted photo surfaces then call
+    `PhotoAnnotationSyncManager.preCompositeAnnotations(...)`, which reuses the
+    existing `.annotationsComposited` cache reload path. Legacy realtime and
+    legacy inbound sync paths also post the same signal for annotation merges.
+- Verification for the feature-specific fixes was run from a clean temporary
+  worktree because the main checkout had unrelated untracked SiteVisits files
+  plus a modified `OPS.xcodeproj/project.pbxproj` that made simulator tests
+  compile `OPS/Views/SiteVisits/SiteVisitCaptureView.swift` and fail on
+  optional `String?` unwrap errors. Clean-worktree evidence:
+  - `InboundChangeRouterTests.test_photoAnnotationEntity_postsAnnotationRefreshNotificationOnly`
+    passed.
+  - `ProjectDescriptionSyncTests.testUpdateProjectFieldsClearingDescriptionClearsLocalValueAndQueuesNullPayload`
+    passed and logged `Recorded update for project [aaaaaaaa-...]`.
+  - `xcodebuild -scheme OPS -destination 'generic/platform=iOS' build` logged
+    `** BUILD SUCCEEDED **`.
 
 ## Interpretation
 

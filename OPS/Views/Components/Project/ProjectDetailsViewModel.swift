@@ -430,13 +430,30 @@ class ProjectDetailsViewModel: ObservableObject {
     // MARK: - Description Editing
 
     func saveDescription() {
-        project.projectDescription = editingProjectDetailsText.isEmpty ? nil : editingProjectDetailsText
+        let nextDescription = editingProjectDetailsText.isEmpty ? nil : editingProjectDetailsText
+        project.projectDescription = nextDescription
         isEditingProjectDetails = false
         editingProjectDetailsText = ""
 
-        Task {
-            try? dataController?.modelContext?.save()
-            project.needsSync = true
+        Task { @MainActor in
+            let descriptionField: AnyJSON
+            if let nextDescription {
+                descriptionField = .string(nextDescription)
+            } else {
+                descriptionField = .null
+            }
+
+            do {
+                try await dataController?.updateProjectFields(
+                    projectId: project.id,
+                    fields: ["description": descriptionField]
+                )
+            } catch {
+                project.needsSync = true
+                try? dataController?.modelContext?.save()
+                print("Failed to queue project description update: \(error)")
+            }
+
             ToastCenter.shared.present(Feedback.Project.descriptionSaved)
         }
     }

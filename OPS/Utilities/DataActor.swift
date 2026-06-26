@@ -1386,6 +1386,7 @@ actor DataActor {
                 try mergePhotoAnnotation(dto: dto)
             }
         }
+        inboundMergedEntityNames.insert("PhotoAnnotation")
         print("[DataActor] Merged \(dtos.count) photo annotations")
     }
 

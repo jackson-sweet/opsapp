@@ -1403,9 +1403,12 @@ final class InboundProcessor {
 
     private func syncPhotoAnnotations(since: Date?, context: ModelContext) async throws {
         let dtos = try await photoAnnotationRepo.fetchAll(since: since)
+        guard !dtos.isEmpty else { return }
+
         for dto in dtos {
             try mergePhotoAnnotation(dto: dto, context: context)
         }
+        InboundChangeSignal.post(entityNames: ["PhotoAnnotation"])
         print("[InboundProcessor] Merged \(dtos.count) photo annotations")
     }
 

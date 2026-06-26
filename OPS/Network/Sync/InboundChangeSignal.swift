@@ -44,6 +44,10 @@ extension Notification.Name {
     /// Posted after any inbound sync path saves server data into SwiftData.
     /// userInfo[InboundChangeSignal.entityNamesKey]: [String] — model class names.
     static let inboundDataMerged = Notification.Name("OPSInboundDataMerged")
+
+    /// Posted after inbound photo annotation rows merge. Mounted photo
+    /// surfaces use this to re-run annotation compositing for current photos.
+    static let projectPhotoAnnotationsChanged = Notification.Name("OPSProjectPhotoAnnotationsChanged")
 }
 
 // MARK: - Signal
@@ -110,6 +114,7 @@ final class InboundChangeRouter {
     static let calendarEntityNames: Set<String> = ["ProjectTask", "Project", "TaskType"]
 
     static let userEventEntityName = "CalendarUserEvent"
+    static let photoAnnotationEntityName = "PhotoAnnotation"
 
     // MARK: - Configuration
 
@@ -192,6 +197,9 @@ final class InboundChangeRouter {
         }
         if names.contains(Self.userEventEntityName) {
             onUserEventsChanged()
+        }
+        if names.contains(Self.photoAnnotationEntityName) {
+            NotificationCenter.default.post(name: .projectPhotoAnnotationsChanged, object: nil)
         }
     }
 }

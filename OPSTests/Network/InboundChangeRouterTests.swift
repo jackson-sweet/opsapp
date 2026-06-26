@@ -126,6 +126,35 @@ final class InboundChangeRouterTests: XCTestCase {
         _ = router
     }
 
+    func test_photoAnnotationEntity_postsAnnotationRefreshNotificationOnly() {
+        let annotationRefresh = expectation(description: "annotation refresh notification")
+        annotationRefresh.assertForOverFulfill = false
+        let noCalendar = expectation(description: "calendar must not fire")
+        noCalendar.isInverted = true
+        let noUserEvents = expectation(description: "user events must not fire")
+        noUserEvents.isInverted = true
+
+        let notificationName = Notification.Name("OPSProjectPhotoAnnotationsChanged")
+        let observer = NotificationCenter.default.addObserver(
+            forName: notificationName,
+            object: nil,
+            queue: .main
+        ) { _ in
+            annotationRefresh.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        let router = makeRouter(
+            onCalendar: { noCalendar.fulfill() },
+            onUserEvents: { noUserEvents.fulfill() }
+        )
+
+        InboundChangeSignal.post(entityNames: ["PhotoAnnotation"])
+
+        wait(for: [annotationRefresh, noCalendar, noUserEvents], timeout: 1.0)
+        _ = router
+    }
+
     func test_mixedNames_fireBothCallbacksOnce() {
         let calendarFired = expectation(description: "calendar callback")
         let userEventsFired = expectation(description: "user events callback")

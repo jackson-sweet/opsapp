@@ -167,6 +167,9 @@ struct ProjectPhotosGrid: View {
             .onReceive(NotificationCenter.default.publisher(for: .annotationsComposited)) { _ in
                 Task { await refreshDimensionedURLs() }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .projectPhotoAnnotationsChanged)) { _ in
+                Task { await refreshProjectAnnotationComposites() }
+            }
         }
         .preferredColorScheme(.dark)
         .fullScreenCover(item: Binding<PhotoViewerItem?>(
@@ -775,6 +778,15 @@ extension ProjectPhotosGrid {
         renderedDeliverableURLs = annotations
             .sorted { $0.createdAt < $1.createdAt }
             .compactMap { $0.renderedPhotoURL?.isEmpty == false ? $0.renderedPhotoURL : nil }
+    }
+
+    @MainActor
+    fileprivate func refreshProjectAnnotationComposites() async {
+        await PhotoAnnotationSyncManager.shared.preCompositeAnnotations(
+            projectId: project.id,
+            modelContext: modelContext
+        )
+        await refreshDimensionedURLs()
     }
 
     static func annotationMatchesDeleteTarget(

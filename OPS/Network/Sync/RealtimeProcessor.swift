@@ -1022,6 +1022,7 @@ final class RealtimeProcessor: ObservableObject {
                 let model = dto.toModel()
                 let pendingFields = protectedFieldsForEntity(entityType: .photoAnnotation, entityId: dto.id, context: context)
                 try upsertPhotoAnnotation(context: context, id: dto.id, model: model, pendingFields: pendingFields)
+                InboundChangeSignal.post(entityNames: ["PhotoAnnotation"])
 
             case "deck_designs":
                 let dto = try record.decodeRecord(as: SupabaseDeckDesignDTO.self, decoder: decoder)
@@ -1148,6 +1149,7 @@ final class RealtimeProcessor: ObservableObject {
                 if let existing = try context.fetch(descriptor).first {
                     existing.deletedAt = Date()
                     try context.save()
+                    InboundChangeSignal.post(entityNames: ["PhotoAnnotation"])
                 }
 
             case "deck_designs":

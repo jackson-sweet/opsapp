@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/VinylOrderSheet.swift
 
 import MessageUI
+import DeckKit
 import Supabase
 import SwiftData
 import SwiftUI

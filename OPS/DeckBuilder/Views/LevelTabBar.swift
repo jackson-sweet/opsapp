@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/LevelTabBar.swift
 
 import SwiftUI
+import DeckKit
 
 struct LevelTabBar: View {
     @ObservedObject var viewModel: DeckBuilderViewModel

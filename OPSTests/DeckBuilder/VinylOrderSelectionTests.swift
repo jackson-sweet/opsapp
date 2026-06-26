@@ -1,6 +1,7 @@
 // OPS/OPSTests/DeckBuilder/VinylOrderSelectionTests.swift
 
 import CoreGraphics
+import DeckKit
 import XCTest
 @testable import OPS
 

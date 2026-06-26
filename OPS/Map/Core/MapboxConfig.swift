@@ -11,15 +11,15 @@ import MapboxMaps
 
 enum MapboxConfig {
     private static let hostedXCTestTokenEnvironmentKey = "OPS_HOSTED_XCTEST_MBX_ACCESS_TOKEN"
+    private static let hostedXCTestFallbackToken = "pk.ops-hosted-xctest"
 
     /// Mapbox public access token — loaded from Info.plist key "MBXAccessToken".
     static let publicToken: String = {
-        if let token = normalizedToken(Bundle.main.object(forInfoDictionaryKey: "MBXAccessToken") as? String) {
-            return token
-        }
-
-        if isRunningUnderXCTest,
-           let token = normalizedToken(ProcessInfo.processInfo.environment[hostedXCTestTokenEnvironmentKey]) {
+        if let token = resolvedPublicToken(
+            infoPlistToken: Bundle.main.object(forInfoDictionaryKey: "MBXAccessToken") as? String,
+            environment: ProcessInfo.processInfo.environment,
+            isRunningUnderXCTest: isRunningUnderXCTest
+        ) {
             return token
         }
 
@@ -36,6 +36,26 @@ enum MapboxConfig {
         return environment["XCTestConfigurationFilePath"] != nil
             || environment["XCTestSessionIdentifier"] != nil
             || environment["XCInjectBundleInto"] != nil
+    }
+
+    static func resolvedPublicToken(
+        infoPlistToken: String?,
+        environment: [String: String],
+        isRunningUnderXCTest: Bool
+    ) -> String? {
+        if let token = normalizedToken(infoPlistToken) {
+            return token
+        }
+
+        guard isRunningUnderXCTest else {
+            return nil
+        }
+
+        if let token = normalizedToken(environment[hostedXCTestTokenEnvironmentKey]) {
+            return token
+        }
+
+        return hostedXCTestFallbackToken
     }
 
     private static func normalizedToken(_ rawToken: String?) -> String? {

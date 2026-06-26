@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/TemplatePickerView.swift
 
 import SwiftUI
+import DeckKit
 import SwiftData
 
 struct TemplatePickerView: View {

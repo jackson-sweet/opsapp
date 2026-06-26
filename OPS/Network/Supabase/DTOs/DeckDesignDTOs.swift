@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import DeckKit
 
 struct SupabaseDeckDesignDTO: Codable, Identifiable {
     let id: String

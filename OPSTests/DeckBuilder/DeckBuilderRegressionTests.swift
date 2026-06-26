@@ -7,6 +7,7 @@
 //
 
 import CoreGraphics
+import DeckKit
 import SceneKit
 import simd
 import XCTest

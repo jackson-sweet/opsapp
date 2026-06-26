@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/LevelConnectionSheet.swift
 
 import SwiftUI
+import DeckKit
 
 struct LevelConnectionSheet: View {
     @ObservedObject var viewModel: DeckBuilderViewModel

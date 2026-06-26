@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/DeckCanvasView.swift
 
 import SwiftUI
+import DeckKit
 import UIKit
 
 struct DeckCanvasView: View {

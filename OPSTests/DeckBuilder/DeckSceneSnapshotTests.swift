@@ -9,6 +9,7 @@
 //
 
 import SceneKit
+import DeckKit
 import UIKit
 import XCTest
 @testable import OPS

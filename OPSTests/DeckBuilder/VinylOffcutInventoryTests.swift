@@ -10,6 +10,7 @@
 //  gate short-circuits every write to a no-op without touching the network.
 
 import CoreGraphics
+import DeckKit
 import SwiftData
 import XCTest
 @testable import OPS

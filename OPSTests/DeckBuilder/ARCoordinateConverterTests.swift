@@ -1,6 +1,7 @@
 // OPS/OPSTests/DeckBuilder/ARCoordinateConverterTests.swift
 
 import XCTest
+import DeckKit
 @testable import OPS
 
 final class ARCoordinateConverterTests: XCTestCase {

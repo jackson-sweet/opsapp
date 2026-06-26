@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/DeckBuilderView.swift
 
 import SwiftUI
+import DeckKit
 import SwiftData
 import UIKit
 
@@ -54,6 +55,16 @@ struct DeckBuilderView: View {
         max(0, OPSStyle.Layout.spacing3 - topSafeAreaInset)
     }
 
+    init(deckDesign: DeckDesign, runtime: DeckRuntime) {
+        self._viewModel = StateObject(wrappedValue: DeckBuilderViewModel(
+            deckDesign: deckDesign,
+            runtime: runtime
+        ))
+        self.projectId = runtime.context.projectId ?? deckDesign.projectId
+        self.companyId = runtime.context.companyId
+        self.projectName = runtime.context.projectName
+    }
+
     init(deckDesign: DeckDesign, modelContext: ModelContext, syncEngine: SyncEngine? = nil, projectName: String? = nil) {
         // Bug ab554b5f — pass the SyncEngine to the view model so saves
         // enqueue Supabase pushes. Optional so test/preview call sites that
@@ -61,7 +72,8 @@ struct DeckBuilderView: View {
         self._viewModel = StateObject(wrappedValue: DeckBuilderViewModel(
             deckDesign: deckDesign,
             modelContext: modelContext,
-            syncEngine: syncEngine
+            syncEngine: syncEngine,
+            projectName: projectName
         ))
         self.projectId = deckDesign.projectId
         self.companyId = deckDesign.companyId

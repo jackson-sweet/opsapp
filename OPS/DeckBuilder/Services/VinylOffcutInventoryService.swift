@@ -31,6 +31,7 @@
 //
 
 import Foundation
+import DeckKit
 import SwiftData
 
 @MainActor

@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/ScaleConflictSheet.swift
 
 import SwiftUI
+import DeckKit
 
 /// Bottom sheet shown when the scan pipeline detects disagreement between
 /// handwritten dimension annotations and the proportions implied by the drawn sketch.

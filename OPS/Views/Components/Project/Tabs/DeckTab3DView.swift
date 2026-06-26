@@ -19,6 +19,7 @@
 //
 
 import SwiftUI
+import DeckKit
 import SceneKit
 
 struct DeckTab3DView: View {

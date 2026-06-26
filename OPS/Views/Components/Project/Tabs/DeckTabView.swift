@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import DeckKit
 import SwiftData
 
 enum DeckTabViewMode: String {

@@ -20,6 +20,7 @@
 //
 
 import Foundation
+import DeckKit
 
 enum CatalogEstimateMerger {
 
@@ -145,7 +146,7 @@ enum CatalogEstimateMerger {
         LineItem(
             name: l.name,
             description: l.description,
-            type: l.type,
+            type: lineItemType(for: l.type),
             quantity: l.quantity,
             unit: l.unit,
             unitPrice: l.unitPrice,
@@ -159,6 +160,19 @@ enum CatalogEstimateMerger {
             resolvedUnitPrice: nil,
             resolvedOptionsLabel: nil
         )
+    }
+
+    private static func lineItemType(
+        for type: EstimateGeneratorService.DeckEstimateLineType
+    ) -> LineItemType {
+        switch type {
+        case .labor:
+            return .labor
+        case .material:
+            return .material
+        case .other:
+            return .other
+        }
     }
 
     // MARK: - Grouping (mirrors EstimateGeneratorService.groupByTaskType)

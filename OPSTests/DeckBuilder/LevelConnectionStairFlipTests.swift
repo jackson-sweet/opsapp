@@ -9,6 +9,7 @@
 //
 
 import CoreGraphics
+import DeckKit
 import SceneKit
 import XCTest
 @testable import OPS

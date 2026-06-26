@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Rendering/DeckShareRenderer.swift
 
 import UIKit
+import DeckKit
 import Foundation
 
 struct DeckShareRenderer {

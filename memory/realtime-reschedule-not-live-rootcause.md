@@ -1,9 +1,39 @@
 # Realtime Reschedule Not Live Root Cause
 
-Updated: 2026-06-25
+Updated: 2026-06-26
 
 ## Current Evidence
 
+- User repro log after commit `89685545` changes the failure shape:
+  - `Firebase JWT ready ... role=authenticated ...`
+  - `Channel status -> subscribed`
+  - `Subscribed (authenticated) - 15 bindings in 0.32s`
+  - No realtime event/dispatch/merge breadcrumb appears after subscription.
+    The later calendar updates in the log are background delta sync, not
+    realtime.
+- Fresh live Supabase checks after that repro:
+  - Realtime service logs show tenant initialization/replication startup, not a
+    new `create_subscription` table/filter failure.
+  - `project_tasks`, `projects`, `deck_designs`, `calendar_user_events`, and
+    `notifications` are present in `supabase_realtime`.
+  - Five `project_tasks` rows in Nick's company changed around
+    `2026-06-26 06:11:21Z`; several were assigned to Nick and matched the
+    app's `company_id=eq.ddee107c-33cd-483e-8278-0f8d8a180181` binding.
+  - Simulating Nick under Postgres role `authenticated` with Firebase
+    `sub=tDmM2XRxP9PJAESzQbyVXeMQUgv1` resolves:
+    `private.get_current_user_id() = 6f5ff13a-7108-4384-9699-0ca58207d3a2`,
+    `private.get_user_company_id() = ddee107c-33cd-483e-8278-0f8d8a180181`,
+    and can select all 56 company `project_tasks`, including the five recent
+    updates. So the remaining failure is not authenticated-role RLS invisibility.
+- Local `supabase-swift` 2.41.1 source shows the callback-lifetime root cause:
+  - `RealtimeSubscription` is a typealias for `ObservationToken`.
+  - `ObservationToken` cancels the observation in `deinit` and its doc says to
+    store the token to keep the observation alive.
+  - OPS was doing `let _ = channel.onPostgresChange(...)` in
+    `RealtimeProcessor.subscribeToTable`, which immediately deallocated the
+    token and removed every postgres change callback. The channel could still
+    join because the SDK's client changes were registered, but no callback
+    remained to call `handleChange` when events arrived.
 - User repro log after commit `9b6b521e` proves the join is rejected before any
   CDC/table-specific subscription is established:
   - The app logs a real Firebase ID token for Nick:
@@ -90,24 +120,34 @@ Updated: 2026-06-25
   `realtimeAccessToken(for:)` and produced
   `Cannot call value of non-function type 'String'` at the helper call. The
   local was renamed to `authenticatedAccessToken`.
+- Follow-up event-delivery fix: `RealtimeProcessor` now retains every
+  `onPostgresChange` `RealtimeSubscription` token for the lifetime of the
+  channel, cancels those tokens on teardown / failed join / stop, and logs
+  `[RealtimeProcessor] Event received - table=<table>, action=<action>` before
+  routing the event to the DataActor or legacy merge path.
 
 ## Interpretation
 
-The second root cause is a Firebase custom-claim gap, not another realtime
-publication/table binding issue. The live device token is signed and identifies
-Nick correctly, but it does not contain Supabase's required
-`role='authenticated'` claim, so Realtime rejects the channel join before any
-table-specific CDC subscription can be created. Delta sync still works because
-the OPS database has Firebase-bridge policies/grants for regular Supabase data
-access; the Realtime join path is stricter and requires the JWT role claim.
+The investigation has now found three separate failures that produced the same
+user symptom:
+
+1. The first join failure was a bad table binding: unpublished tables in the
+   single channel made server-side `create_subscription` fail.
+2. The second join failure was missing Firebase custom claim
+   `role='authenticated'`; Realtime rejected the channel before CDC setup.
+3. After the join finally succeeded, event callbacks were still dead because the
+   returned `RealtimeSubscription` tokens were discarded immediately.
 
 Current evidence rules out another obvious unpublished-table failure, a raw
-15-binding payload rejection, and a simple Nick identity/RLS visibility gap.
+15-binding payload rejection, a simple Nick identity/RLS visibility gap, and an
+authenticated-role RLS visibility gap for `project_tasks`.
 If a future repro still fails after claim repair/backfill, key off the raw
 diagnostic line:
 
 - `Firebase JWT ready ... role=authenticated` followed by
-  `Subscribed (authenticated)` means the channel should now receive live events.
+  `Subscribed (authenticated)` means the channel joined. A teammate edit should
+  now also produce `[RealtimeProcessor] Event received ...`; if it does not,
+  investigate server emission / SDK message routing.
 - `Deferring subscribe - Firebase token missing Supabase role claim` means the
   deployed OPS-Web route/backfill has not repaired that Firebase account yet.
 - `Direct join diagnostic - status=error reason=...`: server-side token/JWT

@@ -167,6 +167,11 @@ final class RealtimeProcessor: ObservableObject {
     private var socketStatusObservation: RealtimeSubscription?
     private var channelStatusObservation: RealtimeSubscription?
 
+    /// `onPostgresChange` returns an ObservationToken that cancels on deinit.
+    /// Keep these alive for the channel lifetime or the join can subscribe while
+    /// all event callbacks have already been removed.
+    private var postgresChangeSubscriptions: [RealtimeSubscription] = []
+
     /// Background data actor used when FeatureFlags.useDataActor is on.
     /// Supabase's channel subscription must stay on @MainActor (this class),
     /// but the SwiftData write inside each event handler dispatches to this actor.
@@ -433,6 +438,7 @@ final class RealtimeProcessor: ObservableObject {
     /// observer. Used both by the real stop above and by `startListening` before
     /// it resubscribes — a resubscribe must keep `intendsToListen` true.
     private func teardownChannel() async {
+        clearPostgresChangeSubscriptions()
         guard let channel = channel else { return }
         channelStatusObservation?.cancel()
         channelStatusObservation = nil
@@ -455,12 +461,18 @@ final class RealtimeProcessor: ObservableObject {
     }
 
     private func discardFailedChannel(_ failedChannel: RealtimeChannelV2) async {
+        clearPostgresChangeSubscriptions()
         if self.channel === failedChannel {
             self.channel = nil
         }
         channelStatusObservation?.cancel()
         channelStatusObservation = nil
         await supabase.removeChannel(failedChannel)
+    }
+
+    private func clearPostgresChangeSubscriptions() {
+        postgresChangeSubscriptions.forEach { $0.cancel() }
+        postgresChangeSubscriptions.removeAll()
     }
 
     // MARK: - Socket-Status Recovery
@@ -585,7 +597,7 @@ final class RealtimeProcessor: ObservableObject {
     // MARK: - Table Subscription Helper
 
     private func subscribeToTable(channel: RealtimeChannelV2, table: String, filter: String) {
-        let _ = channel.onPostgresChange(
+        let subscription = channel.onPostgresChange(
             AnyAction.self,
             schema: "public",
             table: table,
@@ -595,6 +607,7 @@ final class RealtimeProcessor: ObservableObject {
                 self?.handleChange(table: table, action: action)
             }
         }
+        postgresChangeSubscriptions.append(subscription)
     }
 
     private func observeChannelStatus(_ channel: RealtimeChannelV2) {
@@ -861,10 +874,22 @@ final class RealtimeProcessor: ObservableObject {
         String(format: "%.2f", value)
     }
 
+    private nonisolated static func actionDescription(_ action: AnyAction) -> String {
+        switch action {
+        case .insert:
+            return "INSERT"
+        case .update:
+            return "UPDATE"
+        case .delete:
+            return "DELETE"
+        }
+    }
+
     // MARK: - Change Routing
 
     private func handleChange(table: String, action: AnyAction) {
         lastEventTimestamp = Date()
+        print("[RealtimeProcessor] Event received - table=\(table), action=\(Self.actionDescription(action))")
 
         switch action {
         case .insert(let insertAction):

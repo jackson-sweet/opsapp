@@ -289,10 +289,10 @@ final class RealtimeProcessor: ObservableObject {
             scheduleSubscribeRetry(reason: "Firebase session not ready")
             return
         }
-        let realtimeAccessToken: String
+        let authenticatedAccessToken: String
         do {
             let token = try await realtimeAccessToken(for: firebaseUser)
-            realtimeAccessToken = token
+            authenticatedAccessToken = token
             print("[RealtimeProcessor] Firebase JWT ready — \(Self.describeJWT(token, firebaseUID: firebaseUser.uid))")
             await supabase.realtimeV2.setAuth(token)
         } catch let error as RealtimeAuthGateError {
@@ -375,7 +375,7 @@ final class RealtimeProcessor: ObservableObject {
             await diagnoseJoinFailure(
                 channelName: channelName,
                 bindings: diagnosticBindings,
-                accessToken: realtimeAccessToken
+                accessToken: authenticatedAccessToken
             )
             // Socket is up but the join failed — self-heal with backed-off retries
             // (the socket-status observer only fires on a socket drop, not this).

@@ -85,6 +85,11 @@ Updated: 2026-06-25
   investigation: unsandboxed Firebase Admin/network access was rejected. Until
   the OPS-Web route is deployed or the backfill is explicitly run, already-issued
   production Firebase users may still receive tokens without the role claim.
+- Follow-up build fix: `RealtimeProcessor.startListening` originally declared a
+  local `String` named `realtimeAccessToken`, which shadowed the helper method
+  `realtimeAccessToken(for:)` and produced
+  `Cannot call value of non-function type 'String'` at the helper call. The
+  local was renamed to `authenticatedAccessToken`.
 
 ## Interpretation
 

@@ -2,7 +2,7 @@
 
 ## Task 5C Report - 2026-06-26
 
-Status: IMPLEMENTED WITH XCODEBUILD VERIFICATION BLOCKED
+Status: IMPLEMENTED AND CONTROLLER VERIFIED
 
 Commit range:
 - Base: `860cc6bb`
@@ -30,17 +30,20 @@ Verification commands run:
 - `git diff --check`
   - PASS.
 - `xcodebuild -quiet -project OPS.xcodeproj -scheme OPS -destination 'generic/platform=iOS Simulator' -derivedDataPath /private/tmp/ops-ios-derived CODE_SIGNING_ALLOWED=NO build`
-  - First sandboxed attempt failed before compilation because Xcode could not write/read its normal cache paths outside the workspace sandbox.
-  - Exact blocker strings:
+  - PASS under controller verification after granting the build access to Xcode and cache paths outside the workspace sandbox.
+  - The earlier sandboxed worker attempt failed before compilation because Xcode could not write/read its normal cache paths outside the workspace sandbox.
+  - Earlier worker blocker strings:
     - `xcodebuild: error: Could not resolve package dependencies:`
     - `<unknown>:0: error: error opening '/Users/jacksonsweet/.cache/clang/ModuleCache/Swift-5SCGS38H536W.swiftmodule' for output: /Users/jacksonsweet/.cache/clang/ModuleCache: Operation not permitted`
     - `<unknown>:0: error: cannot open file '/Users/jacksonsweet/Library/Caches/org.swift.swiftpm/manifests/ManifestLoading/deckkit.dia' for diagnostics emission (Operation not permitted)`
-  - Unsandboxed retry populated `/private/tmp/ops-ios-derived/Build` and `Build/Products/Debug-iphonesimulator/OPS.app`, but never returned a normal success/failure result and had to be interrupted after stalling inside Xcode build/package-loading operations.
-  - Exact interrupted output:
+  - The worker's first unsandboxed retry populated `/private/tmp/ops-ios-derived/Build` and `Build/Products/Debug-iphonesimulator/OPS.app`, but never returned a normal success/failure result and had to be interrupted after stalling inside Xcode build/package-loading operations.
+  - Earlier interrupted output:
     - `** BUILD INTERRUPTED **`
     - `In flight operation: <DVTOperationGroup ...>`
     - `@objc static IDESchemeAction.operationToWaitForFinishedLoadingOperation(of:)`
     - `IDEXCBuildSupportCore.IDEXCBuildServiceBuildOperation`
+- Independent review:
+  - PASS: no code findings.
 
 Self-review notes:
 - `DeckRuntime` now owns an app-free `DeckSyncQueue` with a public `NoopDeckSyncQueue` default, keeping standalone/test runtime construction simple.

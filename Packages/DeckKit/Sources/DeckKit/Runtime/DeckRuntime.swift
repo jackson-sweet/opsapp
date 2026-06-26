@@ -30,8 +30,20 @@ public protocol DeckStore: AnyObject {
     func delete() throws
 }
 
+@MainActor
+public protocol DeckSyncQueue: AnyObject {
+    func enqueueSave(drawingData: DeckDrawingData)
+}
+
 public protocol DeckImageUploader: AnyObject {}
 public protocol DeckOCRService: AnyObject {}
+
+public final class NoopDeckSyncQueue: DeckSyncQueue {
+    nonisolated public init() {}
+
+    @MainActor
+    public func enqueueSave(drawingData: DeckDrawingData) {}
+}
 
 public final class NoopDeckImageUploader: DeckImageUploader {
     public init() {}
@@ -44,17 +56,21 @@ public final class NoopDeckOCRService: DeckOCRService {
 public struct DeckRuntime {
     public let context: DeckRuntimeContext
     public let store: DeckStore?
+    public let syncQueue: DeckSyncQueue
     public let imageUploader: DeckImageUploader
     public let ocrService: DeckOCRService
 
+    @MainActor
     public init(
         context: DeckRuntimeContext,
         store: DeckStore?,
+        syncQueue: DeckSyncQueue = NoopDeckSyncQueue(),
         imageUploader: DeckImageUploader = NoopDeckImageUploader(),
         ocrService: DeckOCRService = NoopDeckOCRService()
     ) {
         self.context = context
         self.store = store
+        self.syncQueue = syncQueue
         self.imageUploader = imageUploader
         self.ocrService = ocrService
     }

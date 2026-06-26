@@ -1,5 +1,53 @@
 ## Task 5 Report - 2026-06-25
 
+## Task 5C Report - 2026-06-26
+
+Status: IMPLEMENTED WITH XCODEBUILD VERIFICATION BLOCKED
+
+Commit range:
+- Base: `860cc6bb`
+- Final range after commit: `860cc6bb..HEAD`
+
+Files changed:
+- Runtime seam:
+  - `Packages/DeckKit/Sources/DeckKit/Runtime/DeckRuntime.swift`
+  - `Packages/DeckKit/Tests/DeckKitTests/DeckRuntimeTests.swift`
+- OPS runtime factory wiring:
+  - `OPS/DeckBuilder/OPSDeckRuntimeFactory.swift`
+  - `OPS/DeckBuilder/DeckBuilderViewModel.swift`
+  - `OPS/DeckBuilder/Views/DeckBuilderView.swift`
+- OPS verification:
+  - `OPSTests/DeckBuilder/DeckRuntimeStoreTests.swift`
+  - `OPSTests/DeckBuilder/OPSDeckRuntimeFactoryTests.swift`
+- Report:
+  - `.superpowers/sdd/task-5-report.md`
+
+Verification commands run:
+- `env CLANG_MODULE_CACHE_PATH=/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/ops-decks-p1-foundation/Packages/DeckKit/.build/module-cache swift test --disable-sandbox --package-path Packages/DeckKit --filter DeckRuntimeTests`
+  - PASS: 2 tests, 0 failures.
+- `scripts/verify-ops-decks-style-tokens.sh .`
+  - PASS.
+- `git diff --check`
+  - PASS.
+- `xcodebuild -quiet -project OPS.xcodeproj -scheme OPS -destination 'generic/platform=iOS Simulator' -derivedDataPath /private/tmp/ops-ios-derived CODE_SIGNING_ALLOWED=NO build`
+  - First sandboxed attempt failed before compilation because Xcode could not write/read its normal cache paths outside the workspace sandbox.
+  - Exact blocker strings:
+    - `xcodebuild: error: Could not resolve package dependencies:`
+    - `<unknown>:0: error: error opening '/Users/jacksonsweet/.cache/clang/ModuleCache/Swift-5SCGS38H536W.swiftmodule' for output: /Users/jacksonsweet/.cache/clang/ModuleCache: Operation not permitted`
+    - `<unknown>:0: error: cannot open file '/Users/jacksonsweet/Library/Caches/org.swift.swiftpm/manifests/ManifestLoading/deckkit.dia' for diagnostics emission (Operation not permitted)`
+  - Unsandboxed retry populated `/private/tmp/ops-ios-derived/Build` and `Build/Products/Debug-iphonesimulator/OPS.app`, but never returned a normal success/failure result and had to be interrupted after stalling inside Xcode build/package-loading operations.
+  - Exact interrupted output:
+    - `** BUILD INTERRUPTED **`
+    - `In flight operation: <DVTOperationGroup ...>`
+    - `@objc static IDESchemeAction.operationToWaitForFinishedLoadingOperation(of:)`
+    - `IDEXCBuildSupportCore.IDEXCBuildServiceBuildOperation`
+
+Self-review notes:
+- `DeckRuntime` now owns an app-free `DeckSyncQueue` with a public `NoopDeckSyncQueue` default, keeping standalone/test runtime construction simple.
+- `OPSDeckStore` and `OPSDeckSyncQueue` stay in the OPS app target, and `OPSDeckRuntimeFactory.make(...)` now injects the real OPS runtime context, store, and sync queue.
+- `DeckBuilderView` now threads the real `projectName` into `DeckBuilderViewModel`, so the production factory/runtime context no longer drops it on initialization.
+- `DeckBuilderViewModel.save()` persists through `runtime.store` when present, falls back to the existing local path otherwise, and enqueues through `runtime.syncQueue` without the old duplicate sync helper.
+
 ## Task 5B Report - 2026-06-25
 
 Status: IMPLEMENTED WITH XCODEBUILD VERIFICATION BLOCKED

@@ -59,6 +59,7 @@ final class DeckRuntimeTests: XCTestCase {
             store: nil
         )
 
+        XCTAssertTrue(runtime.syncQueue is NoopDeckSyncQueue)
         XCTAssertTrue(runtime.imageUploader is NoopDeckImageUploader)
         XCTAssertTrue(runtime.ocrService is NoopDeckOCRService)
     }

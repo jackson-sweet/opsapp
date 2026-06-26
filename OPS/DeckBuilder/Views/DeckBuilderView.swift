@@ -72,7 +72,8 @@ struct DeckBuilderView: View {
         self._viewModel = StateObject(wrappedValue: DeckBuilderViewModel(
             deckDesign: deckDesign,
             modelContext: modelContext,
-            syncEngine: syncEngine
+            syncEngine: syncEngine,
+            projectName: projectName
         ))
         self.projectId = deckDesign.projectId
         self.companyId = deckDesign.companyId

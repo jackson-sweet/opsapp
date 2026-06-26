@@ -5,8 +5,9 @@ import XCTest
 
 @MainActor
 final class DeckRuntimeStoreTests: XCTestCase {
-    func testViewModelSaveDelegatesToInjectedDeckStore() {
+    func testViewModelSaveDelegatesToInjectedDeckStoreAndSyncQueue() {
         let store = SpyDeckStore()
+        let syncQueue = SpyDeckSyncQueue()
         let runtime = DeckRuntime(
             context: DeckRuntimeContext(
                 companyId: "company-1",
@@ -15,6 +16,7 @@ final class DeckRuntimeStoreTests: XCTestCase {
                 appSurface: .opsDecks
             ),
             store: store,
+            syncQueue: syncQueue,
             imageUploader: NoopDeckImageUploader(),
             ocrService: NoopDeckOCRService()
         )
@@ -36,6 +38,42 @@ final class DeckRuntimeStoreTests: XCTestCase {
         XCTAssertEqual(store.savedDrawingData.count, 1)
         XCTAssertEqual(store.savedDrawingData[0].vertices, data.vertices)
         XCTAssertEqual(store.savedDrawingData[0].edges, data.edges)
+        XCTAssertEqual(syncQueue.enqueuedDrawingData.count, 1)
+        XCTAssertEqual(syncQueue.enqueuedDrawingData[0].vertices, data.vertices)
+        XCTAssertEqual(syncQueue.enqueuedDrawingData[0].edges, data.edges)
+    }
+
+    func testProductionInitializerBuildsRuntimeBackedSavePathWithoutModelContext() {
+        let design = DeckDesign(
+            companyId: "company-1",
+            projectId: nil,
+            drawingDataJSON: DeckDrawingData().toJSON()
+        )
+        let viewModel = DeckBuilderViewModel(
+            deckDesign: design,
+            modelContext: nil,
+            syncEngine: nil,
+            projectName: "Alpha"
+        )
+
+        var updated = DeckDrawingData()
+        updated.vertices = [
+            DeckVertex(id: "v1", position: .zero),
+            DeckVertex(id: "v2", position: CGPoint(x: 120, y: 0)),
+            DeckVertex(id: "v3", position: CGPoint(x: 120, y: 120))
+        ]
+        updated.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2"),
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v1")
+        ]
+        viewModel.drawingData = updated
+
+        viewModel.save()
+
+        XCTAssertEqual(viewModel.runtimeContext?.projectName, "Alpha")
+        XCTAssertEqual(design.drawingData.vertices, updated.vertices)
+        XCTAssertEqual(design.drawingData.edges, updated.edges)
     }
 }
 
@@ -48,4 +86,13 @@ private final class SpyDeckStore: DeckStore {
     }
 
     func delete() throws {}
+}
+
+@MainActor
+private final class SpyDeckSyncQueue: DeckSyncQueue {
+    var enqueuedDrawingData: [DeckDrawingData] = []
+
+    func enqueueSave(drawingData: DeckDrawingData) {
+        enqueuedDrawingData.append(drawingData)
+    }
 }

@@ -9,6 +9,129 @@
 // CalendarDaySelector.swift
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
+
+enum CalendarWeekRowEdgeDirection {
+    case previous
+    case next
+
+    var offset: Int {
+        switch self {
+        case .previous: return -1
+        case .next: return 1
+        }
+    }
+}
+
+enum CalendarWeekRowNavigation {
+    static func activeEdgeWidth(forRowWidth rowWidth: CGFloat) -> CGFloat {
+        guard rowWidth > 0 else { return 0 }
+        let scaled = rowWidth * 0.09
+        return min(max(scaled, 28), 44)
+    }
+}
+
+enum CalendarWeekRowCaption {
+    static func title(
+        forWeekContaining selectedDate: Date,
+        relativeTo today: Date = Date(),
+        calendar sourceCalendar: Calendar = .current
+    ) -> String {
+        var calendar = sourceCalendar
+        calendar.firstWeekday = 2
+
+        guard
+            let selectedWeekStart = calendar.dateInterval(of: .weekOfYear, for: selectedDate)?.start,
+            let currentWeekStart = calendar.dateInterval(of: .weekOfYear, for: today)?.start
+        else {
+            return "This week"
+        }
+
+        let weekOffset = calendar.dateComponents(
+            [.weekOfYear],
+            from: currentWeekStart,
+            to: selectedWeekStart
+        ).weekOfYear ?? 0
+
+        switch weekOffset {
+        case 0:
+            return "This week"
+        case 1:
+            return "Next week"
+        case -1:
+            return "Last week"
+        case 2...3:
+            return "\(weekOffset) weeks from now"
+        case -3...(-2):
+            return "\(abs(weekOffset)) weeks ago"
+        default:
+            let monthCount = max(abs(weekOffset) / 4, 1)
+            let unit = monthCount == 1 ? "month" : "months"
+            return weekOffset > 0
+                ? "\(monthCount) \(unit) from now"
+                : "\(monthCount) \(unit) ago"
+        }
+    }
+}
+
+struct WeekRowEdgeDropDelegate: DropDelegate {
+    let direction: CalendarWeekRowEdgeDirection
+    let fallbackDay: Date
+    let session: ScheduleDragSession
+    let dataController: DataController
+    let onHover: (CalendarWeekRowEdgeDirection?) -> Void
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.opsRescheduleItem])
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func dropEntered(info: DropInfo) {
+        let calendar = Calendar.current
+        let changed = session.hoveredDate.map { !calendar.isDate($0, inSameDayAs: fallbackDay) } ?? true
+        if changed {
+            UISelectionFeedbackGenerator().selectionChanged()
+        }
+        session.hoveredDate = fallbackDay
+        onHover(direction)
+    }
+
+    func dropExited(info: DropInfo) {
+        let calendar = Calendar.current
+        if let hovered = session.hoveredDate, calendar.isDate(hovered, inSameDayAs: fallbackDay) {
+            session.hoveredDate = nil
+        }
+        onHover(nil)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let provider = info.itemProviders(for: [.opsRescheduleItem]).first else {
+            onHover(nil)
+            return false
+        }
+
+        _ = provider.loadTransferable(type: RescheduleDragPayload.self) { result in
+            Task { @MainActor in
+                defer { onHover(nil) }
+                guard case .success(let payload) = result else {
+                    session.end()
+                    return
+                }
+                RescheduleCoordinator.handleDrop(
+                    payload,
+                    on: fallbackDay,
+                    dataController: dataController,
+                    session: session
+                )
+                session.end()
+            }
+        }
+        return true
+    }
+}
 
 struct CalendarDaySelector: View {
     @ObservedObject var viewModel: CalendarViewModel
@@ -26,6 +149,7 @@ struct CalendarDaySelector: View {
     @State private var weekViewWidth: CGFloat = 0
     @State private var edgePageTask: Task<Void, Never>?
     @State private var edgePageGen: Int = 0
+    @State private var activeEdgePageDirection: CalendarWeekRowEdgeDirection?
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -48,7 +172,10 @@ struct CalendarDaySelector: View {
     private var weekView: some View {
         GeometryReader { geometry in
             let weekDays = getCurrentWeekDays()
-            VStack(spacing: 0) {
+            let edgeWidth = CalendarWeekRowNavigation.activeEdgeWidth(forRowWidth: geometry.size.width)
+            VStack(spacing: OPSStyle.Layout.spacing1) {
+                weekCaption
+
                 ZStack {
                     // Week days display container with spanning bars overlay
                     ZStack(alignment: .bottom) {
@@ -87,6 +214,20 @@ struct CalendarDaySelector: View {
                     .offset(x: isTransitioning ? transitionOffset : dragOffset)
                     .opacity(isTransitioning ? Double(1.0 - abs(transitionOffset) / geometry.size.width) : 1.0)
                     .animation(.interactiveSpring(response: 0.2, dampingFraction: 0.85), value: dragOffset)
+                    .overlay(alignment: .leading) {
+                        weekEdgeDropZone(
+                            direction: .previous,
+                            fallbackDay: weekDays.first,
+                            width: edgeWidth
+                        )
+                    }
+                    .overlay(alignment: .trailing) {
+                        weekEdgeDropZone(
+                            direction: .next,
+                            fallbackDay: weekDays.last,
+                            width: edgeWidth
+                        )
+                    }
                 }
                 .clipped() // Prevent content from going outside safe area
                 .gesture(
@@ -132,7 +273,7 @@ struct CalendarDaySelector: View {
         // padding (16 top + 16 bottom = 32) plus the 86pt WeekDayCell. The
         // old 86pt outer frame compressed the cell and ate the padding,
         // leaving the cards visually cramped against the card border.
-        .frame(height: 118)
+        .frame(height: 140)
         .wizardTarget("scroll_week")
         .onAppear {
             lastWeekStart = currentWeekStart()
@@ -163,6 +304,41 @@ struct CalendarDaySelector: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CalendarUserEventsDidChange"))) { _ in
             viewModel.loadUserEvents()
+        }
+    }
+
+    private var weekCaption: some View {
+        HStack {
+            Text(CalendarWeekRowCaption.title(forWeekContaining: viewModel.selectedDate))
+                .font(OPSStyle.Typography.microLabel)
+                .foregroundColor(OPSStyle.Colors.text3)
+                .monospacedDigit()
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+    }
+
+    @ViewBuilder
+    private func weekEdgeDropZone(
+        direction: CalendarWeekRowEdgeDirection,
+        fallbackDay: Date?,
+        width: CGFloat
+    ) -> some View {
+        if let fallbackDay, width > 0 {
+            Color.clear
+                .contentShape(Rectangle())
+                .frame(width: width)
+                .onDrop(
+                    of: [.opsRescheduleItem],
+                    delegate: WeekRowEdgeDropDelegate(
+                        direction: direction,
+                        fallbackDay: fallbackDay,
+                        session: dragSession,
+                        dataController: dataController,
+                        onHover: handleDragRowEdgeHover
+                    )
+                )
         }
     }
 
@@ -464,6 +640,10 @@ struct CalendarDaySelector: View {
 
             // Notify wizard system that the week strip was scrolled
             NotificationCenter.default.post(name: Notification.Name("CalendarWeekViewScrolled"), object: nil)
+
+            if let direction = activeEdgePageDirection, dragSession.active != nil {
+                armEdgePage(direction)
+            }
         }
     }
 
@@ -478,17 +658,36 @@ struct CalendarDaySelector: View {
     /// day, so the operator can drop a job on any week without ending the drag.
     private func handleDragEdgeHover(_ hovered: Date?) {
         guard dragSession.active != nil, let hovered else {
-            edgePageTask?.cancel(); edgePageTask = nil; return
+            cancelEdgePage()
+            return
         }
         let cal = Calendar.current
         let week = getCurrentWeekDays()
         let atStart = week.first.map { cal.isDate($0, inSameDayAs: hovered) } ?? false
         let atEnd = week.last.map { cal.isDate($0, inSameDayAs: hovered) } ?? false
-        guard atStart != atEnd else {            // not on a single edge → cancel any armed flip
-            edgePageTask?.cancel(); edgePageTask = nil; return
+        guard atStart != atEnd else {
+            cancelEdgePage()
+            return
         }
-        guard edgePageTask == nil else { return } // a flip is already armed for this dwell
-        let offset = atStart ? -1 : 1
+        handleDragRowEdgeHover(atStart ? .previous : .next)
+    }
+
+    private func handleDragRowEdgeHover(_ direction: CalendarWeekRowEdgeDirection?) {
+        guard dragSession.active != nil, let direction else {
+            cancelEdgePage()
+            return
+        }
+
+        if activeEdgePageDirection != direction {
+            edgePageTask?.cancel()
+            edgePageTask = nil
+        }
+        activeEdgePageDirection = direction
+        armEdgePage(direction)
+    }
+
+    private func armEdgePage(_ direction: CalendarWeekRowEdgeDirection) {
+        guard edgePageTask == nil else { return }
         let width = weekViewWidth > 0 ? weekViewWidth : UIScreen.main.bounds.width
         // Generation token: a cancelled task resumes asynchronously, so it must not
         // clear edgePageTask if a newer dwell has already re-armed one.
@@ -498,17 +697,23 @@ struct CalendarDaySelector: View {
             try? await Task.sleep(for: .milliseconds(700))
             guard gen == edgePageGen else { return }   // superseded by a newer arm
             edgePageTask = nil
-            // Re-confirm the drag is still live AND still dwelling on this edge of the
-            // current week (covers an abandoned drag or a move off the edge mid-dwell).
-            guard !Task.isCancelled, dragSession.active != nil, !isTransitioning else { return }
-            let live = getCurrentWeekDays()
-            let edgeDay = offset < 0 ? live.first : live.last
-            let stillOnEdge = edgeDay.map { d in
-                dragSession.hoveredDate.map { cal.isDate($0, inSameDayAs: d) } ?? false
-            } ?? false
-            guard stillOnEdge else { return }
-            navigateToWeek(offset: offset, screenWidth: width)
+            guard
+                !Task.isCancelled,
+                dragSession.active != nil,
+                activeEdgePageDirection == direction,
+                !isTransitioning
+            else {
+                return
+            }
+            navigateToWeek(offset: direction.offset, screenWidth: width)
         }
+    }
+
+    private func cancelEdgePage() {
+        edgePageGen &+= 1
+        edgePageTask?.cancel()
+        edgePageTask = nil
+        activeEdgePageDirection = nil
     }
 
     // Generate only the current week days (7 days starting from Monday)

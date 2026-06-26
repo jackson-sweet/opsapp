@@ -22,8 +22,29 @@ final class DeckRuntimeTests: XCTestCase {
             projectName: "Alpha",
             appSurface: .opsDecks
         )
+        let differentCompany = DeckRuntimeContext(
+            companyId: "company-2",
+            projectId: "project-1",
+            projectName: "Alpha",
+            appSurface: .ops
+        )
+        let differentProject = DeckRuntimeContext(
+            companyId: "company-1",
+            projectId: "project-2",
+            projectName: "Alpha",
+            appSurface: .ops
+        )
+        let differentProjectName = DeckRuntimeContext(
+            companyId: "company-1",
+            projectId: "project-1",
+            projectName: "Bravo",
+            appSurface: .ops
+        )
 
         XCTAssertEqual(lhs, rhs)
+        XCTAssertNotEqual(lhs, differentCompany)
+        XCTAssertNotEqual(lhs, differentProject)
+        XCTAssertNotEqual(lhs, differentProjectName)
         XCTAssertNotEqual(lhs, differentSurface)
     }
 

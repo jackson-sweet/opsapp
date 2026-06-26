@@ -206,3 +206,18 @@ Verification:
 
 Exact blockers:
 - None. The initial package-boundary compile failures were resolved by importing `DeckKit` in remaining OPS callers and making the required DeckKit initializers, properties, and mutation helpers public where the app still crosses the package boundary.
+
+## Task 5B Review Fix - 2026-06-25
+
+Status: IMPLEMENTED
+
+Finding fixed:
+- Expanded `Packages/DeckKit/Tests/DeckKitTests/DeckRuntimeTests.swift` so `testRuntimeContextEquatableIncludesAllFields` now proves inequality when `companyId`, `projectId`, `projectName`, or `appSurface` changes.
+
+Commands run:
+- `env CLANG_MODULE_CACHE_PATH=/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/ops-decks-p1-foundation/Packages/DeckKit/.build/module-cache swift test --disable-sandbox --package-path Packages/DeckKit --filter DeckRuntimeTests`
+  - PASS: 2 tests, 0 failures.
+- `scripts/verify-ops-decks-style-tokens.sh .`
+  - PASS.
+- `git diff --check`
+  - PASS.

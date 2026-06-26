@@ -151,15 +151,15 @@ class FirebaseAuthService: ObservableObject {
     /// Get the current Firebase ID token for API authentication.
     /// This token is sent as Bearer token to web API endpoints
     /// and used by the Supabase `accessToken` callback for data queries.
-    /// Returns a cached token or refreshes if expired.
+    /// Returns a cached token or refreshes if expired, unless forced.
     ///
     /// Fix #11: This method is nonisolated to avoid forcing a MainActor hop
     /// on every API call from background contexts.
-    nonisolated func getIDToken() async throws -> String {
+    nonisolated func getIDToken(forcingRefresh forceRefresh: Bool = false) async throws -> String {
         guard let user = Auth.auth().currentUser else {
             throw FirebaseAuthServiceError.notAuthenticated
         }
-        return try await user.getIDToken()
+        return try await user.getIDToken(forcingRefresh: forceRefresh)
     }
 
     /// Like `getIDToken()` but also returns the token's absolute expiry. Used by
@@ -167,11 +167,11 @@ class FirebaseAuthService: ObservableObject {
     /// token still has enough life to presign an upload itself (it must never
     /// refresh tokens). Returns a cached token or refreshes if expired — same
     /// semantics as `getIDToken()`.
-    nonisolated func getIDTokenResult() async throws -> (token: String, expiresAt: Date) {
+    nonisolated func getIDTokenResult(forcingRefresh forceRefresh: Bool = false) async throws -> (token: String, expiresAt: Date) {
         guard let user = Auth.auth().currentUser else {
             throw FirebaseAuthServiceError.notAuthenticated
         }
-        let result = try await user.getIDTokenResult()
+        let result = try await user.getIDTokenResult(forcingRefresh: forceRefresh)
         return (result.token, result.expirationDate)
     }
 

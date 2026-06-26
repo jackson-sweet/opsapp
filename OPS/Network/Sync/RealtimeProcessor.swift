@@ -69,6 +69,36 @@ private enum RealtimeDiagnosticError: Error {
     case timeout
 }
 
+private enum RealtimeAuthGateError: LocalizedError {
+    case missingSupabaseRoleClaim
+    case missingEmailForClaimRepair
+    case claimRepairFailed(statusCode: Int, body: String)
+    case invalidClaimRepairResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .missingSupabaseRoleClaim:
+            return "Firebase token missing Supabase role claim"
+        case .missingEmailForClaimRepair:
+            return "Firebase token missing email for claim repair"
+        case .claimRepairFailed(let statusCode, let body):
+            return "Firebase role claim repair failed (HTTP \(statusCode)): \(body)"
+        case .invalidClaimRepairResponse:
+            return "Firebase role claim repair returned an invalid response"
+        }
+    }
+}
+
+private struct SyncUserClaimRepairRequest: Encodable {
+    let idToken: String
+    let email: String
+    let createIfMissing: Bool
+}
+
+private struct SyncUserClaimRepairResponse: Decodable {
+    let authClaimsUpdated: Bool?
+}
+
 // MARK: - Notification Names
 
 extension Notification.Name {
@@ -261,10 +291,16 @@ final class RealtimeProcessor: ObservableObject {
         }
         let realtimeAccessToken: String
         do {
-            let token = try await firebaseUser.getIDToken()
+            let token = try await realtimeAccessToken(for: firebaseUser)
             realtimeAccessToken = token
             print("[RealtimeProcessor] Firebase JWT ready — \(Self.describeJWT(token, firebaseUID: firebaseUser.uid))")
             await supabase.realtimeV2.setAuth(token)
+        } catch let error as RealtimeAuthGateError {
+            isConnected = false
+            let reason = error.errorDescription ?? String(describing: error)
+            print("[RealtimeProcessor] Deferring subscribe — \(reason)")
+            scheduleSubscribeRetry(reason: reason)
+            return
         } catch {
             isConnected = false
             print("[RealtimeProcessor] Deferring subscribe — could not obtain ID token: \(error)")
@@ -347,6 +383,33 @@ final class RealtimeProcessor: ObservableObject {
         }
     }
 
+    private func realtimeAccessToken(for firebaseUser: FirebaseAuth.User) async throws -> String {
+        let cachedToken = try await firebaseUser.getIDToken()
+        if Self.hasAuthenticatedSupabaseRole(cachedToken) {
+            return cachedToken
+        }
+
+        print("[RealtimeProcessor] Firebase JWT missing Supabase role claim — forcing token refresh")
+        let refreshedToken = try await firebaseUser.getIDToken(forcingRefresh: true)
+        if Self.hasAuthenticatedSupabaseRole(refreshedToken) {
+            return refreshedToken
+        }
+
+        print("[RealtimeProcessor] Firebase JWT still missing Supabase role claim — requesting server repair")
+        try await Self.requestFirebaseRoleClaimRepair(
+            idToken: refreshedToken,
+            fallbackEmail: firebaseUser.email
+        )
+
+        let repairedToken = try await firebaseUser.getIDToken(forcingRefresh: true)
+        guard Self.hasAuthenticatedSupabaseRole(repairedToken) else {
+            print("[RealtimeProcessor] Firebase JWT still missing Supabase role claim after repair — \(Self.describeJWT(repairedToken, firebaseUID: firebaseUser.uid))")
+            throw RealtimeAuthGateError.missingSupabaseRoleClaim
+        }
+
+        return repairedToken
+    }
+
     // MARK: - Stop Listening
 
     /// Permanently stop Realtime (logout / backgrounding). Clears listen intent
@@ -424,6 +487,10 @@ final class RealtimeProcessor: ObservableObject {
             // Socket is back. If our channel went down with it, rebuild a clean
             // subscription; startListening's reconnect path delta-syncs the gap.
             if !isConnected {
+                guard !isSubscribing else {
+                    print("[RealtimeProcessor] Socket recovered — subscribe already in flight")
+                    return
+                }
                 guard !suppressSocketRecoveryUntilRetry else {
                     print("[RealtimeProcessor] Socket recovered — waiting for scheduled subscribe retry")
                     return
@@ -676,6 +743,63 @@ final class RealtimeProcessor: ObservableObject {
                 resume(.failure(RealtimeDiagnosticError.timeout))
             }
         }
+    }
+
+    private nonisolated static func requestFirebaseRoleClaimRepair(
+        idToken: String,
+        fallbackEmail: String?
+    ) async throws {
+        let email = jwtStringClaim(idToken, claim: "email") ?? fallbackEmail
+        guard let email, !email.isEmpty else {
+            throw RealtimeAuthGateError.missingEmailForClaimRepair
+        }
+
+        let url = AppConfiguration.apiBaseURL.appendingPathComponent("/api/auth/sync-user")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(
+            SyncUserClaimRepairRequest(
+                idToken: idToken,
+                email: email,
+                createIfMissing: false
+            )
+        )
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw RealtimeAuthGateError.invalidClaimRepairResponse
+        }
+
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "—"
+            throw RealtimeAuthGateError.claimRepairFailed(
+                statusCode: httpResponse.statusCode,
+                body: body
+            )
+        }
+
+        let decoded = try? JSONDecoder().decode(SyncUserClaimRepairResponse.self, from: data)
+        if decoded?.authClaimsUpdated == true {
+            print("[RealtimeProcessor] Firebase Supabase role claim repaired — refreshing token")
+        }
+    }
+
+    nonisolated static func jwtSupabaseRole(_ token: String) -> String? {
+        jwtStringClaim(token, claim: "role")
+    }
+
+    nonisolated static func hasAuthenticatedSupabaseRole(_ token: String) -> Bool {
+        jwtSupabaseRole(token) == "authenticated"
+    }
+
+    private nonisolated static func jwtStringClaim(_ token: String, claim: String) -> String? {
+        let parts = token.split(separator: ".")
+        guard parts.count >= 2,
+              let claims = decodeJWTJSONSegment(parts[1]) else {
+            return nil
+        }
+        return stringValue(claims[claim])
     }
 
     private nonisolated static func describeJWT(_ token: String, firebaseUID: String) -> String {

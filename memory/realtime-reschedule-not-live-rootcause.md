@@ -4,6 +4,18 @@ Updated: 2026-06-25
 
 ## Current Evidence
 
+- User repro log after commit `9b6b521e` proves the join is rejected before any
+  CDC/table-specific subscription is established:
+  - The app logs a real Firebase ID token for Nick:
+    `role=—`, `exp=2026-06-25T23:50:40Z`, `sub=tDmM2XRxP9PJAESzQbyVXeMQUgv1`.
+  - The raw websocket diagnostic using that exact token and the 15 exact
+    bindings returns:
+    `Direct join diagnostic — status=error reason=InvalidJWTToken: Fields role and exp are required in JWT`.
+  - Because the token summary includes `exp`, the actionable missing field is
+    the Firebase custom claim `role='authenticated'`.
+  - `subscribeWithError()` still collapses this server reply into
+    `RealtimeError("Maximum retry attempts reached.")`, so the raw diagnostic is
+    the reliable localizer.
 - User repro log after commit `61df30aa` still shows no successful subscription:
   - `[RealtimeProcessor] Subscribe not completed (attempt 1, join failed: RealtimeError(errorDescription: Optional("Maximum retry attempts reached.")))`
   - Attempts 2, 3, and 4 are also `RealtimeError(... "Maximum retry attempts reached.")`.
@@ -26,7 +38,13 @@ Updated: 2026-06-25
   - anon/no `access_token`: `status=ok postgres_changes=15`
   - malformed token: `status=error reason=MalformedJWT: The token provided is not a valid JWT`
   - wrong-signature JWT: `status=error reason=JwtSignatureError: Failed to validate JWT signature`
+  - live Nick Firebase token without `role`: `status=error reason=InvalidJWTToken: Fields role and exp are required in JWT`
   - This matters because `supabase-swift` `subscribeWithError()` surfaces these as local max-retry timeouts when the channel never reaches `.subscribed`.
+- Supabase's Firebase Auth third-party auth docs require assigning the Firebase
+  custom user claim `role: 'authenticated'` to all users; Supabase inspects that
+  claim to assign the correct Postgres role for Data API, Storage, and Realtime.
+  Existing Firebase users need an Admin SDK backfill, and clients need a forced
+  ID-token refresh after the claim is added.
 - Nick Bradshaw's user row is not missing Firebase identity:
   - `id = 6f5ff13a-7108-4384-9699-0ca58207d3a2`
   - `firebase_uid = auth_id = tDmM2XRxP9PJAESzQbyVXeMQUgv1`
@@ -50,15 +68,44 @@ Updated: 2026-06-25
   - `[RealtimeProcessor] Direct join diagnostic - status=ok postgres_changes=15 ...`
   - or `[RealtimeProcessor] Direct join diagnostic - status=error reason=<server reason> ...`
   - or a transport/timeout failure.
+- `RealtimeProcessor` now refuses to join until a forced-refresh Firebase ID
+  token has `role=authenticated`; if the claim is missing it calls OPS-Web
+  `/api/auth/sync-user` with `createIfMissing=false` to repair the Firebase
+  custom claim server-side, then force-refreshes again before subscribing.
+- `RealtimeProcessor` now suppresses socket-recovery rebuilds while a subscribe
+  is already in flight, preventing confusing `Socket recovered - rebuilding
+  subscription` logs during an in-progress join.
+- OPS-Web `/api/auth/sync-user` now uses Firebase Admin SDK to add
+  `role='authenticated'` to Firebase-issued users that present a token without
+  the claim, preserving any existing custom claims and returning
+  `authClaimsUpdated` so clients know to refresh.
+- OPS-Web has a dry-run/apply script for the existing Firebase Auth user pool:
+  `npm run backfill:firebase-supabase-role -- --apply`.
+- Live Firebase backfill was NOT executed in the Codex sandbox during this
+  investigation: unsandboxed Firebase Admin/network access was rejected. Until
+  the OPS-Web route is deployed or the backfill is explicitly run, already-issued
+  production Firebase users may still receive tokens without the role claim.
 
 ## Interpretation
 
-The second failure is still not fully proven fixed. The earlier conclusion that this was only a transient tenant/socket outage plus a retry cleanup bug is outdated: the latest repro proves clean-channel retries still hit real SDK join timeouts.
+The second root cause is a Firebase custom-claim gap, not another realtime
+publication/table binding issue. The live device token is signed and identifies
+Nick correctly, but it does not contain Supabase's required
+`role='authenticated'` claim, so Realtime rejects the channel join before any
+table-specific CDC subscription can be created. Delta sync still works because
+the OPS database has Firebase-bridge policies/grants for regular Supabase data
+access; the Realtime join path is stricter and requires the JWT role claim.
 
-Current evidence rules out another obvious unpublished-table failure, a raw 15-binding payload rejection, and a simple Nick identity/RLS visibility gap. The remaining split is whether the live device's Firebase token is rejected by Realtime/Supabase third-party JWT validation, or whether the server accepts the exact token/bindings and `supabase-swift` is failing to observe/process the successful join reply.
+Current evidence rules out another obvious unpublished-table failure, a raw
+15-binding payload rejection, and a simple Nick identity/RLS visibility gap.
+If a future repro still fails after claim repair/backfill, key off the raw
+diagnostic line:
 
-Next repro must key off the new diagnostic line:
-
-- `Direct join diagnostic - status=error reason=...`: server-side token/JWT validation or Realtime auth configuration is the blocker.
+- `Firebase JWT ready ... role=authenticated` followed by
+  `Subscribed (authenticated)` means the channel should now receive live events.
+- `Deferring subscribe - Firebase token missing Supabase role claim` means the
+  deployed OPS-Web route/backfill has not repaired that Firebase account yet.
+- `Direct join diagnostic - status=error reason=...`: server-side token/JWT
+  validation or Realtime auth configuration is still the blocker.
 - `Direct join diagnostic - status=ok postgres_changes=15`: the server accepted the exact token and bindings; investigate `supabase-swift` channel handling or implement an SDK workaround/split.
 - `Direct join diagnostic failed ... timeout`: device/network websocket path is failing independently of the SDK.

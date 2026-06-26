@@ -44,4 +44,40 @@ final class RealtimeSubscribeRetryTests: XCTestCase {
             "realtime:company-ddee107c"
         )
     }
+
+    func testSupabaseRoleClaimDetectionRequiresAuthenticatedRole() throws {
+        let authenticatedToken = try makeUnsignedJWT(
+            claims: ["sub": "firebase-uid", "role": "authenticated"]
+        )
+        let missingRoleToken = try makeUnsignedJWT(
+            claims: ["sub": "firebase-uid"]
+        )
+        let anonRoleToken = try makeUnsignedJWT(
+            claims: ["sub": "firebase-uid", "role": "anon"]
+        )
+
+        XCTAssertEqual(RealtimeProcessor.jwtSupabaseRole(authenticatedToken), "authenticated")
+        XCTAssertTrue(RealtimeProcessor.hasAuthenticatedSupabaseRole(authenticatedToken))
+        XCTAssertNil(RealtimeProcessor.jwtSupabaseRole(missingRoleToken))
+        XCTAssertFalse(RealtimeProcessor.hasAuthenticatedSupabaseRole(missingRoleToken))
+        XCTAssertEqual(RealtimeProcessor.jwtSupabaseRole(anonRoleToken), "anon")
+        XCTAssertFalse(RealtimeProcessor.hasAuthenticatedSupabaseRole(anonRoleToken))
+    }
+
+    private func makeUnsignedJWT(claims: [String: Any]) throws -> String {
+        let header = ["alg": "none", "typ": "JWT"]
+        return try [
+            base64URLEncodedJSON(header),
+            base64URLEncodedJSON(claims),
+            "signature"
+        ].joined(separator: ".")
+    }
+
+    private func base64URLEncodedJSON(_ object: [String: Any]) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        return data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
 }

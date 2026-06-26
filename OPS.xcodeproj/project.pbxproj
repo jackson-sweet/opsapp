@@ -11,6 +11,8 @@
 		E5C0D4042FE5000000A10001 /* OPSDesignKit in Frameworks */ = {isa = PBXBuildFile; productRef = E5C0D4022FE5000000A10001 /* OPSDesignKit */; };
 		E5C0D4052FE5000000A10001 /* DeckKit in Frameworks */ = {isa = PBXBuildFile; productRef = E5C0D4082FE5000000A10001 /* DeckKit */; };
 		E5C0D4062FE5000000A10001 /* DeckKit in Frameworks */ = {isa = PBXBuildFile; productRef = E5C0D4082FE5000000A10001 /* DeckKit */; };
+		E5D6A0092FE6A00000D6E001 /* OPSDesignKit in Frameworks */ = {isa = PBXBuildFile; productRef = E5C0D4022FE5000000A10001 /* OPSDesignKit */; };
+		E5D6A00A2FE6A00000D6E001 /* DeckKit in Frameworks */ = {isa = PBXBuildFile; productRef = E5C0D4082FE5000000A10001 /* DeckKit */; };
 		E50559F02F53784E007F4AF0 /* MapboxMaps in Frameworks */ = {isa = PBXBuildFile; productRef = E5D0A1022F60B100006DB0A2 /* MapboxMaps */; };
 		E5055E3D2F54B72A007F4AF0 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = E5055E3C2F54B72A007F4AF0 /* FirebaseRemoteConfig */; };
 		E521056F2F4E6CFE0051FA9C /* CoreXLSX in Frameworks */ = {isa = PBXBuildFile; productRef = E521056E2F4E6CFE0051FA9C /* CoreXLSX */; };
@@ -97,6 +99,7 @@
 		E595DC042DB6CF8F00B1413F /* OPS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OPS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E595DC162DB6CF9000B1413F /* OPSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OPSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E595DC202DB6CF9000B1413F /* OPSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OPSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E5D6A0002FE6A00000D6E001 /* OPSDecks.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OPSDecks.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FE51A0000000000000000031 /* OPSShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OPSShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		FE51A0000000000000000131 /* OPSCallDirectory.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OPSCallDirectory.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -142,6 +145,11 @@
 		E595DC232DB6CF9000B1413F /* OPSUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = OPSUITests;
+			sourceTree = "<group>";
+		};
+		E5D6A0012FE6A00000D6E001 /* OPSDecks */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = OPSDecks;
 			sourceTree = "<group>";
 		};
 		FE51A0000000000000000010 /* OPSShareExtension */ = {
@@ -218,6 +226,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E5D6A0032FE6A00000D6E001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E5D6A0092FE6A00000D6E001 /* OPSDesignKit in Frameworks */,
+				E5D6A00A2FE6A00000D6E001 /* DeckKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E595DC1D2DB6CF9000B1413F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -249,6 +266,7 @@
 				FE51A0000000000000000010 /* OPSShareExtension */,
 				FE51A0000000000000000011 /* Shared */,
 				FE51A0000000000000000110 /* OPSCallDirectory */,
+				E5D6A0012FE6A00000D6E001 /* OPSDecks */,
 				E595DC192DB6CF9000B1413F /* OPSTests */,
 				E595DC232DB6CF9000B1413F /* OPSUITests */,
 				E5AF196D2E02308000CD46A1 /* Frameworks */,
@@ -260,6 +278,7 @@
 			isa = PBXGroup;
 			children = (
 				E595DC042DB6CF8F00B1413F /* OPS.app */,
+				E5D6A0002FE6A00000D6E001 /* OPSDecks.app */,
 				E595DC162DB6CF9000B1413F /* OPSTests.xctest */,
 				E595DC202DB6CF9000B1413F /* OPSUITests.xctest */,
 				FE51A0000000000000000031 /* OPSShareExtension.appex */,
@@ -387,6 +406,30 @@
 			productReference = E595DC202DB6CF9000B1413F /* OPSUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		E5D6A0052FE6A00000D6E001 /* OPSDecks */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E5D6A0062FE6A00000D6E001 /* Build configuration list for PBXNativeTarget "OPSDecks" */;
+			buildPhases = (
+				E5D6A0022FE6A00000D6E001 /* Sources */,
+				E5D6A0032FE6A00000D6E001 /* Frameworks */,
+				E5D6A0042FE6A00000D6E001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				E5D6A0012FE6A00000D6E001 /* OPSDecks */,
+			);
+			name = OPSDecks;
+			packageProductDependencies = (
+				E5C0D4022FE5000000A10001 /* OPSDesignKit */,
+				E5C0D4082FE5000000A10001 /* DeckKit */,
+			);
+			productName = OPSDecks;
+			productReference = E5D6A0002FE6A00000D6E001 /* OPSDecks.app */;
+			productType = "com.apple.product-type.application";
+		};
 		FE51A0000000000000000030 /* OPSShareExtension */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = FE51A0000000000000000062 /* Build configuration list for PBXNativeTarget "OPSShareExtension" */;
@@ -460,6 +503,9 @@
 						CreatedOnToolsVersion = 16.2;
 						TestTargetID = E595DC032DB6CF8F00B1413F;
 					};
+					E5D6A0052FE6A00000D6E001 = {
+						CreatedOnToolsVersion = 16.2;
+					};
 				};
 			};
 			buildConfigurationList = E595DBFF2DB6CF8F00B1413F /* Build configuration list for PBXProject "OPS" */;
@@ -488,6 +534,7 @@
 			projectRoot = "";
 			targets = (
 				E595DC032DB6CF8F00B1413F /* OPS */,
+				E5D6A0052FE6A00000D6E001 /* OPSDecks */,
 				FE51A0000000000000000030 /* OPSShareExtension */,
 				FE51A0000000000000000130 /* OPSCallDirectory */,
 				E595DC152DB6CF9000B1413F /* OPSTests */,
@@ -512,6 +559,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		E595DC1E2DB6CF9000B1413F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E5D6A0042FE6A00000D6E001 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -575,6 +629,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		E595DC1C2DB6CF9000B1413F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E5D6A0022FE6A00000D6E001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -924,6 +985,80 @@
 			};
 			name = Release;
 		};
+		E5D6A0072FE6A00000D6E001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = X47H96M34K;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "OPS Decks";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = co.opsapp.ops.decks;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		E5D6A0082FE6A00000D6E001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = X47H96M34K;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "OPS Decks";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = co.opsapp.ops.decks;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
 		FE51A0000000000000000060 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1067,6 +1202,15 @@
 			buildConfigurations = (
 				E595DC312DB6CF9000B1413F /* Debug */,
 				E595DC322DB6CF9000B1413F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E5D6A0062FE6A00000D6E001 /* Build configuration list for PBXNativeTarget "OPSDecks" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E5D6A0072FE6A00000D6E001 /* Debug */,
+				E5D6A0082FE6A00000D6E001 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

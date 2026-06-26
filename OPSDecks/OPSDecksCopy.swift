@@ -10,3 +10,8 @@ enum OPSDecksCopy {
     static let freeLimitMessage = String(localized: "Free saves one deck. Get Pro to save another.")
     static let proActionPlaceholder = String(localized: "GET PRO")
 }
+
+enum OPSDecksUpgradeCopy {
+    static let title = String(localized: "Bring this into OPS")
+    static let body = String(localized: "Turn the deck into a live job without redrawing it.")
+}

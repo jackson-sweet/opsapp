@@ -132,3 +132,38 @@ Self-review notes:
 - The app build has not been proven in this environment because `xcodebuild` cannot resolve packages before compilation under the current sandbox and the unsandboxed retry was denied.
 - Remaining OPS deck tests that exercise AR, rendering, runtime stores, app services, catalog/order flows, or sync were intentionally left in OPSTests and updated to import `DeckKit`.
 - The generated SwiftPM `.build/` output is ignored by `Packages/DeckKit/.gitignore`; the removal command for existing generated output was also denied by the approval guard, so it was not staged.
+
+## Task 5A Fix - 2026-06-25
+
+Status: IMPLEMENTED
+
+Commit range:
+- Base: `243cf0ac`
+- Final range: `243cf0ac..HEAD`
+
+Files changed:
+- `OPS/DeckBuilder/Services/VinylOffcutInventoryService.swift`
+- `OPS/DeckBuilder/Views/DeckSettingsSheet.swift`
+- `OPS/Services/CatalogEstimateMerger.swift`
+- `Packages/DeckKit/Sources/DeckKit/Engine/SketchScanPipeline.swift`
+- `Packages/DeckKit/Sources/DeckKit/Engine/SnapEngine.swift`
+- `Packages/DeckKit/Sources/DeckKit/Engine/StairCalculator.swift`
+- `Packages/DeckKit/Sources/DeckKit/Engine/VinylCutListEngine.swift`
+- `Packages/DeckKit/Sources/DeckKit/Models/DeckDrawingState.swift`
+- `Packages/DeckKit/Sources/DeckKit/Models/DeckGeometry.swift`
+- `Packages/DeckKit/Sources/DeckKit/Models/DeckLevel.swift`
+- `Packages/DeckKit/Sources/DeckKit/Models/PhotoOverlayState.swift`
+- `Packages/DeckKit/Sources/DeckKit/Models/SketchScanResult.swift`
+
+Verification:
+- `env CLANG_MODULE_CACHE_PATH=/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/ops-decks-p1-foundation/Packages/DeckKit/.build/module-cache swift test --disable-sandbox --package-path Packages/DeckKit`
+  - PASS: 225 tests, 0 failures.
+- `xcodebuild -quiet -project OPS.xcodeproj -scheme OPS -destination 'generic/platform=iOS Simulator' -derivedDataPath /private/tmp/ops-ios-derived CODE_SIGNING_ALLOWED=NO build`
+  - PASS: exit code 0 under unsandboxed verification. Output contained existing warnings only.
+- `scripts/verify-ops-decks-style-tokens.sh .`
+  - PASS.
+- `git diff --check`
+  - PASS.
+
+Exact blockers:
+- None. The initial package-boundary compile failures were resolved by importing `DeckKit` in remaining OPS callers and making the required DeckKit initializers, properties, and mutation helpers public where the app still crosses the package boundary.

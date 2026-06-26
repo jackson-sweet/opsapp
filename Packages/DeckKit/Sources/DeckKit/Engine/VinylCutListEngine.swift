@@ -90,6 +90,22 @@ public struct VinylOrderSurfaceInput: Identifiable, Equatable {
     public let positions: [CGPoint]
     public let scaleFactor: Double
     public var edges: [VinylOrderSurfaceEdge] = []
+
+    public init(
+        id: String,
+        label: String,
+        levelName: String?,
+        positions: [CGPoint],
+        scaleFactor: Double,
+        edges: [VinylOrderSurfaceEdge] = []
+    ) {
+        self.id = id
+        self.label = label
+        self.levelName = levelName
+        self.positions = positions
+        self.scaleFactor = scaleFactor
+        self.edges = edges
+    }
 }
 
 public struct VinylOrderSurfaceEdge: Identifiable, Equatable {
@@ -98,6 +114,20 @@ public struct VinylOrderSurfaceEdge: Identifiable, Equatable {
     public let end: CGPoint
     public let edgeType: EdgeType
     public let label: String?
+
+    public init(
+        id: String,
+        start: CGPoint,
+        end: CGPoint,
+        edgeType: EdgeType,
+        label: String?
+    ) {
+        self.id = id
+        self.start = start
+        self.end = end
+        self.edgeType = edgeType
+        self.label = label
+    }
 }
 
 /// A remnant the cut plan produces — leftover roll width × the strip length —
@@ -110,6 +140,18 @@ public struct VinylProducedOffcut: Identifiable, Equatable {
     public let lengthInches: Double
 
     public var areaSqFt: Double { (widthInches * lengthInches) / 144.0 }
+
+    public init(
+        id: String,
+        sourceSurfaceLabel: String,
+        widthInches: Double,
+        lengthInches: Double
+    ) {
+        self.id = id
+        self.sourceSurfaceLabel = sourceSurfaceLabel
+        self.widthInches = widthInches
+        self.lengthInches = lengthInches
+    }
 }
 
 /// A banked offcut already on hand, fed into the planner so reuse spans jobs —
@@ -119,6 +161,18 @@ public struct VinylOnHandOffcut: Identifiable, Equatable {
     public let label: String
     public let widthInches: Double
     public let lengthInches: Double
+
+    public init(
+        id: String,
+        label: String,
+        widthInches: Double,
+        lengthInches: Double
+    ) {
+        self.id = id
+        self.label = label
+        self.widthInches = widthInches
+        self.lengthInches = lengthInches
+    }
 }
 
 public struct VinylCutPlan: Equatable {

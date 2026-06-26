@@ -27,10 +27,12 @@ public class SketchScanPipeline: ObservableObject {
         case failed = "Failed"
     }
 
-    @Published var stage: ScanStage = .idle
-    @Published var progress: Double = 0.0  // 0.0 to 1.0
-    @Published var result: SketchScanResult?
-    @Published var error: String?
+    @Published public var stage: ScanStage = .idle
+    @Published public var progress: Double = 0.0  // 0.0 to 1.0
+    @Published public var result: SketchScanResult?
+    @Published public var error: String?
+
+    public init() {}
 
     /// Run the full 7-stage pipeline on a captured image.
     /// - Parameters:

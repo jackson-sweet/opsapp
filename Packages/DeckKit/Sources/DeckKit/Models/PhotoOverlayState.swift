@@ -9,4 +9,20 @@ public struct PhotoOverlayState: Codable, Equatable {
     public var scale: Double = 1.0        // overlay scale factor
     public var rotation: Double = 0       // degrees
     public var opacity: Double = 0.3      // fill opacity (0.1 to 0.8)
+
+    public init(
+        photoURL: String,
+        offsetX: Double = 0,
+        offsetY: Double = 0,
+        scale: Double = 1.0,
+        rotation: Double = 0,
+        opacity: Double = 0.3
+    ) {
+        self.photoURL = photoURL
+        self.offsetX = offsetX
+        self.offsetY = offsetY
+        self.scale = scale
+        self.rotation = rotation
+        self.opacity = opacity
+    }
 }

@@ -5,14 +5,34 @@ import Foundation
 public struct StairCalculator {
 
     public struct StairSpec {
-        let treadCount: Int
-        let risePerStep: Double      // inches
-        let runPerTread: Double      // inches
-        let totalRise: Double        // inches
-        let totalRun: Double         // inches
-        let stringerLength: Double   // inches
-        let stringerCount: Int
-        let width: Double            // inches
+        public let treadCount: Int
+        public let risePerStep: Double      // inches
+        public let runPerTread: Double      // inches
+        public let totalRise: Double        // inches
+        public let totalRun: Double         // inches
+        public let stringerLength: Double   // inches
+        public let stringerCount: Int
+        public let width: Double            // inches
+
+        public init(
+            treadCount: Int,
+            risePerStep: Double,
+            runPerTread: Double,
+            totalRise: Double,
+            totalRun: Double,
+            stringerLength: Double,
+            stringerCount: Int,
+            width: Double
+        ) {
+            self.treadCount = treadCount
+            self.risePerStep = risePerStep
+            self.runPerTread = runPerTread
+            self.totalRise = totalRise
+            self.totalRun = totalRun
+            self.stringerLength = stringerLength
+            self.stringerCount = stringerCount
+            self.width = width
+        }
     }
 
     /// Calculate full stair spec from elevation and width

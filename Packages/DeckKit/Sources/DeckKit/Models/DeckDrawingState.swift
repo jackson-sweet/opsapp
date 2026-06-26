@@ -65,13 +65,23 @@ public struct SelectionState: Equatable {
     public var hasVertices: Bool { !selectedVertexIds.isEmpty }
     public var hasSurfaces: Bool { !selectedSurfaceIds.isEmpty }
 
-    mutating func clear() {
+    public init(
+        selectedEdgeIds: Set<String> = [],
+        selectedVertexIds: Set<String> = [],
+        selectedSurfaceIds: Set<String> = []
+    ) {
+        self.selectedEdgeIds = selectedEdgeIds
+        self.selectedVertexIds = selectedVertexIds
+        self.selectedSurfaceIds = selectedSurfaceIds
+    }
+
+    public mutating func clear() {
         selectedEdgeIds.removeAll()
         selectedVertexIds.removeAll()
         selectedSurfaceIds.removeAll()
     }
 
-    mutating func toggleEdge(_ id: String) {
+    public mutating func toggleEdge(_ id: String) {
         if selectedEdgeIds.contains(id) {
             selectedEdgeIds.remove(id)
         } else {
@@ -79,7 +89,7 @@ public struct SelectionState: Equatable {
         }
     }
 
-    mutating func toggleVertex(_ id: String) {
+    public mutating func toggleVertex(_ id: String) {
         if selectedVertexIds.contains(id) {
             selectedVertexIds.remove(id)
         } else {
@@ -87,7 +97,7 @@ public struct SelectionState: Equatable {
         }
     }
 
-    mutating func toggleSurface(_ id: String) {
+    public mutating func toggleSurface(_ id: String) {
         if selectedSurfaceIds.contains(id) {
             selectedSurfaceIds.remove(id)
         } else {
@@ -100,6 +110,11 @@ public struct SelectionState: Equatable {
 public struct DrawingSnapshot {
     public let drawingData: DeckDrawingData
     public let description: String // for debug/display
+
+    public init(drawingData: DeckDrawingData, description: String) {
+        self.drawingData = drawingData
+        self.description = description
+    }
 }
 
 // MARK: - Copy / Paste Staging
@@ -109,6 +124,18 @@ public struct DeckSelectionClipboard: Equatable {
     public let edges: [DeckEdge]
     public let surfaces: [DeckSurface]
     public let bounds: CGRect
+
+    public init(
+        vertices: [DeckVertex],
+        edges: [DeckEdge],
+        surfaces: [DeckSurface],
+        bounds: CGRect
+    ) {
+        self.vertices = vertices
+        self.edges = edges
+        self.surfaces = surfaces
+        self.bounds = bounds
+    }
 
     public var center: CGPoint {
         CGPoint(x: bounds.midX, y: bounds.midY)
@@ -217,7 +244,7 @@ public struct DeckPastePreview: Equatable {
         vertices.isEmpty && edges.isEmpty && surfaces.isEmpty
     }
 
-    mutating func translate(by delta: CGSize) {
+    public mutating func translate(by delta: CGSize) {
         for i in vertices.indices {
             vertices[i].position = CGPoint(
                 x: vertices[i].position.x + delta.width,

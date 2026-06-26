@@ -62,7 +62,7 @@ public struct DeckLevel: Identifiable, Codable, Equatable {
         vertices.first { $0.id == id }
     }
 
-    mutating func updateVertex(_ vertex: DeckVertex) {
+    public mutating func updateVertex(_ vertex: DeckVertex) {
         if let index = vertices.firstIndex(where: { $0.id == vertex.id }) {
             vertices[index] = vertex
         }
@@ -76,7 +76,7 @@ public struct DeckLevel: Identifiable, Codable, Equatable {
         edges.filter { $0.startVertexId == vertexId || $0.endVertexId == vertexId }
     }
 
-    mutating func updateEdge(_ edge: DeckEdge) {
+    public mutating func updateEdge(_ edge: DeckEdge) {
         if let index = edges.firstIndex(where: { $0.id == edge.id }) {
             edges[index] = edge
         }

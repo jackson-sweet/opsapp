@@ -788,7 +788,7 @@ public struct DeckDrawingData: Codable {
         vertices.first { $0.id == id }
     }
 
-    mutating func updateVertex(_ vertex: DeckVertex) {
+    public mutating func updateVertex(_ vertex: DeckVertex) {
         if let index = vertices.firstIndex(where: { $0.id == vertex.id }) {
             vertices[index] = vertex
         }
@@ -804,7 +804,7 @@ public struct DeckDrawingData: Codable {
         edges.filter { $0.startVertexId == vertexId || $0.endVertexId == vertexId }
     }
 
-    mutating func updateEdge(_ edge: DeckEdge) {
+    public mutating func updateEdge(_ edge: DeckEdge) {
         if let index = edges.firstIndex(where: { $0.id == edge.id }) {
             edges[index] = edge
         }
@@ -1040,7 +1040,7 @@ public struct DeckDrawingData: Codable {
     }
 
     /// Update a level in place
-    mutating func updateLevel(_ level: DeckLevel) {
+    public mutating func updateLevel(_ level: DeckLevel) {
         if let index = levels.firstIndex(where: { $0.id == level.id }) {
             levels[index] = level
         }
@@ -1153,7 +1153,7 @@ public struct DeckDrawingData: Codable {
     }
 
     /// Migrate single-level data to multi-level (called when adding a second level)
-    mutating func migrateToMultiLevel() {
+    public mutating func migrateToMultiLevel() {
         guard !isMultiLevel, vertices.count >= 3 else { return }
         var firstLevel = DeckLevel(
             name: "Level 1",

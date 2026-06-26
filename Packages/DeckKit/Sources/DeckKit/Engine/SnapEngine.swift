@@ -17,6 +17,13 @@ public struct AlignmentGuide: Equatable {
     public let to: CGPoint      // end of the dotted guide line
     public let type: AlignmentGuideType
     public let referenceLabel: String?  // optional label (e.g., "∥" or "⊥")
+
+    public init(from: CGPoint, to: CGPoint, type: AlignmentGuideType, referenceLabel: String? = nil) {
+        self.from = from
+        self.to = to
+        self.type = type
+        self.referenceLabel = referenceLabel
+    }
 }
 
 public struct AlignmentResult {

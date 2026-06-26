@@ -82,6 +82,18 @@ public struct ContourExtractionResult {
     public let segments: [DetectedLineSegment]
     public let isClosed: Bool
     public let stairPatterns: [StairPattern]
+
+    public init(
+        vertices: [DetectedVertex],
+        segments: [DetectedLineSegment],
+        isClosed: Bool,
+        stairPatterns: [StairPattern]
+    ) {
+        self.vertices = vertices
+        self.segments = segments
+        self.isClosed = isClosed
+        self.stairPatterns = stairPatterns
+    }
 }
 
 // MARK: - Stage 3: Text Recognition
@@ -153,6 +165,12 @@ public struct ScaleResult {
     public let scaleFactor: Double
     public let source: ScaleSource
     public let conflicts: [ScaleConflict]
+
+    public init(scaleFactor: Double, source: ScaleSource, conflicts: [ScaleConflict]) {
+        self.scaleFactor = scaleFactor
+        self.source = source
+        self.conflicts = conflicts
+    }
 }
 
 // MARK: - Stage 6: Conflict Resolution
@@ -178,6 +196,28 @@ public struct SketchScanResult {
     public let clientNameCandidate: String?
     public let stairDetections: [(segmentId: String, treadCount: Int)]
     public var conflictResolution: ConflictResolution = .useAnnotations
+
+    public init(
+        sourceImage: CGImage,
+        gridResult: GridDetectionResult,
+        contourResult: ContourExtractionResult,
+        recognizedTexts: [RecognizedText],
+        dimensionAssociations: [DimensionAssociation],
+        scaleResult: ScaleResult?,
+        clientNameCandidate: String?,
+        stairDetections: [(segmentId: String, treadCount: Int)],
+        conflictResolution: ConflictResolution = .useAnnotations
+    ) {
+        self.sourceImage = sourceImage
+        self.gridResult = gridResult
+        self.contourResult = contourResult
+        self.recognizedTexts = recognizedTexts
+        self.dimensionAssociations = dimensionAssociations
+        self.scaleResult = scaleResult
+        self.clientNameCandidate = clientNameCandidate
+        self.stairDetections = stairDetections
+        self.conflictResolution = conflictResolution
+    }
 
     // MARK: - Conversion to DeckDrawingData
 

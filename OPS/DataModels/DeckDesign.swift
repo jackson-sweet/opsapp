@@ -56,7 +56,11 @@ final class DeckDesign: Identifiable {
             DeckDrawingData.fromJSON(drawingDataJSON) ?? DeckDrawingData()
         }
         set {
-            drawingDataJSON = newValue.toJSON()
+            let stamped = DeckSchemaMigration.stampFramingVersion(newValue)
+            drawingDataJSON = stamped.toJSON()
+            if let schemaVersion = stamped.schemaVersion {
+                version = max(version, schemaVersion)
+            }
             updatedAt = Date()
             needsSync = true
         }

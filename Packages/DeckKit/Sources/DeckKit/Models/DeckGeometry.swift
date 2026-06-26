@@ -697,6 +697,7 @@ public struct DeckSurface: Identifiable, Codable, Equatable {
 // MARK: - Complete Drawing Data
 
 public struct DeckDrawingData: Codable {
+    public var schemaVersion: Int? = nil
     public var vertices: [DeckVertex] = []
     public var edges: [DeckEdge] = []
     public var footprint: DeckFootprint = DeckFootprint()
@@ -717,6 +718,11 @@ public struct DeckDrawingData: Codable {
     public var levels: [DeckLevel] = []
     public var levelConnections: [LevelConnection] = []
 
+    // MARK: - Engineering Blocks
+
+    public var framing: FramingPlan? = nil
+    public var terrain: TerrainModel? = nil
+
     // MARK: - Catalog projection
 
     /// Catalog-facing projection of the drawing — one row per visible
@@ -733,6 +739,7 @@ public struct DeckDrawingData: Codable {
     public var futureBlocks: [String: DeckJSONValue] = [:]
 
     public enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion
         case vertices
         case edges
         case footprint
@@ -744,6 +751,8 @@ public struct DeckDrawingData: Codable {
         case photoOverlay
         case levels
         case levelConnections
+        case framing
+        case terrain
         case components
     }
 
@@ -751,6 +760,7 @@ public struct DeckDrawingData: Codable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion)
         self.vertices = try c.decodeIfPresent([DeckVertex].self, forKey: .vertices) ?? []
         self.edges = try c.decodeIfPresent([DeckEdge].self, forKey: .edges) ?? []
         self.footprint = try c.decodeIfPresent(DeckFootprint.self, forKey: .footprint) ?? DeckFootprint()
@@ -762,12 +772,15 @@ public struct DeckDrawingData: Codable {
         self.photoOverlay = try c.decodeIfPresent(PhotoOverlayState.self, forKey: .photoOverlay)
         self.levels = try c.decodeIfPresent([DeckLevel].self, forKey: .levels) ?? []
         self.levelConnections = try c.decodeIfPresent([LevelConnection].self, forKey: .levelConnections) ?? []
+        self.framing = try? c.decodeIfPresent(FramingPlan.self, forKey: .framing)
+        self.terrain = try? c.decodeIfPresent(TerrainModel.self, forKey: .terrain)
         self.components = try c.decodeIfPresent([DesignComponentRow].self, forKey: .components)
         self.futureBlocks = [:]
     }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(schemaVersion, forKey: .schemaVersion)
         try c.encode(vertices, forKey: .vertices)
         try c.encode(edges, forKey: .edges)
         try c.encode(footprint, forKey: .footprint)
@@ -779,6 +792,8 @@ public struct DeckDrawingData: Codable {
         try c.encodeIfPresent(photoOverlay, forKey: .photoOverlay)
         try c.encode(levels, forKey: .levels)
         try c.encode(levelConnections, forKey: .levelConnections)
+        try c.encodeIfPresent(framing, forKey: .framing)
+        try c.encodeIfPresent(terrain, forKey: .terrain)
         try c.encodeIfPresent(components, forKey: .components)
     }
 

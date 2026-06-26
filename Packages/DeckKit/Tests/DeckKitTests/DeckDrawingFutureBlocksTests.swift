@@ -7,7 +7,7 @@ final class DeckDrawingFutureBlocksTests: XCTestCase {
         {
           "vertices": [],
           "edges": [],
-          "framing": {
+          "overheadStructure": {
             "version": 900719925474099312345678901234567890,
             "members": [
               {
@@ -45,7 +45,7 @@ final class DeckDrawingFutureBlocksTests: XCTestCase {
         """
 
         let expectedFutureBlocks: [String: DeckJSONValue] = [
-            "framing": .object([
+            "overheadStructure": .object([
                 "members": .array([
                     .object([
                         "id": .string("j1"),
@@ -133,6 +133,7 @@ final class DeckDrawingFutureBlocksTests: XCTestCase {
 
     private func unknownBlocks(in object: [String: DeckJSONValue]) -> [String: DeckJSONValue] {
         let knownKeys: Set<String> = [
+            "schemaVersion",
             "vertices",
             "edges",
             "footprint",
@@ -144,6 +145,8 @@ final class DeckDrawingFutureBlocksTests: XCTestCase {
             "photoOverlay",
             "levels",
             "levelConnections",
+            "framing",
+            "terrain",
             "components",
         ]
         return object.reduce(into: [:]) { result, entry in

@@ -15,15 +15,17 @@ enum VinylOrderSurfaceScope: Equatable {
 
 @MainActor
 final class OPSDeckStore: DeckStore {
+    private let deckDesign: DeckDesign
     private let modelContext: ModelContext?
     private weak var syncEngine: SyncEngine?
 
-    init(modelContext: ModelContext?, syncEngine: SyncEngine?) {
+    init(deckDesign: DeckDesign, modelContext: ModelContext?, syncEngine: SyncEngine?) {
+        self.deckDesign = deckDesign
         self.modelContext = modelContext
         self.syncEngine = syncEngine
     }
 
-    func save(deckDesign: DeckDesign, drawingData: DeckDrawingData) throws {
+    func save(drawingData: DeckDrawingData) throws {
         deckDesign.drawingData = drawingData
         if deckDesign.modelContext == nil {
             modelContext?.insert(deckDesign)
@@ -31,7 +33,7 @@ final class OPSDeckStore: DeckStore {
         try modelContext?.save()
     }
 
-    func delete(deckDesign: DeckDesign) throws {
+    func delete() throws {
         deckDesign.deletedAt = Date()
         deckDesign.markForSync()
         try modelContext?.save()
@@ -2973,7 +2975,7 @@ class DeckBuilderViewModel: ObservableObject {
         isLocallySaved = false
         do {
             if let store = runtime?.store {
-                try store.save(deckDesign: deckDesign, drawingData: drawingData)
+                try store.save(drawingData: drawingData)
             } else {
                 deckDesign.drawingData = drawingData  // triggers needsSync via setter
                 // Insert on first save if the design was created via the blank-canvas

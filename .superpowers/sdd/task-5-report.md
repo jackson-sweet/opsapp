@@ -1,5 +1,44 @@
 ## Task 5 Report - 2026-06-25
 
+## Task 5B Report - 2026-06-25
+
+Status: IMPLEMENTED WITH XCODEBUILD VERIFICATION BLOCKED
+
+Commit range:
+- Base: `6798c30d`
+- Final range after commit: `6798c30d..HEAD`
+
+Files changed:
+- Runtime seam moved into DeckKit:
+  - `Packages/DeckKit/Sources/DeckKit/Runtime/DeckRuntime.swift`
+  - removed `OPS/DeckBuilder/Runtime/DeckRuntime.swift`
+- OPS adapter and runtime caller update:
+  - `OPS/DeckBuilder/DeckBuilderViewModel.swift`
+- Runtime seam tests:
+  - `OPSTests/DeckBuilder/DeckRuntimeStoreTests.swift`
+  - `Packages/DeckKit/Tests/DeckKitTests/DeckRuntimeTests.swift`
+- Report:
+  - `.superpowers/sdd/task-5-report.md`
+
+Verification commands run:
+- `env CLANG_MODULE_CACHE_PATH=/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/ops-decks-p1-foundation/Packages/DeckKit/.build/module-cache swift test --disable-sandbox --package-path Packages/DeckKit`
+  - PASS: 227 tests, 0 failures.
+- `xcodebuild -quiet -project OPS.xcodeproj -scheme OPS -destination 'generic/platform=iOS Simulator' -derivedDataPath /private/tmp/ops-ios-derived CODE_SIGNING_ALLOWED=NO build`
+  - BLOCKED by environment storage exhaustion before a full build result was available.
+  - Exact blocker strings:
+    - `error: Mkdtemp(/tmp/ops-ios-derived/Build/Intermediates.noindex/OPS.build/Debug-iphonesimulator/OPS.build/Objects-normal/x86_64/swbuild.tmp.ylmVvxOc): No space left on device (28) (in target 'OPS' from project 'OPS')`
+    - `error: error: accessing build database "/private/tmp/ops-ios-derived/Build/Intermediates.noindex/XCBuildData/build.db": database or disk is full`
+- `scripts/verify-ops-decks-style-tokens.sh .`
+  - PASS.
+- `git diff --check`
+  - PASS.
+
+Self-review notes:
+- `DeckRuntime`, `DeckRuntimeContext`, `DeckAppSurface`, `DeckStore`, `DeckImageUploader`, `DeckOCRService`, and the default no-op services now live in `DeckKit` with public visibility suitable for the package boundary.
+- `DeckStore` no longer depends on `DeckDesign` or other OPS app types; the protocol now persists only `DeckDrawingData` and exposes an app-free delete call.
+- `OPSDeckStore` remains in the OPS target and now captures `DeckDesign` internally, so the runtime store path preserves the previous save/delete behavior while `DeckBuilderViewModel.save()` still owns the existing sync enqueue path and does not enqueue twice.
+- The OPS runtime-store behavior test now asserts persisted drawing content instead of app-model identifiers, and DeckKit has direct coverage for runtime-context equality plus default no-op service wiring.
+
 Status: BLOCKED
 
 Commit range and final HEAD:

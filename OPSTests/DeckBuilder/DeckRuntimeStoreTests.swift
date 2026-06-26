@@ -33,20 +33,19 @@ final class DeckRuntimeStoreTests: XCTestCase {
         let viewModel = DeckBuilderViewModel(deckDesign: design, runtime: runtime)
         viewModel.save()
 
-        XCTAssertEqual(store.savedDesignIds, [design.id])
-        XCTAssertEqual(store.savedProjectIds, [nil])
+        XCTAssertEqual(store.savedDrawingData.count, 1)
+        XCTAssertEqual(store.savedDrawingData[0].vertices, data.vertices)
+        XCTAssertEqual(store.savedDrawingData[0].edges, data.edges)
     }
 }
 
 @MainActor
 private final class SpyDeckStore: DeckStore {
-    var savedDesignIds: [String] = []
-    var savedProjectIds: [String?] = []
+    var savedDrawingData: [DeckDrawingData] = []
 
-    func save(deckDesign: DeckDesign, drawingData: DeckDrawingData) throws {
-        savedDesignIds.append(deckDesign.id)
-        savedProjectIds.append(deckDesign.projectId)
+    func save(drawingData: DeckDrawingData) throws {
+        savedDrawingData.append(drawingData)
     }
 
-    func delete(deckDesign: DeckDesign) throws {}
+    func delete() throws {}
 }

@@ -14,6 +14,9 @@ let package = Package(
         .target(
             name: "OPSDesignKit",
             path: ".",
+            exclude: [
+                "Tests",
+            ],
             sources: [
                 "Sources/OPSDesignKit",
             ],
@@ -23,7 +26,8 @@ let package = Package(
         ),
         .testTarget(
             name: "OPSDesignKitTests",
-            dependencies: ["OPSDesignKit"]
+            dependencies: ["OPSDesignKit"],
+            path: "Tests/OPSDesignKitTests"
         ),
     ]
 )

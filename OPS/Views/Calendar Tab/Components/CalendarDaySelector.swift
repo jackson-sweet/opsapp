@@ -11,7 +11,7 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-enum CalendarWeekRowEdgeDirection {
+enum CalendarWeekRowEdgeDirection: Equatable {
     case previous
     case next
 
@@ -91,19 +91,18 @@ struct WeekRowEdgeDropDelegate: DropDelegate {
 
     func dropEntered(info: DropInfo) {
         let calendar = Calendar.current
+        let source = ScheduleDragHoverSource.weekRowEdge(direction)
         let changed = session.hoveredDate.map { !calendar.isDate($0, inSameDayAs: fallbackDay) } ?? true
         if changed {
             UISelectionFeedbackGenerator().selectionChanged()
         }
-        session.hoveredDate = fallbackDay
+        session.updateHover(day: fallbackDay, source: source)
+        restoreActive(from: info, whileHovering: source)
         onHover(direction)
     }
 
     func dropExited(info: DropInfo) {
-        let calendar = Calendar.current
-        if let hovered = session.hoveredDate, calendar.isDate(hovered, inSameDayAs: fallbackDay) {
-            session.hoveredDate = nil
-        }
+        session.clearHover(source: .weekRowEdge(direction))
         onHover(nil)
     }
 
@@ -130,6 +129,16 @@ struct WeekRowEdgeDropDelegate: DropDelegate {
             }
         }
         return true
+    }
+
+    private func restoreActive(from info: DropInfo, whileHovering source: ScheduleDragHoverSource) {
+        guard let provider = info.itemProviders(for: [.opsRescheduleItem]).first else { return }
+        _ = provider.loadTransferable(type: RescheduleDragPayload.self) { result in
+            guard case .success(let payload) = result else { return }
+            Task { @MainActor in
+                session.restoreActive(payload, whileHovering: source)
+            }
+        }
     }
 }
 

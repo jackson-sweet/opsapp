@@ -25,6 +25,17 @@ extension UTType {
 /// Which calendar entity is being dragged.
 enum RescheduleItemKind: String, Codable { case task, userEvent }
 
+/// Owns the current hover target so stale `dropExited` callbacks from a previous
+/// cell cannot clear the day currently under the operator's finger.
+enum ScheduleDragHoverSource: Equatable {
+    case dayCell(Date)
+    case weekRowEdge(CalendarWeekRowEdgeDirection)
+
+    static func dayCell(for day: Date, calendar: Calendar = .current) -> ScheduleDragHoverSource {
+        .dayCell(calendar.startOfDay(for: day))
+    }
+}
+
 /// The payload carried by a reschedule drag. Small + Codable so it survives the
 /// system drag round-trip; the id resolves back to the live SwiftData model on drop.
 /// `durationDays` and `startEpoch` are captured at lift so the highlight can project
@@ -50,22 +61,74 @@ final class ScheduleDragSession {
     var active: RescheduleDragPayload?
     /// The day the finger is currently over (projected start day); nil when off-grid.
     var hoveredDate: Date?
+    var hoverSource: ScheduleDragHoverSource?
     /// A pending three-way prompt, staged by the coordinator after a clash drop and
     /// presented centrally by ScheduleView.
     var pendingPrompt: ReschedulePrompt?
+    @ObservationIgnored
+    private var deferredEndTask: Task<Void, Never>?
 
     /// Mark the start of a drag. Idempotent for the same item so a re-evaluated drag
     /// preview closure can't wipe `hoveredDate` mid-drag and break the highlight.
     func begin(_ payload: RescheduleDragPayload) {
+        deferredEndTask?.cancel()
+        deferredEndTask = nil
         guard active?.id != payload.id else { return }
         active = payload
         hoveredDate = nil
+        hoverSource = nil
+    }
+
+    /// Re-arm the visual drag state from the drop payload while a target is still
+    /// hovered. This covers SwiftUI tearing down the drag preview before the drop
+    /// delegate commits; the drop can still work, but highlights need `active`.
+    func restoreActive(_ payload: RescheduleDragPayload, whileHovering source: ScheduleDragHoverSource) {
+        guard hoverSource == source else { return }
+        deferredEndTask?.cancel()
+        deferredEndTask = nil
+        active = payload
+    }
+
+    func updateHover(day: Date, source: ScheduleDragHoverSource) {
+        deferredEndTask?.cancel()
+        deferredEndTask = nil
+        hoverSource = source
+        hoveredDate = day
+    }
+
+    func clearHover(source: ScheduleDragHoverSource) {
+        guard hoverSource == source else { return }
+        hoverSource = nil
+        hoveredDate = nil
+        endWhenOffGrid(after: .milliseconds(500))
     }
 
     /// Clear all in-flight drag state (called on a committed drop).
     func end() {
+        deferredEndTask?.cancel()
+        deferredEndTask = nil
         active = nil
         hoveredDate = nil
+        hoverSource = nil
+    }
+
+    /// `.draggable` preview teardown can fire before the native drop delegate
+    /// finishes. Defer clearing so a live target can keep highlights and edge paging
+    /// armed; clear shortly after only if the drag is truly off-grid.
+    func endWhenOffGrid(after delay: Duration = .milliseconds(500)) {
+        let activeId = active?.id
+        deferredEndTask?.cancel()
+        deferredEndTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            guard
+                let self,
+                self.hoverSource == nil,
+                self.active?.id == activeId
+            else {
+                return
+            }
+            self.end()
+        }
     }
 
     /// Whether `day` falls within the projected span `[hovered, hovered + duration-1]`.

@@ -194,17 +194,16 @@ struct RescheduleDropDelegate: DropDelegate {
 
     func dropEntered(info: DropInfo) {
         let cal = Calendar.current
+        let source = ScheduleDragHoverSource.dayCell(for: day, calendar: cal)
         // Tick only when the projected start day actually changes (no haptic spam).
         let changed = session.hoveredDate.map { !cal.isDate($0, inSameDayAs: day) } ?? true
         if changed { UISelectionFeedbackGenerator().selectionChanged() }
-        session.hoveredDate = day
+        session.updateHover(day: day, source: source)
+        restoreActive(from: info, whileHovering: source)
     }
 
     func dropExited(info: DropInfo) {
-        let cal = Calendar.current
-        if let h = session.hoveredDate, cal.isDate(h, inSameDayAs: day) {
-            session.hoveredDate = nil
-        }
+        session.clearHover(source: .dayCell(for: day))
     }
 
     func performDrop(info: DropInfo) -> Bool {
@@ -218,6 +217,16 @@ struct RescheduleDropDelegate: DropDelegate {
             }
         }
         return true
+    }
+
+    private func restoreActive(from info: DropInfo, whileHovering source: ScheduleDragHoverSource) {
+        guard let provider = info.itemProviders(for: [.opsRescheduleItem]).first else { return }
+        _ = provider.loadTransferable(type: RescheduleDragPayload.self) { result in
+            guard case .success(let payload) = result else { return }
+            Task { @MainActor in
+                session.restoreActive(payload, whileHovering: source)
+            }
+        }
     }
 }
 
@@ -240,12 +249,12 @@ extension View {
             self.draggable(payload) {
                 // The drag preview is created at lift and torn down when the drag
                 // ENDS — commit or cancel. onAppear arms the session; onDisappear is
-                // the only reliable "drag ended" hook SwiftUI gives `.draggable`, so
-                // it clears `active` even when the user releases off-grid (otherwise
-                // the month-grid hit-test gate would stay disabled and lock out taps).
+                // the only reliable "drag ended" hook SwiftUI gives `.draggable`.
+                // Cleanup is deferred so native drop targets can keep their highlight
+                // through the payload-backed drop delegate lifecycle.
                 RescheduleDragPreview(payload: payload)
                     .onAppear { session.begin(payload) }
-                    .onDisappear { session.end() }
+                    .onDisappear { session.endWhenOffGrid() }
             }
         } else {
             self

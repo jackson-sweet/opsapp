@@ -32,6 +32,7 @@ struct OPSDecksRootView: View {
             if let activeDesign = session.activeDesign {
                 OPSDecksDesignerSessionView(
                     activeDesign: activeDesign,
+                    onPersist: session.updateActiveDrawingData,
                     onClose: session.closeActiveDesign
                 )
                 .padding(OPSStyle.Layout.spacing4)
@@ -87,13 +88,6 @@ struct OPSDecksRootView: View {
                     variant: primaryActionVariant,
                     isDisabled: createState == .lockedAtFreeLimit,
                     action: primaryAction
-                )
-
-                OPSDecksShellButton(
-                    title: OPSDecksCopy.secondaryActionPlaceholder,
-                    variant: .secondary,
-                    isDisabled: true,
-                    action: {}
                 )
             }
         }
@@ -161,7 +155,7 @@ private struct OPSDecksShellButton: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
         .disabled(isDisabled)
-        .opacity(isDisabled ? OPSStyle.Layout.Opacity.strong : 1.0)
+        .opacity(isDisabled ? OPSStyle.Layout.Opacity.strong : OPSStyle.Layout.Opacity.full)
     }
 
     private var backgroundColor: Color {
@@ -200,6 +194,7 @@ private struct OPSDecksShellButton: View {
 
 private struct OPSDecksDesignerSessionView: View {
     let activeDesign: OPSDecksActiveDesign
+    let onPersist: (DeckDrawingData) -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -233,29 +228,12 @@ private struct OPSDecksDesignerSessionView: View {
                 .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
             }
 
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                Text(OPSDecksCopy.workspaceStatus)
-                    .font(OPSStyle.Typography.panelTitle)
-                    .foregroundStyle(OPSStyle.Colors.opsAccent)
-
-                Text(OPSDecksCopy.workspaceRuntime)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundStyle(OPSStyle.Colors.text2)
-
-                Text(OPSDecksCopy.workspaceProject)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundStyle(OPSStyle.Colors.textMute)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.glassApprox)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
-                    .stroke(OPSStyle.Colors.glassBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            DeckDrawingEditorView(
+                drawingData: activeDesign.document.drawingData,
+                runtime: activeDesign.runtime,
+                onPersist: onPersist
             )
-            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius))
-
-            Spacer(minLength: OPSStyle.Layout.spacing4)
+            .id(activeDesign.document.id)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }

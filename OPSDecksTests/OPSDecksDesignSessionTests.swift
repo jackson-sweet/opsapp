@@ -1,3 +1,4 @@
+import CoreGraphics
 import DeckKit
 import XCTest
 @testable import OPSDecks
@@ -34,5 +35,23 @@ final class OPSDecksDesignSessionTests: XCTestCase {
 
         XCTAssertFalse(session.startNewDeck())
         XCTAssertNil(session.activeDesign)
+    }
+
+    func testEditorWritebackUpdatesActiveStandaloneDocument() throws {
+        let session = OPSDecksDesignSession(
+            companyId: "deck-company",
+            savedDeckCount: 0,
+            entitlement: .free(savedDeckLimit: 1)
+        )
+        XCTAssertTrue(session.startNewDeck())
+
+        var drawingData = DeckDrawingData()
+        drawingData.vertices.append(DeckVertex(position: CGPoint(x: 120, y: 120)))
+
+        session.updateActiveDrawingData(drawingData)
+
+        let activeDesign = try XCTUnwrap(session.activeDesign)
+        XCTAssertEqual(activeDesign.document.drawingData.vertices.count, 1)
+        XCTAssertEqual(activeDesign.document.drawingDataJSON, drawingData.toJSON())
     }
 }

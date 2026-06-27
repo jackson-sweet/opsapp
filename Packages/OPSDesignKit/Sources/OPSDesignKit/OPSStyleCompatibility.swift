@@ -60,7 +60,7 @@ public struct DisabledButtonStyle: ViewModifier {
     }
 
     public func body(content: Content) -> some View {
-        content.opacity(isDisabled ? OPSStyle.Layout.Opacity.strong : 1.0)
+        content.opacity(isDisabled ? OPSStyle.Layout.Opacity.strong : OPSStyle.Layout.Opacity.full)
     }
 }
 

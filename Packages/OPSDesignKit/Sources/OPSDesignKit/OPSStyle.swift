@@ -470,6 +470,7 @@ public enum OPSStyle {
 
         // Opacity presets
         public enum Opacity {
+            public static let full = 1.0     // Fully visible interactive state
             public static let subtle = 0.1   // Disabled, very light overlays
             public static let light = 0.3    // Light overlays
             public static let medium = 0.5   // Medium overlays

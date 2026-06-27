@@ -82,4 +82,10 @@ final class OPSDecksDesignSession: ObservableObject {
     func closeActiveDesign() {
         activeDesign = nil
     }
+
+    func updateActiveDrawingData(_ drawingData: DeckDrawingData) {
+        guard var activeDesign else { return }
+        activeDesign.document.drawingData = drawingData
+        self.activeDesign = activeDesign
+    }
 }

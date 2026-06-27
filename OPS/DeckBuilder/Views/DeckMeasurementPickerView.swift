@@ -1,0 +1,393 @@
+// OPS/OPS/DeckBuilder/Views/DeckMeasurementPickerView.swift
+
+import SwiftUI
+
+struct DeckMeasurementPickerConfiguration {
+    var imperialFeetRange: ClosedRange<Int> = 0...150
+    var imperialInchesRange: ClosedRange<Int> = 0...144
+    var imperialSixteenthsRange: ClosedRange<Int> = 0...15
+    var metricMetersRange: ClosedRange<Int> = 0...50
+    var metricCentimetersRange: ClosedRange<Int> = 0...999
+    var metricMillimetersRange: ClosedRange<Int> = 0...99
+
+    static let deckBuilder = DeckMeasurementPickerConfiguration()
+}
+
+enum DeckMeasurementPickerTokens {
+    static let panelMaxWidth: CGFloat = 348
+    static let wheelWidth: CGFloat = 92
+    static let wheelHeight: CGFloat = 118
+    static let waveformHeight: CGFloat = 34
+
+    static var panelRadius: CGFloat { OPSStyle.Layout.panelRadius }
+    static var controlRadius: CGFloat { OPSStyle.Layout.buttonRadius }
+    static var nestedRadius: CGFloat { OPSStyle.Layout.cardRadius }
+    static var panelPadding: CGFloat { OPSStyle.Layout.spacing3 }
+    static var rowGap: CGFloat { OPSStyle.Layout.spacing2_5 }
+    static var tightGap: CGFloat { OPSStyle.Layout.spacing1 }
+    static var standardGap: CGFloat { OPSStyle.Layout.spacing2 }
+    static var horizontalInset: CGFloat { OPSStyle.Layout.spacing2 }
+    static var iconSize: CGFloat { OPSStyle.Layout.IconSize.md }
+    static var smallIconSize: CGFloat { OPSStyle.Layout.IconSize.sm }
+    static var minTouch: CGFloat { OPSStyle.Layout.touchTargetMin }
+    static var standardTouch: CGFloat { OPSStyle.Layout.touchTargetStandard }
+    static var borderWidth: CGFloat { OPSStyle.Layout.Border.standard }
+}
+
+struct DeckMeasurementPickerView: View {
+    let title: String
+    @Binding var value: DeckMeasurementValue
+    var leadingSystemImage: String?
+    var message: String?
+    var configuration: DeckMeasurementPickerConfiguration = .deckBuilder
+    var canCommit: (DeckMeasurementValue) -> Bool = { $0.totalInches > 0 }
+    var onBack: () -> Void
+    var onCommit: (DeckMeasurementValue) -> Void
+
+    @StateObject private var voiceInput = VoiceDimensionInput(expectedDimensionCount: 1)
+    @State private var measurementSystem: MeasurementSystem = .imperial
+    @State private var feet = 0
+    @State private var inches = 0
+    @State private var sixteenths = 0
+    @State private var meters = 0
+    @State private var centimeters = 0
+    @State private var millimeters = 0
+    @State private var didLoadInitialValue = false
+
+    private var activeValue: DeckMeasurementValue {
+        switch measurementSystem {
+        case .imperial:
+            return .imperial(feet: feet, inches: inches, sixteenths: sixteenths)
+        case .metric:
+            return .metric(meters: meters, centimeters: centimeters, millimeters: millimeters)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: DeckMeasurementPickerTokens.rowGap) {
+            headerRow
+            systemToggle
+            wheelRow
+            voiceRow
+            messageRow
+        }
+        .padding(DeckMeasurementPickerTokens.panelPadding)
+        .frame(maxWidth: DeckMeasurementPickerTokens.panelMaxWidth)
+        .glassSurface(cornerRadius: DeckMeasurementPickerTokens.panelRadius)
+        .onAppear(perform: loadInitialValue)
+        .onChange(of: value) { _, newValue in
+            syncFromExternalValue(newValue)
+        }
+        .onChange(of: voiceInput.parsedDimensions) { _, dimensions in
+            guard let first = dimensions.first, let inches = first else { return }
+            applyDictatedLength(inches)
+        }
+        .onDisappear {
+            if voiceInput.isListening {
+                voiceInput.stopListening()
+            }
+        }
+    }
+
+    private var headerRow: some View {
+        HStack(spacing: DeckMeasurementPickerTokens.standardGap) {
+            Button {
+                onBack()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: DeckMeasurementPickerTokens.iconSize, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .frame(
+                        width: DeckMeasurementPickerTokens.minTouch,
+                        height: DeckMeasurementPickerTokens.minTouch
+                    )
+                    .measurementControlChrome()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("// \(title.uppercased())")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.text3)
+
+                HStack(spacing: DeckMeasurementPickerTokens.tightGap) {
+                    if let leadingSystemImage {
+                        Image(systemName: leadingSystemImage)
+                            .font(.system(size: DeckMeasurementPickerTokens.smallIconSize, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.opsAccent)
+                    }
+                    Text(activeValue.formatted())
+                        .font(OPSStyle.Typography.dataValueLg)
+                        .foregroundColor(OPSStyle.Colors.text)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            Button {
+                onCommit(activeValue)
+            } label: {
+                Image(systemName: "arrow.right")
+                    .font(.system(size: DeckMeasurementPickerTokens.iconSize, weight: .semibold))
+                    .foregroundColor(canCommit(activeValue) ? OPSStyle.Colors.buttonText : OPSStyle.Colors.textMute)
+                    .frame(
+                        width: DeckMeasurementPickerTokens.standardTouch,
+                        height: DeckMeasurementPickerTokens.minTouch
+                    )
+                    .background(canCommit(activeValue) ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.surfaceInput)
+                    .clipShape(RoundedRectangle(
+                        cornerRadius: DeckMeasurementPickerTokens.controlRadius,
+                        style: .continuous
+                    ))
+                    .overlay(
+                        RoundedRectangle(
+                            cornerRadius: DeckMeasurementPickerTokens.controlRadius,
+                            style: .continuous
+                        )
+                        .strokeBorder(OPSStyle.Colors.line, lineWidth: DeckMeasurementPickerTokens.borderWidth)
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(!canCommit(activeValue))
+            .accessibilityLabel("Continue")
+        }
+    }
+
+    private var systemToggle: some View {
+        Picker("SYSTEM", selection: measurementSystemBinding) {
+            Text("IMPERIAL").tag(MeasurementSystem.imperial)
+            Text("METRIC").tag(MeasurementSystem.metric)
+        }
+        .pickerStyle(.segmented)
+        .font(OPSStyle.Typography.metadata)
+    }
+
+    @ViewBuilder
+    private var wheelRow: some View {
+        switch measurementSystem {
+        case .imperial:
+            HStack(spacing: DeckMeasurementPickerTokens.tightGap) {
+                measurementWheel(label: "FT", range: configuration.imperialFeetRange, value: Binding(
+                    get: { feet },
+                    set: { feet = $0; publishImperialValue() }
+                ))
+                measurementWheel(label: "IN", range: configuration.imperialInchesRange, value: Binding(
+                    get: { inches },
+                    set: { inches = $0; publishImperialValue() }
+                ))
+                measurementWheel(label: "16TH", range: configuration.imperialSixteenthsRange, value: Binding(
+                    get: { sixteenths },
+                    set: { sixteenths = $0; publishImperialValue() }
+                ))
+            }
+        case .metric:
+            HStack(spacing: DeckMeasurementPickerTokens.tightGap) {
+                measurementWheel(label: "M", range: configuration.metricMetersRange, value: Binding(
+                    get: { meters },
+                    set: { meters = $0; publishMetricValue() }
+                ))
+                measurementWheel(label: "CM", range: configuration.metricCentimetersRange, value: Binding(
+                    get: { centimeters },
+                    set: { centimeters = $0; publishMetricValue() }
+                ))
+                measurementWheel(label: "MM", range: configuration.metricMillimetersRange, value: Binding(
+                    get: { millimeters },
+                    set: { millimeters = $0; publishMetricValue() }
+                ))
+            }
+        }
+    }
+
+    private var voiceRow: some View {
+        HStack(spacing: DeckMeasurementPickerTokens.standardGap) {
+            Button {
+                toggleDictation()
+            } label: {
+                HStack(spacing: DeckMeasurementPickerTokens.tightGap) {
+                    Image(systemName: voiceInput.isListening ? "mic.fill" : "mic")
+                        .font(.system(size: DeckMeasurementPickerTokens.smallIconSize, weight: .semibold))
+                    Text(voiceInput.isListening ? "LISTENING" : "DICTATE")
+                        .font(OPSStyle.Typography.badgeCake)
+                        .lineLimit(1)
+                }
+                .foregroundColor(voiceInput.isListening ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.text2)
+                .frame(height: DeckMeasurementPickerTokens.minTouch)
+                .padding(.horizontal, DeckMeasurementPickerTokens.horizontalInset)
+                .measurementControlChrome()
+            }
+            .buttonStyle(.plain)
+
+            if voiceInput.isListening {
+                VoiceWaveformView(isListening: true)
+                    .frame(height: DeckMeasurementPickerTokens.waveformHeight)
+                    .transition(.opacity)
+            } else if !voiceInput.recognizedText.isEmpty {
+                Text(voiceInput.recognizedText.uppercased())
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.text3)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .animation(OPSStyle.Animation.hover, value: voiceInput.isListening)
+    }
+
+    @ViewBuilder
+    private var messageRow: some View {
+        if let message = message ?? voiceInput.error {
+            Text(message.uppercased())
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tanTextM)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+    }
+
+    private var measurementSystemBinding: Binding<MeasurementSystem> {
+        Binding(
+            get: { measurementSystem },
+            set: { convert(to: $0) }
+        )
+    }
+
+    private func measurementWheel(label: String, range: ClosedRange<Int>, value: Binding<Int>) -> some View {
+        VStack(spacing: DeckMeasurementPickerTokens.tightGap) {
+            Picker(label, selection: value) {
+                ForEach(Array(range), id: \.self) { number in
+                    Text("\(number)")
+                        .font(.system(size: 22, weight: .semibold, design: .monospaced))
+                        .foregroundColor(OPSStyle.Colors.text)
+                        .monospacedDigit()
+                        .tag(number)
+                }
+            }
+            .pickerStyle(.wheel)
+            .frame(
+                width: DeckMeasurementPickerTokens.wheelWidth,
+                height: DeckMeasurementPickerTokens.wheelHeight
+            )
+            .clipped()
+
+            Text(label)
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.text3)
+        }
+        .frame(maxWidth: .infinity)
+        .background(OPSStyle.Colors.surfaceInput)
+        .clipShape(RoundedRectangle(
+            cornerRadius: DeckMeasurementPickerTokens.nestedRadius,
+            style: .continuous
+        ))
+        .overlay(
+            RoundedRectangle(
+                cornerRadius: DeckMeasurementPickerTokens.nestedRadius,
+                style: .continuous
+            )
+            .strokeBorder(OPSStyle.Colors.nestedBorder, lineWidth: DeckMeasurementPickerTokens.borderWidth)
+        )
+    }
+
+    private func loadInitialValue() {
+        guard !didLoadInitialValue else { return }
+        didLoadInitialValue = true
+        syncComponents(from: value)
+        measurementSystem = value.measurementSystem
+        voiceInput.setMeasurementSystem(value.measurementSystem)
+    }
+
+    private func syncFromExternalValue(_ newValue: DeckMeasurementValue) {
+        let local = activeValue
+        guard abs(local.totalInches - newValue.totalInches) > 0.0001
+                || local.measurementSystem != newValue.measurementSystem else {
+            return
+        }
+        measurementSystem = newValue.measurementSystem
+        syncComponents(from: newValue)
+        voiceInput.setMeasurementSystem(newValue.measurementSystem)
+    }
+
+    private func convert(to newSystem: MeasurementSystem) {
+        guard newSystem != measurementSystem else { return }
+        let converted = DeckMeasurementValue(measurementSystem: newSystem, totalInches: activeValue.totalInches)
+        measurementSystem = newSystem
+        syncComponents(from: converted)
+        voiceInput.setMeasurementSystem(newSystem)
+        value = converted
+    }
+
+    private func publishImperialValue() {
+        measurementSystem = .imperial
+        let nextValue = DeckMeasurementValue.imperial(feet: feet, inches: inches, sixteenths: sixteenths)
+        voiceInput.setMeasurementSystem(.imperial)
+        value = nextValue
+    }
+
+    private func publishMetricValue() {
+        measurementSystem = .metric
+        let nextValue = DeckMeasurementValue.metric(meters: meters, centimeters: centimeters, millimeters: millimeters)
+        voiceInput.setMeasurementSystem(.metric)
+        value = nextValue
+    }
+
+    private func applyDictatedLength(_ inches: Double) {
+        let nextValue = DeckMeasurementValue(measurementSystem: measurementSystem, totalInches: inches)
+        syncComponents(from: nextValue)
+        value = nextValue
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    private func syncComponents(from value: DeckMeasurementValue) {
+        let imperial = value.imperialComponents
+        feet = imperial.feet
+        inches = imperial.inches
+        sixteenths = imperial.sixteenths
+
+        let metric = value.metricComponents
+        meters = metric.meters
+        centimeters = metric.centimeters
+        millimeters = metric.millimeters
+    }
+
+    private func toggleDictation() {
+        if voiceInput.isListening {
+            voiceInput.stopListening()
+            return
+        }
+
+        guard voiceInput.isAuthorized else {
+            if voiceInput.authorizationStatus == .notDetermined {
+                voiceInput.requestAuthorization()
+            } else {
+                voiceInput.error = "SYS :: DICTATION LOCKED"
+            }
+            return
+        }
+
+        voiceInput.setMeasurementSystem(measurementSystem)
+        voiceInput.startListening()
+    }
+}
+
+private extension View {
+    func measurementControlChrome() -> some View {
+        background(OPSStyle.Colors.surfaceInput)
+            .clipShape(RoundedRectangle(
+                cornerRadius: DeckMeasurementPickerTokens.controlRadius,
+                style: .continuous
+            ))
+            .overlay(
+                RoundedRectangle(
+                    cornerRadius: DeckMeasurementPickerTokens.controlRadius,
+                    style: .continuous
+                )
+                .strokeBorder(OPSStyle.Colors.line, lineWidth: DeckMeasurementPickerTokens.borderWidth)
+            )
+    }
+}

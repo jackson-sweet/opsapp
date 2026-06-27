@@ -36,6 +36,8 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var drawingData: DeckDrawingData
     @Published var drawingMode: DrawingMode = .idle
     @Published var activeTool: DrawingTool = .draw
+    @Published var perimeterEntry: PerimeterEntryMode = .idle
+    @Published var perimeterEntryMessage: String?
     @Published var selection: SelectionState = SelectionState() {
         didSet {
             // Move-XY is a sticky toggle (see toggleSelectionMove); it has no
@@ -56,6 +58,7 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var isSelectionMoveArmed: Bool = false
     private var selectionMoveStart: CGPoint?
     private var selectionMoveOriginalVertices: [String: CGPoint] = [:]
+    private var perimeterEntryHistory: [PerimeterEntryCommit] = []
     @Published private(set) var selectionClipboard: DeckSelectionClipboard?
     @Published private(set) var pendingPastePreview: DeckPastePreview?
     private var pendingPasteMoveStart: CGPoint?
@@ -1070,6 +1073,256 @@ class DeckBuilderViewModel: ObservableObject {
         alignmentGuides = []
         drawingMode = .idle
         save()
+    }
+
+    // MARK: - Perimeter Entry Operations
+
+    @discardableResult
+    func beginPerimeterEntry(at point: CGPoint, hitThreshold: Double = 25.0) -> Bool {
+        if let vertexId = PolygonMath.findVertexAtPoint(point, vertices: activeVertices, hitThreshold: hitThreshold) {
+            beginPerimeterEntry(fromVertexId: vertexId)
+            return true
+        }
+
+        let hitsEdge = PolygonMath.findEdgeAtPoint(
+            point,
+            edges: activeEdges,
+            vertices: activeVertices,
+            hitThreshold: hitThreshold * 0.8
+        ) != nil
+        let hitsFootprint = activeIsClosed
+            && !PolygonMath.isSelfIntersecting(vertices: activeOrderedPositions)
+            && PolygonMath.pointInPolygon(point, vertices: activeOrderedPositions)
+        guard !hitsEdge && !hitsFootprint else { return false }
+
+        let anchorPosition = drawingData.config.snappingEnabled
+            ? SnapEngine.snapToGrid(point, gridSpacing: lengthSnapInCanvasPoints())
+            : point
+        pushUndo("start perimeter")
+        let vertex = DeckVertex(position: anchorPosition)
+        activeVertices.append(vertex)
+        clearPerimeterEntrySelectionChrome()
+        perimeterEntryHistory.removeAll()
+        if let anchor = makePerimeterAnchor(vertexId: vertex.id, rootVertexId: vertex.id) {
+            perimeterEntry = .choosingDirection(anchor: anchor)
+            perimeterEntryMessage = nil
+        }
+        hapticMedium()
+        save()
+        return true
+    }
+
+    func beginPerimeterEntry(fromVertexId vertexId: String) {
+        guard let anchor = makePerimeterAnchor(vertexId: vertexId, rootVertexId: vertexId) else { return }
+        clearPerimeterEntrySelectionChrome()
+        perimeterEntryHistory.removeAll()
+        perimeterEntry = .choosingDirection(anchor: anchor)
+        perimeterEntryMessage = nil
+        hapticMedium()
+    }
+
+    func selectPerimeterDirection(_ direction: PerimeterDirection) {
+        guard let anchor = perimeterEntry.activeAnchor else { return }
+        guard anchor.availableDirections.contains(direction) else { return }
+        let existingDraft = perimeterEntry.lengthDraft
+        let draft = existingDraft?.converted(to: drawingData.config.measurementSystem)
+            ?? .zero(system: drawingData.config.measurementSystem)
+        perimeterEntry = .enteringLength(anchor: anchor, direction: direction, draft: draft)
+        perimeterEntryMessage = nil
+        hapticLight()
+    }
+
+    func updatePerimeterLength(_ draft: PerimeterLengthDraft) {
+        guard case .enteringLength(let anchor, let direction, _) = perimeterEntry else { return }
+        perimeterEntry = .enteringLength(anchor: anchor, direction: direction, draft: draft)
+        perimeterEntryMessage = nil
+    }
+
+    @discardableResult
+    func commitPerimeterLength() -> Bool {
+        guard case .enteringLength(let anchor, let direction, let draft) = perimeterEntry else { return false }
+        guard draft.totalInches > 0 else {
+            perimeterEntryMessage = "SYS :: ZERO LENGTH"
+            hapticMedium()
+            return false
+        }
+        guard let liveAnchor = makePerimeterAnchor(vertexId: anchor.vertexId, rootVertexId: anchor.rootVertexId) else {
+            perimeterEntry = .idle
+            perimeterEntryMessage = "SYS :: ANCHOR LOST"
+            hapticMedium()
+            return false
+        }
+
+        let rawEndpoint = PerimeterEntryGeometry.endpoint(
+            from: liveAnchor.position,
+            direction: direction,
+            lengthInches: draft.totalInches,
+            scaleFactor: drawingData.scaleFactor,
+            incomingAngleDegrees: liveAnchor.incomingAngleDegrees,
+            fallbackScale: Self.prescaleFallbackScale
+        )
+        let snapEndId = SnapEngine.findSnapTarget(
+            point: rawEndpoint,
+            vertices: activeVertices,
+            snapRadius: drawingData.config.endpointSnapRadius,
+            excludeVertexIds: [liveAnchor.vertexId]
+        )
+        let endPosition: CGPoint
+        if let snapEndId, let snappedVertex = activeVertex(byId: snapEndId) {
+            endPosition = snappedVertex.position
+        } else {
+            endPosition = rawEndpoint
+        }
+        let canvasDistance = SnapEngine.distance(liveAnchor.position, endPosition)
+        guard canvasDistance > 0.001 else {
+            perimeterEntryMessage = "SYS :: ZERO LENGTH"
+            hapticMedium()
+            return false
+        }
+
+        pushUndo("perimeter line")
+        let endVertexId: String
+        let createdEndVertex: Bool
+        if let snapEndId {
+            endVertexId = snapEndId
+            createdEndVertex = false
+        } else {
+            let vertex = DeckVertex(position: endPosition)
+            endVertexId = vertex.id
+            createdEndVertex = true
+            activeVertices.append(vertex)
+        }
+
+        guard liveAnchor.vertexId != endVertexId else {
+            _ = undoStack.popLast()
+            perimeterEntryMessage = "SYS :: EDGE CONFLICT"
+            hapticMedium()
+            return false
+        }
+        guard !activeEdges.contains(where: {
+            ($0.startVertexId == liveAnchor.vertexId && $0.endVertexId == endVertexId)
+                || ($0.startVertexId == endVertexId && $0.endVertexId == liveAnchor.vertexId)
+        }) else {
+            if createdEndVertex {
+                activeVertices.removeAll { $0.id == endVertexId }
+            }
+            _ = undoStack.popLast()
+            perimeterEntryMessage = "SYS :: EDGE EXISTS"
+            hapticMedium()
+            return false
+        }
+
+        var edge = DeckEdge(
+            startVertexId: liveAnchor.vertexId,
+            endVertexId: endVertexId,
+            dimension: draft.totalInches,
+            dimensionSource: .manual
+        )
+        if let assignment = activeAssignment,
+           assignment.unitType == .linearFoot || assignment.unitType == .linearMeter {
+            edge.assignedItems.append(assignment)
+        }
+        activeEdges.append(edge)
+
+        if activeIsClosed {
+            activeFootprint.isClosed = true
+            if PolygonMath.isSelfIntersecting(vertices: activeOrderedPositions) {
+                hapticMedium()
+            } else {
+                hapticSuccess()
+            }
+        } else {
+            hapticMedium()
+        }
+
+        perimeterEntryHistory.append(PerimeterEntryCommit(
+            edgeId: edge.id,
+            startVertexId: liveAnchor.vertexId,
+            endVertexId: endVertexId,
+            createdEndVertex: createdEndVertex,
+            previousAnchor: liveAnchor
+        ))
+
+        if activeIsClosed {
+            perimeterEntry = .idle
+        } else if let nextAnchor = makePerimeterAnchor(vertexId: endVertexId, rootVertexId: liveAnchor.rootVertexId) {
+            perimeterEntry = .choosingDirection(anchor: nextAnchor)
+        } else {
+            perimeterEntry = .idle
+        }
+        perimeterEntryMessage = nil
+        alignmentGuides = []
+        drawingMode = .idle
+        save()
+        return true
+    }
+
+    func stepBackPerimeterEntry() {
+        if case .enteringLength(let anchor, _, _) = perimeterEntry {
+            perimeterEntry = .choosingDirection(anchor: anchor)
+            perimeterEntryMessage = nil
+            hapticLight()
+            return
+        }
+
+        guard let last = perimeterEntryHistory.popLast() else {
+            cancelPerimeterEntry()
+            return
+        }
+        undo()
+        if let anchor = makePerimeterAnchor(
+            vertexId: last.previousAnchor.vertexId,
+            rootVertexId: last.previousAnchor.rootVertexId
+        ) {
+            perimeterEntry = .choosingDirection(anchor: anchor)
+        } else {
+            perimeterEntry = .idle
+        }
+        perimeterEntryMessage = nil
+    }
+
+    func cancelPerimeterEntry() {
+        perimeterEntry = .idle
+        perimeterEntryMessage = nil
+        perimeterEntryHistory.removeAll()
+        alignmentGuides = []
+        drawingMode = .idle
+    }
+
+    private func clearPerimeterEntrySelectionChrome() {
+        selection.clear()
+        editingEdgeId = nil
+        editingVertexId = nil
+        isSelectionMoveArmed = false
+        alignmentGuides = []
+        drawingMode = .idle
+    }
+
+    private func makePerimeterAnchor(vertexId: String, rootVertexId: String? = nil) -> PerimeterEntryAnchor? {
+        guard let vertex = activeVertex(byId: vertexId) else { return nil }
+        return PerimeterEntryAnchor(
+            vertexId: vertexId,
+            position: vertex.position,
+            incomingAngleDegrees: incomingPerimeterAngle(to: vertexId),
+            rootVertexId: rootVertexId ?? vertexId
+        )
+    }
+
+    private func incomingPerimeterAngle(to vertexId: String) -> Double? {
+        guard let vertex = activeVertex(byId: vertexId) else { return nil }
+        if let incoming = activeEdges.last(where: { $0.endVertexId == vertexId }),
+           let start = activeVertex(byId: incoming.startVertexId) {
+            return PerimeterDirection.normalizedAngle(
+                SnapEngine.lineAngle(from: start.position, to: vertex.position)
+            )
+        }
+        if let outgoing = activeEdges.last(where: { $0.startVertexId == vertexId }),
+           let end = activeVertex(byId: outgoing.endVertexId) {
+            return PerimeterDirection.normalizedAngle(
+                SnapEngine.lineAngle(from: end.position, to: vertex.position)
+            )
+        }
+        return nil
     }
 
     // MARK: - Stair Hit Test (DECK-NEW-6)

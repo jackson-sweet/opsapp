@@ -2,120 +2,30 @@
 
 import SwiftUI
 
-struct PerimeterDirectionWheelView: View {
-    static let diameter: CGFloat = 224
+enum PerimeterDirectionWheelGeometry {
+    static let diameter: CGFloat = 268
+    static let radius: CGFloat = 92
+    static let deadZone: CGFloat = 20
 
-    let anchor: PerimeterEntryAnchor
-    let onSelect: (PerimeterDirection) -> Void
-
-    @State private var highlightedDirection: PerimeterDirection?
-
-    private let buttonDiameter: CGFloat = 50
-    private let centerDiameter: CGFloat = 58
-    private let radius: CGFloat = 82
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    Circle()
-                        .fill(OPSStyle.Colors.glassDenseApprox)
-                )
-                .overlay(
-                    Circle()
-                        .strokeBorder(OPSStyle.Colors.glassBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
-
-            ForEach(anchor.availableDirections) { direction in
-                directionButton(direction)
-                    .position(position(for: direction))
-            }
-
-            centerHub
-        }
-        .frame(width: Self.diameter, height: Self.diameter)
-        .contentShape(Circle())
-        .gesture(directionDragGesture)
-        .animation(OPSStyle.Animation.hover, value: highlightedDirection)
-        .accessibilityElement(children: .contain)
-    }
-
-    private var centerHub: some View {
-        VStack(spacing: 2) {
-            Text("//")
-                .font(OPSStyle.Typography.microLabel)
-                .foregroundColor(OPSStyle.Colors.textMute)
-            Text(anchor.usesRelativeDirections ? "TURN" : "DIR")
-                .font(OPSStyle.Typography.badgeCake)
-                .foregroundColor(OPSStyle.Colors.text)
-        }
-        .frame(width: centerDiameter, height: centerDiameter)
-        .background(OPSStyle.Colors.surfaceActive)
-        .clipShape(Circle())
-        .overlay(
-            Circle()
-                .strokeBorder(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-    }
-
-    private func directionButton(_ direction: PerimeterDirection) -> some View {
-        let isHighlighted = highlightedDirection == direction
-
-        return Button {
-            onSelect(direction)
-        } label: {
-            VStack(spacing: 1) {
-                Image(systemName: direction.systemImage)
-                    .font(.system(size: 15, weight: .semibold))
-                Text(compactLabel(for: direction))
-                    .font(.system(size: 8, weight: .medium, design: .monospaced))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
-                    .monospacedDigit()
-            }
-            .foregroundColor(isHighlighted ? OPSStyle.Colors.text : OPSStyle.Colors.text2)
-            .frame(width: buttonDiameter, height: buttonDiameter)
-            .background(isHighlighted ? OPSStyle.Colors.opsAccent.opacity(0.28) : OPSStyle.Colors.surfaceInput)
-            .clipShape(Circle())
-            .overlay(
-                Circle()
-                    .strokeBorder(
-                        isHighlighted ? OPSStyle.Colors.opsAccent.opacity(0.85) : OPSStyle.Colors.line,
-                        lineWidth: OPSStyle.Layout.Border.standard
-                    )
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(direction.label)
-    }
-
-    private var directionDragGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                highlightedDirection = nearestDirection(to: value.location)
-            }
-            .onEnded { value in
-                let selected = highlightedDirection ?? nearestDirection(to: value.location)
-                highlightedDirection = nil
-                if let selected {
-                    onSelect(selected)
-                }
-            }
-    }
-
-    private func position(for direction: PerimeterDirection) -> CGPoint {
+    static func position(for direction: PerimeterDirection, anchor: PerimeterEntryAnchor) -> CGPoint {
         let angle = direction.angleDegrees(incomingAngleDegrees: anchor.incomingAngleDegrees) * .pi / 180
         return CGPoint(
-            x: Self.diameter / 2 + CGFloat(cos(angle)) * radius,
-            y: Self.diameter / 2 + CGFloat(sin(angle)) * radius
+            x: diameter / 2 + CGFloat(cos(angle)) * radius,
+            y: diameter / 2 + CGFloat(sin(angle)) * radius
         )
     }
 
-    private func nearestDirection(to location: CGPoint) -> PerimeterDirection? {
-        let center = CGPoint(x: Self.diameter / 2, y: Self.diameter / 2)
+    static func localLocation(from screenLocation: CGPoint, wheelCenter: CGPoint) -> CGPoint {
+        CGPoint(
+            x: screenLocation.x - wheelCenter.x + diameter / 2,
+            y: screenLocation.y - wheelCenter.y + diameter / 2
+        )
+    }
+
+    static func nearestDirection(to location: CGPoint, anchor: PerimeterEntryAnchor) -> PerimeterDirection? {
+        let center = CGPoint(x: diameter / 2, y: diameter / 2)
         let vector = CGVector(dx: location.x - center.x, dy: location.y - center.y)
-        guard hypot(vector.dx, vector.dy) > 12 else { return nil }
+        guard hypot(vector.dx, vector.dy) > deadZone else { return nil }
 
         let angle = PerimeterDirection.normalizedAngle(Double(atan2(vector.dy, vector.dx)) * 180 / Double.pi)
         return anchor.availableDirections.min { left, right in
@@ -124,41 +34,101 @@ struct PerimeterDirectionWheelView: View {
         }
     }
 
-    private func angleDistance(_ lhs: Double, _ rhs: Double) -> Double {
+    private static func angleDistance(_ lhs: Double, _ rhs: Double) -> Double {
         let delta = abs(lhs - rhs).truncatingRemainder(dividingBy: 360)
         return min(delta, 360 - delta)
     }
+}
 
-    private func compactLabel(for direction: PerimeterDirection) -> String {
-        switch direction {
-        case .up:
-            return "UP"
-        case .right:
-            return "RIGHT"
-        case .down:
-            return "DOWN"
-        case .left:
-            return "LEFT"
-        case .upRight45:
-            return "UR45"
-        case .downRight45:
-            return "DR45"
-        case .downLeft45:
-            return "DL45"
-        case .upLeft45:
-            return "UL45"
-        case .straight:
-            return "STR"
-        case .left90:
-            return "L90"
-        case .right90:
-            return "R90"
-        case .back:
-            return "BACK"
-        case .left45:
-            return "L45"
-        case .right45:
-            return "R45"
+struct PerimeterDirectionWheelView: View {
+    static let diameter: CGFloat = PerimeterDirectionWheelGeometry.diameter
+
+    let anchor: PerimeterEntryAnchor
+    let highlightedDirection: PerimeterDirection?
+    let onHighlight: (PerimeterDirection?) -> Void
+    let onSelect: (PerimeterDirection) -> Void
+
+    private let nodeWidth: CGFloat = 78
+    private let nodeHeight: CGFloat = 50
+
+    init(
+        anchor: PerimeterEntryAnchor,
+        highlightedDirection: PerimeterDirection? = nil,
+        onHighlight: @escaping (PerimeterDirection?) -> Void = { _ in },
+        onSelect: @escaping (PerimeterDirection) -> Void
+    ) {
+        self.anchor = anchor
+        self.highlightedDirection = highlightedDirection
+        self.onHighlight = onHighlight
+        self.onSelect = onSelect
+    }
+
+    var body: some View {
+        ZStack {
+            ForEach(anchor.availableDirections) { direction in
+                directionButton(direction)
+                    .position(PerimeterDirectionWheelGeometry.position(for: direction, anchor: anchor))
+            }
+        }
+        .frame(width: Self.diameter, height: Self.diameter)
+        .contentShape(Rectangle())
+        .gesture(directionDragGesture)
+        .animation(OPSStyle.Animation.hover, value: highlightedDirection)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func directionButton(_ direction: PerimeterDirection) -> some View {
+        let isHighlighted = highlightedDirection == direction
+
+        return Button {
+            onSelect(direction)
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 15, weight: .medium))
+                    .rotationEffect(.degrees(direction.angleDegrees(incomingAngleDegrees: anchor.incomingAngleDegrees) + 90))
+
+                Text(direction.wheelLabel)
+                    .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.55)
+                    .monospacedDigit()
+            }
+            .foregroundColor(isHighlighted ? OPSStyle.Colors.text : OPSStyle.Colors.text2)
+            .frame(width: nodeWidth, height: nodeHeight)
+            .background(highlightBackground(isHighlighted: isHighlighted))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(direction.wheelLabel)
+    }
+
+    private var directionDragGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                onHighlight(PerimeterDirectionWheelGeometry.nearestDirection(to: value.location, anchor: anchor))
+            }
+            .onEnded { value in
+                let selected = PerimeterDirectionWheelGeometry.nearestDirection(to: value.location, anchor: anchor)
+                    ?? highlightedDirection
+                onHighlight(nil)
+                if let selected {
+                    onSelect(selected)
+                }
+            }
+    }
+
+    @ViewBuilder
+    private func highlightBackground(isHighlighted: Bool) -> some View {
+        if isHighlighted {
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                .fill(OPSStyle.Colors.surfaceActive)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                        .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+        } else {
+            Color.clear
         }
     }
 }

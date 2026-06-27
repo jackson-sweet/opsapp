@@ -18,6 +18,8 @@ enum PerimeterDirection: String, CaseIterable, Identifiable, Equatable {
     case back
     case left45
     case right45
+    case left135
+    case right135
 
     var id: String { rawValue }
 
@@ -26,25 +28,31 @@ enum PerimeterDirection: String, CaseIterable, Identifiable, Equatable {
     ]
 
     static let relativeDirections: [PerimeterDirection] = [
-        .straight, .right45, .right90, .back, .left90, .left45, .up, .down
+        .straight, .right45, .right90, .right135, .back, .left135, .left90, .left45
     ]
 
     var label: String {
+        wheelLabel
+    }
+
+    var wheelLabel: String {
         switch self {
-        case .up: return "UP"
-        case .right: return "RIGHT"
-        case .down: return "DOWN"
-        case .left: return "LEFT"
-        case .upRight45: return "45 UP-RIGHT"
-        case .downRight45: return "45 DOWN-RIGHT"
-        case .downLeft45: return "45 DOWN-LEFT"
-        case .upLeft45: return "45 UP-LEFT"
-        case .straight: return "STRAIGHT"
-        case .left90: return "LEFT 90"
-        case .right90: return "RIGHT 90"
-        case .back: return "BACK"
-        case .left45: return "45 LEFT"
-        case .right45: return "45 RIGHT"
+        case .up: return "NORTH"
+        case .right: return "EAST"
+        case .down: return "SOUTH"
+        case .left: return "WEST"
+        case .upRight45: return "NORTHEAST"
+        case .downRight45: return "SOUTHEAST"
+        case .downLeft45: return "SOUTHWEST"
+        case .upLeft45: return "NORTHWEST"
+        case .straight: return "0°"
+        case .left45: return "-45°"
+        case .left90: return "-90°"
+        case .left135: return "-135°"
+        case .back: return "180°"
+        case .right135: return "+135°"
+        case .right90: return "+90°"
+        case .right45: return "+45°"
         }
     }
 
@@ -64,6 +72,8 @@ enum PerimeterDirection: String, CaseIterable, Identifiable, Equatable {
         case .back: return "arrow.uturn.backward"
         case .left45: return "arrow.up.left"
         case .right45: return "arrow.up.right"
+        case .left135: return "arrow.down.left"
+        case .right135: return "arrow.down.right"
         }
     }
 
@@ -92,8 +102,12 @@ enum PerimeterDirection: String, CaseIterable, Identifiable, Equatable {
             angle = (incomingAngleDegrees ?? 0) + 45
         case .right90:
             angle = (incomingAngleDegrees ?? 0) + 90
+        case .right135:
+            angle = (incomingAngleDegrees ?? 0) + 135
         case .back:
             angle = (incomingAngleDegrees ?? 0) + 180
+        case .left135:
+            angle = (incomingAngleDegrees ?? 0) - 135
         case .left90:
             angle = (incomingAngleDegrees ?? 0) - 90
         case .left45:

@@ -12,6 +12,9 @@ struct DeckCanvasView: View {
     @State private var canvasOffset: CGSize = .zero
     @State private var drawingStarted = false
     @State private var hasInitializedOffset = false
+    @State private var perimeterWheelHighlightedDirection: PerimeterDirection?
+    @State private var perimeterLongPressDidBeginEntry = false
+    @State private var perimeterLongPressFallbackPoint: CGPoint?
 
     // Drives the auto-pan when the user drags toward the viewport edge.
     // Lives on the view so its timer is torn down with the view.
@@ -135,7 +138,13 @@ struct DeckCanvasView: View {
             .onChange(of: viewModel.perimeterEntry) { _, entry in
                 if let anchor = entry.activeAnchor {
                     centerViewport(on: anchor.position, viewportSize: geometry.size)
+                } else {
+                    perimeterWheelHighlightedDirection = nil
                 }
+                if case .choosingDirection = entry {
+                    return
+                }
+                perimeterWheelHighlightedDirection = nil
             }
         }
     }
@@ -1178,7 +1187,12 @@ struct DeckCanvasView: View {
                 viewportSize: viewportSize
             )
 
-            PerimeterDirectionWheelView(anchor: anchor) { direction in
+            PerimeterDirectionWheelView(
+                anchor: anchor,
+                highlightedDirection: perimeterWheelHighlightedDirection,
+                onHighlight: { perimeterWheelHighlightedDirection = $0 }
+            ) { direction in
+                perimeterWheelHighlightedDirection = nil
                 viewModel.selectPerimeterDirection(direction)
             }
             .position(point)
@@ -1496,19 +1510,76 @@ struct DeckCanvasView: View {
     private func longPressGesture(size: CGSize) -> some Gesture {
         LongPressGesture(minimumDuration: 0.5)
             .sequenced(before: DragGesture(minimumDistance: 0))
-            .onEnded { value in
+            .onChanged { value in
                 switch value {
                 case .second(true, let drag):
-                    let loc = drag?.location ?? .zero
-                    let point = canvasPoint(from: loc, in: size)
-                    let hitThreshold = max(22.0, 25.0 / canvasScale)
-                    if viewModel.beginPerimeterEntry(at: point, hitThreshold: hitThreshold) {
+                    guard let drag else { return }
+                    beginPerimeterEntryFromLongPressIfNeeded(drag: drag, viewportSize: size)
+                    if perimeterLongPressDidBeginEntry {
+                        updatePerimeterDirectionHighlight(from: drag.location, viewportSize: size)
+                    }
+                default:
+                    break
+                }
+            }
+            .onEnded { value in
+                defer { resetPerimeterLongPressState() }
+                switch value {
+                case .second(true, let drag):
+                    if perimeterLongPressDidBeginEntry {
+                        let direction = drag.flatMap {
+                            perimeterDirection(at: $0.location, viewportSize: size)
+                        } ?? perimeterWheelHighlightedDirection
+                        perimeterWheelHighlightedDirection = nil
+                        if let direction {
+                            viewModel.selectPerimeterDirection(direction)
+                        }
                         return
                     }
+
+                    let point = perimeterLongPressFallbackPoint
+                        ?? drag.map { canvasPoint(from: $0.location, in: size) }
+                        ?? .zero
+                    let hitThreshold = max(22.0, 25.0 / canvasScale)
                     viewModel.handleLongPress(at: point, hitThreshold: hitThreshold)
                 default: break
                 }
             }
+    }
+
+    private func beginPerimeterEntryFromLongPressIfNeeded(drag: DragGesture.Value, viewportSize: CGSize) {
+        guard !perimeterLongPressDidBeginEntry, perimeterLongPressFallbackPoint == nil else { return }
+
+        let point = canvasPoint(from: drag.startLocation, in: viewportSize)
+        let hitThreshold = max(22.0, 25.0 / canvasScale)
+        if viewModel.beginPerimeterEntry(at: point, hitThreshold: hitThreshold) {
+            perimeterLongPressDidBeginEntry = true
+        } else {
+            perimeterLongPressFallbackPoint = point
+        }
+    }
+
+    private func updatePerimeterDirectionHighlight(from location: CGPoint, viewportSize: CGSize) {
+        perimeterWheelHighlightedDirection = perimeterDirection(at: location, viewportSize: viewportSize)
+    }
+
+    private func perimeterDirection(at location: CGPoint, viewportSize: CGSize) -> PerimeterDirection? {
+        guard case .choosingDirection(let anchor) = viewModel.perimeterEntry else { return nil }
+        let wheelCenter = clampedOverlayPoint(
+            screenPoint(fromCanvas: anchor.position),
+            overlaySize: PerimeterDirectionWheelView.diameter,
+            viewportSize: viewportSize
+        )
+        let localLocation = PerimeterDirectionWheelGeometry.localLocation(
+            from: location,
+            wheelCenter: wheelCenter
+        )
+        return PerimeterDirectionWheelGeometry.nearestDirection(to: localLocation, anchor: anchor)
+    }
+
+    private func resetPerimeterLongPressState() {
+        perimeterLongPressDidBeginEntry = false
+        perimeterLongPressFallbackPoint = nil
     }
 }
 

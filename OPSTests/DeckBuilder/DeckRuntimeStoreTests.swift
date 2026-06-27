@@ -143,6 +143,31 @@ final class DeckRuntimeStoreTests: XCTestCase {
         XCTAssertTrue(store.savedDrawingData.isEmpty)
     }
 
+    func testEmbeddedOPSProductionRuntimeIsViewerOnlyByDefault() {
+        let data = Self.closedRectangleDrawingData()
+        let design = DeckDesign(
+            companyId: "company-1",
+            projectId: nil,
+            drawingDataJSON: data.toJSON()
+        )
+        let viewModel = DeckBuilderViewModel(
+            deckDesign: design,
+            modelContext: nil,
+            syncEngine: nil,
+            projectName: "Embedded OPS"
+        )
+
+        XCTAssertEqual(viewModel.runtimeContext?.appSurface, .ops)
+        XCTAssertFalse(viewModel.canFrame)
+        XCTAssertFalse(viewModel.canPickGround)
+
+        viewModel.generateFraming()
+        viewModel.setGroundCover(.gravel, forZoneId: nil)
+
+        XCTAssertNil(viewModel.drawingData.framing)
+        XCTAssertNil(viewModel.drawingData.terrain)
+    }
+
     private static func runtime(store: DeckStore, syncQueue: DeckSyncQueue) -> DeckRuntime {
         DeckRuntime(
             context: DeckRuntimeContext(

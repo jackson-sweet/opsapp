@@ -11,11 +11,13 @@ public struct DeckCapabilities: OptionSet, Hashable, Sendable {
 
     public static let light: DeckCapabilities = [
         .materials,
+    ]
+
+    public static let full: DeckCapabilities = [
+        .materials,
         .plausibleFrame,
         .groundCover,
     ]
-
-    public static let full: DeckCapabilities = .light
 
     public static func forSurface(_ surface: DeckAppSurface) -> DeckCapabilities {
         switch surface {

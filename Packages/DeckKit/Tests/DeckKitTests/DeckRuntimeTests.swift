@@ -64,11 +64,17 @@ final class DeckRuntimeTests: XCTestCase {
         XCTAssertTrue(runtime.ocrService is NoopDeckOCRService)
     }
 
-    func testLightCapabilitiesIncludeFramingAndGroundCover() {
+    func testLightCapabilitiesAreViewerOnlyForEmbeddedOPS() {
         XCTAssertTrue(DeckCapabilities.light.contains(.materials))
-        XCTAssertTrue(DeckCapabilities.light.contains(.plausibleFrame))
-        XCTAssertTrue(DeckCapabilities.light.contains(.groundCover))
+        XCTAssertFalse(DeckCapabilities.light.contains(.plausibleFrame))
+        XCTAssertFalse(DeckCapabilities.light.contains(.groundCover))
         XCTAssertEqual(DeckCapabilities.forSurface(.ops), .light)
+    }
+
+    func testFullCapabilitiesIncludeStandaloneDesignerAuthoringTools() {
+        XCTAssertTrue(DeckCapabilities.full.contains(.materials))
+        XCTAssertTrue(DeckCapabilities.full.contains(.plausibleFrame))
+        XCTAssertTrue(DeckCapabilities.full.contains(.groundCover))
         XCTAssertEqual(DeckCapabilities.forSurface(.opsDecks), .full)
     }
 }

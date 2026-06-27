@@ -6,11 +6,11 @@
 
 ---
 
-> **Execution status - 2026-06-26:** Tasks 1-10 have landed on `ops-decks/p2-framing` through the framing controls commit and this bible update. Agent verification has covered the DeckKit package tests, focused OPS Deck Builder runtime tests, style-token scan, whitespace diff check, and generic iOS device build. Remaining non-agent gate before product sign-off: Jackson visual QA on the 3D framing controls/rendering path.
+> **Execution status - 2026-06-26:** Tasks 1-10 have landed on `ops-decks/p2-framing` through the framing controls commit and this bible update. Follow-up correction: embedded OPS is a light viewer/materials surface, not the full deck authoring app. `DeckCapabilities.light` is now materials-only; `DeckCapabilities.full` is the standalone OPS Decks authoring surface for framing and ground cover. Agent verification has covered the DeckKit package tests, focused OPS Deck Builder runtime tests, style-token scan, whitespace diff check, and generic iOS device build. Remaining non-agent gate before product sign-off: Jackson visual QA on the 3D framing controls/rendering path.
 
 ## Goal
 
-Deliver the **framing foundation** — the critical-path block on which every later engineering phase (P3 sizing, P4 footings, P6 overhead, P7 compliance/permit) depends. Concretely, Phase 2 ships, for **BOTH** tiers:
+Deliver the **framing foundation** — the critical-path block on which every later engineering phase (P3 sizing, P4 footings, P6 overhead, P7 compliance/permit) depends. Concretely, Phase 2 ships into shared DeckKit, with full authoring enabled only in the standalone OPS Decks tier:
 
 1. A first-class, additive **`FramingPlan`** block inside `DeckDrawingData` (schema version → 2): joist / beam / post / ledger / rim-band / blocking / bridging / cantilever members, per-level, with species/grade + load preset.
 2. A **species/grade + load-preset selector** UI (`LoadPreset`) — drives sizing later; in Phase 2 it only stamps assumptions onto the plan.
@@ -23,10 +23,10 @@ Deliver the **framing foundation** — the critical-path block on which every la
 
 ## Architecture
 
-- **One additive block, backward-decodable.** `FramingPlan?` becomes a new optional top-level property on `DeckDrawingData` (contract §2.4), decoded with `decodeIfPresent`, wired into `CodingKeys` + the defensive `init(from:)`, and `DeckDesign.version` bumps to **2** (contract §0.3, §2.2). A LIGHT build (OPS) and a FULL build (OPS Decks) share the schema; both render + edit the frame (`.plausibleFrame` is in `DeckCapabilities.light`). Any older build that predates Phase 2 round-trips the `framing` block untouched via the Phase 1 `unknownBlocks` passthrough (contract §1.4).
+- **One additive block, backward-decodable.** `FramingPlan?` becomes a new optional top-level property on `DeckDrawingData` (contract §2.4), decoded with `decodeIfPresent`, wired into `CodingKeys` + the defensive `init(from:)`, and `DeckDesign.version` bumps to **2** (contract §0.3, §2.2). A LIGHT build (OPS) and a FULL build (OPS Decks) share the schema. OPS decodes, preserves, and can display persisted standardized deck objects; OPS Decks owns generation/editing (`.plausibleFrame` is in `DeckCapabilities.full`, not `.light`). Any older build that predates Phase 2 round-trips the `framing` block untouched via the Phase 1 `unknownBlocks` passthrough (contract §1.4).
 - **Pure, table-light engine.** `AutoFramingEngine` is an `enum` namespace of `static func`s (the `DeckTemplateEngine` / `StairCalculator` precedent) — value in, `FramingPlan` out. No I/O, no `ModelContext`, no network, no singletons (contract §0.4). It derives geometry only; it never touches `CodePackage` (that's P3).
 - **Auto-then-preserve.** Re-deriving a frame after the outline changes must NOT clobber members the user hand-edited. `FramingSource` (`.auto` / `.manual` / `.autoThenEdited`) + per-member `locked: Bool` mirror `DeckTemplateEngine.copyDrawingData`'s id-preserving regeneration and the `DimensionSource`-authoritative-preserve pattern already in `DeckEdge`.
-- **Capability-gated rendering, never data.** Framing data is always present + always round-tripped. The framing 3D layer + the framing editor surface + the framing BOM rows render only when `.plausibleFrame` is in the active `DeckCapabilities`; ground-cover render + picker gate on `.groundCover`. Both are in `.light`, so OPS and OPS Decks both light up. A future build lacking the flag still preserves the block.
+- **Capability-gated authoring, never data.** Framing data is always present + always round-tripped. Authoring surfaces and write actions gate on `.plausibleFrame`; ground-cover picker/write actions gate on `.groundCover`. Both are in `.full`, so the standalone OPS Decks app lights up the full builder while embedded OPS remains a light viewer/materials surface. A future build lacking a flag still preserves the block.
 - **DeckKit-internal.** Everything lands inside `DeckKit/Sources/DeckKit/` (relocated in P1). No reach into `Project`/`Company`/`AppState`/`SyncEngine`. Styling via `OPSStyle` (now in `OPSDesignKit`).
 
 ## Tech Stack
@@ -73,7 +73,7 @@ Swift 6 / SwiftUI / SceneKit (3D) / SwiftData (persistence via `DeckStore`). `Co
 | `DeckKit/Sources/DeckKit/Engine/ComponentEmitter.swift` | Add additive component rows (`joist`, `beam`, `post`, `rim_joist`, `blocking`) emitted from `FramingPlan` — never rename existing types (doc-comment contract). |
 | `DeckKit/Sources/DeckKit/Engine/EstimateGeneratorService.swift` | Add a framing line-item category fed by `FramingTakeoff`, threaded through the same `WasteSettings` path P1 introduced. |
 | `DeckKit/Sources/DeckKit/3D/DeckSceneBuilder.swift` | Delegate substructure to `FramingSceneBuilder` when `framing != nil` + `.plausibleFrame` present; otherwise keep the legacy decorative fallback (degrade-safe). Swap flat ground for `GroundTextureFactory`. Group nodes into toggle layers. |
-| `DeckKit/Sources/DeckKit/Capability/DeckCapabilities.swift` | (Defined P1.) Phase 2 *consumes* `.plausibleFrame` + `.groundCover`; if P1 did not yet add those bits, add them here per contract §4 (both belong to `.light`). |
+| `DeckKit/Sources/DeckKit/Capability/DeckCapabilities.swift` | (Defined P1.) Phase 2 *consumes* `.plausibleFrame` + `.groundCover`; if P1 did not yet add those bits, add them here per contract §4. Both belong to `.full`; `.light` stays embedded OPS viewer/materials-only. |
 | `DeckKit/Sources/DeckKit/Views/DeckBuilderViewModel.swift` | Add `generateFraming()` / `regenerateFramingPreservingEdits()` / `setLoadPreset(_:)` / `setGroundCover(_:for:)` action methods + a `framingLayerVisibility` published state; route through `DeckStore.saveDeck`. |
 | `ops-software-bible/` (relevant deck/section) | Document the `framing` + `terrain.groundCover` blocks, the auto-framing contract, and the new `component_type` rows. (CLAUDE.md: keep the bible current in the same session.) |
 
@@ -351,7 +351,7 @@ public struct GradePoint: Codable, Equatable { public var position: CGPoint; pub
 - `test_terrain_legacy_decodesNilThenDefaults`: pre-P2 JSON → `terrain == nil`; a JSON with `groundCover` only → `gradePoints == []`, `slopeSource == .manual` (forward-compat for P4).
 - `test_groundCover_allCases_decodable`: every `GroundCover` raw value round-trips (CaseIterable guard against accidental rename — additive-only, §5.1).
 
-**References:** contract §2.5, §4 (`.groundCover` capability, in `.light`), roadmap §2.5 ("Per-zone ground-type selection | BOTH"). Note §2.5 keeps `groundCover` and `gradePoints` in ONE `TerrainModel` block — P2 introduces the block, P4 completes it (same pattern as `PermitMeta` P1→P7).
+**References:** contract §2.5, §4 (`.groundCover` capability, in `.full`), roadmap §2.5 ("Per-zone ground-type selection | standalone authoring; embedded OPS preservation/display"). Note §2.5 keeps `groundCover` and `gradePoints` in ONE `TerrainModel` block — P2 introduces the block, P4 completes it (same pattern as `PermitMeta` P1→P7).
 
 **Risks:** Tempting to make a P2-only `GroundCoverPlan` struct — DON'T; that forces a rename when P4 adds grade. Use the full contract `TerrainModel` from day one.
 
@@ -460,7 +460,7 @@ enum GroundTextureFactory {
 ```
 
 **Implementation notes:**
-- Replace the single flat `groundColor` plane with a ground node textured per the design's `terrain.groundCover` (gated by `.groundCover`, in `.light`). When `terrain == nil` (legacy/no selection), default to a grass material (cosmetic upgrade over the old flat tint, no behavior break).
+- Replace the single flat `groundColor` plane with a ground node textured per the design's `terrain.groundCover`. Ground-cover authoring is gated by `.groundCover` in `.full`; persisted ground data is preserved/displayed by light clients. When `terrain == nil` (legacy/no selection), default to a grass material (cosmetic upgrade over the old flat tint, no behavior break).
 - Phase 2 renders ONE cover for the whole ground plane derived from the dominant `GroundZone` (per-zone polygon clipping of the ground texture is a polish follow-up; the *data* supports zones now). Bundle a small set of tiled, color-correct textures in the package resources (OPSStyle earth-tone palette; no decorative excess).
 - Texture tiling scaled so blades/stones read at a believable real-world size against `spanMeters` (the existing `deckSpanM` calc, `DeckSceneBuilder.swift:222`).
 
@@ -493,7 +493,7 @@ var canPickGround: Bool { capabilities.contains(.groundCover) }
 ```
 
 **Implementation notes:**
-- **Capability-gated surfaces, hidden not disabled** (contract §4): the framing controls + layer-toggle bar + ground picker render only when the flag is present. Both `.plausibleFrame`/`.groundCover` are in `.light`, so OPS and OPS Decks both show them — but the gate is written correctly so a future flagless build hides cleanly.
+- **Capability-gated authoring surfaces, hidden not disabled** (contract §4): the framing controls + ground picker render only when the flag is present. Both `.plausibleFrame`/`.groundCover` are in `.full`, so standalone OPS Decks shows them and embedded OPS does not. The gate is written defensively so a future flagless build hides cleanly.
 - All writes go through `drawingData` setter → `DeckStore.saveDeck` (which sets `needsSync`); never touch `ModelContext`/`SyncEngine` directly (contract §1.3).
 - Auto-derive trigger: offer an explicit "Generate frame" action (not silent-on-every-edit, to avoid clobbering manual work mid-draw); after a generate, subsequent geometry edits prompt `regenerateFramingPreservingEdits` (auto-then-preserve). Copy via `ops-copywriter` skill (terse, tactical: e.g. `GENERATE FRAMING`, layer labels `JOISTS`/`BEAMS`/`POSTS`).
 - Numbers in UI: JetBrains Mono, tabular, formatted (e.g. spacing `16" O.C.`), per CLAUDE.md.
@@ -501,7 +501,7 @@ var canPickGround: Bool { capabilities.contains(.groundCover) }
 **TEST STRATEGY:** UI is human visual QA (interactive, needs Jackson — contract §5.2, memory `ios-design-system-conformance-pass`). VM logic gets unit coverage where pure:
 - `test_generateFraming_setsBlock_andMarksSync`: call `generateFraming()` on a VM with a closed rectangle → `drawingData.framing != nil`, `DeckStore.saveDeck` invoked (spy), `needsSync` set.
 - `test_setLoadPreset_restamps_existingMembers`: change preset species → existing members' `species` updated, `sizing` still nil.
-- `test_canFrame_falseWithoutCapability`: VM built with a `.materials`-only capability set → `canFrame == false`, `generateFraming()` is a no-op (defense even though `.light` includes it).
+- `test_canFrame_falseWithoutCapability`: VM built with a `.materials`-only capability set → `canFrame == false`, `generateFraming()` is a no-op.
 - Build verification: device-target `xcodebuild build` green; `build-for-testing` + `test` green on sim.
 
 **References:** contract §4 (capability gating, hidden surfaces), §1.3 (`DeckStore`), §5.1 (numbers/UI). CLAUDE.md skills: `ops-copywriter` (all labels), `ops-design`/`mobile-ux-design` (controls layout — touch targets ≥44pt, field-first), `animation-studio:ios-animations` (layer-toggle transition; single OPS easing curve, honor reduced motion).
@@ -514,7 +514,7 @@ var canPickGround: Bool { capabilities.contains(.groundCover) }
 
 **Depends on:** Tasks 1–9 landed + build-green.
 
-**Change:** Update the relevant `ops-software-bible/` deck section to document: the `framing` block (full sub-type table), the `terrain.groundCover` block, the auto-framing auto-then-preserve contract, the new `component_type` rows (`joist`/`beam`/`post`/`rim_joist`/`blocking`) + their metadata keys, and the schema-version-2 bump. Note the LIGHT/FULL split (both render the plausible frame; sizing is P3-only). Per CLAUDE.md, the bible must stay current in the same session.
+**Change:** Update the relevant `ops-software-bible/` deck section to document: the `framing` block (full sub-type table), the `terrain.groundCover` block, the auto-framing auto-then-preserve contract, the new `component_type` rows (`joist`/`beam`/`post`/`rim_joist`/`blocking`) + their metadata keys, and the schema-version-2 bump. Note the LIGHT/FULL split: embedded OPS decodes/preserves/displays standardized deck objects without full authoring controls; standalone OPS Decks owns framing and ground-cover authoring. Sizing is P3-only. Per CLAUDE.md, the bible must stay current in the same session.
 
 **TEST STRATEGY:** N/A (docs). Cross-check the documented `component_type` vocabulary against `ComponentEmitter` output + flag to the ops-web `DesignToEstimateAdapter` owner.
 
@@ -529,7 +529,7 @@ var canPickGround: Bool { capabilities.contains(.groundCover) }
 - [x] Engines pure, offline, no I/O (`AutoFramingEngine`, `FramingGeometry`, `FramingTakeoff`, `GroundTextureFactory.material`) — contract §8.3. (No `EngineOutcome` in P2 — no sizing claim; `sizing` stays nil.)
 - [x] NO code rule / `CodePackage` consumption — P2 makes zero engineering assertions (roadmap §1, contract §7 P2 row "none (no claim)").
 - [x] DeckKit reaches host only via primitives + P1 seams + `CapabilityProvider`. No `Project`/`Company`/`AppState`/`SyncEngine`/`DataController` (contract §8.5).
-- [x] Capability gates surfaces + render, never data presence; `.plausibleFrame`/`.groundCover` in `.light` (contract §8.6).
+- [x] Capability gates authoring surfaces and write actions, never data presence; `.plausibleFrame`/`.groundCover` in `.full`, `.light` remains embedded OPS viewer/materials-only (contract §8.6).
 - [x] Build: device `generic/platform=iOS`; tests on iPhone 17 / OS 26.5 sim; grep for `SUCCEEDED`; styling via OPSStyle (contract §8.8).
 
 ## Verification gate (before "done")

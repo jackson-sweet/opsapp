@@ -132,6 +132,9 @@ struct DeckSceneBuilder {
                     elevationM: elevationM,
                     scaleFactor: scaleFactor,
                     level: level,
+                    framing: drawingData.framing,
+                    framingLevelId: level.id,
+                    framingCanvasCenter: sharedCenter,
                     houseWallCapM: houseWallCapM,
                     surfacesIn3D: surfacesIn3D
                 )
@@ -209,6 +212,9 @@ struct DeckSceneBuilder {
                 elevationM: elevationM,
                 scaleFactor: scaleFactor,
                 level: nil,
+                framing: drawingData.framing,
+                framingLevelId: "",
+                framingCanvasCenter: sharedCenter,
                 surfacesIn3D: surfacesIn3D
             )
         }
@@ -278,6 +284,9 @@ struct DeckSceneBuilder {
                     elevationM: elevationM,
                     scaleFactor: scaleFactor,
                     level: level,
+                    framing: drawingData.framing,
+                    framingLevelId: level.id,
+                    framingCanvasCenter: sharedCenter,
                     skipHouseWall: true
                 )
             }
@@ -303,6 +312,9 @@ struct DeckSceneBuilder {
                 elevationM: elevationM,
                 scaleFactor: scaleFactor,
                 level: nil,
+                framing: drawingData.framing,
+                framingLevelId: "",
+                framingCanvasCenter: center,
                 skipHouseWall: true
             )
         }
@@ -348,6 +360,9 @@ struct DeckSceneBuilder {
         elevationM: Float,
         scaleFactor: Double,
         level: DeckLevel?,
+        framing: FramingPlan? = nil,
+        framingLevelId: String = "",
+        framingCanvasCenter: CGPoint? = nil,
         skipHouseWall: Bool = false,
         houseWallCapM: Float? = nil,  // bug fb007839 — wall cap on multi-level designs
         surfacesIn3D: [SurfaceMesh3D]? = nil  // DECK-NEW-1 — per-surface meshes + materials
@@ -377,18 +392,41 @@ struct DeckSceneBuilder {
             let c = lvl.displayColor.fillColor
             return UIColor(red: CGFloat(c.r), green: CGFloat(c.g), blue: CGFloat(c.b), alpha: 1)
         }
+        let deckingLayer = SCNNode()
+        deckingLayer.name = FramingLayer.decking.layerNodeName
         for surf in surfaces {
             guard let surfaceGeo = DeckMeshGenerator.createPolygonGeometry(vertices: surf.positionsInMeters, yHeight: elevationM) else { continue }
             surfaceGeo.firstMaterial = surfaceMaterial(for: surf, levelColor: levelTint)
             let surfaceNode = SCNNode(geometry: surfaceGeo)
             surfaceNode.name = "deckSurface"
-            deckGroup.addChildNode(surfaceNode)
+            deckingLayer.addChildNode(surfaceNode)
+        }
+        deckGroup.addChildNode(deckingLayer)
+
+        let realFramingNode: SCNNode?
+        if let framing, let framingCanvasCenter {
+            let node = FramingSceneBuilder.buildFramingNode(
+                framing: framing,
+                levelId: framingLevelId,
+                scaleFactor: scaleFactor,
+                center: framingCanvasCenter,
+                deckElevationMeters: elevationM
+            )
+            realFramingNode = node.containsRenderableLayerChildren ? node : nil
+        } else {
+            realFramingNode = nil
+        }
+        let usesRealFraming = realFramingNode != nil
+        if let realFramingNode {
+            deckGroup.addChildNode(realFramingNode)
         }
 
         // Support posts + footings under each surface's perimeter so a raised
         // deck rests on grade instead of floating. No-op for ground-level decks.
-        for surf in surfaces {
-            buildSupportPosts(parent: deckGroup, perimeterMeters: surf.positionsInMeters, deckElevationM: elevationM)
+        if !usesRealFraming {
+            for surf in surfaces {
+                buildSupportPosts(parent: deckGroup, perimeterMeters: surf.positionsInMeters, deckElevationM: elevationM)
+            }
         }
 
         // Railing and stairs per edge
@@ -401,8 +439,9 @@ struct DeckSceneBuilder {
             // Rim joists belong on detected-surface boundaries only. Drawing
             // every graph edge made shared interior and stray construction
             // edges read as deck perimeter lines outside the surface.
-            if visibleRimJoistEdgeIds?.contains(edge.id) ?? true ||
-                DeckSurfaceEdgeResolver.carriesVisible3DFeature(edge) {
+            if !usesRealFraming &&
+                ((visibleRimJoistEdgeIds?.contains(edge.id) ?? true) ||
+                 DeckSurfaceEdgeResolver.carriesVisible3DFeature(edge)) {
                 buildRimJoist(parent: deckGroup, start: startPos3D, end: endPos3D, deckElevationM: elevationM)
             }
 
@@ -1657,5 +1696,13 @@ struct DeckSceneBuilder {
         node.simdOrientation = spanningBoxOrientation(direction: delta)
 
         return node
+    }
+}
+
+private extension SCNNode {
+    var containsRenderableLayerChildren: Bool {
+        childNodes.contains { layer in
+            layer.name?.hasPrefix("layer.") == true && !layer.childNodes.isEmpty
+        }
     }
 }

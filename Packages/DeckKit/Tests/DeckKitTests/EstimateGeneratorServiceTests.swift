@@ -1,5 +1,6 @@
 // OPS/OPSTests/DeckBuilder/EstimateGeneratorServiceTests.swift
 
+import CoreGraphics
 import XCTest
 @testable import DeckKit
 
@@ -120,6 +121,56 @@ final class EstimateGeneratorServiceTests: XCTestCase {
         XCTAssertEqual(subItems[0].unit, "each")
     }
 
+    // MARK: - Framing Items
+
+    func testFramingLineItems_fromFramingPlan() throws {
+        var data = makeRectangleDeck(withVinyl: false)
+        data.scaleFactor = 1.0
+        data.framing = FramingPlan(
+            members: [
+                FramingMemberSet(levelId: "", members: [
+                    framingMember(
+                        id: "joist-0",
+                        role: .joist,
+                        start: .zero,
+                        end: CGPoint(x: 120, y: 0),
+                        nominalSize: .twoByEight
+                    ),
+                    framingMember(
+                        id: "beam-0",
+                        role: .beam,
+                        start: CGPoint(x: 0, y: 120),
+                        end: CGPoint(x: 120, y: 120),
+                        nominalSize: .twoByTen,
+                        plyCount: 2
+                    ),
+                    framingMember(
+                        id: "post-0",
+                        role: .post,
+                        start: CGPoint(x: 0, y: 120),
+                        end: CGPoint(x: 0, y: 120),
+                        nominalSize: .sixBySix
+                    ),
+                ])
+            ],
+            generationSource: .manual
+        )
+
+        let items = EstimateGeneratorService.generateLineItems(from: data)
+        let framingItems = items.filter { $0.category == "Framing" }
+
+        XCTAssertFalse(framingItems.isEmpty)
+        let joists = try XCTUnwrap(framingItems.first { $0.name == "2x8 Joists" })
+        XCTAssertEqual(joists.quantity, 11.0, accuracy: 0.001)
+        XCTAssertEqual(joists.unit, "linear ft")
+        XCTAssertEqual(joists.type, .material)
+        XCTAssertFalse(joists.isOptional)
+
+        XCTAssertNotNil(framingItems.first { $0.name == "Joist Hangers" })
+        XCTAssertNotNil(framingItems.first { $0.name == "Post Bases" })
+        XCTAssertNotNil(framingItems.first { $0.name == "Framing Footings" })
+    }
+
     // MARK: - No Assignments
 
     func testHasAssignments_emptyDrawing() {
@@ -141,6 +192,26 @@ final class EstimateGeneratorServiceTests: XCTestCase {
         var data = DeckDrawingData()
         data.vertices.append(DeckVertex(position: .zero))
         data.vertices[0].footingType = .sonoTube
+        XCTAssertTrue(EstimateGeneratorService.hasAssignments(data))
+    }
+
+    func testHasAssignments_withFraming() {
+        var data = DeckDrawingData()
+        data.framing = FramingPlan(
+            members: [
+                FramingMemberSet(levelId: "", members: [
+                    framingMember(
+                        id: "joist-0",
+                        role: .joist,
+                        start: .zero,
+                        end: CGPoint(x: 120, y: 0),
+                        nominalSize: .twoByEight
+                    )
+                ])
+            ],
+            generationSource: .manual
+        )
+
         XCTAssertTrue(EstimateGeneratorService.hasAssignments(data))
     }
 
@@ -224,5 +295,25 @@ final class EstimateGeneratorServiceTests: XCTestCase {
         XCTAssertEqual(otherItems[0].name, "LED Strip Light")
         XCTAssertEqual(otherItems[0].unit, "linear ft")
         XCTAssertEqual(otherItems[0].unitPrice, 12.00)
+    }
+
+    private func framingMember(
+        id: String,
+        role: FramingRole,
+        start: CGPoint,
+        end: CGPoint,
+        nominalSize: LumberSize,
+        plyCount: Int = 1
+    ) -> FramingMember {
+        FramingMember(
+            id: id,
+            role: role,
+            start: start,
+            end: end,
+            nominalSize: nominalSize,
+            plyCount: plyCount,
+            species: .sprucePineFir,
+            grade: .no2
+        )
     }
 }

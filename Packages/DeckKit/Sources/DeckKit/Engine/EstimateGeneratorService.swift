@@ -32,7 +32,7 @@ public struct EstimateGeneratorService {
         public let unitPrice: Double
         public let productId: String?
         public let taskTypeId: String?    // task type from the assigned product
-        public let category: String       // "Surface", "Railing", "Stairs", "Substructure", "Other"
+        public let category: String       // "Surface", "Framing", "Railing", "Stairs", "Substructure", "Other"
         public let sortOrder: Int
         public let isOptional: Bool
         public var warning: String?       // validation warning (e.g., missing elevation)
@@ -89,22 +89,33 @@ public struct EstimateGeneratorService {
     /// Generate all line items from a deck drawing
     /// - Parameter drawingData: The complete deck drawing with all assignments
     /// - Returns: Ordered array of line items ready for estimate creation
-    public static func generateLineItems(from drawingData: DeckDrawingData) -> [GeneratedLineItem] {
+    public static func generateLineItems(
+        from drawingData: DeckDrawingData,
+        waste: WasteSettings = WasteSettings()
+    ) -> [GeneratedLineItem] {
+        let baseItems: [GeneratedLineItem]
         if drawingData.isMultiLevel {
-            return generateMultiLevelLineItems(from: drawingData)
+            baseItems = generateMultiLevelLineItems(from: drawingData)
+        } else {
+            baseItems = generateSingleLevelLineItems(
+                footprint: drawingData.footprint,
+                edges: drawingData.edges,
+                vertices: drawingData.vertices,
+                orderedPositions: drawingData.orderedPositions,
+                isPolygonClosed: drawingData.isClosed,
+                drawingData: drawingData,
+                persistedSurfaces: drawingData.surfaces,
+                detectedSurfaces: drawingData.detectedSurfaces,
+                levelPrefix: nil,
+                startingSortOrder: 0
+            ).items
         }
-        return generateSingleLevelLineItems(
-            footprint: drawingData.footprint,
-            edges: drawingData.edges,
-            vertices: drawingData.vertices,
-            orderedPositions: drawingData.orderedPositions,
-            isPolygonClosed: drawingData.isClosed,
+
+        return appendFramingLineItems(
+            to: baseItems,
             drawingData: drawingData,
-            persistedSurfaces: drawingData.surfaces,
-            detectedSurfaces: drawingData.detectedSurfaces,
-            levelPrefix: nil,
-            startingSortOrder: 0
-        ).items
+            waste: waste
+        )
     }
 
     /// Multi-level: iterate levels then connections
@@ -464,6 +475,122 @@ public struct EstimateGeneratorService {
         return (items, sortOrder)
     }
 
+    private static func appendFramingLineItems(
+        to baseItems: [GeneratedLineItem],
+        drawingData: DeckDrawingData,
+        waste: WasteSettings
+    ) -> [GeneratedLineItem] {
+        guard let framing = drawingData.framing,
+              framing.members.contains(where: { !$0.members.isEmpty }) else {
+            return baseItems
+        }
+
+        let takeoff = FramingTakeoff.takeoff(
+            framing,
+            waste: waste,
+            scaleFactor: drawingData.effectiveScaleFactor
+        )
+        var items = baseItems
+        var sortOrder = (items.map(\.sortOrder).max() ?? -1) + 1
+
+        for row in takeoff.lumber {
+            guard let item = framingLumberLineItem(row, sortOrder: sortOrder) else { continue }
+            items.append(item)
+            sortOrder += 1
+        }
+
+        for row in takeoff.hardware where row.count > 0 {
+            items.append(GeneratedLineItem(
+                name: hardwareDisplayName(row.kind),
+                description: nil,
+                type: .material,
+                quantity: Double(row.count),
+                unit: "each",
+                unitPrice: 0,
+                productId: nil,
+                taskTypeId: nil,
+                category: "Framing",
+                sortOrder: sortOrder,
+                isOptional: false
+            ))
+            sortOrder += 1
+        }
+
+        if takeoff.footingCount > 0 {
+            items.append(GeneratedLineItem(
+                name: "Framing Footings",
+                description: "Visual count from structural posts",
+                type: .material,
+                quantity: Double(takeoff.footingCount),
+                unit: "each",
+                unitPrice: 0,
+                productId: nil,
+                taskTypeId: nil,
+                category: "Framing",
+                sortOrder: sortOrder,
+                isOptional: false
+            ))
+        }
+
+        return items
+    }
+
+    private static func framingLumberLineItem(
+        _ row: FramingTakeoff.LumberRow,
+        sortOrder: Int
+    ) -> GeneratedLineItem? {
+        let usesEachUnit = row.role == .post
+        let quantity = usesEachUnit ? Double(row.pieceCount) : row.totalLinearFeet
+        guard quantity > 0 else { return nil }
+
+        return GeneratedLineItem(
+            name: "\(row.nominalSize.rawValue) \(framingRoleDisplayName(row.role))",
+            description: framingLumberDescription(row),
+            type: .material,
+            quantity: quantity,
+            unit: usesEachUnit ? "each" : "linear ft",
+            unitPrice: 0,
+            productId: nil,
+            taskTypeId: nil,
+            category: "Framing",
+            sortOrder: sortOrder,
+            isOptional: false
+        )
+    }
+
+    private static func framingRoleDisplayName(_ role: FramingRole) -> String {
+        switch role {
+        case .joist: return "Joists"
+        case .beam: return "Beams"
+        case .post: return "Posts"
+        case .ledger: return "Ledgers"
+        case .rimBand: return "Rim Joists"
+        case .blocking: return "Blocking"
+        case .bridging: return "Bridging"
+        case .cantilever: return "Cantilevers"
+        }
+    }
+
+    private static func framingLumberDescription(_ row: FramingTakeoff.LumberRow) -> String {
+        let pieceLabel = row.pieceCount == 1 ? "piece" : "pieces"
+        if row.plyCount > 1 {
+            return "\(row.pieceCount) \(pieceLabel), \(row.plyCount)-ply"
+        }
+        return "\(row.pieceCount) \(pieceLabel)"
+    }
+
+    private static func hardwareDisplayName(_ kind: String) -> String {
+        switch kind {
+        case "joist_hanger": return "Joist Hangers"
+        case "post_base": return "Post Bases"
+        default:
+            return kind
+                .split(separator: "_")
+                .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+                .joined(separator: " ")
+        }
+    }
+
     /// Group flat line items by taskTypeId into parent-child bundles
     public static func groupByTaskType(
         _ items: [GeneratedLineItem],
@@ -501,7 +628,7 @@ public struct EstimateGeneratorService {
         var lines: [String] = ["Deck Estimate Summary", String(repeating: "\u{2500}", count: 30)]
 
         let grouped = Dictionary(grouping: items, by: { $0.category })
-        let categoryOrder = ["Surface", "Substructure", "Railing", "Stairs", "Other"]
+        let categoryOrder = ["Surface", "Substructure", "Framing", "Railing", "Stairs", "Other"]
 
         for category in categoryOrder {
             guard let categoryItems = grouped[category], !categoryItems.isEmpty else { continue }
@@ -528,6 +655,7 @@ public struct EstimateGeneratorService {
 
     /// Check if the drawing has any assignments (estimate-able content)
     public static func hasAssignments(_ drawingData: DeckDrawingData) -> Bool {
+        if drawingData.framing?.members.contains(where: { !$0.members.isEmpty }) == true { return true }
         if drawingData.isMultiLevel {
             for level in drawingData.levels {
                 if !level.footprint.assignedItems.isEmpty { return true }

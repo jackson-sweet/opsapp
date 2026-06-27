@@ -4,7 +4,8 @@
 //
 //  Projects a DeckDrawingData into the catalog adapter's `components`
 //  vocabulary — one row per visible component (railing, deck_board,
-//  stair_set, gate, post_set) with metadata keys the adapter consumes.
+//  stair_set, gate, post_set) plus additive structural framing rows with
+//  metadata keys the adapter consumes.
 //
 //  Pure projection — no source-of-truth duplication. Recomputed from
 //  geometry on every save via DeckDrawingData.toJSON().
@@ -56,6 +57,13 @@ public enum ComponentEmitter {
                 detectedSurfaces: data.detectedSurfaces,
                 scaleFactor: data.effectiveScaleFactor,
                 levelId: nil
+            ))
+        }
+
+        if let framing = data.framing {
+            rows.append(contentsOf: emitFramingComponents(
+                framing,
+                scaleFactor: data.effectiveScaleFactor
             ))
         }
 
@@ -312,13 +320,77 @@ public enum ComponentEmitter {
         ]
         return DesignComponentRow(componentType: "stair_set", metadata: meta)
     }
+
+    // MARK: - Framing components
+
+    private static func emitFramingComponents(
+        _ framing: FramingPlan,
+        scaleFactor: Double
+    ) -> [DesignComponentRow] {
+        var rows: [DesignComponentRow] = []
+        let safeScaleFactor = scaleFactor > 0 ? scaleFactor : 1
+
+        for set in framing.members {
+            for member in set.members {
+                guard let componentType = framingComponentType(for: member.role) else { continue }
+
+                let linearFeet = roundToTwo(memberLinearFeet(member, scaleFactor: safeScaleFactor))
+                let meta: [String: AnyCodable] = [
+                    "linear_feet": AnyCodable(linearFeet),
+                    "nominal_size": nullableString(member.nominalSize?.rawValue),
+                    "ply_count": AnyCodable(max(1, member.plyCount)),
+                    "count": AnyCodable(1),
+                    "species": nullableString(member.species?.rawValue ?? framing.loadPreset?.species.rawValue),
+                    "grade": nullableString(member.grade?.rawValue ?? framing.loadPreset?.grade.rawValue),
+                    "level_id": AnyCodable(set.levelId),
+                    "member_id": AnyCodable(member.id),
+                ]
+                rows.append(DesignComponentRow(componentType: componentType, metadata: meta))
+            }
+        }
+
+        return rows
+    }
+
+    private static func framingComponentType(for role: FramingRole) -> String? {
+        switch role {
+        case .joist:
+            return "joist"
+        case .beam:
+            return "beam"
+        case .post:
+            return "post"
+        case .rimBand:
+            return "rim_joist"
+        case .blocking:
+            return "blocking"
+        case .ledger, .bridging, .cantilever:
+            return nil
+        }
+    }
+
+    private static func memberLinearFeet(_ member: FramingMember, scaleFactor: Double) -> Double {
+        let dx = member.end.x - member.start.x
+        let dy = member.end.y - member.start.y
+        return Double(hypot(dx, dy)) / scaleFactor / 12
+    }
+
+    private static func roundToTwo(_ value: Double) -> Double {
+        (value * 100).rounded() / 100
+    }
+
+    private static func nullableString(_ value: String?) -> AnyCodable {
+        if let value { return AnyCodable(value) }
+        return AnyCodable(NSNull())
+    }
 }
 
 /// One row in `DeckDrawingData.components` — the projection
 /// `DesignToEstimateAdapter` consumes. `componentType` matches the
 /// catalog's `DesignComponentType` raw values (`railing`, `deck_board`,
-/// `stair_set`, `gate`, `post_set`). Adding component_type strings is
-/// fine; renaming is a contract break.
+/// `stair_set`, `gate`, `post_set`) plus additive structural rows (`joist`,
+/// `beam`, `post`, `rim_joist`, `blocking`). Adding component_type strings
+/// is fine; renaming is a contract break.
 public struct DesignComponentRow: Codable, Equatable {
     public let componentType: String
     public let metadata: [String: AnyCodable]

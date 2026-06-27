@@ -322,6 +322,93 @@ final class ComponentEmitterTests: XCTestCase {
         XCTAssertEqual(railing?.metadata["mount_surface"], AnyCodable("Surface"))
     }
 
+    // MARK: - Framing components
+
+    func test_emit_addsFramingRows_additively() throws {
+        var data = makeClosedQuadWithRailings()
+        data.surfaces = [
+            DeckSurface(
+                vertexIds: Set(data.vertices.map(\.id)),
+                assignedItems: [AssignedItem(name: "Decking", unitType: .squareFoot)]
+            )
+        ]
+        data.framing = FramingPlan(
+            members: [
+                FramingMemberSet(levelId: "", members: [
+                    framingMember(
+                        id: "joist-0",
+                        role: .joist,
+                        start: .zero,
+                        end: CGPoint(x: 144, y: 0),
+                        nominalSize: .twoByEight
+                    ),
+                    framingMember(
+                        id: "beam-0",
+                        role: .beam,
+                        start: CGPoint(x: 0, y: 120),
+                        end: CGPoint(x: 144, y: 120),
+                        nominalSize: .twoByTen,
+                        plyCount: 2
+                    ),
+                    framingMember(
+                        id: "post-0",
+                        role: .post,
+                        start: CGPoint(x: 0, y: 120),
+                        end: CGPoint(x: 0, y: 120),
+                        nominalSize: .sixBySix
+                    ),
+                    framingMember(
+                        id: "rim-0",
+                        role: .rimBand,
+                        start: CGPoint(x: 0, y: 144),
+                        end: CGPoint(x: 144, y: 144),
+                        nominalSize: .twoByEight
+                    ),
+                    framingMember(
+                        id: "blocking-0",
+                        role: .blocking,
+                        start: CGPoint(x: 72, y: 0),
+                        end: CGPoint(x: 72, y: 144),
+                        nominalSize: .twoByEight
+                    ),
+                ])
+            ],
+            generationSource: .manual
+        )
+
+        let rows = ComponentEmitter.emit(data)
+        let types = Set(rows.map(\.componentType))
+
+        XCTAssertTrue(types.isSuperset(of: ["joist", "beam", "post", "rim_joist", "blocking"]))
+        XCTAssertTrue(types.contains("deck_board"))
+        XCTAssertTrue(types.contains("railing"))
+        XCTAssertTrue(types.contains("post_set"), "Railing posts stay distinct from structural post rows.")
+
+        let joist = try XCTUnwrap(rows.first { $0.componentType == "joist" })
+        XCTAssertEqual(joist.metadata["linear_feet"], AnyCodable(12.0))
+        XCTAssertEqual(joist.metadata["nominal_size"], AnyCodable("2x8"))
+        XCTAssertEqual(joist.metadata["ply_count"], AnyCodable(1))
+        XCTAssertEqual(joist.metadata["count"], AnyCodable(1))
+        XCTAssertEqual(joist.metadata["species"], AnyCodable("spf"))
+        XCTAssertEqual(joist.metadata["grade"], AnyCodable("no2"))
+        XCTAssertEqual(joist.metadata["level_id"], AnyCodable(""))
+        XCTAssertEqual(joist.metadata["member_id"], AnyCodable("joist-0"))
+    }
+
+    func test_emit_noFraming_doesNotAddStructuralRows() {
+        let data = makeClosedQuadWithRailings()
+
+        let rows = ComponentEmitter.emit(data)
+        let types = Set(rows.map(\.componentType))
+
+        XCTAssertEqual(types, Set(["railing", "post_set", "deck_board"]))
+        XCTAssertFalse(types.contains("joist"))
+        XCTAssertFalse(types.contains("beam"))
+        XCTAssertFalse(types.contains("post"))
+        XCTAssertFalse(types.contains("rim_joist"))
+        XCTAssertFalse(types.contains("blocking"))
+    }
+
     // MARK: - Helpers
 
     /// 4-vertex 4-edge closed quad with railings on every edge, all 144 inches
@@ -394,5 +481,25 @@ final class ComponentEmitterTests: XCTestCase {
         data.vertices = [v1, v2, v3, v4]
         data.edges = [e1, e2, e3, e4]
         return data
+    }
+
+    private func framingMember(
+        id: String,
+        role: FramingRole,
+        start: CGPoint,
+        end: CGPoint,
+        nominalSize: LumberSize,
+        plyCount: Int = 1
+    ) -> FramingMember {
+        FramingMember(
+            id: id,
+            role: role,
+            start: start,
+            end: end,
+            nominalSize: nominalSize,
+            plyCount: plyCount,
+            species: .sprucePineFir,
+            grade: .no2
+        )
     }
 }

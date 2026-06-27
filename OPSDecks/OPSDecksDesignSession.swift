@@ -78,7 +78,7 @@ final class OPSDecksDesignSession: ObservableObject {
         self.entitlement = entitlement
         self.libraryStore = libraryStore
         do {
-            self.savedDecks = try Self.documents(
+            self.savedDecks = Self.documents(
                 try libraryStore.listDecks(),
                 for: companyId
             )
@@ -185,7 +185,7 @@ final class OPSDecksDesignSession: ObservableObject {
 
     private func refreshSavedDecks() {
         do {
-            savedDecks = try Self.documents(
+            savedDecks = Self.documents(
                 try libraryStore.listDecks(),
                 for: companyId
             )

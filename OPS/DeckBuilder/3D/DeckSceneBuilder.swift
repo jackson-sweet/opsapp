@@ -23,7 +23,6 @@ struct DeckSceneBuilder {
     private static let topRailColor = UIColor(red: 136/255, green: 136/255, blue: 136/255, alpha: 1)       // #888888
     private static let stairTreadColor = UIColor(red: 196/255, green: 149/255, blue: 106/255, alpha: 1)    // #C4956A
     private static let stringerColor = UIColor(red: 139/255, green: 108/255, blue: 74/255, alpha: 1)       // #8B6C4A
-    private static let groundColor = UIColor(red: 74/255, green: 94/255, blue: 58/255, alpha: 0.3)         // #4A5E3A at 30%
     private static let houseWallColor = UIColor(red: 136/255, green: 136/255, blue: 136/255, alpha: 0.5)   // #888888 at 50%
     private static let footingColor = UIColor(red: 150/255, green: 150/255, blue: 150/255, alpha: 1)       // #969696 concrete pier
 
@@ -42,7 +41,7 @@ struct DeckSceneBuilder {
 
         guard let scaleFactor = drawingData.scaleFactor, scaleFactor > 0 else {
             // No scale — return empty scene with just ground and lights
-            addGroundPlane(to: scene)
+            addGroundPlane(to: scene, terrain: drawingData.terrain)
             addLighting(to: scene)
             return scene
         }
@@ -227,7 +226,7 @@ struct DeckSceneBuilder {
         } ?? convertToMeters(vertices: allPositions, scaleFactor: scaleFactor)
         let groundBounds = DeckMeshGenerator.boundingRect(for: groundMeters)
         let deckSpanM = Float(max(groundBounds.width, groundBounds.height))
-        addGroundPlane(to: scene, size: min(max(deckSpanM * 6 + 8, 30), 120))
+        addGroundPlane(to: scene, size: min(max(deckSpanM * 6 + 8, 30), 120), terrain: drawingData.terrain)
         addLighting(to: scene)
         addCamera(
             to: scene,
@@ -1299,10 +1298,10 @@ struct DeckSceneBuilder {
 
     // MARK: - Ground Plane
 
-    private static func addGroundPlane(to scene: SCNScene, size: Float = 30) {
+    private static func addGroundPlane(to scene: SCNScene, size: Float = 30, terrain: TerrainModel? = nil) {
         let ground = SCNPlane(width: CGFloat(size), height: CGFloat(size))
-        ground.firstMaterial = makeMaterial(color: groundColor)
-        ground.firstMaterial?.isDoubleSided = true
+        let cover = GroundTextureFactory.dominantCover(in: terrain)
+        ground.firstMaterial = GroundTextureFactory.material(for: cover, spanMeters: size)
         let groundNode = SCNNode(geometry: ground)
         groundNode.eulerAngles.x = -.pi / 2  // Lie flat
         groundNode.position = SCNVector3(0, -0.001, 0) // Slightly below zero to avoid z-fighting

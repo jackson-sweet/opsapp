@@ -359,7 +359,9 @@ struct DayPageView: View {
                                     event: event,
                                     onTap: { handleUserEventEdit(event) },
                                     onDelete: { handleUserEventDelete(event) },
-                                    onEdit: { handleUserEventEdit(event) }
+                                    onEdit: { handleUserEventEdit(event) },
+                                    resizeDayCount: userEventResizeDayCount(event),
+                                    onResizeSpan: userEventResizeAction(for: event)
                                 )
                                 // Drag a non-recurring personal/time-off card up to
                                 // the week strip to reschedule it (no crew cascade).
@@ -526,6 +528,42 @@ struct DayPageView: View {
                                      title: event.title.isEmpty ? "Event" : event.title,
                                      durationDays: max(days, 1),
                                      startEpoch: event.startDate.timeIntervalSince1970)
+    }
+
+    private func userEventResizeDayCount(_ event: CalendarUserEvent) -> Int? {
+        guard canDirectlyResizeUserEvent(event) else { return nil }
+        return ScheduleSpanResize.inclusiveDayCount(start: event.startDate, end: event.endDate)
+    }
+
+    private func userEventResizeAction(for event: CalendarUserEvent) -> ((Int) -> Void)? {
+        guard canDirectlyResizeUserEvent(event) else { return nil }
+        return { dayCount in
+            resizeUserEvent(event, to: dayCount)
+        }
+    }
+
+    private func canDirectlyResizeUserEvent(_ event: CalendarUserEvent) -> Bool {
+        !event.isRecurringInstance
+        && PermissionStore.shared.canEditSchedule(
+            assigneeIds: [event.userId] + (event.teamMemberIds ?? []))
+    }
+
+    private func resizeUserEvent(_ event: CalendarUserEvent, to dayCount: Int) {
+        guard canDirectlyResizeUserEvent(event) else { return }
+        let newEnd = ScheduleSpanResize.endDate(
+            start: event.startDate,
+            preservingEndTimeFrom: event.endDate,
+            dayCount: dayCount
+        )
+        guard !ScheduleSpanResize.isSameMoment(newEnd, event.endDate) else { return }
+
+        dataController.commitUserEventReschedule(
+            event,
+            targetStart: event.startDate,
+            targetEnd: newEnd
+        )
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        ToastCenter.shared.present(Feedback.Task.scheduledFor(start: event.startDate, end: newEnd))
     }
 
     @ViewBuilder

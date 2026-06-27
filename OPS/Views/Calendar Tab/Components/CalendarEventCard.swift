@@ -96,6 +96,10 @@ struct CalendarEventCard: View {
     private var isMultiDay: Bool { dayPosition != .single }
     private var bleedsRight: Bool { dayPosition == .start || dayPosition == .middle }
     private var bleedsLeft: Bool { dayPosition == .end || dayPosition == .middle }
+    private var currentSpanDayCount: Int? {
+        guard let start = task.startDate, let end = task.endDate else { return nil }
+        return ScheduleSpanResize.inclusiveDayCount(start: start, end: end)
+    }
 
     /// Rounded corners depend on which edges connect to adjacent days
     private var visibleCorners: UIRectCorner {
@@ -218,6 +222,11 @@ struct CalendarEventCard: View {
         // into a reschedule drag (native iOS coexistence). `.reschedulable` is a
         // no-op when this card isn't on a drag surface (dragPayload/dragSession nil).
         .reschedulable(dragPayload, session: dragSession)
+        .resizableScheduleSpan(
+            currentDayCount: currentSpanDayCount,
+            enabled: canModify,
+            onCommit: { resizeTaskSpan(to: $0) }
+        )
         .contextMenu {
             if canModify {
                 Button {
@@ -306,6 +315,34 @@ struct CalendarEventCard: View {
         .sheet(isPresented: $showingStatusPicker) {
             TaskStatusChangeSheet(task: task)
                 .environmentObject(dataController)
+        }
+    }
+
+    private func resizeTaskSpan(to dayCount: Int) {
+        guard task.canEditSchedule,
+              let start = task.startDate,
+              let end = task.endDate else { return }
+
+        let newEnd = ScheduleSpanResize.endDate(
+            start: start,
+            preservingEndTimeFrom: end,
+            dayCount: dayCount
+        )
+        guard !ScheduleSpanResize.isSameMoment(newEnd, end) else { return }
+
+        Task {
+            do {
+                try await dataController.updateTaskSchedule(task: task, startDate: start, endDate: newEnd)
+                await MainActor.run {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    ToastCenter.shared.present(Feedback.Task.scheduledFor(start: start, end: newEnd))
+                }
+            } catch {
+                await MainActor.run {
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                }
+                print("Error resizing task schedule span: \(error)")
+            }
         }
     }
 

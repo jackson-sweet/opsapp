@@ -15,6 +15,8 @@ struct CalendarUserEventCard: View {
     let onDelete: () -> Void
     /// Opens the editor. Optional so older callers (none today) keep working.
     var onEdit: (() -> Void)? = nil
+    var resizeDayCount: Int? = nil
+    var onResizeSpan: ((Int) -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 0) {
@@ -55,6 +57,11 @@ struct CalendarUserEventCard: View {
             // falls back to onTap (currently a no-op) for any legacy caller.
             if let onEdit { onEdit() } else { onTap() }
         }
+        .resizableScheduleSpan(
+            currentDayCount: resizeDayCount,
+            enabled: onResizeSpan != nil,
+            onCommit: { onResizeSpan?($0) }
+        )
         .contextMenu {
             if onEdit != nil {
                 Button { onEdit?() } label: {

@@ -22,6 +22,32 @@ enum ProjectQuickActionPermissionGate {
     }
 }
 
+enum ProjectDeckActionDecision: Equatable {
+    case open(DeckDesign)
+    case create
+
+    static func == (lhs: ProjectDeckActionDecision, rhs: ProjectDeckActionDecision) -> Bool {
+        switch (lhs, rhs) {
+        case (.create, .create):
+            return true
+        case (.open(let lhsDesign), .open(let rhsDesign)):
+            return lhsDesign.id == rhsDesign.id
+        default:
+            return false
+        }
+    }
+}
+
+enum ProjectDeckActionResolver {
+    static func resolve(designs: [DeckDesign], forProjectId projectId: String) -> ProjectDeckActionDecision {
+        if let existingDesign = DeckDesign.displayCandidate(in: designs, forProjectId: projectId) {
+            return .open(existingDesign)
+        }
+
+        return .create
+    }
+}
+
 struct ProjectQuickActionsBar: View {
     let selectedTask: ProjectTask?
     let hasClientContact: Bool

@@ -27,6 +27,50 @@ final class IOSBugReportRegressionTests: XCTestCase {
         ))
     }
 
+    func testDeckQuickActionOpensExistingAttachedDesignBeforeCreating() {
+        let projectId = UUID().uuidString
+        let attached = DeckDesign(
+            companyId: UUID().uuidString,
+            projectId: projectId,
+            title: "Existing attached deck",
+            drawingDataJSON: DeckDrawingData().toJSON()
+        )
+        attached.updatedAt = Date(timeIntervalSince1970: 1_000)
+
+        let standalone = DeckDesign(
+            companyId: UUID().uuidString,
+            projectId: nil,
+            title: "Standalone deck",
+            drawingDataJSON: DeckDrawingData().toJSON()
+        )
+        standalone.updatedAt = Date(timeIntervalSince1970: 2_000)
+
+        let decision = ProjectDeckActionResolver.resolve(
+            designs: [standalone, attached],
+            forProjectId: projectId
+        )
+
+        XCTAssertEqual(decision, .open(attached))
+    }
+
+    func testDeckQuickActionCreatesWhenNoAttachedDesignExists() {
+        let projectId = UUID().uuidString
+        let deletedAttached = DeckDesign(
+            companyId: UUID().uuidString,
+            projectId: projectId,
+            title: "Deleted attached deck",
+            drawingDataJSON: DeckDrawingData().toJSON()
+        )
+        deletedAttached.deletedAt = Date()
+
+        let decision = ProjectDeckActionResolver.resolve(
+            designs: [deletedAttached],
+            forProjectId: projectId
+        )
+
+        XCTAssertEqual(decision, .create)
+    }
+
     func testFABPaymentAndInvoiceUseInvoicePermissions() {
         XCTAssertTrue(FABPermissionGate.canShowNewPayment { $0 == "invoices.record_payment" })
         XCTAssertFalse(FABPermissionGate.canShowNewPayment { $0 == "expenses.create" })

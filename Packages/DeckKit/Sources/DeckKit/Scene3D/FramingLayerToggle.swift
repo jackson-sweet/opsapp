@@ -25,6 +25,16 @@ public struct FramingLayer: OptionSet, Hashable, Sendable {
         .blocking,
     ]
 
+    public static let displayOrder: [FramingLayer] = [
+        .decking,
+        .joists,
+        .beams,
+        .posts,
+        .footings,
+        .rim,
+        .blocking,
+    ]
+
     public var layerNodeName: String {
         switch self {
         case .decking: return "layer.decking"
@@ -38,15 +48,7 @@ public struct FramingLayer: OptionSet, Hashable, Sendable {
         }
     }
 
-    static let addressableLayers: [FramingLayer] = [
-        .decking,
-        .joists,
-        .beams,
-        .posts,
-        .footings,
-        .rim,
-        .blocking,
-    ]
+    static let addressableLayers: [FramingLayer] = displayOrder
 }
 
 public enum FramingLayerToggle {

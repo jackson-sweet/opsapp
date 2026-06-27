@@ -101,7 +101,11 @@ struct DeckBuilderView: View {
                     .padding(.top, floatingHeaderTopPadding)
 
                 ZStack(alignment: .topTrailing) {
-                    DeckScene3DView(drawingData: viewModel.drawingData, controller: scene3DController)
+                    DeckScene3DView(
+                        drawingData: viewModel.drawingData,
+                        controller: scene3DController,
+                        visibleLayers: viewModel.framingLayerVisibility
+                    )
                         .transition(.opacity)
 
                     screenshot3DButton
@@ -109,6 +113,34 @@ struct DeckBuilderView: View {
                         .padding(.top, OPSStyle.Layout.spacing2)
                 }
                 .ignoresSafeArea(edges: .horizontal)
+
+                if viewModel.canFrame || viewModel.canPickGround {
+                    FramingControlsView(
+                        framing: viewModel.drawingData.framing,
+                        loadPreset: viewModel.selectedLoadPreset,
+                        selectedGroundCover: viewModel.selectedGroundCover,
+                        framingNeedsRegeneration: viewModel.framingNeedsRegeneration,
+                        canGenerateFrame: viewModel.canFrame,
+                        canPickGround: viewModel.canPickGround,
+                        layerVisibility: $viewModel.framingLayerVisibility,
+                        onGenerateFrame: {
+                            if viewModel.drawingData.framing == nil {
+                                viewModel.generateFraming()
+                            } else {
+                                viewModel.regenerateFramingPreservingEdits()
+                            }
+                        },
+                        onLoadPresetChange: { preset in
+                            viewModel.setLoadPreset(preset)
+                        },
+                        onGroundCoverChange: { cover in
+                            viewModel.setGroundCover(cover, forZoneId: nil)
+                        }
+                    )
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
+                    .padding(.top, OPSStyle.Layout.spacing2)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
 
                 CameraPresetBar { preset in
                     scene3DController.setCameraPreset(preset)

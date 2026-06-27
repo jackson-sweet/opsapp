@@ -63,4 +63,12 @@ final class DeckRuntimeTests: XCTestCase {
         XCTAssertTrue(runtime.imageUploader is NoopDeckImageUploader)
         XCTAssertTrue(runtime.ocrService is NoopDeckOCRService)
     }
+
+    func testLightCapabilitiesIncludeFramingAndGroundCover() {
+        XCTAssertTrue(DeckCapabilities.light.contains(.materials))
+        XCTAssertTrue(DeckCapabilities.light.contains(.plausibleFrame))
+        XCTAssertTrue(DeckCapabilities.light.contains(.groundCover))
+        XCTAssertEqual(DeckCapabilities.forSurface(.ops), .light)
+        XCTAssertEqual(DeckCapabilities.forSurface(.opsDecks), .full)
+    }
 }

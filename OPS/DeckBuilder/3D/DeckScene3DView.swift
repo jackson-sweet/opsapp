@@ -55,22 +55,22 @@ class Scene3DController: ObservableObject {
 struct DeckScene3DView: UIViewRepresentable {
     let drawingData: DeckDrawingData
     let controller: Scene3DController
+    let visibleLayers: FramingLayer
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
-
-    class Coordinator {}
 
     func makeUIView(context: Context) -> SCNView {
         let scnView = SCNView()
         scnView.allowsCameraControl = true
         scnView.autoenablesDefaultLighting = false
         scnView.antialiasingMode = .multisampling4X
-        scnView.backgroundColor = UIColor(red: 10/255, green: 10/255, blue: 10/255, alpha: 1)
+        scnView.backgroundColor = UIColor(OPSStyle.Colors.background)
         scnView.preferredFramesPerSecond = 60
 
         let scene = DeckSceneBuilder.buildScene(from: drawingData)
+        FramingLayerToggle.apply(visibleLayers, to: scene.rootNode)
         scnView.scene = scene
 
         if let cameraNode = scene.rootNode.childNode(withName: "camera", recursively: true) {
@@ -80,15 +80,24 @@ struct DeckScene3DView: UIViewRepresentable {
         controller.scnView = scnView
         controller.scene = scene
         controller.lastDrawingJSON = drawingData.toJSON()
+        context.coordinator.lastVisibleLayers = visibleLayers
 
         return scnView
     }
 
     func updateUIView(_ uiView: SCNView, context: Context) {
         let currentJSON = drawingData.toJSON()
-        guard currentJSON != controller.lastDrawingJSON else { return }
+        guard currentJSON != controller.lastDrawingJSON else {
+            if context.coordinator.lastVisibleLayers != visibleLayers,
+               let rootNode = controller.scene?.rootNode {
+                FramingLayerToggle.apply(visibleLayers, to: rootNode)
+                context.coordinator.lastVisibleLayers = visibleLayers
+            }
+            return
+        }
 
         let scene = DeckSceneBuilder.buildScene(from: drawingData)
+        FramingLayerToggle.apply(visibleLayers, to: scene.rootNode)
         uiView.scene = scene
 
         if let cameraNode = scene.rootNode.childNode(withName: "camera", recursively: true) {
@@ -97,6 +106,11 @@ struct DeckScene3DView: UIViewRepresentable {
 
         controller.scene = scene
         controller.lastDrawingJSON = currentJSON
+        context.coordinator.lastVisibleLayers = visibleLayers
+    }
+
+    class Coordinator {
+        var lastVisibleLayers: FramingLayer = .all
     }
 }
 

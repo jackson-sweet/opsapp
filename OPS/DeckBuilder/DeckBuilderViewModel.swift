@@ -21,13 +21,18 @@ class DeckBuilderViewModel: ObservableObject {
     let deckDesign: DeckDesign
     private var modelContext: ModelContext?
     private let runtime: DeckRuntime?
+    private let capabilities: DeckCapabilities
     private let shouldEnqueueInitialUnsyncedDesign: Bool
 
     var runtimeContext: DeckRuntimeContext? { runtime?.context }
 
     // MARK: - Drawing State
 
-    @Published var drawingData: DeckDrawingData
+    @Published var drawingData: DeckDrawingData {
+        didSet {
+            updateFramingRegenerationFlag()
+        }
+    }
     @Published var drawingMode: DrawingMode = .idle
     @Published var activeTool: DrawingTool = .draw
     @Published var selection: SelectionState = SelectionState() {
@@ -88,6 +93,10 @@ class DeckBuilderViewModel: ObservableObject {
 
     @Published var is3DMode: Bool = false
     @Published var showingARVisualization: Bool = false
+    @Published var framingLayerVisibility: FramingLayer = .all
+    @Published var selectedLoadPreset: LoadPreset = LoadPreset()
+    @Published var framingNeedsRegeneration: Bool = false
+    private var framingGeometrySignature: String = ""
 
     var can3DMode: Bool {
         // Self-intersecting shapes can't be extruded (the 3D mesh would fold
@@ -107,6 +116,11 @@ class DeckBuilderViewModel: ObservableObject {
     }
 
     var canViewInAR: Bool { can3DMode }
+    var canFrame: Bool { capabilities.contains(.plausibleFrame) }
+    var canPickGround: Bool { capabilities.contains(.groundCover) }
+    var selectedGroundCover: GroundCover {
+        drawingData.terrain?.groundCover.first?.cover ?? .grass
+    }
 
     // MARK: - Photo Overlay
 
@@ -531,30 +545,36 @@ class DeckBuilderViewModel: ObservableObject {
         deckDesign: DeckDesign,
         modelContext: ModelContext? = nil,
         syncEngine: SyncEngine? = nil,
-        projectName: String? = nil
+        projectName: String? = nil,
+        capabilities: DeckCapabilities? = nil
     ) {
         self.deckDesign = deckDesign
         self.modelContext = modelContext
-        self.runtime = OPSDeckRuntimeFactory.make(
+        let runtime = OPSDeckRuntimeFactory.make(
             deckDesign: deckDesign,
             modelContext: modelContext,
             syncEngine: syncEngine,
             projectName: projectName
         )
+        self.runtime = runtime
+        self.capabilities = capabilities ?? DeckCapabilities.forSurface(runtime.context.appSurface)
         self.shouldEnqueueInitialUnsyncedDesign = deckDesign.lastSyncedAt == nil
         let loaded = Self.loadedDrawingData(from: deckDesign)
         self.drawingData = loaded
+        self.selectedLoadPreset = loaded.framing?.loadPreset ?? LoadPreset()
         self.isNewDrawing = Self.isNewDrawing(for: loaded)
         finishInitialization()
     }
 
-    init(deckDesign: DeckDesign, runtime: DeckRuntime) {
+    init(deckDesign: DeckDesign, runtime: DeckRuntime, capabilities: DeckCapabilities? = nil) {
         self.deckDesign = deckDesign
         self.modelContext = nil
         self.runtime = runtime
+        self.capabilities = capabilities ?? DeckCapabilities.forSurface(runtime.context.appSurface)
         self.shouldEnqueueInitialUnsyncedDesign = false
         let loaded = Self.loadedDrawingData(from: deckDesign)
         self.drawingData = loaded
+        self.selectedLoadPreset = loaded.framing?.loadPreset ?? LoadPreset()
         self.isNewDrawing = Self.isNewDrawing(for: loaded)
         finishInitialization()
     }
@@ -2937,6 +2957,79 @@ class DeckBuilderViewModel: ObservableObject {
         hapticLight()
     }
 
+    // MARK: - Framing + Ground Cover
+
+    func generateFraming() {
+        guard canFrame, can3DMode else { return }
+        pushUndo("generate framing")
+        let plan = AutoFramingEngine.generate(from: drawingData, preset: selectedLoadPreset)
+        drawingData.framing = plan
+        syncFramingGeometryBaseline()
+        save()
+        hapticSuccess()
+        ToastCenter.shared.present(Toast(label: "// FRAMING GENERATED", tone: .success))
+    }
+
+    func regenerateFramingPreservingEdits() {
+        guard canFrame, can3DMode else { return }
+        guard let existing = drawingData.framing else {
+            generateFraming()
+            return
+        }
+        pushUndo("regenerate framing")
+        let plan = AutoFramingEngine.regenerate(
+            from: drawingData,
+            existing: existing,
+            preset: selectedLoadPreset
+        )
+        drawingData.framing = plan
+        syncFramingGeometryBaseline()
+        save()
+        hapticSuccess()
+        ToastCenter.shared.present(Toast(label: "// FRAMING REGENERATED", tone: .success))
+    }
+
+    func setLoadPreset(_ preset: LoadPreset) {
+        selectedLoadPreset = preset
+        guard canFrame, var framing = drawingData.framing else { return }
+        pushUndo("set load preset")
+        framing.loadPreset = preset
+        for setIndex in framing.members.indices {
+            for memberIndex in framing.members[setIndex].members.indices {
+                framing.members[setIndex].members[memberIndex].species = preset.species
+                framing.members[setIndex].members[memberIndex].grade = preset.grade
+                framing.members[setIndex].members[memberIndex].sizing = nil
+            }
+        }
+        drawingData.framing = framing
+        save()
+        hapticLight()
+    }
+
+    func setGroundCover(_ cover: GroundCover, forZoneId zoneId: String?) {
+        guard canPickGround else { return }
+        pushUndo("set ground cover")
+        var terrain = drawingData.terrain ?? TerrainModel()
+        if let zoneId,
+           let index = terrain.groundCover.firstIndex(where: { $0.id == zoneId }) {
+            terrain.groundCover[index].cover = cover
+        } else if terrain.groundCover.isEmpty {
+            terrain.groundCover.append(GroundZone(
+                id: "site-default-ground",
+                polygon: activeOrderedPositions,
+                cover: cover
+            ))
+        } else {
+            terrain.groundCover[0].cover = cover
+            if activeOrderedPositions.count >= 3 {
+                terrain.groundCover[0].polygon = activeOrderedPositions
+            }
+        }
+        drawingData.terrain = terrain
+        save()
+        hapticLight()
+    }
+
     // MARK: - Persistence
 
     func save() {
@@ -3598,6 +3691,63 @@ class DeckBuilderViewModel: ObservableObject {
         return loaded
     }
 
+    private func syncFramingGeometryBaseline() {
+        framingGeometrySignature = Self.geometrySignature(for: drawingData)
+        framingNeedsRegeneration = false
+    }
+
+    private func updateFramingRegenerationFlag() {
+        guard drawingData.framing != nil else {
+            framingGeometrySignature = Self.geometrySignature(for: drawingData)
+            framingNeedsRegeneration = false
+            return
+        }
+        let signature = Self.geometrySignature(for: drawingData)
+        framingNeedsRegeneration = !framingGeometrySignature.isEmpty && signature != framingGeometrySignature
+    }
+
+    private static func geometrySignature(for data: DeckDrawingData) -> String {
+        var parts: [String] = [
+            "scale=\(formatSignatureValue(data.scaleFactor))",
+            "elev=\(formatSignatureValue(data.overallElevation))",
+            "multi=\(data.isMultiLevel)"
+        ]
+
+        if data.isMultiLevel {
+            for level in data.levels.sorted(by: { $0.id < $1.id }) {
+                parts.append("level=\(level.id)")
+                parts.append("levelElev=\(formatSignatureValue(level.elevation))")
+                appendGeometryParts(vertices: level.vertices, edges: level.edges, into: &parts)
+            }
+        } else {
+            appendGeometryParts(vertices: data.vertices, edges: data.edges, into: &parts)
+        }
+
+        return parts.joined(separator: "|")
+    }
+
+    private static func appendGeometryParts(
+        vertices: [DeckVertex],
+        edges: [DeckEdge],
+        into parts: inout [String]
+    ) {
+        for vertex in vertices.sorted(by: { $0.id < $1.id }) {
+            parts.append(
+                "v=\(vertex.id):\(formatSignatureValue(vertex.position.x)):\(formatSignatureValue(vertex.position.y)):\(formatSignatureValue(vertex.elevation))"
+            )
+        }
+        for edge in edges.sorted(by: { $0.id < $1.id }) {
+            parts.append(
+                "e=\(edge.id):\(edge.startVertexId):\(edge.endVertexId):\(edge.edgeType.rawValue):\(formatSignatureValue(edge.dimension))"
+            )
+        }
+    }
+
+    private static func formatSignatureValue(_ value: Double?) -> String {
+        guard let value else { return "nil" }
+        return String(format: "%.4f", value)
+    }
+
     private static func isNewDrawing(for drawingData: DeckDrawingData) -> Bool {
         let hasSingleGeometry = !drawingData.vertices.isEmpty
             || !drawingData.edges.isEmpty
@@ -3635,6 +3785,7 @@ class DeckBuilderViewModel: ObservableObject {
         // a user who opens an OLD drawing without editing still sees the
         // correct per-surface materials in 2D and 3D.
         reconcileSurfaces()
+        syncFramingGeometryBaseline()
 
         // Bug ab554b5f — designs that arrive in the builder with geometry but
         // have NEVER been synced (template / sketch / AR creation paths)

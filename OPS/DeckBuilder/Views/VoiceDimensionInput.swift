@@ -19,12 +19,19 @@ class VoiceDimensionInput: ObservableObject {
     private let audioEngine = AVAudioEngine()
 
     private let expectedCount: Int
-    private let measurementSystem: MeasurementSystem
+    private var measurementSystem: MeasurementSystem
 
     init(expectedDimensionCount: Int, measurementSystem: MeasurementSystem = .imperial) {
         self.expectedCount = expectedDimensionCount
         self.measurementSystem = measurementSystem
         self.parsedDimensions = Array(repeating: nil, count: expectedDimensionCount)
+    }
+
+    func setMeasurementSystem(_ measurementSystem: MeasurementSystem) {
+        self.measurementSystem = measurementSystem
+        if !recognizedText.isEmpty {
+            parsedDimensions = parseDimensionsFromText(recognizedText)
+        }
     }
 
     // MARK: - Authorization

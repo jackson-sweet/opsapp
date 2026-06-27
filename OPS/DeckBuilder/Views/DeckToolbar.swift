@@ -463,6 +463,13 @@ struct DeckToolbar: View {
                 viewModel.toggleSelectionMove()
             }
 
+            if viewModel.selection.selectedVertexIds.count == 1,
+               let vertexId = viewModel.selection.selectedVertexIds.first {
+                actionButton(icon: "plus", label: "Draw") {
+                    viewModel.beginPerimeterEntry(fromVertexId: vertexId)
+                }
+            }
+
             copySelectionButton
 
             pasteSelectionButton

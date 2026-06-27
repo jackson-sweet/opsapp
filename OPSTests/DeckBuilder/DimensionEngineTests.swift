@@ -24,6 +24,10 @@ final class DimensionEngineTests: XCTestCase {
         XCTAssertEqual(DimensionEngine.parseToInches("16'", system: .imperial), 192)
     }
 
+    func testParseImperial_overflowInchesNormalizeToTotalLength() {
+        XCTAssertEqual(DimensionEngine.parseToInches("2' 48\"", system: .imperial), 72)
+    }
+
     func testParseImperial_plainNumber_assumesFeet() {
         XCTAssertEqual(DimensionEngine.parseToInches("24", system: .imperial), 288)
     }

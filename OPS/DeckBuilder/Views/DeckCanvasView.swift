@@ -94,6 +94,8 @@ struct DeckCanvasView: View {
                 // Selection overlays (screen space)
                 selectionOverlay
 
+                perimeterDirectionOverlay(viewportSize: geometry.size)
+
                 // Live dimension HUD now renders in DeckBuilderView's
                 // floating header so it shares a gridline with the title
                 // pill (DECK-NEW-3). Removed from here so the canvas no
@@ -129,6 +131,11 @@ struct DeckCanvasView: View {
                 // controller's notion of viewport in lockstep so edge zones don't
                 // drift after a layout change.
                 wireEdgePan(viewportSize: newSize)
+            }
+            .onChange(of: viewModel.perimeterEntry) { _, entry in
+                if let anchor = entry.activeAnchor {
+                    centerViewport(on: anchor.position, viewportSize: geometry.size)
+                }
             }
         }
     }
@@ -1162,6 +1169,25 @@ struct DeckCanvasView: View {
         }
     }
 
+    @ViewBuilder
+    private func perimeterDirectionOverlay(viewportSize: CGSize) -> some View {
+        if case .choosingDirection(let anchor) = viewModel.perimeterEntry {
+            let point = clampedOverlayPoint(
+                screenPoint(fromCanvas: anchor.position),
+                overlaySize: PerimeterDirectionWheelView.diameter,
+                viewportSize: viewportSize
+            )
+
+            PerimeterDirectionWheelView(anchor: anchor) { direction in
+                viewModel.selectPerimeterDirection(direction)
+            }
+            .position(point)
+            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            .animation(OPSStyle.Animation.panel, value: anchor)
+            .zIndex(20)
+        }
+    }
+
     /// Deck height persistent overlay
     @ViewBuilder
     private var deckHeightOverlay: some View {
@@ -1281,7 +1307,33 @@ struct DeckCanvasView: View {
         )
     }
 
+    private func centerViewport(on point: CGPoint, viewportSize: CGSize) {
+        let nextOffset = CGSize(
+            width: viewportSize.width / 2 - point.x * canvasScale,
+            height: viewportSize.height / 2 - point.y * canvasScale
+        )
+        withAnimation(OPSStyle.Animation.panel) {
+            canvasOffset = nextOffset
+        }
+    }
+
     // MARK: - Coordinate Conversion
+
+    private func screenPoint(fromCanvas point: CGPoint) -> CGPoint {
+        CGPoint(
+            x: point.x * canvasScale + canvasOffset.width,
+            y: point.y * canvasScale + canvasOffset.height
+        )
+    }
+
+    private func clampedOverlayPoint(_ point: CGPoint, overlaySize: CGFloat, viewportSize: CGSize) -> CGPoint {
+        let half = overlaySize / 2
+        let margin = half + OPSStyle.Layout.spacing2
+        return CGPoint(
+            x: min(max(margin, point.x), max(margin, viewportSize.width - margin)),
+            y: min(max(margin, point.y), max(margin, viewportSize.height - margin))
+        )
+    }
 
     private func canvasPoint(from location: CGPoint, in size: CGSize) -> CGPoint {
         // Clamp to the canvas workspace so vertices created from the gesture
@@ -1450,6 +1502,9 @@ struct DeckCanvasView: View {
                     let loc = drag?.location ?? .zero
                     let point = canvasPoint(from: loc, in: size)
                     let hitThreshold = max(22.0, 25.0 / canvasScale)
+                    if viewModel.beginPerimeterEntry(at: point, hitThreshold: hitThreshold) {
+                        return
+                    }
                     viewModel.handleLongPress(at: point, hitThreshold: hitThreshold)
                 default: break
                 }

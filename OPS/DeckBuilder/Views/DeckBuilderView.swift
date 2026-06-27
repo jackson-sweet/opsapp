@@ -129,6 +129,8 @@ struct DeckBuilderView: View {
                             .transition(.scale.combined(with: .opacity))
                     }
 
+                    perimeterLengthOverlay
+
                     } // end canvas ZStack (bottomTrailing)
 
                     // Floating header — compact stack. The title bar and the
@@ -498,6 +500,18 @@ struct DeckBuilderView: View {
                 )
         )
         .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private var perimeterLengthOverlay: some View {
+        if case .enteringLength = viewModel.perimeterEntry {
+            PerimeterLengthControlView(viewModel: viewModel)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                .animation(OPSStyle.Animation.panel, value: viewModel.perimeterEntry)
+                .zIndex(30)
+        }
     }
 
     private func commitTitleEdit() {

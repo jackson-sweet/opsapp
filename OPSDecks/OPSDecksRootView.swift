@@ -8,15 +8,20 @@ enum OPSDecksCreateState: Equatable {
 }
 
 struct OPSDecksRootView: View {
-    private let savedDeckCount: Int
-    private let entitlement: DecksEntitlement
+    @StateObject private var session: OPSDecksDesignSession
 
     init(
+        companyId: String = "ops-decks-local-company",
         savedDeckCount: Int = 0,
         entitlement: DecksEntitlement = .free(savedDeckLimit: 1)
     ) {
-        self.savedDeckCount = savedDeckCount
-        self.entitlement = entitlement
+        _session = StateObject(
+            wrappedValue: OPSDecksDesignSession(
+                companyId: companyId,
+                savedDeckCount: savedDeckCount,
+                entitlement: entitlement
+            )
+        )
     }
 
     var body: some View {
@@ -24,11 +29,19 @@ struct OPSDecksRootView: View {
             OPSStyle.Colors.background
                 .ignoresSafeArea()
 
-            VStack(spacing: OPSStyle.Layout.spacing4) {
-                shellPanel
-                DecksUpgradeSurface()
+            if let activeDesign = session.activeDesign {
+                OPSDecksDesignerSessionView(
+                    activeDesign: activeDesign,
+                    onClose: session.closeActiveDesign
+                )
+                .padding(OPSStyle.Layout.spacing4)
+            } else {
+                VStack(spacing: OPSStyle.Layout.spacing4) {
+                    shellPanel
+                    DecksUpgradeSurface()
+                }
+                .padding(OPSStyle.Layout.spacing4)
             }
-            .padding(OPSStyle.Layout.spacing4)
         }
     }
 
@@ -71,12 +84,16 @@ struct OPSDecksRootView: View {
             VStack(spacing: OPSStyle.Layout.spacing3) {
                 OPSDecksShellButton(
                     title: primaryActionTitle,
-                    variant: primaryActionVariant
+                    variant: primaryActionVariant,
+                    isDisabled: createState == .lockedAtFreeLimit,
+                    action: primaryAction
                 )
 
                 OPSDecksShellButton(
                     title: OPSDecksCopy.secondaryActionPlaceholder,
-                    variant: .secondary
+                    variant: .secondary,
+                    isDisabled: true,
+                    action: {}
                 )
             }
         }
@@ -90,13 +107,7 @@ struct OPSDecksRootView: View {
     }
 
     private var createState: OPSDecksCreateState {
-        let gate = DecksEntitlementGate(entitlement: entitlement)
-        switch gate.decision(savedDeckCount: savedDeckCount) {
-        case .allowSave:
-            return .canCreate
-        case .requiresPro:
-            return .lockedAtFreeLimit
-        }
+        session.createState
     }
 
     private var primaryActionTitle: String {
@@ -116,6 +127,10 @@ struct OPSDecksRootView: View {
             return .attention
         }
     }
+
+    private func primaryAction() {
+        _ = session.startNewDeck()
+    }
 }
 
 private struct OPSDecksShellButton: View {
@@ -127,9 +142,11 @@ private struct OPSDecksShellButton: View {
 
     let title: String
     let variant: Variant
+    let isDisabled: Bool
+    let action: () -> Void
 
     var body: some View {
-        Button(action: {}) {
+        Button(action: action) {
             Text(title)
                 .font(OPSStyle.Typography.buttonLabel)
                 .foregroundStyle(foregroundColor)
@@ -143,7 +160,8 @@ private struct OPSDecksShellButton: View {
                 .stroke(borderColor, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
-        .disabled(true)
+        .disabled(isDisabled)
+        .opacity(isDisabled ? OPSStyle.Layout.Opacity.strong : 1.0)
     }
 
     private var backgroundColor: Color {
@@ -177,6 +195,69 @@ private struct OPSDecksShellButton: View {
         case .attention:
             OPSStyle.Colors.tanLineM
         }
+    }
+}
+
+private struct OPSDecksDesignerSessionView: View {
+    let activeDesign: OPSDecksActiveDesign
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
+            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing3) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                    Text(OPSDecksCopy.workspaceEyebrow)
+                        .font(OPSStyle.Typography.panelTitle)
+                        .foregroundStyle(OPSStyle.Colors.textMute)
+
+                    Text(activeDesign.document.title)
+                        .font(OPSStyle.Typography.screenTitle(for: activeDesign.document.title))
+                        .foregroundStyle(OPSStyle.Colors.text)
+                }
+
+                Spacer(minLength: OPSStyle.Layout.spacing3)
+
+                Button(action: onClose) {
+                    Text(OPSDecksCopy.closeWorkspace)
+                        .font(OPSStyle.Typography.buttonLabel)
+                        .foregroundStyle(OPSStyle.Colors.text2)
+                        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                }
+                .buttonStyle(.plain)
+                .background(OPSStyle.Colors.glassApprox)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                        .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
+            }
+
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                Text(OPSDecksCopy.workspaceStatus)
+                    .font(OPSStyle.Typography.panelTitle)
+                    .foregroundStyle(OPSStyle.Colors.opsAccent)
+
+                Text(OPSDecksCopy.workspaceRuntime)
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundStyle(OPSStyle.Colors.text2)
+
+                Text(OPSDecksCopy.workspaceProject)
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundStyle(OPSStyle.Colors.textMute)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(OPSStyle.Layout.spacing3)
+            .background(OPSStyle.Colors.glassApprox)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
+                    .stroke(OPSStyle.Colors.glassBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius))
+
+            Spacer(minLength: OPSStyle.Layout.spacing4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 

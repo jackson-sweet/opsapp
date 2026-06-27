@@ -14,4 +14,23 @@ enum OPSDecksRuntimeFactory {
             store: nil
         )
     }
+
+    @MainActor
+    static func make(
+        document: OPSDecksDeckDocument,
+        libraryStore: OPSDecksDeckLibraryStore
+    ) -> DeckRuntime {
+        DeckRuntime(
+            context: DeckRuntimeContext(
+                companyId: document.companyId,
+                projectId: document.projectId,
+                projectName: document.title,
+                appSurface: .opsDecks
+            ),
+            store: OPSDecksActiveDeckStore(
+                documentId: document.id,
+                libraryStore: libraryStore
+            )
+        )
+    }
 }

@@ -9,17 +9,23 @@ enum OPSDecksCreateState: Equatable {
 
 struct OPSDecksRootView: View {
     @StateObject private var session: OPSDecksDesignSession
+    @State private var deckPendingDeletion: OPSDecksDeckDocument?
 
     init(
         companyId: String = "ops-decks-local-company",
-        savedDeckCount: Int = 0,
-        entitlement: DecksEntitlement = .free(savedDeckLimit: 1)
+        savedDeckCount: Int? = nil,
+        entitlement: DecksEntitlement = .free(savedDeckLimit: 1),
+        libraryStore: OPSDecksDeckLibraryStore? = nil
     ) {
+        let resolvedStore = libraryStore ?? Self.makeLibraryStore(
+            companyId: companyId,
+            savedDeckCount: savedDeckCount
+        )
         _session = StateObject(
             wrappedValue: OPSDecksDesignSession(
                 companyId: companyId,
-                savedDeckCount: savedDeckCount,
-                entitlement: entitlement
+                entitlement: entitlement,
+                libraryStore: resolvedStore
             )
         )
     }
@@ -37,12 +43,58 @@ struct OPSDecksRootView: View {
                 )
                 .padding(OPSStyle.Layout.spacing4)
             } else {
-                VStack(spacing: OPSStyle.Layout.spacing4) {
-                    shellPanel
-                    DecksUpgradeSurface()
+                ScrollView {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
+                        shellPanel
+                        libraryPanel
+                        DecksUpgradeSurface()
+                    }
+                    .padding(OPSStyle.Layout.spacing4)
                 }
-                .padding(OPSStyle.Layout.spacing4)
             }
+        }
+        .confirmationDialog(
+            OPSDecksCopy.deleteConfirmationTitle,
+            isPresented: deleteConfirmationBinding,
+            titleVisibility: .visible
+        ) {
+            if let document = deckPendingDeletion {
+                Button(OPSDecksCopy.deleteDeck, role: .destructive) {
+                    _ = session.deleteDeck(id: document.id)
+                    deckPendingDeletion = nil
+                }
+            }
+            Button(OPSDecksCopy.cancel, role: .cancel) {}
+        } message: {
+            Text(OPSDecksCopy.deleteConfirmationMessage)
+        }
+    }
+
+    private var deleteConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { deckPendingDeletion != nil },
+            set: { isPresented in
+                if !isPresented {
+                    deckPendingDeletion = nil
+                }
+            }
+        )
+    }
+
+    private static func makeLibraryStore(
+        companyId: String,
+        savedDeckCount: Int?
+    ) -> OPSDecksDeckLibraryStore {
+        if let savedDeckCount {
+            return OPSDecksInMemoryDeckLibraryStore(
+                seedCount: savedDeckCount,
+                companyId: companyId
+            )
+        }
+        do {
+            return try OPSDecksFileDeckLibraryStore.appStore()
+        } catch {
+            return OPSDecksUnavailableDeckLibraryStore(error: error)
         }
     }
 
@@ -100,6 +152,43 @@ struct OPSDecksRootView: View {
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius))
     }
 
+    private var libraryPanel: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+            Text(OPSDecksCopy.libraryEyebrow)
+                .font(OPSStyle.Typography.panelTitle)
+                .foregroundStyle(OPSStyle.Colors.textMute)
+
+            if session.libraryError != nil {
+                OPSDecksStatusPanel(
+                    title: OPSDecksCopy.storageErrorStatus,
+                    message: OPSDecksCopy.storageErrorMessage,
+                    variant: .attention
+                )
+            }
+
+            if session.savedDecks.isEmpty {
+                OPSDecksEmptyLibraryView()
+            } else {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    ForEach(session.savedDecks) { document in
+                        OPSDecksLibraryRow(
+                            document: document,
+                            onOpen: { _ = session.openDeck(id: document.id) },
+                            onDelete: { deckPendingDeletion = document }
+                        )
+                    }
+                }
+            }
+        }
+        .padding(OPSStyle.Layout.spacing5)
+        .background(OPSStyle.Colors.glassApprox)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
+                .stroke(OPSStyle.Colors.glassBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius))
+    }
+
     private var createState: OPSDecksCreateState {
         session.createState
     }
@@ -132,6 +221,7 @@ private struct OPSDecksShellButton: View {
         case primary
         case secondary
         case attention
+        case destructive
     }
 
     let title: String
@@ -166,6 +256,8 @@ private struct OPSDecksShellButton: View {
             OPSStyle.Colors.glassApprox
         case .attention:
             OPSStyle.Colors.tanFillM
+        case .destructive:
+            OPSStyle.Colors.roseFillM
         }
     }
 
@@ -177,6 +269,8 @@ private struct OPSDecksShellButton: View {
             OPSStyle.Colors.text2
         case .attention:
             OPSStyle.Colors.tanTextM
+        case .destructive:
+            OPSStyle.Colors.roseTextM
         }
     }
 
@@ -188,7 +282,147 @@ private struct OPSDecksShellButton: View {
             OPSStyle.Colors.line
         case .attention:
             OPSStyle.Colors.tanLineM
+        case .destructive:
+            OPSStyle.Colors.roseLineM
         }
+    }
+}
+
+private struct OPSDecksEmptyLibraryView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text(OPSDecksCopy.emptyLibraryTitle)
+                .font(OPSStyle.Typography.panelTitle)
+                .foregroundStyle(OPSStyle.Colors.text2)
+
+            Text(OPSDecksCopy.emptyLibraryBody)
+                .font(OPSStyle.Typography.body)
+                .foregroundStyle(OPSStyle.Colors.text3)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.glassApprox)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
+    }
+}
+
+private struct OPSDecksStatusPanel: View {
+    enum Variant {
+        case attention
+    }
+
+    let title: String
+    let message: String
+    let variant: Variant
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text(title)
+                .font(OPSStyle.Typography.panelTitle)
+                .foregroundStyle(titleColor)
+
+            Text(message)
+                .font(OPSStyle.Typography.body)
+                .foregroundStyle(OPSStyle.Colors.text2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(OPSStyle.Layout.spacing3)
+        .background(backgroundColor)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                .stroke(borderColor, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
+    }
+
+    private var titleColor: Color {
+        switch variant {
+        case .attention:
+            OPSStyle.Colors.tanTextM
+        }
+    }
+
+    private var backgroundColor: Color {
+        switch variant {
+        case .attention:
+            OPSStyle.Colors.tanFillM
+        }
+    }
+
+    private var borderColor: Color {
+        switch variant {
+        case .attention:
+            OPSStyle.Colors.tanLineM
+        }
+    }
+}
+
+private struct OPSDecksLibraryRow: View {
+    let document: OPSDecksDeckDocument
+    let onOpen: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing3) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    Text(document.title)
+                        .font(OPSStyle.Typography.section)
+                        .foregroundStyle(OPSStyle.Colors.text)
+
+                    Text(updatedLabel)
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundStyle(OPSStyle.Colors.text3)
+                }
+
+                Spacer(minLength: OPSStyle.Layout.spacing3)
+
+                Text(OPSDecksCopy.localStatus)
+                    .font(OPSStyle.Typography.badgeCake)
+                    .foregroundStyle(OPSStyle.Colors.text2)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                    .background(OPSStyle.Colors.glassApprox)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                            .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
+            }
+
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                OPSDecksShellButton(
+                    title: OPSDecksCopy.openDeck,
+                    variant: .secondary,
+                    isDisabled: false,
+                    action: onOpen
+                )
+
+                OPSDecksShellButton(
+                    title: OPSDecksCopy.deleteDeck,
+                    variant: .destructive,
+                    isDisabled: false,
+                    action: onDelete
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.glassApprox)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
+    }
+
+    private var updatedLabel: String {
+        let formatted = document.updatedAt.formatted(date: .abbreviated, time: .shortened)
+        return OPSDecksCopy.updatedLabel(formatted)
     }
 }
 

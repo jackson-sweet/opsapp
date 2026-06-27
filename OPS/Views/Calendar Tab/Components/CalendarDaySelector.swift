@@ -86,19 +86,25 @@ struct WeekRowEdgeDropDelegate: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
+        refreshHover(from: info)
+        return DropProposal(operation: .move)
     }
 
     func dropEntered(info: DropInfo) {
-        let calendar = Calendar.current
-        let source = ScheduleDragHoverSource.weekRowEdge(direction)
-        let changed = session.hoveredDate.map { !calendar.isDate($0, inSameDayAs: fallbackDay) } ?? true
+        let changed = refreshHover(from: info)
         if changed {
             UISelectionFeedbackGenerator().selectionChanged()
         }
-        session.updateHover(day: fallbackDay, source: source)
+    }
+
+    @discardableResult
+    private func refreshHover(from info: DropInfo) -> Bool {
+        let calendar = Calendar.current
+        let source = ScheduleDragHoverSource.weekRowEdge(direction)
+        let changed = session.refreshHover(day: fallbackDay, source: source, calendar: calendar)
         restoreActive(from: info, whileHovering: source)
         onHover(direction)
+        return changed
     }
 
     func dropExited(info: DropInfo) {

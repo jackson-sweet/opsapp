@@ -10,6 +10,35 @@ final class ScheduleDragSessionHoverTests: XCTestCase {
     }
 
     @MainActor
+    func testRefreshHoverUpdatesDateTargetAndReportsChange() {
+        let session = ScheduleDragSession()
+        let payload = makePayload()
+        let monday = makeDate(2026, 6, 22)
+        let source = ScheduleDragHoverSource.dayCell(for: monday, calendar: calendar)
+
+        session.begin(payload)
+        let changed = session.refreshHover(day: monday, source: source, calendar: calendar)
+
+        XCTAssertTrue(changed)
+        XCTAssertEqual(session.hoverSource, source)
+        XCTAssertTrue(calendar.isDate(session.hoveredDate!, inSameDayAs: monday))
+    }
+
+    @MainActor
+    func testRefreshHoverDoesNotReportChangeForSameDate() {
+        let session = ScheduleDragSession()
+        let payload = makePayload()
+        let monday = makeDate(2026, 6, 22)
+        let source = ScheduleDragHoverSource.dayCell(for: monday, calendar: calendar)
+
+        session.begin(payload)
+        _ = session.refreshHover(day: monday, source: source, calendar: calendar)
+        let changed = session.refreshHover(day: monday, source: source, calendar: calendar)
+
+        XCTAssertFalse(changed)
+    }
+
+    @MainActor
     func testOldDayExitDoesNotClearNewDayHover() {
         let session = ScheduleDragSession()
         let payload = makePayload()

@@ -188,18 +188,23 @@ struct RescheduleDropDelegate: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
+        refreshHover(from: info)
         // The whole point of the custom delegate: a move, not a copy.
-        DropProposal(operation: .move)
+        return DropProposal(operation: .move)
     }
 
     func dropEntered(info: DropInfo) {
+        let changed = refreshHover(from: info)
+        if changed { UISelectionFeedbackGenerator().selectionChanged() }
+    }
+
+    @discardableResult
+    private func refreshHover(from info: DropInfo) -> Bool {
         let cal = Calendar.current
         let source = ScheduleDragHoverSource.dayCell(for: day, calendar: cal)
-        // Tick only when the projected start day actually changes (no haptic spam).
-        let changed = session.hoveredDate.map { !cal.isDate($0, inSameDayAs: day) } ?? true
-        if changed { UISelectionFeedbackGenerator().selectionChanged() }
-        session.updateHover(day: day, source: source)
+        let changed = session.refreshHover(day: day, source: source, calendar: cal)
         restoreActive(from: info, whileHovering: source)
+        return changed
     }
 
     func dropExited(info: DropInfo) {

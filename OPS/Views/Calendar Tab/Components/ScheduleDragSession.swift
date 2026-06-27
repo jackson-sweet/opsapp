@@ -96,6 +96,13 @@ final class ScheduleDragSession {
         hoveredDate = day
     }
 
+    @discardableResult
+    func refreshHover(day: Date, source: ScheduleDragHoverSource, calendar: Calendar = .current) -> Bool {
+        let changed = hoveredDate.map { !calendar.isDate($0, inSameDayAs: day) } ?? true
+        updateHover(day: day, source: source)
+        return changed
+    }
+
     func clearHover(source: ScheduleDragHoverSource) {
         guard hoverSource == source else { return }
         hoverSource = nil

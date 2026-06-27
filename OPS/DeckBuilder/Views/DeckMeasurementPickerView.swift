@@ -71,9 +71,9 @@ struct DeckMeasurementPickerView: View {
             voiceRow
             messageRow
         }
-        .padding(DeckMeasurementPickerTokens.panelPadding)
+        .padding(.horizontal, DeckMeasurementPickerTokens.panelPadding)
+        .padding(.vertical, DeckMeasurementPickerTokens.standardGap)
         .frame(maxWidth: DeckMeasurementPickerTokens.panelMaxWidth)
-        .glassSurface(cornerRadius: DeckMeasurementPickerTokens.panelRadius)
         .onAppear(perform: loadInitialValue)
         .onChange(of: value) { _, newValue in
             syncFromExternalValue(newValue)
@@ -133,23 +133,12 @@ struct DeckMeasurementPickerView: View {
             } label: {
                 Image(systemName: "arrow.right")
                     .font(.system(size: DeckMeasurementPickerTokens.iconSize, weight: .semibold))
-                    .foregroundColor(canCommit(activeValue) ? OPSStyle.Colors.buttonText : OPSStyle.Colors.textMute)
+                    .foregroundColor(canCommit(activeValue) ? OPSStyle.Colors.text : OPSStyle.Colors.textMute)
                     .frame(
                         width: DeckMeasurementPickerTokens.standardTouch,
                         height: DeckMeasurementPickerTokens.minTouch
                     )
-                    .background(canCommit(activeValue) ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.surfaceInput)
-                    .clipShape(RoundedRectangle(
-                        cornerRadius: DeckMeasurementPickerTokens.controlRadius,
-                        style: .continuous
-                    ))
-                    .overlay(
-                        RoundedRectangle(
-                            cornerRadius: DeckMeasurementPickerTokens.controlRadius,
-                            style: .continuous
-                        )
-                        .strokeBorder(OPSStyle.Colors.line, lineWidth: DeckMeasurementPickerTokens.borderWidth)
-                    )
+                    .measurementControlChrome(isProminent: canCommit(activeValue))
             }
             .buttonStyle(.plain)
             .disabled(!canCommit(activeValue))
@@ -158,12 +147,28 @@ struct DeckMeasurementPickerView: View {
     }
 
     private var systemToggle: some View {
-        Picker("SYSTEM", selection: measurementSystemBinding) {
-            Text("IMPERIAL").tag(MeasurementSystem.imperial)
-            Text("METRIC").tag(MeasurementSystem.metric)
+        HStack(spacing: DeckMeasurementPickerTokens.tightGap) {
+            measurementSystemButton(.imperial, label: "IMPERIAL")
+            measurementSystemButton(.metric, label: "METRIC")
         }
-        .pickerStyle(.segmented)
-        .font(OPSStyle.Typography.metadata)
+        .padding(DeckMeasurementPickerTokens.tightGap)
+        .measurementControlChrome()
+    }
+
+    private func measurementSystemButton(_ system: MeasurementSystem, label: String) -> some View {
+        let isActive = measurementSystem == system
+        return Button {
+            measurementSystemBinding.wrappedValue = system
+        } label: {
+            Text(label)
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(isActive ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
+                .frame(maxWidth: .infinity)
+                .frame(height: DeckMeasurementPickerTokens.minTouch)
+                .measurementControlChrome(isActive: isActive)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     @ViewBuilder
@@ -280,17 +285,12 @@ struct DeckMeasurementPickerView: View {
                 .foregroundColor(OPSStyle.Colors.text3)
         }
         .frame(maxWidth: .infinity)
-        .background(OPSStyle.Colors.surfaceInput)
-        .clipShape(RoundedRectangle(
-            cornerRadius: DeckMeasurementPickerTokens.nestedRadius,
-            style: .continuous
-        ))
         .overlay(
             RoundedRectangle(
                 cornerRadius: DeckMeasurementPickerTokens.nestedRadius,
                 style: .continuous
             )
-            .strokeBorder(OPSStyle.Colors.nestedBorder, lineWidth: DeckMeasurementPickerTokens.borderWidth)
+            .strokeBorder(OPSStyle.Colors.line.opacity(0.7), lineWidth: DeckMeasurementPickerTokens.borderWidth)
         )
     }
 
@@ -376,8 +376,8 @@ struct DeckMeasurementPickerView: View {
 }
 
 private extension View {
-    func measurementControlChrome() -> some View {
-        background(OPSStyle.Colors.surfaceInput)
+    func measurementControlChrome(isProminent: Bool = false, isActive: Bool = false) -> some View {
+        background(isProminent || isActive ? OPSStyle.Colors.surfaceActive : Color.clear)
             .clipShape(RoundedRectangle(
                 cornerRadius: DeckMeasurementPickerTokens.controlRadius,
                 style: .continuous
@@ -387,7 +387,10 @@ private extension View {
                     cornerRadius: DeckMeasurementPickerTokens.controlRadius,
                     style: .continuous
                 )
-                .strokeBorder(OPSStyle.Colors.line, lineWidth: DeckMeasurementPickerTokens.borderWidth)
+                .strokeBorder(
+                    isProminent || isActive ? OPSStyle.Colors.text2.opacity(0.42) : OPSStyle.Colors.line,
+                    lineWidth: DeckMeasurementPickerTokens.borderWidth
+                )
             )
     }
 }

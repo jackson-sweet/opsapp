@@ -167,6 +167,14 @@ struct PerimeterEntryCommit: Equatable {
     let previousAnchor: PerimeterEntryAnchor
 }
 
+struct PerimeterDraftPreview: Equatable {
+    let anchor: PerimeterEntryAnchor
+    let direction: PerimeterDirection
+    let start: CGPoint
+    let end: CGPoint
+    let dimensionInches: Double
+}
+
 enum PerimeterEntryMode: Equatable {
     case idle
     case choosingDirection(anchor: PerimeterEntryAnchor)

@@ -22,6 +22,10 @@ enum PerimeterDirectionWheelGeometry {
         )
     }
 
+    static func overlayCenter(anchorScreenPoint: CGPoint, activePressPoint: CGPoint?) -> CGPoint {
+        activePressPoint ?? anchorScreenPoint
+    }
+
     static func nearestDirection(to location: CGPoint, anchor: PerimeterEntryAnchor) -> PerimeterDirection? {
         let center = CGPoint(x: diameter / 2, y: diameter / 2)
         let vector = CGVector(dx: location.x - center.x, dy: location.y - center.y)

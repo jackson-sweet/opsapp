@@ -1077,6 +1077,31 @@ class DeckBuilderViewModel: ObservableObject {
 
     // MARK: - Perimeter Entry Operations
 
+    var perimeterDraftPreview: PerimeterDraftPreview? {
+        guard case .enteringLength(let anchor, let direction, let draft) = perimeterEntry,
+              draft.totalInches > 0,
+              let liveAnchor = makePerimeterAnchor(vertexId: anchor.vertexId, rootVertexId: anchor.rootVertexId) else {
+            return nil
+        }
+
+        let endpoint = PerimeterEntryGeometry.endpoint(
+            from: liveAnchor.position,
+            direction: direction,
+            lengthInches: draft.totalInches,
+            scaleFactor: drawingData.scaleFactor,
+            incomingAngleDegrees: liveAnchor.incomingAngleDegrees,
+            fallbackScale: Self.prescaleFallbackScale
+        )
+
+        return PerimeterDraftPreview(
+            anchor: liveAnchor,
+            direction: direction,
+            start: liveAnchor.position,
+            end: endpoint,
+            dimensionInches: draft.totalInches
+        )
+    }
+
     @discardableResult
     func beginPerimeterEntry(at point: CGPoint, hitThreshold: Double = 25.0) -> Bool {
         if let vertexId = PolygonMath.findVertexAtPoint(point, vertices: activeVertices, hitThreshold: hitThreshold) {

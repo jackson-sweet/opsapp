@@ -15,6 +15,7 @@ struct DeckCanvasView: View {
     @State private var perimeterWheelHighlightedDirection: PerimeterDirection?
     @State private var perimeterLongPressDidBeginEntry = false
     @State private var perimeterLongPressFallbackPoint: CGPoint?
+    @State private var perimeterLongPressWheelCenter: CGPoint?
 
     // Drives the auto-pan when the user drags toward the viewport edge.
     // Lives on the view so its timer is torn down with the view.
@@ -137,6 +138,10 @@ struct DeckCanvasView: View {
             }
             .onChange(of: viewModel.perimeterEntry) { _, entry in
                 if let anchor = entry.activeAnchor {
+                    if case .choosingDirection = entry,
+                       perimeterLongPressWheelCenter != nil {
+                        return
+                    }
                     centerViewport(on: anchor.position, viewportSize: geometry.size)
                 } else {
                     perimeterWheelHighlightedDirection = nil
@@ -230,6 +235,9 @@ struct DeckCanvasView: View {
                     for edge in activeLevel.edges {
                         drawEdge(context: context, edge: edge, vertexLookup: activeLevel.vertex(byId:))
                     }
+                    if let preview = viewModel.perimeterDraftPreview {
+                        drawPerimeterDraftPreview(context: context, preview: preview)
+                    }
                     if case .drawing(_, let startPos, let currentEnd) = viewModel.drawingMode {
                         drawActiveLine(context: context, startPosition: startPos, currentEnd: currentEnd)
                         drawAlignmentGuides(context: context)
@@ -261,6 +269,9 @@ struct DeckCanvasView: View {
                 }
                 for edge in viewModel.drawingData.edges {
                     drawEdge(context: context, edge: edge, vertexLookup: viewModel.drawingData.vertex(byId:))
+                }
+                if let preview = viewModel.perimeterDraftPreview {
+                    drawPerimeterDraftPreview(context: context, preview: preview)
                 }
                 if case .drawing(_, let startPos, let currentEnd) = viewModel.drawingMode {
                     drawActiveLine(context: context, startPosition: startPos, currentEnd: currentEnd)
@@ -955,6 +966,56 @@ struct DeckCanvasView: View {
                         style: StrokeStyle(lineWidth: activeStroke, dash: activeDash))
     }
 
+    private func drawPerimeterDraftPreview(context: GraphicsContext, preview: PerimeterDraftPreview) {
+        var path = Path()
+        path.move(to: preview.start)
+        path.addLine(to: preview.end)
+
+        let stroke = scaledSize(2, min: 1.25, max: 4)
+        let dash = [scaledSize(10, min: 6, max: 16), scaledSize(5, min: 3, max: 9)]
+        context.stroke(
+            path,
+            with: .color(OPSStyle.Colors.text.opacity(0.72)),
+            style: StrokeStyle(lineWidth: stroke, lineCap: .round, dash: dash)
+        )
+
+        let endRadius = scaledSize(5, min: 3.5, max: 9)
+        let endRect = CGRect(
+            x: preview.end.x - endRadius,
+            y: preview.end.y - endRadius,
+            width: endRadius * 2,
+            height: endRadius * 2
+        )
+        context.stroke(
+            Path(ellipseIn: endRect),
+            with: .color(OPSStyle.Colors.text2.opacity(0.75)),
+            lineWidth: scaledSize(1, min: 0.75, max: 2)
+        )
+
+        let midpoint = CGPoint(
+            x: (preview.start.x + preview.end.x) / 2,
+            y: (preview.start.y + preview.end.y) / 2
+        )
+        let dx = preview.end.x - preview.start.x
+        let dy = preview.end.y - preview.start.y
+        let length = max(0.0001, sqrt(dx * dx + dy * dy))
+        let offset = scaledSize(16, min: 10, max: 24)
+        let labelPoint = CGPoint(
+            x: midpoint.x + (-dy / length) * offset,
+            y: midpoint.y + (dx / length) * offset
+        )
+        let label = DimensionEngine.format(
+            preview.dimensionInches,
+            system: viewModel.drawingData.config.measurementSystem
+        )
+        context.draw(
+            Text(label.uppercased())
+                .font(.system(size: scaledSize(11, min: 8, max: 16), weight: .semibold, design: .monospaced))
+                .foregroundColor(OPSStyle.Colors.text2),
+            at: labelPoint
+        )
+    }
+
     // (Live dimension label moved to a SwiftUI screen-space HUD —
     // `liveDimensionHUD` + `computeLiveDimensionLabel()` below. Bug 9c2b8866.)
 
@@ -1181,10 +1242,14 @@ struct DeckCanvasView: View {
     @ViewBuilder
     private func perimeterDirectionOverlay(viewportSize: CGSize) -> some View {
         if case .choosingDirection(let anchor) = viewModel.perimeterEntry {
-            let point = clampedOverlayPoint(
+            let anchorScreenPoint = clampedOverlayPoint(
                 screenPoint(fromCanvas: anchor.position),
                 overlaySize: PerimeterDirectionWheelView.diameter,
                 viewportSize: viewportSize
+            )
+            let point = PerimeterDirectionWheelGeometry.overlayCenter(
+                anchorScreenPoint: anchorScreenPoint,
+                activePressPoint: perimeterLongPressWheelCenter
             )
 
             PerimeterDirectionWheelView(
@@ -1533,6 +1598,8 @@ struct DeckCanvasView: View {
                         perimeterWheelHighlightedDirection = nil
                         if let direction {
                             viewModel.selectPerimeterDirection(direction)
+                        } else if let anchor = viewModel.perimeterEntry.activeAnchor {
+                            centerViewport(on: anchor.position, viewportSize: size)
                         }
                         return
                     }
@@ -1552,9 +1619,11 @@ struct DeckCanvasView: View {
 
         let point = canvasPoint(from: drag.startLocation, in: viewportSize)
         let hitThreshold = max(22.0, 25.0 / canvasScale)
+        perimeterLongPressWheelCenter = drag.startLocation
         if viewModel.beginPerimeterEntry(at: point, hitThreshold: hitThreshold) {
             perimeterLongPressDidBeginEntry = true
         } else {
+            perimeterLongPressWheelCenter = nil
             perimeterLongPressFallbackPoint = point
         }
     }
@@ -1565,10 +1634,14 @@ struct DeckCanvasView: View {
 
     private func perimeterDirection(at location: CGPoint, viewportSize: CGSize) -> PerimeterDirection? {
         guard case .choosingDirection(let anchor) = viewModel.perimeterEntry else { return nil }
-        let wheelCenter = clampedOverlayPoint(
+        let anchorScreenPoint = clampedOverlayPoint(
             screenPoint(fromCanvas: anchor.position),
             overlaySize: PerimeterDirectionWheelView.diameter,
             viewportSize: viewportSize
+        )
+        let wheelCenter = PerimeterDirectionWheelGeometry.overlayCenter(
+            anchorScreenPoint: anchorScreenPoint,
+            activePressPoint: perimeterLongPressWheelCenter
         )
         let localLocation = PerimeterDirectionWheelGeometry.localLocation(
             from: location,
@@ -1580,6 +1653,7 @@ struct DeckCanvasView: View {
     private func resetPerimeterLongPressState() {
         perimeterLongPressDidBeginEntry = false
         perimeterLongPressFallbackPoint = nil
+        perimeterLongPressWheelCenter = nil
     }
 }
 

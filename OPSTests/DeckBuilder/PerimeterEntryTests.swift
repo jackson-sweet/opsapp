@@ -130,6 +130,47 @@ final class PerimeterEntryTests: XCTestCase {
         )
     }
 
+    func testDirectionWheelCenterStaysOnPressPointWhilePanIsDeferred() throws {
+        let anchorScreenPointAfterCentering = CGPoint(x: 196, y: 422)
+        let originalPressPoint = CGPoint(x: 74, y: 238)
+
+        let wheelCenter = PerimeterDirectionWheelGeometry.overlayCenter(
+            anchorScreenPoint: anchorScreenPointAfterCentering,
+            activePressPoint: originalPressPoint
+        )
+
+        XCTAssertEqual(wheelCenter.x, originalPressPoint.x, accuracy: 0.0001)
+        XCTAssertEqual(wheelCenter.y, originalPressPoint.y, accuracy: 0.0001)
+
+        let anchor = PerimeterEntryAnchor(
+            vertexId: "v1",
+            position: CGPoint(x: 100, y: 100),
+            incomingAngleDegrees: nil,
+            rootVertexId: "v1"
+        )
+        let localLocation = PerimeterDirectionWheelGeometry.localLocation(
+            from: CGPoint(x: originalPressPoint.x + 92, y: originalPressPoint.y),
+            wheelCenter: wheelCenter
+        )
+
+        XCTAssertEqual(
+            PerimeterDirectionWheelGeometry.nearestDirection(to: localLocation, anchor: anchor),
+            .right
+        )
+    }
+
+    func testDirectionWheelFallsBackToAnchorScreenPointAfterPressEnds() {
+        let anchorScreenPoint = CGPoint(x: 196, y: 422)
+
+        let wheelCenter = PerimeterDirectionWheelGeometry.overlayCenter(
+            anchorScreenPoint: anchorScreenPoint,
+            activePressPoint: nil
+        )
+
+        XCTAssertEqual(wheelCenter.x, anchorScreenPoint.x, accuracy: 0.0001)
+        XCTAssertEqual(wheelCenter.y, anchorScreenPoint.y, accuracy: 0.0001)
+    }
+
     func testImperialDraftNormalizesOverflowInches() {
         let draft = PerimeterLengthDraft.imperial(feet: 2, inches: 48, sixteenths: 0)
         let components = draft.imperialComponents
@@ -165,6 +206,57 @@ final class PerimeterEntryTests: XCTestCase {
         XCTAssertEqual(endpoint.position.x, 244, accuracy: 0.0001)
         XCTAssertEqual(endpoint.position.y, 100, accuracy: 0.0001)
         XCTAssertEqual(viewModel.perimeterEntry.activeAnchor?.vertexId, edge.endVertexId)
+    }
+
+    func testDraftPreviewTracksPerimeterLengthBeforeCommit() throws {
+        var data = DeckDrawingData()
+        data.config.snappingEnabled = false
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 100, y: 100))
+        ]
+
+        let viewModel = viewModel(drawingData: data)
+        viewModel.beginPerimeterEntry(fromVertexId: "v1")
+        viewModel.selectPerimeterDirection(.right)
+        viewModel.updatePerimeterLength(.imperial(feet: 6, inches: 0, sixteenths: 0))
+
+        var preview = try XCTUnwrap(viewModel.perimeterDraftPreview)
+        XCTAssertEqual(viewModel.drawingData.edges.count, 0)
+        XCTAssertEqual(preview.start.x, 100, accuracy: 0.0001)
+        XCTAssertEqual(preview.start.y, 100, accuracy: 0.0001)
+        XCTAssertEqual(preview.end.x, 244, accuracy: 0.0001)
+        XCTAssertEqual(preview.end.y, 100, accuracy: 0.0001)
+        XCTAssertEqual(preview.dimensionInches, 72, accuracy: 0.0001)
+
+        viewModel.updatePerimeterLength(.imperial(feet: 10, inches: 0, sixteenths: 0))
+        preview = try XCTUnwrap(viewModel.perimeterDraftPreview)
+        XCTAssertEqual(preview.end.x, 340, accuracy: 0.0001)
+        XCTAssertEqual(preview.end.y, 100, accuracy: 0.0001)
+        XCTAssertEqual(preview.dimensionInches, 120, accuracy: 0.0001)
+    }
+
+    func testDraftPreviewUsesRelativeContinuationAngle() throws {
+        var data = DeckDrawingData()
+        data.config.snappingEnabled = false
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 144, y: 0))
+        ]
+        data.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2", dimension: 72)
+        ]
+
+        let viewModel = viewModel(drawingData: data)
+        viewModel.beginPerimeterEntry(fromVertexId: "v2")
+        viewModel.selectPerimeterDirection(.left90)
+        viewModel.updatePerimeterLength(.imperial(feet: 6, inches: 0, sixteenths: 0))
+
+        let preview = try XCTUnwrap(viewModel.perimeterDraftPreview)
+        XCTAssertEqual(preview.start.x, 144, accuracy: 0.0001)
+        XCTAssertEqual(preview.start.y, 0, accuracy: 0.0001)
+        XCTAssertEqual(preview.end.x, 144, accuracy: 0.0001)
+        XCTAssertEqual(preview.end.y, -144, accuracy: 0.0001)
+        XCTAssertEqual(preview.direction, .left90)
     }
 
     func testCommitReusesExistingVertexWhenEndpointSnapsClosed() throws {

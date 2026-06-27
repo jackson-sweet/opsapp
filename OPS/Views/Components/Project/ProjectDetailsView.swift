@@ -36,6 +36,7 @@ struct ProjectDetailsView: View {
     @State private var showingMeasureCapture = false
     @State private var showingDeckCreationPicker = false
     @State private var deckDesignToOpen: DeckDesign?
+    @Query private var allDeckDesigns: [DeckDesign]
     @ObservedObject private var permissionStore = PermissionStore.shared
     @State private var isNoteComposing = false
     @State private var showingTaskPicker = false
@@ -433,7 +434,7 @@ struct ProjectDetailsView: View {
                             featureEnabled: permissionStore.isFeatureEnabled("deck_builder"),
                             canCreate: permissionStore.can("deck_builder.create", requiredScope: "assigned"),
                             canEdit: permissionStore.can("deck_builder.edit", requiredScope: "assigned")
-                        ) ? { showingDeckCreationPicker = true } : nil,
+                        ) ? { openDeckDesignFromActionBar() } : nil,
                         // LiDAR Dimensioned Photo Capture (spec §3.1) — gated
                         // by `MeasureActionButton.shouldRender` so flag + capability
                         // checks stay in one place. Same logic as Home's
@@ -803,6 +804,17 @@ struct ProjectDetailsView: View {
         }
 
         showingNativeCamera = true
+    }
+
+    private func openDeckDesignFromActionBar() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+        switch ProjectDeckActionResolver.resolve(designs: allDeckDesigns, forProjectId: project.id) {
+        case .open(let design):
+            deckDesignToOpen = design
+        case .create:
+            showingDeckCreationPicker = true
+        }
     }
 
     private var noteImagePickerContent: some View {

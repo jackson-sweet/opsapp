@@ -6,6 +6,8 @@
 
 ---
 
+> **Execution status - 2026-06-26:** Tasks 1-10 have landed on `ops-decks/p2-framing` through the framing controls commit and this bible update. Agent verification has covered the DeckKit package tests, focused OPS Deck Builder runtime tests, style-token scan, whitespace diff check, and generic iOS device build. Remaining non-agent gate before product sign-off: Jackson visual QA on the 3D framing controls/rendering path.
+
 ## Goal
 
 Deliver the **framing foundation** — the critical-path block on which every later engineering phase (P3 sizing, P4 footings, P6 overhead, P7 compliance/permit) depends. Concretely, Phase 2 ships, for **BOTH** tiers:
@@ -522,13 +524,13 @@ var canPickGround: Bool { capabilities.contains(.groundCover) }
 
 ## Cross-phase invariants checklist (every task obeys)
 
-- [ ] New schema = ONE-block-region additive (`framing` + `terrain`), `decodeIfPresent` + defaults, `version` → 2. No rename/removal of any shipped field, enum case, or `component_type` (contract §8.1).
-- [ ] Unknown/failed sub-block decodes to nil + preserved on re-encode; round-trip + light-preserve + malformed tests present (contract §8.2, §0.2, §1.4).
-- [ ] Engines pure, offline, no I/O (`AutoFramingEngine`, `FramingGeometry`, `FramingTakeoff`, `GroundTextureFactory.material`) — contract §8.3. (No `EngineOutcome` in P2 — no sizing claim; `sizing` stays nil.)
-- [ ] NO code rule / `CodePackage` consumption — P2 makes zero engineering assertions (roadmap §1, contract §7 P2 row "none (no claim)").
-- [ ] DeckKit reaches host only via primitives + P1 seams + `CapabilityProvider`. No `Project`/`Company`/`AppState`/`SyncEngine`/`DataController` (contract §8.5).
-- [ ] Capability gates surfaces + render, never data presence; `.plausibleFrame`/`.groundCover` in `.light` (contract §8.6).
-- [ ] Build: device `generic/platform=iOS`; tests on iPhone 17 / OS 26.5 sim; grep for `SUCCEEDED`; styling via OPSStyle (contract §8.8).
+- [x] New schema = ONE-block-region additive (`framing` + `terrain`), `decodeIfPresent` + defaults, `version` → 2. No rename/removal of any shipped field, enum case, or `component_type` (contract §8.1).
+- [x] Unknown/failed sub-block decodes to nil + preserved on re-encode; round-trip + light-preserve + malformed tests present (contract §8.2, §0.2, §1.4).
+- [x] Engines pure, offline, no I/O (`AutoFramingEngine`, `FramingGeometry`, `FramingTakeoff`, `GroundTextureFactory.material`) — contract §8.3. (No `EngineOutcome` in P2 — no sizing claim; `sizing` stays nil.)
+- [x] NO code rule / `CodePackage` consumption — P2 makes zero engineering assertions (roadmap §1, contract §7 P2 row "none (no claim)").
+- [x] DeckKit reaches host only via primitives + P1 seams + `CapabilityProvider`. No `Project`/`Company`/`AppState`/`SyncEngine`/`DataController` (contract §8.5).
+- [x] Capability gates surfaces + render, never data presence; `.plausibleFrame`/`.groundCover` in `.light` (contract §8.6).
+- [x] Build: device `generic/platform=iOS`; tests on iPhone 17 / OS 26.5 sim; grep for `SUCCEEDED`; styling via OPSStyle (contract §8.8).
 
 ## Verification gate (before "done")
 

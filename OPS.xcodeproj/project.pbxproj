@@ -13,6 +13,7 @@
 		E5C0D4062FE5000000A10001 /* DeckKit in Frameworks */ = {isa = PBXBuildFile; productRef = E5C0D4082FE5000000A10001 /* DeckKit */; };
 		E5D6A0092FE6A00000D6E001 /* OPSDesignKit in Frameworks */ = {isa = PBXBuildFile; productRef = E5C0D4022FE5000000A10001 /* OPSDesignKit */; };
 		E5D6A00A2FE6A00000D6E001 /* DeckKit in Frameworks */ = {isa = PBXBuildFile; productRef = E5C0D4082FE5000000A10001 /* DeckKit */; };
+		E5D6A00B2FE6A00000D6E001 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = E5C690542F4A7E7A0068CE31 /* Supabase */; };
 		E50559F02F53784E007F4AF0 /* MapboxMaps in Frameworks */ = {isa = PBXBuildFile; productRef = E5D0A1022F60B100006DB0A2 /* MapboxMaps */; };
 		E5055E3D2F54B72A007F4AF0 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = E5055E3C2F54B72A007F4AF0 /* FirebaseRemoteConfig */; };
 		E521056F2F4E6CFE0051FA9C /* CoreXLSX in Frameworks */ = {isa = PBXBuildFile; productRef = E521056E2F4E6CFE0051FA9C /* CoreXLSX */; };
@@ -245,6 +246,7 @@
 			files = (
 				E5D6A0092FE6A00000D6E001 /* OPSDesignKit in Frameworks */,
 				E5D6A00A2FE6A00000D6E001 /* DeckKit in Frameworks */,
+				E5D6A00B2FE6A00000D6E001 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -447,6 +449,7 @@
 			packageProductDependencies = (
 				E5C0D4022FE5000000A10001 /* OPSDesignKit */,
 				E5C0D4082FE5000000A10001 /* DeckKit */,
+				E5C690542F4A7E7A0068CE31 /* Supabase */,
 			);
 			productName = OPSDecks;
 			productReference = E5D6A0002FE6A00000D6E001 /* OPSDecks.app */;

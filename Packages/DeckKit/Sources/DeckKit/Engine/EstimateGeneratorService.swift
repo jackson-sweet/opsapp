@@ -93,9 +93,13 @@ public struct EstimateGeneratorService {
         from drawingData: DeckDrawingData,
         waste: WasteSettings = WasteSettings()
     ) -> [GeneratedLineItem] {
+        let resolvedWaste = drawingData.wasteSettings ?? waste
         let baseItems: [GeneratedLineItem]
         if drawingData.isMultiLevel {
-            baseItems = generateMultiLevelLineItems(from: drawingData)
+            baseItems = generateMultiLevelLineItems(
+                from: drawingData,
+                waste: resolvedWaste
+            )
         } else {
             baseItems = generateSingleLevelLineItems(
                 footprint: drawingData.footprint,
@@ -107,19 +111,23 @@ public struct EstimateGeneratorService {
                 persistedSurfaces: drawingData.surfaces,
                 detectedSurfaces: drawingData.detectedSurfaces,
                 levelPrefix: nil,
-                startingSortOrder: 0
+                startingSortOrder: 0,
+                waste: resolvedWaste
             ).items
         }
 
         return appendFramingLineItems(
             to: baseItems,
             drawingData: drawingData,
-            waste: waste
+            waste: resolvedWaste
         )
     }
 
     /// Multi-level: iterate levels then connections
-    private static func generateMultiLevelLineItems(from drawingData: DeckDrawingData) -> [GeneratedLineItem] {
+    private static func generateMultiLevelLineItems(
+        from drawingData: DeckDrawingData,
+        waste: WasteSettings
+    ) -> [GeneratedLineItem] {
         var allItems: [GeneratedLineItem] = []
         var sortOrder = 0
 
@@ -137,7 +145,8 @@ public struct EstimateGeneratorService {
                 persistedSurfaces: level.surfaces,
                 detectedSurfaces: level.detectedSurfaces,
                 levelPrefix: level.name,
-                startingSortOrder: sortOrder
+                startingSortOrder: sortOrder,
+                waste: waste
             )
             allItems.append(contentsOf: result.items)
             sortOrder = result.nextSortOrder
@@ -218,7 +227,8 @@ public struct EstimateGeneratorService {
         persistedSurfaces: [DeckSurface],
         detectedSurfaces: [DetectedSurface],
         levelPrefix: String?,
-        startingSortOrder: Int
+        startingSortOrder: Int,
+        waste: WasteSettings
     ) -> (items: [GeneratedLineItem], nextSortOrder: Int) {
         var items: [GeneratedLineItem] = []
         var sortOrder = startingSortOrder
@@ -236,7 +246,8 @@ public struct EstimateGeneratorService {
             detectedSurfaces: detectedSurfaces,
             scaleFactor: drawingData.effectiveScaleFactor,
             prefix: prefix,
-            startingSortOrder: sortOrder
+            startingSortOrder: sortOrder,
+            waste: waste
         )
         items.append(contentsOf: perSurfaceItems.items)
         sortOrder = perSurfaceItems.nextSortOrder
@@ -259,7 +270,11 @@ public struct EstimateGeneratorService {
                     name: "\(prefix)\(item.name)",
                     description: nil,
                     type: .material,
-                    quantity: round(areaSqFt * 100) / 100,
+                    quantity: areaQuantityWithWaste(
+                        areaSqFt: areaSqFt,
+                        waste: waste,
+                        patternKey: nil
+                    ),
                     unit: "sq ft",
                     unitPrice: item.unitPrice ?? 0,
                     productId: item.productId,
@@ -698,7 +713,8 @@ public struct EstimateGeneratorService {
         detectedSurfaces: [DetectedSurface],
         scaleFactor: Double,
         prefix: String,
-        startingSortOrder: Int
+        startingSortOrder: Int,
+        waste: WasteSettings
     ) -> (items: [GeneratedLineItem], nextSortOrder: Int) {
         guard !persistedSurfaces.isEmpty else {
             return (items: [], nextSortOrder: startingSortOrder)
@@ -740,7 +756,11 @@ public struct EstimateGeneratorService {
                     name: displayName,
                     description: nil,
                     type: .material,
-                    quantity: round(areaSqFt * 100) / 100,
+                    quantity: areaQuantityWithWaste(
+                        areaSqFt: areaSqFt,
+                        waste: waste,
+                        patternKey: surface.boardMaterial
+                    ),
                     unit: "sq ft",
                     unitPrice: item.unitPrice ?? 0,
                     productId: item.productId,
@@ -754,6 +774,34 @@ public struct EstimateGeneratorService {
         }
 
         return (items, sortOrder)
+    }
+
+    private static func areaQuantityWithWaste(
+        areaSqFt: Double,
+        waste: WasteSettings,
+        patternKey: String?
+    ) -> Double {
+        let wastePercent = wastePercent(
+            for: patternKey,
+            waste: waste
+        )
+        let multiplier = 1 + max(0, wastePercent) / 100
+        return roundToTwo(areaSqFt * multiplier)
+    }
+
+    private static func wastePercent(
+        for patternKey: String?,
+        waste: WasteSettings
+    ) -> Double {
+        if let patternKey,
+           let override = waste.perPatternWastePercent[patternKey] {
+            return override
+        }
+        return waste.defaultWastePercent
+    }
+
+    private static func roundToTwo(_ value: Double) -> Double {
+        (value * 100).rounded() / 100
     }
 
     // MARK: - Geometry Helpers

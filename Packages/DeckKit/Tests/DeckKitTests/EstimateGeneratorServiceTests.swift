@@ -82,6 +82,68 @@ final class EstimateGeneratorServiceTests: XCTestCase {
         XCTAssertNil(DeckDrawingData.fromJSON("{\"vertices\":[]}")?.wasteSettings)
     }
 
+    func testAreaItemAppliesDefaultTenPercentWaste() throws {
+        let data = makeRectangleDeck(withVinyl: true)
+        let baseArea = EstimateGeneratorService.calculateAreaSqFt(drawingData: data)
+
+        let surfaceItem = try XCTUnwrap(
+            EstimateGeneratorService.generateLineItems(from: data)
+                .first { $0.category == "Surface" && $0.unit == "sq ft" }
+        )
+
+        XCTAssertEqual(surfaceItem.quantity, roundToTwo(baseArea * 1.10), accuracy: 0.001)
+    }
+
+    func testSurfaceBoardMaterialUsesPerPatternWaste() throws {
+        var data = makeRectangleDeck(withVinyl: false)
+        let detected = try XCTUnwrap(data.detectedSurfaces.first)
+        data.surfaces = [
+            DeckSurface(
+                vertexIds: Set(detected.vertexIds),
+                assignedItems: [
+                    AssignedItem(
+                        name: "Composite Decking",
+                        unitType: .squareFoot,
+                        unitPrice: 9.25
+                    )
+                ],
+                boardMaterial: "composite"
+            )
+        ]
+        data.wasteSettings = WasteSettings(
+            defaultWastePercent: 10,
+            perPatternWastePercent: ["composite": 20]
+        )
+        let baseArea = PolygonMath.realWorldArea(
+            vertices: detected.positions,
+            scaleFactor: data.effectiveScaleFactor
+        ) / 144.0
+
+        let surfaceItem = try XCTUnwrap(
+            EstimateGeneratorService.generateLineItems(from: data)
+                .first { $0.name == "Composite Decking" }
+        )
+
+        XCTAssertEqual(surfaceItem.quantity, roundToTwo(baseArea * 1.20), accuracy: 0.001)
+    }
+
+    func testWasteDoesNotChangeLinearFootItems() throws {
+        var data = makeRectangleDeck(withVinyl: false)
+        data.wasteSettings = WasteSettings(defaultWastePercent: 50)
+        data.edges[0].assignedItems.append(AssignedItem(
+            name: "LED Strip Light",
+            unitType: .linearFoot,
+            unitPrice: 12.00
+        ))
+
+        let lightItem = try XCTUnwrap(
+            EstimateGeneratorService.generateLineItems(from: data)
+                .first { $0.name == "LED Strip Light" }
+        )
+
+        XCTAssertEqual(lightItem.quantity, 24.0, accuracy: 0.001)
+    }
+
     // MARK: - Railing Items
 
     func testRailingLineItems_glassRailing() {
@@ -329,5 +391,9 @@ final class EstimateGeneratorServiceTests: XCTestCase {
             species: .sprucePineFir,
             grade: .no2
         )
+    }
+
+    private func roundToTwo(_ value: Double) -> Double {
+        (value * 100).rounded() / 100
     }
 }

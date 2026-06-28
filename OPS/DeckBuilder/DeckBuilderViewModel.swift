@@ -1344,7 +1344,7 @@ class DeckBuilderViewModel: ObservableObject {
         if let outgoing = activeEdges.last(where: { $0.startVertexId == vertexId }),
            let end = activeVertex(byId: outgoing.endVertexId) {
             return PerimeterDirection.normalizedAngle(
-                SnapEngine.lineAngle(from: end.position, to: vertex.position)
+                SnapEngine.lineAngle(from: vertex.position, to: end.position)
             )
         }
         return nil

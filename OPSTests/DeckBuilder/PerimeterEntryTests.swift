@@ -39,6 +39,52 @@ final class PerimeterEntryTests: XCTestCase {
         XCTAssertEqual(endpoint.y, -20, accuracy: 0.0001)
     }
 
+    func testAbsoluteCompassDirectionsMapToCanvasAxes() {
+        let start = CGPoint(x: 100, y: 100)
+
+        let north = PerimeterEntryGeometry.endpoint(
+            from: start,
+            direction: .up,
+            lengthInches: 10,
+            scaleFactor: 1,
+            incomingAngleDegrees: nil,
+            fallbackScale: DeckBuilderViewModel.prescaleFallbackScale
+        )
+        let east = PerimeterEntryGeometry.endpoint(
+            from: start,
+            direction: .right,
+            lengthInches: 10,
+            scaleFactor: 1,
+            incomingAngleDegrees: nil,
+            fallbackScale: DeckBuilderViewModel.prescaleFallbackScale
+        )
+        let south = PerimeterEntryGeometry.endpoint(
+            from: start,
+            direction: .down,
+            lengthInches: 10,
+            scaleFactor: 1,
+            incomingAngleDegrees: nil,
+            fallbackScale: DeckBuilderViewModel.prescaleFallbackScale
+        )
+        let west = PerimeterEntryGeometry.endpoint(
+            from: start,
+            direction: .left,
+            lengthInches: 10,
+            scaleFactor: 1,
+            incomingAngleDegrees: nil,
+            fallbackScale: DeckBuilderViewModel.prescaleFallbackScale
+        )
+
+        XCTAssertEqual(north.x, 100, accuracy: 0.0001)
+        XCTAssertEqual(north.y, 90, accuracy: 0.0001)
+        XCTAssertEqual(east.x, 110, accuracy: 0.0001)
+        XCTAssertEqual(east.y, 100, accuracy: 0.0001)
+        XCTAssertEqual(south.x, 100, accuracy: 0.0001)
+        XCTAssertEqual(south.y, 110, accuracy: 0.0001)
+        XCTAssertEqual(west.x, 90, accuracy: 0.0001)
+        XCTAssertEqual(west.y, 100, accuracy: 0.0001)
+    }
+
     func testAbsoluteDirectionWheelUsesCompassLabels() {
         XCTAssertEqual(PerimeterDirection.up.wheelLabel, "NORTH")
         XCTAssertEqual(PerimeterDirection.upRight45.wheelLabel, "NORTHEAST")
@@ -171,7 +217,7 @@ final class PerimeterEntryTests: XCTestCase {
         XCTAssertEqual(wheelCenter.y, anchorScreenPoint.y, accuracy: 0.0001)
     }
 
-    func testCanvasGesturesYieldToActivePerimeterEntryControls() {
+    func testCanvasGesturesYieldToDirectionWheelButAllowLengthZoom() {
         let anchor = PerimeterEntryAnchor(
             vertexId: "v1",
             position: CGPoint(x: 100, y: 100),
@@ -191,8 +237,32 @@ final class PerimeterEntryTests: XCTestCase {
             direction: .right,
             draft: .imperial(feet: 6, inches: 0, sixteenths: 0)
         )
-        XCTAssertFalse(DeckCanvasGesturePolicy.allowsCanvasGestureOverlayHitTesting(for: enteringLength))
+        XCTAssertTrue(DeckCanvasGesturePolicy.allowsCanvasGestureOverlayHitTesting(for: enteringLength))
         XCTAssertFalse(DeckCanvasGesturePolicy.allowsCanvasContentGestures(for: enteringLength))
+    }
+
+    func testSpeedDrawToolbarReplacesStandardToolbarWhileEntryIsActive() {
+        let anchor = PerimeterEntryAnchor(
+            vertexId: "v1",
+            position: CGPoint(x: 100, y: 100),
+            incomingAngleDegrees: nil,
+            rootVertexId: "v1"
+        )
+
+        XCTAssertFalse(PerimeterSpeedDrawToolbarPolicy.showsSpeedDrawToolbar(for: .idle))
+        XCTAssertTrue(PerimeterSpeedDrawToolbarPolicy.showsStandardToolbar(for: .idle))
+
+        let choosingDirection = PerimeterEntryMode.choosingDirection(anchor: anchor)
+        XCTAssertTrue(PerimeterSpeedDrawToolbarPolicy.showsSpeedDrawToolbar(for: choosingDirection))
+        XCTAssertFalse(PerimeterSpeedDrawToolbarPolicy.showsStandardToolbar(for: choosingDirection))
+
+        let enteringLength = PerimeterEntryMode.enteringLength(
+            anchor: anchor,
+            direction: .right,
+            draft: .imperial(feet: 6, inches: 0, sixteenths: 0)
+        )
+        XCTAssertTrue(PerimeterSpeedDrawToolbarPolicy.showsSpeedDrawToolbar(for: enteringLength))
+        XCTAssertFalse(PerimeterSpeedDrawToolbarPolicy.showsStandardToolbar(for: enteringLength))
     }
 
     func testImperialDraftNormalizesOverflowInches() {
@@ -281,6 +351,31 @@ final class PerimeterEntryTests: XCTestCase {
         XCTAssertEqual(preview.end.x, 144, accuracy: 0.0001)
         XCTAssertEqual(preview.end.y, -144, accuracy: 0.0001)
         XCTAssertEqual(preview.direction, .left90)
+    }
+
+    func testRelativeContinuationFromOutgoingEdgeUsesForwardHeading() throws {
+        var data = DeckDrawingData()
+        data.config.snappingEnabled = false
+        data.scaleFactor = 1
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 144, y: 0))
+        ]
+        data.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2", dimension: 144)
+        ]
+
+        let viewModel = viewModel(drawingData: data)
+        viewModel.beginPerimeterEntry(fromVertexId: "v1")
+        viewModel.selectPerimeterDirection(.straight)
+        viewModel.updatePerimeterLength(.imperial(feet: 6, inches: 0, sixteenths: 0))
+
+        let preview = try XCTUnwrap(viewModel.perimeterDraftPreview)
+        XCTAssertEqual(preview.start.x, 0, accuracy: 0.0001)
+        XCTAssertEqual(preview.start.y, 0, accuracy: 0.0001)
+        XCTAssertEqual(preview.end.x, 72, accuracy: 0.0001)
+        XCTAssertEqual(preview.end.y, 0, accuracy: 0.0001)
+        XCTAssertEqual(preview.direction, .straight)
     }
 
     func testCommitReusesExistingVertexWhenEndpointSnapsClosed() throws {

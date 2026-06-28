@@ -15,16 +15,18 @@ struct DeckMeasurementPickerConfiguration {
 }
 
 enum DeckMeasurementPickerTokens {
-    static let panelMaxWidth: CGFloat = 348
-    static let wheelWidth: CGFloat = 92
-    static let wheelHeight: CGFloat = 118
-    static let waveformHeight: CGFloat = 34
+    static let panelMaxWidth: CGFloat = 420
+    static let wheelWidth: CGFloat = 54
+    static let wheelHeight: CGFloat = 74
+    static let waveformHeight: CGFloat = 24
+    static let systemToggleWidth: CGFloat = 92
+    static let compactButtonHeight: CGFloat = 40
 
     static var panelRadius: CGFloat { OPSStyle.Layout.panelRadius }
     static var controlRadius: CGFloat { OPSStyle.Layout.buttonRadius }
     static var nestedRadius: CGFloat { OPSStyle.Layout.cardRadius }
-    static var panelPadding: CGFloat { OPSStyle.Layout.spacing3 }
-    static var rowGap: CGFloat { OPSStyle.Layout.spacing2_5 }
+    static var panelPadding: CGFloat { OPSStyle.Layout.spacing2 }
+    static var rowGap: CGFloat { OPSStyle.Layout.spacing1 }
     static var tightGap: CGFloat { OPSStyle.Layout.spacing1 }
     static var standardGap: CGFloat { OPSStyle.Layout.spacing2 }
     static var horizontalInset: CGFloat { OPSStyle.Layout.spacing2 }
@@ -61,6 +63,7 @@ struct DeckMeasurementPickerView: View {
     var configuration: DeckMeasurementPickerConfiguration = .deckBuilder
     var canCommit: (DeckMeasurementValue) -> Bool = { $0.totalInches > 0 }
     var onBack: () -> Void
+    var onCancel: (() -> Void)?
     var onCommit: (DeckMeasurementValue) -> Void
 
     @StateObject private var voiceInput = VoiceDimensionInput(expectedDimensionCount: 1)
@@ -83,16 +86,15 @@ struct DeckMeasurementPickerView: View {
     }
 
     var body: some View {
-        VStack(spacing: DeckMeasurementPickerTokens.rowGap) {
+        VStack(spacing: DeckMeasurementPickerTokens.tightGap) {
             headerRow
-            systemToggle
-            wheelRow
-            voiceRow
+            inputRow
+            voiceFeedbackRow
             messageRow
         }
         .padding(.horizontal, DeckMeasurementPickerTokens.panelPadding)
-        .padding(.vertical, DeckMeasurementPickerTokens.standardGap)
-        .frame(maxWidth: DeckMeasurementPickerTokens.panelMaxWidth)
+        .padding(.vertical, DeckMeasurementPickerTokens.tightGap)
+        .frame(maxWidth: .infinity)
         .onAppear(perform: loadInitialValue)
         .onChange(of: value) { _, newValue in
             syncFromExternalValue(newValue)
@@ -109,7 +111,24 @@ struct DeckMeasurementPickerView: View {
     }
 
     private var headerRow: some View {
-        HStack(spacing: DeckMeasurementPickerTokens.standardGap) {
+        HStack(spacing: DeckMeasurementPickerTokens.tightGap) {
+            if let onCancel {
+                Button {
+                    onCancel()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: DeckMeasurementPickerTokens.smallIconSize, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.text2)
+                        .frame(
+                            width: DeckMeasurementPickerTokens.minTouch,
+                            height: DeckMeasurementPickerTokens.minTouch
+                        )
+                        .measurementControlChrome()
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Exit speed draw")
+            }
+
             Button {
                 onBack()
             } label: {
@@ -137,7 +156,7 @@ struct DeckMeasurementPickerView: View {
                             .foregroundColor(OPSStyle.Colors.opsAccent)
                     }
                     Text(activeValue.formatted())
-                        .font(OPSStyle.Typography.dataValueLg)
+                        .font(OPSStyle.Typography.dataValue)
                         .foregroundColor(OPSStyle.Colors.text)
                         .monospacedDigit()
                         .lineLimit(1)
@@ -154,7 +173,7 @@ struct DeckMeasurementPickerView: View {
                     .font(.system(size: DeckMeasurementPickerTokens.iconSize, weight: .semibold))
                     .foregroundColor(canCommit(activeValue) ? OPSStyle.Colors.text : OPSStyle.Colors.textMute)
                     .frame(
-                        width: DeckMeasurementPickerTokens.standardTouch,
+                        width: DeckMeasurementPickerTokens.minTouch,
                         height: DeckMeasurementPickerTokens.minTouch
                     )
                     .measurementControlChrome(isProminent: canCommit(activeValue))
@@ -171,6 +190,7 @@ struct DeckMeasurementPickerView: View {
             measurementSystemButton(.metric, label: "METRIC")
         }
         .padding(DeckMeasurementPickerTokens.tightGap)
+        .frame(width: DeckMeasurementPickerTokens.systemToggleWidth)
         .measurementControlChrome()
     }
 
@@ -179,11 +199,11 @@ struct DeckMeasurementPickerView: View {
         return Button {
             measurementSystemBinding.wrappedValue = system
         } label: {
-            Text(label)
+            Text(label == "IMPERIAL" ? "IMP" : "MET")
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(isActive ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
                 .frame(maxWidth: .infinity)
-                .frame(height: DeckMeasurementPickerTokens.minTouch)
+                .frame(height: DeckMeasurementPickerTokens.compactButtonHeight)
                 .measurementControlChrome(isActive: isActive)
         }
         .buttonStyle(.plain)
@@ -226,40 +246,52 @@ struct DeckMeasurementPickerView: View {
         }
     }
 
-    private var voiceRow: some View {
-        HStack(spacing: DeckMeasurementPickerTokens.standardGap) {
-            Button {
-                toggleDictation()
-            } label: {
-                HStack(spacing: DeckMeasurementPickerTokens.tightGap) {
-                    Image(systemName: voiceInput.isListening ? "mic.fill" : "mic")
-                        .font(.system(size: DeckMeasurementPickerTokens.smallIconSize, weight: .semibold))
-                    Text(voiceInput.isListening ? "LISTENING" : "DICTATE")
-                        .font(OPSStyle.Typography.badgeCake)
-                        .lineLimit(1)
-                }
-                .foregroundColor(voiceInput.isListening ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.text2)
-                .frame(height: DeckMeasurementPickerTokens.minTouch)
-                .padding(.horizontal, DeckMeasurementPickerTokens.horizontalInset)
-                .measurementControlChrome()
-            }
-            .buttonStyle(.plain)
-
-            if voiceInput.isListening {
-                VoiceWaveformView(isListening: true)
-                    .frame(height: DeckMeasurementPickerTokens.waveformHeight)
-                    .transition(.opacity)
-            } else if !voiceInput.recognizedText.isEmpty {
-                Text(voiceInput.recognizedText.uppercased())
-                    .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(OPSStyle.Colors.text3)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-
-            Spacer(minLength: 0)
+    private var inputRow: some View {
+        HStack(alignment: .center, spacing: DeckMeasurementPickerTokens.tightGap) {
+            systemToggle
+            wheelRow
+            voiceButton
         }
-        .animation(OPSStyle.Animation.hover, value: voiceInput.isListening)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var voiceButton: some View {
+        Button {
+            toggleDictation()
+        } label: {
+            Image(systemName: voiceInput.isListening ? "mic.fill" : "mic")
+                .font(.system(size: DeckMeasurementPickerTokens.smallIconSize, weight: .semibold))
+                .foregroundColor(voiceInput.isListening ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.text2)
+                .frame(
+                    width: DeckMeasurementPickerTokens.minTouch,
+                    height: DeckMeasurementPickerTokens.minTouch
+                )
+                .measurementControlChrome(isActive: voiceInput.isListening)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(voiceInput.isListening ? "Stop dictation" : "Dictate measurement")
+    }
+
+    @ViewBuilder
+    private var voiceFeedbackRow: some View {
+        if voiceInput.isListening || !voiceInput.recognizedText.isEmpty {
+            HStack(spacing: DeckMeasurementPickerTokens.standardGap) {
+                if voiceInput.isListening {
+                    VoiceWaveformView(isListening: true)
+                        .frame(height: DeckMeasurementPickerTokens.waveformHeight)
+                        .transition(.opacity)
+                } else if !voiceInput.recognizedText.isEmpty {
+                    Text(voiceInput.recognizedText.uppercased())
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.text3)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .animation(OPSStyle.Animation.hover, value: voiceInput.isListening)
+        }
     }
 
     @ViewBuilder
@@ -282,20 +314,31 @@ struct DeckMeasurementPickerView: View {
     }
 
     private func measurementWheel(label: String, range: ClosedRange<Int>, value: Binding<Int>) -> some View {
-        VStack(spacing: DeckMeasurementPickerTokens.tightGap) {
-            RealtimeMeasurementWheel(range: range, value: value)
+        VStack(spacing: 0) {
+            Picker(label, selection: value) {
+                ForEach(Array(range), id: \.self) { rowValue in
+                    Text("\(rowValue)")
+                        .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                        .monospacedDigit()
+                        .tag(rowValue)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.wheel)
             .frame(
                 width: DeckMeasurementPickerTokens.wheelWidth,
-                height: DeckMeasurementPickerTokens.wheelHeight
+                height: DeckMeasurementPickerTokens.wheelHeight - 16
             )
+            .compositingGroup()
             .clipped()
 
             Text(label)
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.text3)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
         }
-        .padding(.vertical, DeckMeasurementPickerTokens.tightGap)
-        .frame(maxWidth: .infinity)
+        .frame(width: DeckMeasurementPickerTokens.wheelWidth, height: DeckMeasurementPickerTokens.wheelHeight)
         .measurementControlChrome(cornerRadius: DeckMeasurementPickerTokens.nestedRadius)
     }
 
@@ -380,194 +423,7 @@ struct DeckMeasurementPickerView: View {
     }
 }
 
-private struct RealtimeMeasurementWheel: UIViewRepresentable {
-    let range: ClosedRange<Int>
-    @Binding var value: Int
-
-    func makeUIView(context: Context) -> UIPickerView {
-        let picker = UIPickerView()
-        picker.backgroundColor = .clear
-        picker.dataSource = context.coordinator
-        picker.delegate = context.coordinator
-        picker.selectRow(DeckMeasurementWheelData.row(for: value, in: range), inComponent: 0, animated: false)
-        context.coordinator.attach(to: picker)
-        return picker
-    }
-
-    func updateUIView(_ uiView: UIPickerView, context: Context) {
-        let previousRange = context.coordinator.range
-        context.coordinator.value = $value
-        context.coordinator.range = range
-        context.coordinator.attach(to: uiView)
-
-        if previousRange != range {
-            uiView.reloadAllComponents()
-        }
-
-        let targetRow = DeckMeasurementWheelData.row(for: value, in: range)
-        if uiView.selectedRow(inComponent: 0) != targetRow {
-            uiView.selectRow(targetRow, inComponent: 0, animated: false)
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(value: $value, range: range)
-    }
-
-    final class Coordinator: NSObject, UIPickerViewDataSource, UIPickerViewDelegate {
-        var value: Binding<Int>
-        var range: ClosedRange<Int>
-
-        private weak var pickerView: UIPickerView?
-        private weak var observedScrollView: UIScrollView?
-        private var displayLink: CADisplayLink?
-        private var baselineRow = 0
-        private var baselineOffsetY: CGFloat = 0
-
-        init(value: Binding<Int>, range: ClosedRange<Int>) {
-            self.value = value
-            self.range = range
-        }
-
-        deinit {
-            observedScrollView?.panGestureRecognizer.removeTarget(self, action: #selector(handlePan(_:)))
-            stopTracking()
-        }
-
-        func attach(to pickerView: UIPickerView) {
-            self.pickerView = pickerView
-            guard let scrollView = pickerView.firstDescendant(of: UIScrollView.self) else { return }
-            guard observedScrollView !== scrollView else { return }
-
-            observedScrollView?.panGestureRecognizer.removeTarget(self, action: #selector(handlePan(_:)))
-            observedScrollView = scrollView
-            scrollView.panGestureRecognizer.addTarget(self, action: #selector(handlePan(_:)))
-            calibrate(from: scrollView)
-        }
-
-        func numberOfComponents(in pickerView: UIPickerView) -> Int {
-            1
-        }
-
-        func pickerView(_ pickerView: UIPickerView, numberOfRowsInComponent component: Int) -> Int {
-            DeckMeasurementWheelData.count(in: range)
-        }
-
-        func pickerView(_ pickerView: UIPickerView, rowHeightForComponent component: Int) -> CGFloat {
-            Self.rowHeight
-        }
-
-        func pickerView(_ pickerView: UIPickerView, widthForComponent component: Int) -> CGFloat {
-            DeckMeasurementPickerTokens.wheelWidth
-        }
-
-        func pickerView(
-            _ pickerView: UIPickerView,
-            viewForRow row: Int,
-            forComponent component: Int,
-            reusing view: UIView?
-        ) -> UIView {
-            let label = (view as? UILabel) ?? UILabel()
-            label.textAlignment = .center
-            label.backgroundColor = .clear
-            label.font = .monospacedDigitSystemFont(ofSize: 22, weight: .semibold)
-            label.textColor = UIColor(OPSStyle.Colors.text)
-            label.text = "\(DeckMeasurementWheelData.value(forRow: row, in: range))"
-            return label
-        }
-
-        func pickerView(_ pickerView: UIPickerView, didSelectRow row: Int, inComponent component: Int) {
-            publishSelectedRow(from: pickerView)
-            if let scrollView = observedScrollView {
-                calibrate(from: scrollView)
-            }
-        }
-
-        @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
-            switch recognizer.state {
-            case .began:
-                if let scrollView = observedScrollView {
-                    calibrate(from: scrollView)
-                }
-                startTracking()
-                publishEstimatedRow()
-            case .changed:
-                startTracking()
-                publishEstimatedRow()
-            case .ended, .cancelled, .failed:
-                startTracking()
-            default:
-                break
-            }
-        }
-
-        @objc private func tick() {
-            publishEstimatedRow()
-            guard let scrollView = observedScrollView else {
-                stopTracking()
-                return
-            }
-            if !scrollView.isDragging && !scrollView.isDecelerating && !scrollView.isTracking {
-                stopTracking()
-            }
-        }
-
-        private func startTracking() {
-            guard displayLink == nil else { return }
-            let link = CADisplayLink(target: self, selector: #selector(tick))
-            link.add(to: .main, forMode: .common)
-            displayLink = link
-        }
-
-        private func stopTracking() {
-            displayLink?.invalidate()
-            displayLink = nil
-        }
-
-        private static let rowHeight: CGFloat = 36
-
-        private func calibrate(from scrollView: UIScrollView) {
-            baselineRow = pickerView?.selectedRow(inComponent: 0) ?? 0
-            baselineOffsetY = scrollView.contentOffset.y
-        }
-
-        private func publishEstimatedRow() {
-            guard let scrollView = observedScrollView else {
-                publishSelectedRow(from: pickerView)
-                return
-            }
-
-            let rowDelta = Int(((scrollView.contentOffset.y - baselineOffsetY) / Self.rowHeight).rounded())
-            let estimatedRow = baselineRow + rowDelta
-            publish(row: estimatedRow)
-        }
-
-        private func publishSelectedRow(from pickerView: UIPickerView?) {
-            guard let pickerView else { return }
-            publish(row: pickerView.selectedRow(inComponent: 0))
-        }
-
-        private func publish(row: Int) {
-            let selected = DeckMeasurementWheelData.value(forRow: row, in: range)
-            guard value.wrappedValue != selected else { return }
-            value.wrappedValue = selected
-        }
-    }
-}
-
-private extension UIView {
-    func firstDescendant<T: UIView>(of type: T.Type) -> T? {
-        if let match = self as? T { return match }
-        for subview in subviews {
-            if let match = subview.firstDescendant(of: type) {
-                return match
-            }
-        }
-        return nil
-    }
-}
-
-private extension View {
+extension View {
     func measurementControlChrome(
         isProminent: Bool = false,
         isActive: Bool = false,

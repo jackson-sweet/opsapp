@@ -44,4 +44,11 @@ final class DeckMeasurementPickerTests: XCTestCase {
         XCTAssertEqual(DeckMeasurementWheelData.value(forRow: 4, in: 10...15), 14)
         XCTAssertEqual(DeckMeasurementWheelData.value(forRow: 100, in: 10...15), 15)
     }
+
+    func testDeckBuilderPickerTokensStayCompactForToolbarEntry() {
+        XCTAssertLessThanOrEqual(DeckMeasurementPickerTokens.wheelWidth, 64)
+        XCTAssertLessThanOrEqual(DeckMeasurementPickerTokens.wheelHeight, 84)
+        XCTAssertLessThanOrEqual(DeckMeasurementPickerTokens.systemToggleWidth, 112)
+        XCTAssertLessThanOrEqual(DeckMeasurementPickerTokens.compactButtonHeight, 44)
+    }
 }

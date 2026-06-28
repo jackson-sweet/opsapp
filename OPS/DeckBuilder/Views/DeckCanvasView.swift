@@ -5,8 +5,12 @@ import UIKit
 
 enum DeckCanvasGesturePolicy {
     static func allowsCanvasGestureOverlayHitTesting(for entry: PerimeterEntryMode) -> Bool {
-        guard case .idle = entry else { return false }
-        return true
+        switch entry {
+        case .idle, .enteringLength(_, _, _):
+            return true
+        case .choosingDirection(_):
+            return false
+        }
     }
 
     static func allowsCanvasContentGestures(for entry: PerimeterEntryMode) -> Bool {
@@ -126,7 +130,13 @@ struct DeckCanvasView: View {
                 CanvasGestureView(
                     scale: $canvasScale,
                     offset: $canvasOffset,
-                    isDrawing: viewModel.drawingMode != .idle
+                    isDrawing: viewModel.drawingMode != .idle,
+                    onInteractingChange: { isInteracting in
+                        guard !isInteracting,
+                              case .enteringLength = viewModel.perimeterEntry,
+                              let anchor = viewModel.perimeterEntry.activeAnchor else { return }
+                        centerViewport(on: anchor.position, viewportSize: geometry.size)
+                    }
                 )
                 .allowsHitTesting(DeckCanvasGesturePolicy.allowsCanvasGestureOverlayHitTesting(for: viewModel.perimeterEntry))
             }
@@ -264,6 +274,9 @@ struct DeckCanvasView: View {
                     for edge in activeLevel.edges {
                         drawDimensionLabel(context: context, edge: edge, vertexLookup: activeLevel.vertex(byId:), canvasSize: size)
                     }
+                    if let anchor = viewModel.perimeterEntry.activeAnchor {
+                        drawPerimeterActiveAnchor(context: context, anchor: anchor)
+                    }
                 }
             } else {
                 // DECK-NEW-1 — render every detected closed face, not just
@@ -298,6 +311,9 @@ struct DeckCanvasView: View {
                 }
                 for edge in viewModel.drawingData.edges {
                     drawDimensionLabel(context: context, edge: edge, vertexLookup: viewModel.drawingData.vertex(byId:), canvasSize: size)
+                }
+                if let anchor = viewModel.perimeterEntry.activeAnchor {
+                    drawPerimeterActiveAnchor(context: context, anchor: anchor)
                 }
             }
 
@@ -1097,6 +1113,50 @@ struct DeckCanvasView: View {
     }
 
     // MARK: - Vertices
+
+    private func drawPerimeterActiveAnchor(context: GraphicsContext, anchor: PerimeterEntryAnchor) {
+        let point = anchor.position
+        let ringR = scaledSize(11, min: 8, max: 16)
+        let innerR = scaledSize(4, min: 3, max: 6)
+        let stroke = scaledSize(1.75, min: 1.25, max: 3)
+        let tick = scaledSize(6, min: 4, max: 9)
+
+        let ring = CGRect(
+            x: point.x - ringR,
+            y: point.y - ringR,
+            width: ringR * 2,
+            height: ringR * 2
+        )
+        let dot = CGRect(
+            x: point.x - innerR,
+            y: point.y - innerR,
+            width: innerR * 2,
+            height: innerR * 2
+        )
+
+        context.fill(Path(ellipseIn: dot), with: .color(OPSStyle.Colors.opsAccent.opacity(0.26)))
+        context.stroke(
+            Path(ellipseIn: ring),
+            with: .color(OPSStyle.Colors.opsAccent.opacity(0.95)),
+            style: StrokeStyle(lineWidth: stroke, dash: [tick, tick * 0.75])
+        )
+
+        var reticle = Path()
+        reticle.move(to: CGPoint(x: point.x - ringR - tick, y: point.y))
+        reticle.addLine(to: CGPoint(x: point.x - ringR + tick * 0.2, y: point.y))
+        reticle.move(to: CGPoint(x: point.x + ringR - tick * 0.2, y: point.y))
+        reticle.addLine(to: CGPoint(x: point.x + ringR + tick, y: point.y))
+        reticle.move(to: CGPoint(x: point.x, y: point.y - ringR - tick))
+        reticle.addLine(to: CGPoint(x: point.x, y: point.y - ringR + tick * 0.2))
+        reticle.move(to: CGPoint(x: point.x, y: point.y + ringR - tick * 0.2))
+        reticle.addLine(to: CGPoint(x: point.x, y: point.y + ringR + tick))
+
+        context.stroke(
+            reticle,
+            with: .color(Color.white.opacity(0.88)),
+            style: StrokeStyle(lineWidth: scaledSize(1, min: 0.75, max: 1.6))
+        )
+    }
 
     private func drawVertex(context: GraphicsContext, vertex: DeckVertex) {
         let isSelected = viewModel.selection.selectedVertexIds.contains(vertex.id)

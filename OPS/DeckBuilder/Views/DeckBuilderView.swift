@@ -129,8 +129,6 @@ struct DeckBuilderView: View {
                             .transition(.scale.combined(with: .opacity))
                     }
 
-                    perimeterLengthOverlay
-
                     } // end canvas ZStack (bottomTrailing)
 
                     // Floating header — compact stack. The title bar and the
@@ -242,7 +240,13 @@ struct DeckBuilderView: View {
                 // contained pill instead of a full-width bar bleeding to the
                 // screen edges. Matches the floating header pill aesthetic.
                 // Bug 0a5f3fe1 follow-up.
-                DeckToolbar(viewModel: viewModel)
+                Group {
+                    if PerimeterSpeedDrawToolbarPolicy.showsSpeedDrawToolbar(for: viewModel.perimeterEntry) {
+                        PerimeterSpeedDrawToolbarView(viewModel: viewModel)
+                    } else {
+                        DeckToolbar(viewModel: viewModel)
+                    }
+                }
                     .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -500,18 +504,6 @@ struct DeckBuilderView: View {
                 )
         )
         .allowsHitTesting(false)
-    }
-
-    @ViewBuilder
-    private var perimeterLengthOverlay: some View {
-        if case .enteringLength = viewModel.perimeterEntry {
-            PerimeterLengthControlView(viewModel: viewModel)
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                .animation(OPSStyle.Animation.panel, value: viewModel.perimeterEntry)
-                .zIndex(30)
-        }
     }
 
     private func commitTitleEdit() {

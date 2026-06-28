@@ -5,6 +5,7 @@ enum OPSDecksCopy {
     static let shellTitle = String(localized: "OPS DECKS")
     static let shellSubtitle = String(localized: "Draw the deck. Build the quote. Keep the job moving.")
     static let defaultDeckTitle = String(localized: "UNTITLED DECK")
+    static let defaultCompanyName = String(localized: "My Decks")
     static let primaryActionPlaceholder = String(localized: "NEW DECK")
     static let libraryEyebrow = String(localized: "// SAVED DECKS")
     static let emptyLibraryTitle = String(localized: "NO DECKS SAVED")

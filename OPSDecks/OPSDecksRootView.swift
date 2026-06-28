@@ -12,20 +12,27 @@ struct OPSDecksRootView: View {
     @State private var deckPendingDeletion: OPSDecksDeckDocument?
 
     init(
-        companyId: String = "ops-decks-local-company",
+        companyId: String = OPSDecksLibraryBootstrap.localCompanyId,
+        accountContext: OPSDecksAccountContext? = nil,
         savedDeckCount: Int? = nil,
         entitlement: DecksEntitlement = .free(savedDeckLimit: 1),
-        libraryStore: OPSDecksDeckLibraryStore? = nil
+        libraryStore: OPSDecksDeckLibraryStore? = nil,
+        remoteClient: OPSDecksRemoteDeckLibraryClient? = nil,
+        accessTokenProvider: (@Sendable () async throws -> String)? = nil
     ) {
-        let resolvedStore = libraryStore ?? Self.makeLibraryStore(
+        let bootstrap = Self.makeLibraryBootstrap(
             companyId: companyId,
-            savedDeckCount: savedDeckCount
+            accountContext: accountContext,
+            savedDeckCount: savedDeckCount,
+            libraryStore: libraryStore,
+            remoteClient: remoteClient,
+            accessTokenProvider: accessTokenProvider
         )
         _session = StateObject(
             wrappedValue: OPSDecksDesignSession(
-                companyId: companyId,
+                companyId: bootstrap.companyId,
                 entitlement: entitlement,
-                libraryStore: resolvedStore
+                libraryStore: bootstrap.libraryStore
             )
         )
     }
@@ -90,21 +97,27 @@ struct OPSDecksRootView: View {
         )
     }
 
-    private static func makeLibraryStore(
+    private static func makeLibraryBootstrap(
         companyId: String,
-        savedDeckCount: Int?
-    ) -> OPSDecksDeckLibraryStore {
-        if let savedDeckCount {
-            return OPSDecksInMemoryDeckLibraryStore(
-                seedCount: savedDeckCount,
-                companyId: companyId
+        accountContext: OPSDecksAccountContext?,
+        savedDeckCount: Int?,
+        libraryStore: OPSDecksDeckLibraryStore?,
+        remoteClient: OPSDecksRemoteDeckLibraryClient?,
+        accessTokenProvider: (@Sendable () async throws -> String)?
+    ) -> OPSDecksLibraryBootstrap {
+        if let libraryStore {
+            return OPSDecksLibraryBootstrap(
+                companyId: accountContext?.companyId ?? companyId,
+                libraryStore: libraryStore
             )
         }
-        do {
-            return try OPSDecksFileDeckLibraryStore.appStore()
-        } catch {
-            return OPSDecksUnavailableDeckLibraryStore(error: error)
-        }
+        return OPSDecksLibraryBootstrap.make(
+            accountContext: accountContext,
+            savedDeckCount: savedDeckCount,
+            localCompanyId: companyId,
+            remoteClient: remoteClient,
+            accessTokenProvider: accessTokenProvider
+        )
     }
 
     private var shellPanel: some View {

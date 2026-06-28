@@ -11,12 +11,6 @@ protocol OPSDecksAuthProvider: AnyObject {
     func signOut() async throws
 }
 
-protocol DecksCompanyProvisioningClient: AnyObject {
-    func provisionCompany(
-        _ request: DecksCompanyProvisioningRequest
-    ) async throws -> DecksCompanyProvisioningResponse
-}
-
 final class OPSDecksAccountCoordinator {
     private let authProvider: OPSDecksAuthProvider
     private let provisioningClient: DecksCompanyProvisioningClient

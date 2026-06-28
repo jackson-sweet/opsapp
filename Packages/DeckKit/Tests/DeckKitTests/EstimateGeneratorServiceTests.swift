@@ -68,6 +68,20 @@ final class EstimateGeneratorServiceTests: XCTestCase {
         XCTAssertGreaterThan(surfaceItems[0].quantity, 300) // rough check
     }
 
+    func testWasteSettingsRoundTripThroughDrawingData() throws {
+        var data = DeckDrawingData()
+        data.wasteSettings = WasteSettings(
+            defaultWastePercent: 15,
+            perPatternWastePercent: ["diagonal": 18]
+        )
+
+        let decoded = try XCTUnwrap(DeckDrawingData.fromJSON(data.toJSON()))
+
+        XCTAssertEqual(decoded.wasteSettings?.defaultWastePercent, 15)
+        XCTAssertEqual(decoded.wasteSettings?.perPatternWastePercent["diagonal"], 18)
+        XCTAssertNil(DeckDrawingData.fromJSON("{\"vertices\":[]}")?.wasteSettings)
+    }
+
     // MARK: - Railing Items
 
     func testRailingLineItems_glassRailing() {

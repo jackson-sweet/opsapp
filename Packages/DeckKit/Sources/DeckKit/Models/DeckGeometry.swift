@@ -723,6 +723,10 @@ public struct DeckDrawingData: Codable {
     public var framing: FramingPlan? = nil
     public var terrain: TerrainModel? = nil
 
+    // MARK: - Estimate Settings
+
+    public var wasteSettings: WasteSettings? = nil
+
     // MARK: - Catalog projection
 
     /// Catalog-facing projection of the drawing — one row per visible
@@ -753,6 +757,7 @@ public struct DeckDrawingData: Codable {
         case levelConnections
         case framing
         case terrain
+        case wasteSettings
         case components
     }
 
@@ -774,6 +779,7 @@ public struct DeckDrawingData: Codable {
         self.levelConnections = try c.decodeIfPresent([LevelConnection].self, forKey: .levelConnections) ?? []
         self.framing = try? c.decodeIfPresent(FramingPlan.self, forKey: .framing)
         self.terrain = try? c.decodeIfPresent(TerrainModel.self, forKey: .terrain)
+        self.wasteSettings = try c.decodeIfPresent(WasteSettings.self, forKey: .wasteSettings)
         self.components = try c.decodeIfPresent([DesignComponentRow].self, forKey: .components)
         self.futureBlocks = [:]
     }
@@ -794,6 +800,7 @@ public struct DeckDrawingData: Codable {
         try c.encode(levelConnections, forKey: .levelConnections)
         try c.encodeIfPresent(framing, forKey: .framing)
         try c.encodeIfPresent(terrain, forKey: .terrain)
+        try c.encodeIfPresent(wasteSettings, forKey: .wasteSettings)
         try c.encodeIfPresent(components, forKey: .components)
     }
 

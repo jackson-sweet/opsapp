@@ -102,6 +102,165 @@ final class OPSDecksAccountCoordinatorTests: XCTestCase {
         XCTAssertEqual(authProvider.signOutCallCount, 1)
         XCTAssertEqual(authProvider.signInCallCount, 0)
     }
+
+    func testDeleteAccountCallsBackendThenClearsStoredContextAndProviderSession() async throws {
+        let existingContext = OPSDecksAccountContext(
+            firebaseUID: "firebase-123",
+            email: "deck@example.com",
+            displayName: nil,
+            companyId: "company-123",
+            userId: "user-123",
+            role: "admin",
+            subscriptionPlan: "decks"
+        )
+        let receipt = DecksAccountDeletionReceipt(
+            receiptId: "receipt-123",
+            deletedAt: Date(timeIntervalSince1970: 1_780_000_000)
+        )
+        let authProvider = RecordingDecksAuthProvider()
+        let deletionClient = RecordingDecksAccountDeletionClient(receipt: receipt)
+        let contextStore = RecordingAccountContextStore(storedContext: existingContext)
+        let coordinator = OPSDecksAccountDeletionCoordinator(
+            authProvider: authProvider,
+            deletionClient: deletionClient,
+            contextStore: contextStore
+        )
+
+        let returnedReceipt = try await coordinator.deleteCurrentAccount(
+            company: AccountDeletionCompanyRow(
+                id: "company-123",
+                adminIds: ["user-123"],
+                subscriptionPlan: "decks",
+                memberCount: 1
+            ),
+            deckIds: ["deck-1", "deck-2"]
+        )
+
+        XCTAssertEqual(returnedReceipt, receipt)
+        XCTAssertEqual(
+            deletionClient.requests,
+            [
+                DecksAccountDeletionRequest(
+                    firebaseUID: "firebase-123",
+                    companyId: "company-123"
+                )
+            ]
+        )
+        XCTAssertNil(try contextStore.loadAccountContext())
+        XCTAssertEqual(contextStore.clearCallCount, 1)
+        XCTAssertEqual(authProvider.signOutCallCount, 1)
+        XCTAssertEqual(authProvider.signInCallCount, 0)
+    }
+
+    func testDeleteAccountBlocksUpgradedCompanyWithoutSideEffects() async throws {
+        let existingContext = OPSDecksAccountContext(
+            firebaseUID: "firebase-123",
+            email: "deck@example.com",
+            displayName: nil,
+            companyId: "company-123",
+            userId: "user-123",
+            role: "admin",
+            subscriptionPlan: "decks"
+        )
+        let authProvider = RecordingDecksAuthProvider()
+        let deletionClient = RecordingDecksAccountDeletionClient()
+        let contextStore = RecordingAccountContextStore(storedContext: existingContext)
+        let coordinator = OPSDecksAccountDeletionCoordinator(
+            authProvider: authProvider,
+            deletionClient: deletionClient,
+            contextStore: contextStore
+        )
+
+        do {
+            _ = try await coordinator.deleteCurrentAccount(
+                company: AccountDeletionCompanyRow(
+                    id: "company-123",
+                    adminIds: ["user-123"],
+                    subscriptionPlan: "pro",
+                    memberCount: 1
+                ),
+                deckIds: ["deck-1"]
+            )
+            XCTFail("Expected upgraded OPS company deletion to be blocked.")
+        } catch let error as OPSDecksAccountDeletionCoordinatorError {
+            XCTAssertEqual(error, .blocked(.upgradedOPSCompany))
+        }
+
+        XCTAssertEqual(deletionClient.requests, [])
+        XCTAssertEqual(try contextStore.loadAccountContext(), existingContext)
+        XCTAssertEqual(contextStore.clearCallCount, 0)
+        XCTAssertEqual(authProvider.signOutCallCount, 0)
+    }
+
+    func testDeleteAccountBlocksCompanySnapshotMismatchWithoutSideEffects() async throws {
+        let existingContext = OPSDecksAccountContext(
+            firebaseUID: "firebase-123",
+            email: "deck@example.com",
+            displayName: nil,
+            companyId: "company-123",
+            userId: "user-123",
+            role: "admin",
+            subscriptionPlan: "decks"
+        )
+        let authProvider = RecordingDecksAuthProvider()
+        let deletionClient = RecordingDecksAccountDeletionClient()
+        let contextStore = RecordingAccountContextStore(storedContext: existingContext)
+        let coordinator = OPSDecksAccountDeletionCoordinator(
+            authProvider: authProvider,
+            deletionClient: deletionClient,
+            contextStore: contextStore
+        )
+
+        do {
+            _ = try await coordinator.deleteCurrentAccount(
+                company: AccountDeletionCompanyRow(
+                    id: "company-other",
+                    adminIds: ["user-123"],
+                    subscriptionPlan: "decks",
+                    memberCount: 1
+                ),
+                deckIds: ["deck-1"]
+            )
+            XCTFail("Expected mismatched company snapshot deletion to be blocked.")
+        } catch let error as OPSDecksAccountDeletionCoordinatorError {
+            XCTAssertEqual(error, .companyMismatch)
+        }
+
+        XCTAssertEqual(deletionClient.requests, [])
+        XCTAssertEqual(try contextStore.loadAccountContext(), existingContext)
+        XCTAssertEqual(contextStore.clearCallCount, 0)
+        XCTAssertEqual(authProvider.signOutCallCount, 0)
+    }
+
+    func testDeleteAccountRequiresStoredAccountContext() async throws {
+        let authProvider = RecordingDecksAuthProvider()
+        let deletionClient = RecordingDecksAccountDeletionClient()
+        let contextStore = RecordingAccountContextStore()
+        let coordinator = OPSDecksAccountDeletionCoordinator(
+            authProvider: authProvider,
+            deletionClient: deletionClient,
+            contextStore: contextStore
+        )
+
+        do {
+            _ = try await coordinator.deleteCurrentAccount(
+                company: AccountDeletionCompanyRow(
+                    id: "company-123",
+                    adminIds: ["user-123"],
+                    subscriptionPlan: "decks",
+                    memberCount: 1
+                ),
+                deckIds: ["deck-1"]
+            )
+            XCTFail("Expected deletion to require a stored account context.")
+        } catch let error as OPSDecksAccountDeletionCoordinatorError {
+            XCTAssertEqual(error, .missingAccountContext)
+        }
+
+        XCTAssertEqual(deletionClient.requests, [])
+        XCTAssertEqual(contextStore.clearCallCount, 0)
+        XCTAssertEqual(authProvider.signOutCallCount, 0)
+    }
 }
 
 private final class RecordingDecksAuthProvider: OPSDecksAuthProvider {
@@ -149,6 +308,27 @@ private final class RecordingDecksCompanyProvisioningClient: DecksCompanyProvisi
     ) async throws -> DecksCompanyProvisioningResponse {
         requests.append(request)
         return response
+    }
+}
+
+private final class RecordingDecksAccountDeletionClient: DecksAccountDeletionClient {
+    private let receipt: DecksAccountDeletionReceipt
+    private(set) var requests: [DecksAccountDeletionRequest] = []
+
+    init(
+        receipt: DecksAccountDeletionReceipt = DecksAccountDeletionReceipt(
+            receiptId: "receipt-default",
+            deletedAt: Date(timeIntervalSince1970: 1_780_000_000)
+        )
+    ) {
+        self.receipt = receipt
+    }
+
+    func deleteAccount(
+        _ request: DecksAccountDeletionRequest
+    ) async throws -> DecksAccountDeletionReceipt {
+        requests.append(request)
+        return receipt
     }
 }
 

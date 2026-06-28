@@ -38,7 +38,11 @@ struct OPSDecksRootView: View {
             if let activeDesign = session.activeDesign {
                 OPSDecksDesignerSessionView(
                     activeDesign: activeDesign,
-                    onPersist: session.updateActiveDrawingData,
+                    onPersist: { drawingData in
+                        Task {
+                            await session.updateActiveDrawingDataAndSync(drawingData)
+                        }
+                    },
                     onClose: session.closeActiveDesign
                 )
                 .padding(OPSStyle.Layout.spacing4)
@@ -60,13 +64,18 @@ struct OPSDecksRootView: View {
         ) {
             if let document = deckPendingDeletion {
                 Button(OPSDecksCopy.deleteDeck, role: .destructive) {
-                    _ = session.deleteDeck(id: document.id)
-                    deckPendingDeletion = nil
+                    Task {
+                        _ = await session.deleteDeckAndSync(id: document.id)
+                        deckPendingDeletion = nil
+                    }
                 }
             }
             Button(OPSDecksCopy.cancel, role: .cancel) {}
         } message: {
             Text(OPSDecksCopy.deleteConfirmationMessage)
+        }
+        .task {
+            await session.refreshLibraryFromRemote()
         }
     }
 
@@ -212,7 +221,9 @@ struct OPSDecksRootView: View {
     }
 
     private func primaryAction() {
-        _ = session.startNewDeck()
+        Task {
+            await session.startNewDeckAndSync()
+        }
     }
 }
 

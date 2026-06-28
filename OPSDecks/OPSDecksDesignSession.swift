@@ -54,6 +54,10 @@ final class OPSDecksDesignSession: ObservableObject {
     @Published private(set) var savedDecks: [OPSDecksDeckDocument]
     @Published private(set) var libraryError: Error?
 
+    private var syncingLibraryStore: OPSDecksRemoteSyncingDeckLibraryStore? {
+        libraryStore as? OPSDecksRemoteSyncingDeckLibraryStore
+    }
+
     convenience init(
         companyId: String,
         savedDeckCount: Int,
@@ -114,14 +118,37 @@ final class OPSDecksDesignSession: ObservableObject {
             libraryError = error
             return false
         }
-        activeDesign = OPSDecksActiveDesign(
-            document: document,
-            runtime: OPSDecksRuntimeFactory.make(
-                document: document,
-                libraryStore: libraryStore
-            )
-        )
+        activate(document)
         return true
+    }
+
+    @discardableResult
+    func startNewDeckAndSync() async -> Bool {
+        guard createState == .canCreate else { return false }
+
+        let document = OPSDecksDeckDocument(
+            companyId: companyId,
+            title: OPSDecksCopy.defaultDeckTitle
+        )
+        do {
+            if let syncingLibraryStore {
+                try await syncingLibraryStore.saveAndSync(document)
+            } else {
+                try libraryStore.save(document)
+            }
+            refreshSavedDecks()
+            activate(document)
+            return true
+        } catch {
+            if localDeckExists(id: document.id) {
+                refreshSavedDecks(clearErrorOnSuccess: false)
+                libraryError = error
+                activate(document)
+                return true
+            }
+            libraryError = error
+            return false
+        }
     }
 
     @discardableResult
@@ -131,13 +158,7 @@ final class OPSDecksDesignSession: ObservableObject {
             guard document.companyId == companyId else {
                 throw OPSDecksDeckLibraryStoreError.documentBelongsToDifferentCompany(id)
             }
-            activeDesign = OPSDecksActiveDesign(
-                document: document,
-                runtime: OPSDecksRuntimeFactory.make(
-                    document: document,
-                    libraryStore: libraryStore
-                )
-            )
+            activate(document)
             libraryError = nil
             return true
         } catch {
@@ -158,13 +179,37 @@ final class OPSDecksDesignSession: ObservableObject {
                 throw OPSDecksDeckLibraryStoreError.documentBelongsToDifferentCompany(id)
             }
             try libraryStore.deleteDeck(id: id)
-            if activeDesign?.document.id == id {
-                activeDesign = nil
-            }
+            clearActiveDesignIfNeeded(id: id)
             refreshSavedDecks()
             libraryError = nil
             return true
         } catch {
+            libraryError = error
+            return false
+        }
+    }
+
+    @discardableResult
+    func deleteDeckAndSync(id: String) async -> Bool {
+        do {
+            let document = try libraryStore.loadDeck(id: id)
+            guard document.companyId == companyId else {
+                throw OPSDecksDeckLibraryStoreError.documentBelongsToDifferentCompany(id)
+            }
+            if let syncingLibraryStore {
+                try await syncingLibraryStore.deleteAndSync(id: id)
+            } else {
+                try libraryStore.deleteDeck(id: id)
+            }
+            clearActiveDesignIfNeeded(id: id)
+            refreshSavedDecks()
+            libraryError = nil
+            return true
+        } catch {
+            if !localDeckExists(id: id) {
+                clearActiveDesignIfNeeded(id: id)
+                refreshSavedDecks(clearErrorOnSuccess: false)
+            }
             libraryError = error
             return false
         }
@@ -183,17 +228,72 @@ final class OPSDecksDesignSession: ObservableObject {
         self.activeDesign = activeDesign
     }
 
-    private func refreshSavedDecks() {
+    func updateActiveDrawingDataAndSync(_ drawingData: DeckDrawingData) async {
+        guard var activeDesign else { return }
+        activeDesign.document.updateDrawingData(drawingData)
+        do {
+            if let syncingLibraryStore {
+                try await syncingLibraryStore.saveAndSync(activeDesign.document)
+            } else {
+                try libraryStore.save(activeDesign.document)
+            }
+            refreshSavedDecks()
+            libraryError = nil
+        } catch {
+            refreshSavedDecks(clearErrorOnSuccess: false)
+            libraryError = error
+        }
+        self.activeDesign = activeDesign
+    }
+
+    func refreshLibraryFromRemote() async {
+        guard let syncingLibraryStore else {
+            refreshSavedDecks()
+            return
+        }
+
+        do {
+            try await syncingLibraryStore.refreshFromRemote()
+            refreshSavedDecks()
+        } catch {
+            refreshSavedDecks(clearErrorOnSuccess: false)
+            libraryError = error
+        }
+    }
+
+    private func refreshSavedDecks(clearErrorOnSuccess: Bool = true) {
         do {
             savedDecks = Self.documents(
                 try libraryStore.listDecks(),
                 for: companyId
             )
-            libraryError = nil
+            if clearErrorOnSuccess {
+                libraryError = nil
+            }
         } catch {
             savedDecks = []
             libraryError = error
         }
+    }
+
+    private func activate(_ document: OPSDecksDeckDocument) {
+        activeDesign = OPSDecksActiveDesign(
+            document: document,
+            runtime: OPSDecksRuntimeFactory.make(
+                document: document,
+                libraryStore: libraryStore
+            )
+        )
+    }
+
+    private func clearActiveDesignIfNeeded(id: String) {
+        if activeDesign?.document.id == id {
+            activeDesign = nil
+        }
+    }
+
+    private func localDeckExists(id: String) -> Bool {
+        (try? libraryStore.loadDeck(id: id)) != nil
     }
 
     private static func documents(

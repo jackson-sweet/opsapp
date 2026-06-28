@@ -235,6 +235,82 @@ final class OPSDecksDesignSessionTests: XCTestCase {
         XCTAssertEqual(remote.softDeletedRows.first?.companyId, "deck-company")
     }
 
+    func testSessionRefreshesRemoteBackedLibraryAndRecomputesFreeGate() async throws {
+        let remote = RecordingRemoteDeckLibraryClient(
+            rows: [
+                OPSDecksDeckDesignRow(
+                    id: "remote-deck",
+                    companyId: "deck-company",
+                    projectId: nil,
+                    title: "REMOTE FIELD DECK",
+                    drawingData: DeckDrawingData(),
+                    version: 1,
+                    createdBy: "deck-user",
+                    createdAt: Date(timeIntervalSince1970: 10),
+                    updatedAt: Date(timeIntervalSince1970: 20),
+                    deletedAt: nil
+                )
+            ]
+        )
+        let store = OPSDecksSyncingDeckLibraryStore(
+            companyId: "deck-company",
+            cache: OPSDecksInMemoryDeckLibraryStore(),
+            remoteClient: remote
+        )
+        let session = OPSDecksDesignSession(
+            companyId: "deck-company",
+            entitlement: .free(savedDeckLimit: 1),
+            libraryStore: store
+        )
+
+        XCTAssertTrue(session.savedDecks.isEmpty)
+
+        await session.refreshLibraryFromRemote()
+
+        XCTAssertNil(session.libraryError)
+        XCTAssertEqual(remote.listedCompanyIds, ["deck-company"])
+        XCTAssertEqual(session.savedDecks.map(\.id), ["remote-deck"])
+        XCTAssertEqual(session.createState, .lockedAtFreeLimit)
+    }
+
+    func testAsyncSessionCreateUpdateAndDeleteUseRemoteSyncWhenAvailable() async throws {
+        let remote = RecordingRemoteDeckLibraryClient(rows: [])
+        let store = OPSDecksSyncingDeckLibraryStore(
+            companyId: "deck-company",
+            cache: OPSDecksInMemoryDeckLibraryStore(),
+            remoteClient: remote
+        )
+        let session = OPSDecksDesignSession(
+            companyId: "deck-company",
+            entitlement: .pro,
+            libraryStore: store
+        )
+
+        let didStart = await session.startNewDeckAndSync()
+
+        XCTAssertTrue(didStart)
+        let deckId = try XCTUnwrap(session.activeDesign?.document.id)
+
+        XCTAssertEqual(remote.upsertedRows.map(\.id), [deckId])
+        XCTAssertEqual(session.savedDecks.map(\.id), [deckId])
+
+        var drawingData = DeckDrawingData()
+        drawingData.vertices.append(DeckVertex(position: CGPoint(x: 72, y: 96)))
+
+        await session.updateActiveDrawingDataAndSync(drawingData)
+
+        XCTAssertEqual(remote.upsertedRows.map(\.id), [deckId, deckId])
+        XCTAssertEqual(remote.upsertedRows.last?.drawingData.vertices.count, 1)
+        XCTAssertEqual(session.activeDesign?.document.drawingData.vertices.count, 1)
+
+        let didDelete = await session.deleteDeckAndSync(id: deckId)
+
+        XCTAssertTrue(didDelete)
+        XCTAssertNil(session.activeDesign)
+        XCTAssertTrue(session.savedDecks.isEmpty)
+        XCTAssertEqual(remote.softDeletedRows.map(\.id), [deckId])
+    }
+
     func testDeckDesignRowCodableUsesDeckDesignStorageContract() throws {
         let payload = """
         {

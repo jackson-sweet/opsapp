@@ -173,6 +173,12 @@ protocol OPSDecksDeckLibraryStore: AnyObject {
     func deleteDeck(id: String) throws
 }
 
+protocol OPSDecksRemoteSyncingDeckLibraryStore: OPSDecksDeckLibraryStore {
+    func refreshFromRemote() async throws
+    func saveAndSync(_ document: OPSDecksDeckDocument) async throws
+    func deleteAndSync(id: String) async throws
+}
+
 final class OPSDecksInMemoryDeckLibraryStore: OPSDecksDeckLibraryStore {
     private(set) var documents: [OPSDecksDeckDocument]
 
@@ -325,7 +331,7 @@ final class OPSDecksFileDeckLibraryStore: OPSDecksDeckLibraryStore {
     }
 }
 
-final class OPSDecksSyncingDeckLibraryStore: OPSDecksDeckLibraryStore {
+final class OPSDecksSyncingDeckLibraryStore: OPSDecksRemoteSyncingDeckLibraryStore {
     private let companyId: String
     private let cache: OPSDecksDeckLibraryStore
     private let remoteClient: OPSDecksRemoteDeckLibraryClient

@@ -171,6 +171,30 @@ final class PerimeterEntryTests: XCTestCase {
         XCTAssertEqual(wheelCenter.y, anchorScreenPoint.y, accuracy: 0.0001)
     }
 
+    func testCanvasGesturesYieldToActivePerimeterEntryControls() {
+        let anchor = PerimeterEntryAnchor(
+            vertexId: "v1",
+            position: CGPoint(x: 100, y: 100),
+            incomingAngleDegrees: nil,
+            rootVertexId: "v1"
+        )
+
+        XCTAssertTrue(DeckCanvasGesturePolicy.allowsCanvasGestureOverlayHitTesting(for: .idle))
+        XCTAssertTrue(DeckCanvasGesturePolicy.allowsCanvasContentGestures(for: .idle))
+
+        let choosingDirection = PerimeterEntryMode.choosingDirection(anchor: anchor)
+        XCTAssertFalse(DeckCanvasGesturePolicy.allowsCanvasGestureOverlayHitTesting(for: choosingDirection))
+        XCTAssertFalse(DeckCanvasGesturePolicy.allowsCanvasContentGestures(for: choosingDirection))
+
+        let enteringLength = PerimeterEntryMode.enteringLength(
+            anchor: anchor,
+            direction: .right,
+            draft: .imperial(feet: 6, inches: 0, sixteenths: 0)
+        )
+        XCTAssertFalse(DeckCanvasGesturePolicy.allowsCanvasGestureOverlayHitTesting(for: enteringLength))
+        XCTAssertFalse(DeckCanvasGesturePolicy.allowsCanvasContentGestures(for: enteringLength))
+    }
+
     func testImperialDraftNormalizesOverflowInches() {
         let draft = PerimeterLengthDraft.imperial(feet: 2, inches: 48, sixteenths: 0)
         let components = draft.imperialComponents

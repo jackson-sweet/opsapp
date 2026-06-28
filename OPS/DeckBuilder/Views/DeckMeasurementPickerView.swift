@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/DeckMeasurementPickerView.swift
 
 import SwiftUI
+import UIKit
 
 struct DeckMeasurementPickerConfiguration {
     var imperialFeetRange: ClosedRange<Int> = 0...150
@@ -32,6 +33,24 @@ enum DeckMeasurementPickerTokens {
     static var minTouch: CGFloat { OPSStyle.Layout.touchTargetMin }
     static var standardTouch: CGFloat { OPSStyle.Layout.touchTargetStandard }
     static var borderWidth: CGFloat { OPSStyle.Layout.Border.standard }
+}
+
+enum DeckMeasurementWheelData {
+    static func count(in range: ClosedRange<Int>) -> Int {
+        range.upperBound - range.lowerBound + 1
+    }
+
+    static func clampedValue(_ value: Int, in range: ClosedRange<Int>) -> Int {
+        min(range.upperBound, max(range.lowerBound, value))
+    }
+
+    static func row(for value: Int, in range: ClosedRange<Int>) -> Int {
+        clampedValue(value, in: range) - range.lowerBound
+    }
+
+    static func value(forRow row: Int, in range: ClosedRange<Int>) -> Int {
+        clampedValue(range.lowerBound + max(0, row), in: range)
+    }
 }
 
 struct DeckMeasurementPickerView: View {
@@ -264,16 +283,7 @@ struct DeckMeasurementPickerView: View {
 
     private func measurementWheel(label: String, range: ClosedRange<Int>, value: Binding<Int>) -> some View {
         VStack(spacing: DeckMeasurementPickerTokens.tightGap) {
-            Picker(label, selection: value) {
-                ForEach(Array(range), id: \.self) { number in
-                    Text("\(number)")
-                        .font(.system(size: 22, weight: .semibold, design: .monospaced))
-                        .foregroundColor(OPSStyle.Colors.text)
-                        .monospacedDigit()
-                        .tag(number)
-                }
-            }
-            .pickerStyle(.wheel)
+            RealtimeMeasurementWheel(range: range, value: value)
             .frame(
                 width: DeckMeasurementPickerTokens.wheelWidth,
                 height: DeckMeasurementPickerTokens.wheelHeight
@@ -284,14 +294,9 @@ struct DeckMeasurementPickerView: View {
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.text3)
         }
+        .padding(.vertical, DeckMeasurementPickerTokens.tightGap)
         .frame(maxWidth: .infinity)
-        .overlay(
-            RoundedRectangle(
-                cornerRadius: DeckMeasurementPickerTokens.nestedRadius,
-                style: .continuous
-            )
-            .strokeBorder(OPSStyle.Colors.line.opacity(0.7), lineWidth: DeckMeasurementPickerTokens.borderWidth)
-        )
+        .measurementControlChrome(cornerRadius: DeckMeasurementPickerTokens.nestedRadius)
     }
 
     private func loadInitialValue() {
@@ -375,22 +380,224 @@ struct DeckMeasurementPickerView: View {
     }
 }
 
+private struct RealtimeMeasurementWheel: UIViewRepresentable {
+    let range: ClosedRange<Int>
+    @Binding var value: Int
+
+    func makeUIView(context: Context) -> UIPickerView {
+        let picker = UIPickerView()
+        picker.backgroundColor = .clear
+        picker.dataSource = context.coordinator
+        picker.delegate = context.coordinator
+        picker.selectRow(DeckMeasurementWheelData.row(for: value, in: range), inComponent: 0, animated: false)
+        context.coordinator.attach(to: picker)
+        return picker
+    }
+
+    func updateUIView(_ uiView: UIPickerView, context: Context) {
+        let previousRange = context.coordinator.range
+        context.coordinator.value = $value
+        context.coordinator.range = range
+        context.coordinator.attach(to: uiView)
+
+        if previousRange != range {
+            uiView.reloadAllComponents()
+        }
+
+        let targetRow = DeckMeasurementWheelData.row(for: value, in: range)
+        if uiView.selectedRow(inComponent: 0) != targetRow {
+            uiView.selectRow(targetRow, inComponent: 0, animated: false)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(value: $value, range: range)
+    }
+
+    final class Coordinator: NSObject, UIPickerViewDataSource, UIPickerViewDelegate {
+        var value: Binding<Int>
+        var range: ClosedRange<Int>
+
+        private weak var pickerView: UIPickerView?
+        private weak var observedScrollView: UIScrollView?
+        private var displayLink: CADisplayLink?
+        private var baselineRow = 0
+        private var baselineOffsetY: CGFloat = 0
+
+        init(value: Binding<Int>, range: ClosedRange<Int>) {
+            self.value = value
+            self.range = range
+        }
+
+        deinit {
+            observedScrollView?.panGestureRecognizer.removeTarget(self, action: #selector(handlePan(_:)))
+            stopTracking()
+        }
+
+        func attach(to pickerView: UIPickerView) {
+            self.pickerView = pickerView
+            guard let scrollView = pickerView.firstDescendant(of: UIScrollView.self) else { return }
+            guard observedScrollView !== scrollView else { return }
+
+            observedScrollView?.panGestureRecognizer.removeTarget(self, action: #selector(handlePan(_:)))
+            observedScrollView = scrollView
+            scrollView.panGestureRecognizer.addTarget(self, action: #selector(handlePan(_:)))
+            calibrate(from: scrollView)
+        }
+
+        func numberOfComponents(in pickerView: UIPickerView) -> Int {
+            1
+        }
+
+        func pickerView(_ pickerView: UIPickerView, numberOfRowsInComponent component: Int) -> Int {
+            DeckMeasurementWheelData.count(in: range)
+        }
+
+        func pickerView(_ pickerView: UIPickerView, rowHeightForComponent component: Int) -> CGFloat {
+            Self.rowHeight
+        }
+
+        func pickerView(_ pickerView: UIPickerView, widthForComponent component: Int) -> CGFloat {
+            DeckMeasurementPickerTokens.wheelWidth
+        }
+
+        func pickerView(
+            _ pickerView: UIPickerView,
+            viewForRow row: Int,
+            forComponent component: Int,
+            reusing view: UIView?
+        ) -> UIView {
+            let label = (view as? UILabel) ?? UILabel()
+            label.textAlignment = .center
+            label.backgroundColor = .clear
+            label.font = .monospacedDigitSystemFont(ofSize: 22, weight: .semibold)
+            label.textColor = UIColor(OPSStyle.Colors.text)
+            label.text = "\(DeckMeasurementWheelData.value(forRow: row, in: range))"
+            return label
+        }
+
+        func pickerView(_ pickerView: UIPickerView, didSelectRow row: Int, inComponent component: Int) {
+            publishSelectedRow(from: pickerView)
+            if let scrollView = observedScrollView {
+                calibrate(from: scrollView)
+            }
+        }
+
+        @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
+            switch recognizer.state {
+            case .began:
+                if let scrollView = observedScrollView {
+                    calibrate(from: scrollView)
+                }
+                startTracking()
+                publishEstimatedRow()
+            case .changed:
+                startTracking()
+                publishEstimatedRow()
+            case .ended, .cancelled, .failed:
+                startTracking()
+            default:
+                break
+            }
+        }
+
+        @objc private func tick() {
+            publishEstimatedRow()
+            guard let scrollView = observedScrollView else {
+                stopTracking()
+                return
+            }
+            if !scrollView.isDragging && !scrollView.isDecelerating && !scrollView.isTracking {
+                stopTracking()
+            }
+        }
+
+        private func startTracking() {
+            guard displayLink == nil else { return }
+            let link = CADisplayLink(target: self, selector: #selector(tick))
+            link.add(to: .main, forMode: .common)
+            displayLink = link
+        }
+
+        private func stopTracking() {
+            displayLink?.invalidate()
+            displayLink = nil
+        }
+
+        private static let rowHeight: CGFloat = 36
+
+        private func calibrate(from scrollView: UIScrollView) {
+            baselineRow = pickerView?.selectedRow(inComponent: 0) ?? 0
+            baselineOffsetY = scrollView.contentOffset.y
+        }
+
+        private func publishEstimatedRow() {
+            guard let scrollView = observedScrollView else {
+                publishSelectedRow(from: pickerView)
+                return
+            }
+
+            let rowDelta = Int(((scrollView.contentOffset.y - baselineOffsetY) / Self.rowHeight).rounded())
+            let estimatedRow = baselineRow + rowDelta
+            publish(row: estimatedRow)
+        }
+
+        private func publishSelectedRow(from pickerView: UIPickerView?) {
+            guard let pickerView else { return }
+            publish(row: pickerView.selectedRow(inComponent: 0))
+        }
+
+        private func publish(row: Int) {
+            let selected = DeckMeasurementWheelData.value(forRow: row, in: range)
+            guard value.wrappedValue != selected else { return }
+            value.wrappedValue = selected
+        }
+    }
+}
+
+private extension UIView {
+    func firstDescendant<T: UIView>(of type: T.Type) -> T? {
+        if let match = self as? T { return match }
+        for subview in subviews {
+            if let match = subview.firstDescendant(of: type) {
+                return match
+            }
+        }
+        return nil
+    }
+}
+
 private extension View {
-    func measurementControlChrome(isProminent: Bool = false, isActive: Bool = false) -> some View {
-        background(isProminent || isActive ? OPSStyle.Colors.surfaceActive : Color.clear)
-            .clipShape(RoundedRectangle(
-                cornerRadius: DeckMeasurementPickerTokens.controlRadius,
-                style: .continuous
-            ))
-            .overlay(
-                RoundedRectangle(
-                    cornerRadius: DeckMeasurementPickerTokens.controlRadius,
-                    style: .continuous
+    func measurementControlChrome(
+        isProminent: Bool = false,
+        isActive: Bool = false,
+        cornerRadius: CGFloat = DeckMeasurementPickerTokens.controlRadius
+    ) -> some View {
+        let isEmphasized = isProminent || isActive
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+
+        return background(
+            ZStack {
+                shape.fill(.ultraThinMaterial)
+                shape.fill(OPSStyle.Colors.glassApprox)
+                if isEmphasized {
+                    shape.fill(OPSStyle.Colors.surfaceActive)
+                }
+                LinearGradient(
+                    colors: [OPSStyle.Colors.surfaceInput, .clear],
+                    startPoint: .top,
+                    endPoint: .bottom
                 )
-                .strokeBorder(
-                    isProminent || isActive ? OPSStyle.Colors.text2.opacity(0.42) : OPSStyle.Colors.line,
-                    lineWidth: DeckMeasurementPickerTokens.borderWidth
-                )
+                .clipShape(shape)
+                .allowsHitTesting(false)
+            }
+        )
+        .overlay(
+            shape.strokeBorder(
+                isEmphasized ? OPSStyle.Colors.text2.opacity(0.42) : OPSStyle.Colors.glassBorder,
+                lineWidth: DeckMeasurementPickerTokens.borderWidth
             )
+        )
+        .clipShape(shape)
     }
 }

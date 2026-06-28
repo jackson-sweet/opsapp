@@ -3,6 +3,18 @@
 import SwiftUI
 import UIKit
 
+enum DeckCanvasGesturePolicy {
+    static func allowsCanvasGestureOverlayHitTesting(for entry: PerimeterEntryMode) -> Bool {
+        guard case .idle = entry else { return false }
+        return true
+    }
+
+    static func allowsCanvasContentGestures(for entry: PerimeterEntryMode) -> Bool {
+        guard case .idle = entry else { return false }
+        return true
+    }
+}
+
 struct DeckCanvasView: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
 
@@ -82,6 +94,8 @@ struct DeckCanvasView: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let allowsCanvasContentGestures = DeckCanvasGesturePolicy.allowsCanvasContentGestures(for: viewModel.perimeterEntry)
+
             ZStack {
                 OPSStyle.Colors.background.ignoresSafeArea()
 
@@ -114,14 +128,16 @@ struct DeckCanvasView: View {
                     offset: $canvasOffset,
                     isDrawing: viewModel.drawingMode != .idle
                 )
+                .allowsHitTesting(DeckCanvasGesturePolicy.allowsCanvasGestureOverlayHitTesting(for: viewModel.perimeterEntry))
             }
             // SwiftUI gestures — single-finger drawing, tap, long-press
-            .simultaneousGesture(viewModel.activeTool == .draw ? drawGesture(size: geometry.size) : nil)
+            .simultaneousGesture(allowsCanvasContentGestures && viewModel.activeTool == .draw ? drawGesture(size: geometry.size) : nil)
             .simultaneousGesture(
-                (viewModel.activeTool == .select || viewModel.activeTool == .lasso || viewModel.activeTool == .tapSelect)
+                (allowsCanvasContentGestures
+                 && (viewModel.activeTool == .select || viewModel.activeTool == .lasso || viewModel.activeTool == .tapSelect))
                     ? selectionDragGesture(size: geometry.size) : nil
             )
-            .simultaneousGesture(tapGesture(size: geometry.size))
+            .simultaneousGesture(allowsCanvasContentGestures ? tapGesture(size: geometry.size) : nil)
             .simultaneousGesture(longPressGesture(size: geometry.size))
             .onAppear {
                 if !hasInitializedOffset {
@@ -1608,6 +1624,7 @@ struct DeckCanvasView: View {
                         ?? drag.map { canvasPoint(from: $0.location, in: size) }
                         ?? .zero
                     let hitThreshold = max(22.0, 25.0 / canvasScale)
+                    guard DeckCanvasGesturePolicy.allowsCanvasContentGestures(for: viewModel.perimeterEntry) else { return }
                     viewModel.handleLongPress(at: point, hitThreshold: hitThreshold)
                 default: break
                 }
@@ -1616,6 +1633,7 @@ struct DeckCanvasView: View {
 
     private func beginPerimeterEntryFromLongPressIfNeeded(drag: DragGesture.Value, viewportSize: CGSize) {
         guard !perimeterLongPressDidBeginEntry, perimeterLongPressFallbackPoint == nil else { return }
+        guard DeckCanvasGesturePolicy.allowsCanvasContentGestures(for: viewModel.perimeterEntry) else { return }
 
         let point = canvasPoint(from: drag.startLocation, in: viewportSize)
         let hitThreshold = max(22.0, 25.0 / canvasScale)

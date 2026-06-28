@@ -113,21 +113,31 @@ struct DeckBuilderView: View {
                         DeckCanvasView(viewModel: viewModel)
                             .ignoresSafeArea(edges: [.top, .horizontal])
 
-                    // Assignment wheel — visible only when there are edges in the
-                    // selection. The wheel exposes edge-specific choices
-                    // (railing styles, edge type, add stairs, dimension) that
-                    // aren't in the toolbar quick-access. For surface-only
-                    // selections it would collapse to a single "Material"
-                    // button floating in the canvas — duplicating the
-                    // toolbar's material button — so we hide it there
-                    // (DECK-NEW-2). 24pt margin keeps the 56pt center circle
-                    // off the rounded screen corner on modern iPhones.
-                    if viewModel.selection.hasEdges {
-                        AssignmentWheelView(viewModel: viewModel)
-                            .padding(.trailing, OPSStyle.Layout.spacing4)
-                            .padding(.bottom, OPSStyle.Layout.spacing4)
-                            .transition(.scale.combined(with: .opacity))
-                    }
+                        if PerimeterSpeedDrawToolbarPolicy.showsCanvasOverlay(for: viewModel.perimeterEntry) {
+                            PerimeterSpeedDrawOverlayView(viewModel: viewModel)
+                                .padding(.horizontal, OPSStyle.Layout.spacing4)
+                                .padding(.bottom, OPSStyle.Layout.spacing3)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                .zIndex(30)
+                        }
+
+                        // Assignment wheel — visible only when there are edges in the
+                        // selection. The wheel exposes edge-specific choices
+                        // (railing styles, edge type, add stairs, dimension) that
+                        // aren't in the toolbar quick-access. For surface-only
+                        // selections it would collapse to a single "Material"
+                        // button floating in the canvas — duplicating the
+                        // toolbar's material button — so we hide it there
+                        // (DECK-NEW-2). 24pt margin keeps the 56pt center circle
+                        // off the rounded screen corner on modern iPhones.
+                        if viewModel.selection.hasEdges
+                            && PerimeterSpeedDrawToolbarPolicy.showsStandardToolbar(for: viewModel.perimeterEntry) {
+                            AssignmentWheelView(viewModel: viewModel)
+                                .padding(.trailing, OPSStyle.Layout.spacing4)
+                                .padding(.bottom, OPSStyle.Layout.spacing4)
+                                .transition(.scale.combined(with: .opacity))
+                        }
 
                     } // end canvas ZStack (bottomTrailing)
 
@@ -235,25 +245,21 @@ struct DeckBuilderView: View {
 
                 } // end ZStack (top-aligned, floating title over canvas)
 
-                // Toolbar — below the canvas. Wrapped in horizontal padding +
-                // bottom gap + clipped corners so its cardBackground reads as a
-                // contained pill instead of a full-width bar bleeding to the
-                // screen edges. Matches the floating header pill aesthetic.
-                // Bug 0a5f3fe1 follow-up.
-                Group {
-                    if PerimeterSpeedDrawToolbarPolicy.showsSpeedDrawToolbar(for: viewModel.perimeterEntry) {
-                        PerimeterSpeedDrawToolbarView(viewModel: viewModel)
-                    } else {
-                        DeckToolbar(viewModel: viewModel)
-                    }
-                }
-                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                if PerimeterSpeedDrawToolbarPolicy.showsStandardToolbar(for: viewModel.perimeterEntry) {
+                    // Toolbar — below the canvas. Wrapped in horizontal padding +
+                    // bottom gap + clipped corners so its cardBackground reads as a
+                    // contained pill instead of a full-width bar bleeding to the
+                    // screen edges. Matches the floating header pill aesthetic.
+                    // Bug 0a5f3fe1 follow-up.
+                    DeckToolbar(viewModel: viewModel)
+                        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                             .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
-                    )
-                    .padding(.horizontal, OPSStyle.Layout.spacing4)
-                    .padding(.bottom, OPSStyle.Layout.spacing2)
+                        )
+                        .padding(.horizontal, OPSStyle.Layout.spacing4)
+                        .padding(.bottom, OPSStyle.Layout.spacing2)
+                }
             }
         }
         .background(OPSStyle.Colors.background)

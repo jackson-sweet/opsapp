@@ -144,6 +144,32 @@ enum PerimeterEntryGeometry {
             y: start.y + sin(radians) * lengthPoints
         )
     }
+
+    static func nearestDirection(
+        from anchor: PerimeterEntryAnchor,
+        toward point: CGPoint,
+        minimumDistance: CGFloat = 8
+    ) -> PerimeterDirection? {
+        let dx = point.x - anchor.position.x
+        let dy = point.y - anchor.position.y
+        guard hypot(dx, dy) >= minimumDistance else { return nil }
+
+        let targetAngle = PerimeterDirection.normalizedAngle(Double(atan2(dy, dx) * 180 / .pi))
+        return anchor.availableDirections.min { lhs, rhs in
+            angularDistance(
+                targetAngle,
+                lhs.angleDegrees(incomingAngleDegrees: anchor.incomingAngleDegrees)
+            ) < angularDistance(
+                targetAngle,
+                rhs.angleDegrees(incomingAngleDegrees: anchor.incomingAngleDegrees)
+            )
+        }
+    }
+
+    static func angularDistance(_ lhs: Double, _ rhs: Double) -> Double {
+        let delta = abs(PerimeterDirection.normalizedAngle(lhs) - PerimeterDirection.normalizedAngle(rhs))
+        return min(delta, 360 - delta)
+    }
 }
 
 struct PerimeterEntryAnchor: Equatable {

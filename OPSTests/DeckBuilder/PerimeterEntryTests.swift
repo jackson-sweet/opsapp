@@ -239,9 +239,10 @@ final class PerimeterEntryTests: XCTestCase {
         )
         XCTAssertTrue(DeckCanvasGesturePolicy.allowsCanvasGestureOverlayHitTesting(for: enteringLength))
         XCTAssertFalse(DeckCanvasGesturePolicy.allowsCanvasContentGestures(for: enteringLength))
+        XCTAssertTrue(DeckCanvasGesturePolicy.allowsPerimeterDraftReorientation(for: enteringLength))
     }
 
-    func testSpeedDrawToolbarReplacesStandardToolbarWhileEntryIsActive() {
+    func testSpeedDrawUsesCanvasOverlayInsteadOfToolbarWhileEntryIsActive() {
         let anchor = PerimeterEntryAnchor(
             vertexId: "v1",
             position: CGPoint(x: 100, y: 100),
@@ -251,18 +252,92 @@ final class PerimeterEntryTests: XCTestCase {
 
         XCTAssertFalse(PerimeterSpeedDrawToolbarPolicy.showsSpeedDrawToolbar(for: .idle))
         XCTAssertTrue(PerimeterSpeedDrawToolbarPolicy.showsStandardToolbar(for: .idle))
+        XCTAssertFalse(PerimeterSpeedDrawToolbarPolicy.showsCanvasOverlay(for: .idle))
 
         let choosingDirection = PerimeterEntryMode.choosingDirection(anchor: anchor)
-        XCTAssertTrue(PerimeterSpeedDrawToolbarPolicy.showsSpeedDrawToolbar(for: choosingDirection))
+        XCTAssertFalse(PerimeterSpeedDrawToolbarPolicy.showsSpeedDrawToolbar(for: choosingDirection))
         XCTAssertFalse(PerimeterSpeedDrawToolbarPolicy.showsStandardToolbar(for: choosingDirection))
+        XCTAssertTrue(PerimeterSpeedDrawToolbarPolicy.showsCanvasOverlay(for: choosingDirection))
 
         let enteringLength = PerimeterEntryMode.enteringLength(
             anchor: anchor,
             direction: .right,
             draft: .imperial(feet: 6, inches: 0, sixteenths: 0)
         )
-        XCTAssertTrue(PerimeterSpeedDrawToolbarPolicy.showsSpeedDrawToolbar(for: enteringLength))
+        XCTAssertFalse(PerimeterSpeedDrawToolbarPolicy.showsSpeedDrawToolbar(for: enteringLength))
         XCTAssertFalse(PerimeterSpeedDrawToolbarPolicy.showsStandardToolbar(for: enteringLength))
+        XCTAssertTrue(PerimeterSpeedDrawToolbarPolicy.showsCanvasOverlay(for: enteringLength))
+    }
+
+    func testNearestDirectionForDraftDragUsesClosestAllowedDirection() throws {
+        let anchor = PerimeterEntryAnchor(
+            vertexId: "v1",
+            position: CGPoint(x: 100, y: 100),
+            incomingAngleDegrees: nil,
+            rootVertexId: "v1"
+        )
+
+        XCTAssertEqual(
+            PerimeterEntryGeometry.nearestDirection(
+                from: anchor,
+                toward: CGPoint(x: 100, y: -80)
+            ),
+            .up
+        )
+        XCTAssertEqual(
+            PerimeterEntryGeometry.nearestDirection(
+                from: anchor,
+                toward: CGPoint(x: 230, y: 25)
+            ),
+            .upRight45
+        )
+    }
+
+    func testNearestDirectionForDraftDragRespectsRelativeHeading() throws {
+        let anchor = PerimeterEntryAnchor(
+            vertexId: "v2",
+            position: CGPoint(x: 100, y: 100),
+            incomingAngleDegrees: 0,
+            rootVertexId: "v1"
+        )
+
+        XCTAssertEqual(
+            PerimeterEntryGeometry.nearestDirection(
+                from: anchor,
+                toward: CGPoint(x: 230, y: 100)
+            ),
+            .straight
+        )
+        XCTAssertEqual(
+            PerimeterEntryGeometry.nearestDirection(
+                from: anchor,
+                toward: CGPoint(x: 210, y: 0)
+            ),
+            .left45
+        )
+    }
+
+    func testViewportSnapInterpolationMovesTowardTargetWithoutJumping() {
+        let start = CGSize(width: 0, height: 0)
+        let target = CGSize(width: 120, height: -60)
+
+        let partial = ViewportSnapAnimator.interpolatedOffset(
+            from: start,
+            to: target,
+            progress: 0.25
+        )
+        XCTAssertGreaterThan(partial.width, start.width)
+        XCTAssertLessThan(partial.width, target.width)
+        XCTAssertLessThan(partial.height, start.height)
+        XCTAssertGreaterThan(partial.height, target.height)
+
+        let finish = ViewportSnapAnimator.interpolatedOffset(
+            from: start,
+            to: target,
+            progress: 1
+        )
+        XCTAssertEqual(finish.width, target.width, accuracy: 0.0001)
+        XCTAssertEqual(finish.height, target.height, accuracy: 0.0001)
     }
 
     func testImperialDraftNormalizesOverflowInches() {
@@ -351,6 +426,28 @@ final class PerimeterEntryTests: XCTestCase {
         XCTAssertEqual(preview.end.x, 144, accuracy: 0.0001)
         XCTAssertEqual(preview.end.y, -144, accuracy: 0.0001)
         XCTAssertEqual(preview.direction, .left90)
+    }
+
+    func testReorientPerimeterDraftUpdatesDirectionAndPreservesLength() throws {
+        var data = DeckDrawingData()
+        data.config.snappingEnabled = false
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 100, y: 100))
+        ]
+
+        let viewModel = viewModel(drawingData: data)
+        viewModel.beginPerimeterEntry(fromVertexId: "v1")
+        viewModel.selectPerimeterDirection(.right)
+        viewModel.updatePerimeterLength(.imperial(feet: 6, inches: 0, sixteenths: 0))
+
+        XCTAssertTrue(viewModel.reorientPerimeterDraft(toward: CGPoint(x: 100, y: -30)))
+
+        let preview = try XCTUnwrap(viewModel.perimeterDraftPreview)
+        XCTAssertEqual(preview.direction, .up)
+        XCTAssertEqual(preview.dimensionInches, 72, accuracy: 0.0001)
+        XCTAssertEqual(preview.start.x, 100, accuracy: 0.0001)
+        XCTAssertEqual(preview.end.x, 100, accuracy: 0.0001)
+        XCTAssertEqual(preview.end.y, -44, accuracy: 0.0001)
     }
 
     func testRelativeContinuationFromOutgoingEdgeUsesForwardHeading() throws {

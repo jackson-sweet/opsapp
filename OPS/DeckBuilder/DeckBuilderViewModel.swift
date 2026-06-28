@@ -1164,6 +1164,21 @@ class DeckBuilderViewModel: ObservableObject {
     }
 
     @discardableResult
+    func reorientPerimeterDraft(toward point: CGPoint) -> Bool {
+        guard case .enteringLength(let anchor, let direction, let draft) = perimeterEntry,
+              let liveAnchor = makePerimeterAnchor(vertexId: anchor.vertexId, rootVertexId: anchor.rootVertexId),
+              let nextDirection = PerimeterEntryGeometry.nearestDirection(from: liveAnchor, toward: point),
+              nextDirection != direction else {
+            return false
+        }
+
+        perimeterEntry = .enteringLength(anchor: liveAnchor, direction: nextDirection, draft: draft)
+        perimeterEntryMessage = nil
+        hapticLight()
+        return true
+    }
+
+    @discardableResult
     func commitPerimeterLength() -> Bool {
         guard case .enteringLength(let anchor, let direction, let draft) = perimeterEntry else { return false }
         guard draft.totalInches > 0 else {

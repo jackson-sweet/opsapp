@@ -17,6 +17,11 @@ enum DeckCanvasGesturePolicy {
         guard case .idle = entry else { return false }
         return true
     }
+
+    static func allowsPerimeterDraftReorientation(for entry: PerimeterEntryMode) -> Bool {
+        guard case .enteringLength = entry else { return false }
+        return true
+    }
 }
 
 struct DeckCanvasView: View {
@@ -36,6 +41,7 @@ struct DeckCanvasView: View {
     // Drives the auto-pan when the user drags toward the viewport edge.
     // Lives on the view so its timer is torn down with the view.
     @StateObject private var edgePan = EdgePanController()
+    @StateObject private var viewportSnap = ViewportSnapAnimator()
 
     // 4800 × 4800 pt workspace ≈ 400' × 400'
     private let canvasSize: CGFloat = 4800
@@ -148,6 +154,10 @@ struct DeckCanvasView: View {
                     ? selectionDragGesture(size: geometry.size) : nil
             )
             .simultaneousGesture(allowsCanvasContentGestures ? tapGesture(size: geometry.size) : nil)
+            .simultaneousGesture(
+                DeckCanvasGesturePolicy.allowsPerimeterDraftReorientation(for: viewModel.perimeterEntry)
+                    ? perimeterDraftReorientationGesture(size: geometry.size) : nil
+            )
             .simultaneousGesture(longPressGesture(size: geometry.size))
             .onAppear {
                 if !hasInitializedOffset {
@@ -185,7 +195,10 @@ struct DeckCanvasView: View {
     /// `canvasScale`, viewport size, and drawingMode.
     private func wireEdgePan(viewportSize: CGSize) {
         edgePan.getCanvasOffset = { canvasOffset }
-        edgePan.setCanvasOffset = { canvasOffset = $0 }
+        edgePan.setCanvasOffset = {
+            viewportSnap.stop()
+            canvasOffset = $0
+        }
         edgePan.viewportSize = { viewportSize }
         edgePan.edgeZone = Self.edgePanZone
         edgePan.maxSpeed = Self.edgePanMaxSpeed
@@ -1467,8 +1480,13 @@ struct DeckCanvasView: View {
             width: viewportSize.width / 2 - point.x * canvasScale,
             height: viewportSize.height / 2 - point.y * canvasScale
         )
-        withAnimation(OPSStyle.Animation.panel) {
-            canvasOffset = nextOffset
+        viewportSnap.animate(
+            from: canvasOffset,
+            to: nextOffset,
+            duration: OPSStyle.Animation.durationPanel,
+            reduceMotion: OPSStyle.Animation.reduceMotion
+        ) { next in
+            canvasOffset = next
         }
     }
 
@@ -1646,6 +1664,18 @@ struct DeckCanvasView: View {
             }
     }
 
+    private func perimeterDraftReorientationGesture(size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 10)
+            .onChanged { value in
+                let point = canvasPoint(from: value.location, in: size)
+                _ = viewModel.reorientPerimeterDraft(toward: point)
+            }
+            .onEnded { value in
+                let point = canvasPoint(from: value.location, in: size)
+                _ = viewModel.reorientPerimeterDraft(toward: point)
+            }
+    }
+
     // MARK: - Long Press Gesture
 
     private func longPressGesture(size: CGSize) -> some Gesture {
@@ -1732,6 +1762,88 @@ struct DeckCanvasView: View {
         perimeterLongPressDidBeginEntry = false
         perimeterLongPressFallbackPoint = nil
         perimeterLongPressWheelCenter = nil
+    }
+}
+
+// MARK: - Viewport Snap Animator
+
+@MainActor
+final class ViewportSnapAnimator: ObservableObject {
+    private var timer: Timer?
+    private var startOffset: CGSize = .zero
+    private var targetOffset: CGSize = .zero
+    private var startedAt: Date?
+    private var duration: TimeInterval = OPSStyle.Animation.durationPanel
+    private var onUpdate: ((CGSize) -> Void)?
+
+    private static let tickInterval: TimeInterval = 1.0 / 60.0
+
+    deinit {
+        timer?.invalidate()
+    }
+
+    func animate(
+        from start: CGSize,
+        to target: CGSize,
+        duration: TimeInterval,
+        reduceMotion: Bool,
+        onUpdate: @escaping (CGSize) -> Void
+    ) {
+        stop()
+        guard !reduceMotion, duration > 0 else {
+            onUpdate(target)
+            return
+        }
+
+        startOffset = start
+        targetOffset = target
+        startedAt = Date()
+        self.duration = duration
+        self.onUpdate = onUpdate
+
+        let timer = Timer(timeInterval: Self.tickInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.tick()
+            }
+        }
+        self.timer = timer
+        RunLoop.main.add(timer, forMode: .common)
+        onUpdate(start)
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+        startedAt = nil
+        onUpdate = nil
+    }
+
+    nonisolated static func interpolatedOffset(from start: CGSize, to target: CGSize, progress: CGFloat) -> CGSize {
+        let eased = easedProgress(progress)
+        return CGSize(
+            width: start.width + (target.width - start.width) * eased,
+            height: start.height + (target.height - start.height) * eased
+        )
+    }
+
+    nonisolated static func easedProgress(_ progress: CGFloat) -> CGFloat {
+        let t = min(max(progress, 0), 1)
+        return CGFloat(1 - pow(Double(1 - t), 3))
+    }
+
+    private func tick() {
+        guard let startedAt, let onUpdate else {
+            stop()
+            return
+        }
+
+        let elapsed = Date().timeIntervalSince(startedAt)
+        let progress = min(max(CGFloat(elapsed / duration), 0), 1)
+        onUpdate(Self.interpolatedOffset(from: startOffset, to: targetOffset, progress: progress))
+
+        if progress >= 1 {
+            stop()
+        }
     }
 }
 

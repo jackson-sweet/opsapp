@@ -2,82 +2,65 @@
 
 import SwiftUI
 
+enum PerimeterSpeedDrawOverlayLayout {
+    static let touchZoneHeightFraction: CGFloat = 0.4
+
+    static var overlayMaxWidth: CGFloat { DeckMeasurementPickerTokens.panelMaxWidth }
+    static var controlGap: CGFloat { OPSStyle.Layout.spacing2 }
+}
+
 enum PerimeterSpeedDrawToolbarPolicy {
     static func showsSpeedDrawToolbar(for entry: PerimeterEntryMode) -> Bool {
+        false
+    }
+
+    static func showsCanvasOverlay(for entry: PerimeterEntryMode) -> Bool {
         entry.activeAnchor != nil
     }
 
     static func showsStandardToolbar(for entry: PerimeterEntryMode) -> Bool {
-        !showsSpeedDrawToolbar(for: entry)
+        !showsCanvasOverlay(for: entry)
     }
 }
 
-struct PerimeterSpeedDrawToolbarView: View {
+struct PerimeterSpeedDrawOverlayView: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: PerimeterSpeedDrawOverlayLayout.controlGap) {
             switch viewModel.perimeterEntry {
             case .idle:
                 EmptyView()
-            case .choosingDirection(let anchor):
-                directionSelectionRow(anchor: anchor)
+            case .choosingDirection:
+                HStack {
+                    Spacer(minLength: 0)
+                    exitButton
+                }
+                .frame(maxWidth: PerimeterSpeedDrawOverlayLayout.overlayMaxWidth)
             case .enteringLength(_, _, _):
                 PerimeterLengthControlView(viewModel: viewModel)
             }
         }
-        .background(OPSStyle.Colors.cardBackground)
+        .frame(maxWidth: .infinity)
         .transition(.opacity.combined(with: .move(edge: .bottom)))
         .animation(OPSStyle.Animation.panel, value: viewModel.perimeterEntry)
     }
 
-    private func directionSelectionRow(anchor: PerimeterEntryAnchor) -> some View {
-        HStack(spacing: DeckMeasurementPickerTokens.standardGap) {
-            Button {
-                viewModel.cancelPerimeterEntry()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: DeckMeasurementPickerTokens.smallIconSize, weight: .semibold))
-                    .foregroundColor(OPSStyle.Colors.text2)
-                    .frame(
-                        width: DeckMeasurementPickerTokens.minTouch,
-                        height: DeckMeasurementPickerTokens.minTouch
-                    )
-                    .measurementControlChrome()
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Exit speed draw")
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("// POINT LOCKED")
-                    .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(OPSStyle.Colors.text3)
-
-                HStack(spacing: DeckMeasurementPickerTokens.tightGap) {
-                    Image(systemName: "scope")
-                        .font(.system(size: DeckMeasurementPickerTokens.smallIconSize, weight: .semibold))
-                        .foregroundColor(OPSStyle.Colors.opsAccent)
-                    Text(anchor.usesRelativeDirections ? "ANGLE" : "COMPASS")
-                        .font(OPSStyle.Typography.badgeCake)
-                        .foregroundColor(OPSStyle.Colors.text)
-                        .lineLimit(1)
-                }
-            }
-
-            Spacer(minLength: 0)
-
-            Image(systemName: "point.3.connected.trianglepath.dotted")
-                .font(.system(size: DeckMeasurementPickerTokens.iconSize, weight: .medium))
+    private var exitButton: some View {
+        Button {
+            viewModel.cancelPerimeterEntry()
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: DeckMeasurementPickerTokens.smallIconSize, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.text2)
                 .frame(
                     width: DeckMeasurementPickerTokens.minTouch,
                     height: DeckMeasurementPickerTokens.minTouch
                 )
                 .measurementControlChrome()
-                .accessibilityHidden(true)
         }
-        .padding(.horizontal, DeckMeasurementPickerTokens.panelPadding)
-        .padding(.vertical, DeckMeasurementPickerTokens.standardGap)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Exit speed draw")
     }
 }
 
@@ -104,6 +87,7 @@ struct PerimeterLengthControlView: View {
                 _ = viewModel.commitPerimeterLength()
             }
         )
+        .frame(maxWidth: PerimeterSpeedDrawOverlayLayout.overlayMaxWidth)
     }
 
     private var perimeterLengthBinding: Binding<DeckMeasurementValue> {

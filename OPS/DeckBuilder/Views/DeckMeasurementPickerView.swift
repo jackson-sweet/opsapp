@@ -15,12 +15,13 @@ struct DeckMeasurementPickerConfiguration {
 }
 
 enum DeckMeasurementPickerTokens {
-    static let panelMaxWidth: CGFloat = 420
-    static let wheelWidth: CGFloat = 54
-    static let wheelHeight: CGFloat = 74
+    static let panelMaxWidth: CGFloat = 360
+    static let wheelWidth: CGFloat = 78
+    static let wheelHeight: CGFloat = 118
     static let waveformHeight: CGFloat = 24
-    static let systemToggleWidth: CGFloat = 92
-    static let compactButtonHeight: CGFloat = 40
+    static let systemToggleWidth: CGFloat = 168
+    static let compactButtonHeight: CGFloat = 42
+    static let valuePillMinWidth: CGFloat = 136
 
     static var panelRadius: CGFloat { OPSStyle.Layout.panelRadius }
     static var controlRadius: CGFloat { OPSStyle.Layout.buttonRadius }
@@ -86,15 +87,15 @@ struct DeckMeasurementPickerView: View {
     }
 
     var body: some View {
-        VStack(spacing: DeckMeasurementPickerTokens.tightGap) {
-            headerRow
-            inputRow
+        VStack(spacing: DeckMeasurementPickerTokens.standardGap) {
+            systemToggle
+            wheelRow
+            actionRow
             voiceFeedbackRow
             messageRow
+            exitRow
         }
-        .padding(.horizontal, DeckMeasurementPickerTokens.panelPadding)
-        .padding(.vertical, DeckMeasurementPickerTokens.tightGap)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: DeckMeasurementPickerTokens.panelMaxWidth)
         .onAppear(perform: loadInitialValue)
         .onChange(of: value) { _, newValue in
             syncFromExternalValue(newValue)
@@ -110,25 +111,8 @@ struct DeckMeasurementPickerView: View {
         }
     }
 
-    private var headerRow: some View {
-        HStack(spacing: DeckMeasurementPickerTokens.tightGap) {
-            if let onCancel {
-                Button {
-                    onCancel()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: DeckMeasurementPickerTokens.smallIconSize, weight: .semibold))
-                        .foregroundColor(OPSStyle.Colors.text2)
-                        .frame(
-                            width: DeckMeasurementPickerTokens.minTouch,
-                            height: DeckMeasurementPickerTokens.minTouch
-                        )
-                        .measurementControlChrome()
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Exit speed draw")
-            }
-
+    private var actionRow: some View {
+        HStack(spacing: DeckMeasurementPickerTokens.standardGap) {
             Button {
                 onBack()
             } label: {
@@ -144,27 +128,9 @@ struct DeckMeasurementPickerView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Back")
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("// \(title.uppercased())")
-                    .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(OPSStyle.Colors.text3)
+            lengthValuePill
 
-                HStack(spacing: DeckMeasurementPickerTokens.tightGap) {
-                    if let leadingSystemImage {
-                        Image(systemName: leadingSystemImage)
-                            .font(.system(size: DeckMeasurementPickerTokens.smallIconSize, weight: .semibold))
-                            .foregroundColor(OPSStyle.Colors.opsAccent)
-                    }
-                    Text(activeValue.formatted())
-                        .font(OPSStyle.Typography.dataValue)
-                        .foregroundColor(OPSStyle.Colors.text)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                }
-            }
-
-            Spacer(minLength: 0)
+            voiceButton
 
             Button {
                 onCommit(activeValue)
@@ -182,6 +148,34 @@ struct DeckMeasurementPickerView: View {
             .disabled(!canCommit(activeValue))
             .accessibilityLabel("Continue")
         }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var lengthValuePill: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("// \(title.uppercased())")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.text3)
+                .lineLimit(1)
+
+            HStack(spacing: DeckMeasurementPickerTokens.tightGap) {
+                if let leadingSystemImage {
+                    Image(systemName: leadingSystemImage)
+                        .font(.system(size: DeckMeasurementPickerTokens.smallIconSize, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.opsAccent)
+                }
+                Text(activeValue.formatted())
+                    .font(OPSStyle.Typography.dataValue)
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.64)
+            }
+        }
+        .padding(.horizontal, DeckMeasurementPickerTokens.horizontalInset)
+        .frame(minWidth: DeckMeasurementPickerTokens.valuePillMinWidth, maxWidth: .infinity)
+        .frame(minHeight: DeckMeasurementPickerTokens.minTouch)
+        .measurementControlChrome()
     }
 
     private var systemToggle: some View {
@@ -228,6 +222,7 @@ struct DeckMeasurementPickerView: View {
                     set: { sixteenths = $0; publishImperialValue() }
                 ))
             }
+            .frame(maxWidth: .infinity)
         case .metric:
             HStack(spacing: DeckMeasurementPickerTokens.tightGap) {
                 measurementWheel(label: "M", range: configuration.metricMetersRange, value: Binding(
@@ -243,16 +238,8 @@ struct DeckMeasurementPickerView: View {
                     set: { millimeters = $0; publishMetricValue() }
                 ))
             }
+            .frame(maxWidth: .infinity)
         }
-    }
-
-    private var inputRow: some View {
-        HStack(alignment: .center, spacing: DeckMeasurementPickerTokens.tightGap) {
-            systemToggle
-            wheelRow
-            voiceButton
-        }
-        .frame(maxWidth: .infinity)
     }
 
     private var voiceButton: some View {
@@ -306,6 +293,30 @@ struct DeckMeasurementPickerView: View {
         }
     }
 
+    @ViewBuilder
+    private var exitRow: some View {
+        if let onCancel {
+            HStack {
+                Spacer(minLength: 0)
+                Button {
+                    onCancel()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: DeckMeasurementPickerTokens.smallIconSize, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.text2)
+                        .frame(
+                            width: DeckMeasurementPickerTokens.minTouch,
+                            height: DeckMeasurementPickerTokens.minTouch
+                        )
+                        .measurementControlChrome()
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Exit speed draw")
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
     private var measurementSystemBinding: Binding<MeasurementSystem> {
         Binding(
             get: { measurementSystem },
@@ -318,7 +329,7 @@ struct DeckMeasurementPickerView: View {
             Picker(label, selection: value) {
                 ForEach(Array(range), id: \.self) { rowValue in
                     Text("\(rowValue)")
-                        .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 20, weight: .semibold, design: .monospaced))
                         .monospacedDigit()
                         .tag(rowValue)
                 }
@@ -327,7 +338,7 @@ struct DeckMeasurementPickerView: View {
             .pickerStyle(.wheel)
             .frame(
                 width: DeckMeasurementPickerTokens.wheelWidth,
-                height: DeckMeasurementPickerTokens.wheelHeight - 16
+                height: DeckMeasurementPickerTokens.wheelHeight - 20
             )
             .compositingGroup()
             .clipped()

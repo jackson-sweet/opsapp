@@ -45,10 +45,11 @@ final class DeckMeasurementPickerTests: XCTestCase {
         XCTAssertEqual(DeckMeasurementWheelData.value(forRow: 100, in: 10...15), 15)
     }
 
-    func testDeckBuilderPickerTokensStayCompactForToolbarEntry() {
-        XCTAssertLessThanOrEqual(DeckMeasurementPickerTokens.wheelWidth, 64)
-        XCTAssertLessThanOrEqual(DeckMeasurementPickerTokens.wheelHeight, 84)
-        XCTAssertLessThanOrEqual(DeckMeasurementPickerTokens.systemToggleWidth, 112)
-        XCTAssertLessThanOrEqual(DeckMeasurementPickerTokens.compactButtonHeight, 44)
+    func testDeckBuilderPickerTokensFitBottomTouchZone() {
+        XCTAssertGreaterThanOrEqual(DeckMeasurementPickerTokens.wheelWidth, 72)
+        XCTAssertGreaterThanOrEqual(DeckMeasurementPickerTokens.wheelHeight, 108)
+        XCTAssertGreaterThanOrEqual(DeckMeasurementPickerTokens.systemToggleWidth, 150)
+        XCTAssertLessThanOrEqual(DeckMeasurementPickerTokens.panelMaxWidth, 390)
+        XCTAssertEqual(PerimeterSpeedDrawOverlayLayout.touchZoneHeightFraction, 0.4, accuracy: 0.0001)
     }
 }

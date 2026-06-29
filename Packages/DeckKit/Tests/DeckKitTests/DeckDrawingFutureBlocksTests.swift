@@ -147,6 +147,8 @@ final class DeckDrawingFutureBlocksTests: XCTestCase {
             "levelConnections",
             "framing",
             "terrain",
+            "house",
+            "wasteSettings",
             "components",
         ]
         return object.reduce(into: [:]) { result, entry in

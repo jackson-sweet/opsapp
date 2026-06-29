@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Execution status - 2026-06-29:** Phase 5 has started with the schema/storage foundation. `HouseModel`, `WallOpening`, `OpeningKind`, and `LedgerDetail` now live in DeckKit; `DeckDrawingData.house` round-trips as a schema-version-5 additive block; malformed house payloads drop only the house block; and new `DeckDesign` rows default to the current deck schema version. The editor UI, opening geometry, elevation rendering, ledger strategy, component emission, and 3D wall cutouts remain pending tasks.
+
 > **HEADER NOTE — read first.** This plan is authored **before its predecessor phases (P1–P4) exist in code.** It therefore decomposes Phase 5 into the exact files, public types, and engine contracts mandated by the Architecture Contract (`docs/superpowers/plans/2026-06-24-ops-decks-architecture-contract.md`), but **the bite-sized TDD steps with literal, runnable Swift are finalized at phase start once predecessors exist.** Where the contract pins a type or signature, it is reproduced **verbatim** below and is binding. Where a step depends on a P1–P4 type whose *body* is not yet written (e.g. `DeckKit`'s `unknownBlocks` passthrough, `CapabilityProvider` injection point, the elevation/terrain datum from P4), the step states the dependency and the assertion it must satisfy, and leaves the literal call site to be filled at execution time against the real predecessor signature. **Do not fabricate predecessor signatures beyond what the contract fixes.**
 
 **Goal:** Add the house wall as a real modeled object — floor-line datum + per-story heights, door/window placement & sizing, wall-opening cutouts in 2D and 3D, cladding-driven ledger strategy (brick/stone → freestanding fallback that generates a house-side beam line reusing Phase 4 footings/framing), a front-on elevation drawing view, a door/window schedule with plan callouts, and multi-story decks with stairs to grade — all as one additive `HouseModel` block on `DeckDrawingData`, FULL-tier capability-gated, round-trip-preserving for LIGHT.
@@ -155,9 +157,9 @@ public struct LedgerDetail: Codable, Equatable {
 
 > **Pattern obligation (§2.1):** every sub-struct gets a memberwise `public init(...)` **and** a defensive `public init(from decoder:)` that uses `decodeIfPresent(...) ?? default`. `storyHeights`/`openings` default to `[]`; `floorLineFeet`/`ledger` decode to `nil`. `WallOpening.id`/`edgeId`/`kind` decode (id/edgeId required, `kind` defaults to `.window`); numeric fields default to `0`. `LedgerDetail.cladding` defaults to `.stucco`, `attachmentAllowed` defaults to `true`, `lateralConnectors`/`fastenerSchedule` to `nil`. Mirror exactly the style at `DeckGeometry.swift:144` / `:239` / `:363`.
 
-- [ ] **Step 1 — Write `HouseModel.swift` with the verbatim types + defensive Codable.** Reproduce the struct/enum block above. Add for each: a `public init` with defaulted args, and `public init(from decoder: Decoder) throws` matching the existing defensive pattern. `OpeningKind` already conforms `String, Codable, CaseIterable` — no custom decode needed. Add a `public var displayName: String` on `OpeningKind` (`patioDoor → "Patio door"`, `frenchDoor → "French door"`, `sliderDoor → "Sliding door"`, `window → "Window"`) — copy via `ops-copywriter` (sentence case, no exclamation).
+- [x] **Step 1 — Write `HouseModel.swift` with the verbatim types + defensive Codable.** Reproduce the struct/enum block above. Add for each: a `public init` with defaulted args, and `public init(from decoder: Decoder) throws` matching the existing defensive pattern. `OpeningKind` already conforms `String, Codable, CaseIterable` — no custom decode needed. Add a `public var displayName: String` on `OpeningKind` (`patioDoor → "Patio door"`, `frenchDoor → "French door"`, `sliderDoor → "Sliding door"`, `window → "Window"`) — copy via `ops-copywriter` (sentence case, no exclamation).
 
-- [ ] **Step 2 — Add the property to `DeckDrawingData`** at `DeckGeometry.swift:725` (after `components`):
+- [x] **Step 2 — Add the property to `DeckDrawingData`** at `DeckGeometry.swift:725` (after `components`):
 
 ```swift
     /// House-attachment model (Phase 5): floor-line datum + story heights, wall
@@ -168,20 +170,20 @@ public struct LedgerDetail: Codable, Equatable {
     public var house: HouseModel? = nil
 ```
 
-- [ ] **Step 3 — Add `case house` to `DeckDrawingData.CodingKeys`** (`:739`) and decode it in `init(from:)` (`:757`):
+- [x] **Step 3 — Add `case house` to `DeckDrawingData.CodingKeys`** (`:739`) and decode it in `init(from:)` (`:757`):
 
 ```swift
         self.house = try c.decodeIfPresent(HouseModel.self, forKey: .house)
 ```
 
-- [ ] **Step 4 — Bump `DeckDesign.version`.** New designs created in this build set `version = 5`. Confirm `fromJSON` does NOT down-version an opened blob (it never has — version lives on the SwiftData row, not in the blob; `schemaVersion` inside the blob is the P1 self-describing mirror). Set the constructor default per the real P1 `version` plumbing.
+- [x] **Step 4 — Bump `DeckDesign.version`.** New designs created in this build set `version = 5`. Confirm `fromJSON` does NOT down-version an opened blob (it never has — version lives on the SwiftData row, not in the blob; `schemaVersion` inside the blob is the P1 self-describing mirror). Set the constructor default per the real P1 `version` plumbing.
 
-- [ ] **Step 5 — Build (device target).**
+- [x] **Step 5 — Build (device target).**
 
 Run: `xcodebuild -scheme OPS -destination 'generic/platform=iOS' build 2>&1 | grep -E 'BUILD SUCCEEDED|error:'`
 Expected: `BUILD SUCCEEDED`.
 
-- [ ] **Step 6 — Commit.**
+- [x] **Step 6 — Commit.**
 
 ```bash
 git add DeckKit/Sources/DeckKit/Models/HouseModel.swift \
@@ -213,10 +215,10 @@ git commit -m "feat(decks-p5): add HouseModel block to drawing_data (schema v5)"
 
 - **`test_legacy_blob_without_house_decodes_with_nil_house()`** — decode a pre-P5 JSON (no `house` key). Assert `.house == nil` and all baseline fields intact. Forward-direction guarantee.
 
-- [ ] **Step 1 — Write the four tests above** with concrete fixtures (inline JSON string literals for the malformed/legacy cases; programmatic `DeckDrawingData` construction for the round-trip case).
-- [ ] **Step 2 — Run, expect FAIL** if Task 1 used `decodeIfPresent` without the `try?` wrapper (the malformed test fails). Run: `xcodebuild -scheme OPS -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' test -only-testing:DeckKitTests/HouseModelCodableTests 2>&1 | grep -E 'TEST SUCCEEDED|TEST FAILED|failed'`
-- [ ] **Step 3 — Apply the `try?` wrapper fix** to `DeckDrawingData.init(from:)` for the `house` key (and confirm the same hardening exists for other optional blocks per P1's pattern).
-- [ ] **Step 4 — Run, expect `TEST SUCCEEDED`.**
+- [x] **Step 1 — Write the four tests above** with concrete fixtures (inline JSON string literals for the malformed/legacy cases; programmatic `DeckDrawingData` construction for the round-trip case).
+- [x] **Step 2 — Run, expect FAIL** if Task 1 used `decodeIfPresent` without the `try?` wrapper (the malformed test fails). Run: `xcodebuild -scheme OPS -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' test -only-testing:DeckKitTests/HouseModelCodableTests 2>&1 | grep -E 'TEST SUCCEEDED|TEST FAILED|failed'`
+- [x] **Step 3 — Apply the `try?` wrapper fix** to `DeckDrawingData.init(from:)` for the `house` key (and confirm the same hardening exists for other optional blocks per P1's pattern).
+- [x] **Step 4 — Run, expect `TEST SUCCEEDED`.**
 - [ ] **Step 5 — Commit.**
 
 ```bash
@@ -874,4 +876,3 @@ public struct HouseOpeningScheduleView: View {
 - **Type consistency:** `HouseModel`/`WallOpening`/`OpeningKind`/`LedgerDetail` used verbatim across T1–T15; `WallOpening.Validation`, `LedgerStrategyEngine.Strategy`, `StairsToGradeEngine.GradeStairResult`, `HouseOpeningSchedule.ScheduleRow`, `HouseElevationProjector.Elevation` named identically wherever referenced. Callout tags flow from one source (`HouseOpeningSchedule`) into projector (T4), 2D overlay (T11), and schedule view (T13).
 - **Predecessor honesty:** every P1/P2/P4 dependency is named with the behavior relied on; where a body isn't yet written, the step states the dependency and leaves the literal call site for phase-start finalization (per the header note), without inventing signatures.
 ```
-

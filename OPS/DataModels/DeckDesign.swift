@@ -19,7 +19,7 @@ final class DeckDesign: Identifiable {
     var drawingDataJSON: String      // DeckDrawingData serialized as JSON
     var thumbnailURL: String?        // S3 URL of rendered PNG
     var localThumbnailPath: String?  // local filesystem path (offline)
-    var version: Int = 1
+    var version: Int = DeckSchemaMigration.currentSchemaVersion
     var createdBy: String?           // user ID
 
     // Sync fields (required by OPS pattern)

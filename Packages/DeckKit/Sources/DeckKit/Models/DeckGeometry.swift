@@ -773,6 +773,9 @@ public struct DeckDrawingData: Codable {
 
     public var framing: FramingPlan? = nil
     public var terrain: TerrainModel? = nil
+    /// House-attachment model: floor-line datum, story heights, wall openings,
+    /// and cladding-driven ledger strategy for the standalone OPS Decks app.
+    public var house: HouseModel? = nil
 
     // MARK: - Estimate Settings
 
@@ -808,6 +811,7 @@ public struct DeckDrawingData: Codable {
         case levelConnections
         case framing
         case terrain
+        case house
         case wasteSettings
         case components
     }
@@ -830,6 +834,7 @@ public struct DeckDrawingData: Codable {
         self.levelConnections = try c.decodeIfPresent([LevelConnection].self, forKey: .levelConnections) ?? []
         self.framing = try? c.decodeIfPresent(FramingPlan.self, forKey: .framing)
         self.terrain = try? c.decodeIfPresent(TerrainModel.self, forKey: .terrain)
+        self.house = try? c.decodeIfPresent(HouseModel.self, forKey: .house)
         self.wasteSettings = try c.decodeIfPresent(WasteSettings.self, forKey: .wasteSettings)
         self.components = try c.decodeIfPresent([DesignComponentRow].self, forKey: .components)
         self.futureBlocks = [:]
@@ -851,6 +856,7 @@ public struct DeckDrawingData: Codable {
         try c.encode(levelConnections, forKey: .levelConnections)
         try c.encodeIfPresent(framing, forKey: .framing)
         try c.encodeIfPresent(terrain, forKey: .terrain)
+        try c.encodeIfPresent(house, forKey: .house)
         try c.encodeIfPresent(wasteSettings, forKey: .wasteSettings)
         try c.encodeIfPresent(components, forKey: .components)
     }

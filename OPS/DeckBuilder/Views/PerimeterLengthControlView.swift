@@ -32,11 +32,22 @@ struct PerimeterSpeedDrawOverlayView: View {
             case .idle:
                 EmptyView()
             case .choosingDirection:
-                HStack {
+                HStack(spacing: DeckMeasurementPickerTokens.standardGap) {
+                    Text("// POINT LOCKED")
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.text3)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                     Spacer(minLength: 0)
                     exitButton
                 }
+                .padding(DeckMeasurementPickerTokens.standardGap)
                 .frame(maxWidth: PerimeterSpeedDrawOverlayLayout.overlayMaxWidth)
+                // Same L1 plate + hit-shield as the length panel so this state's
+                // bottom zone is a contained instrument (not a lone floating x),
+                // and gap-taps can't fall through to the canvas reorient drag.
+                .measurementControlChrome(cornerRadius: DeckMeasurementPickerTokens.panelRadius)
+                .contentShape(RoundedRectangle(cornerRadius: DeckMeasurementPickerTokens.panelRadius, style: .continuous))
             case .enteringLength(_, _, _):
                 PerimeterLengthControlView(viewModel: viewModel)
             }
@@ -57,7 +68,7 @@ struct PerimeterSpeedDrawOverlayView: View {
                     width: DeckMeasurementPickerTokens.minTouch,
                     height: DeckMeasurementPickerTokens.minTouch
                 )
-                .measurementControlChrome()
+                .measurementControlChrome(flat: true)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Exit speed draw")

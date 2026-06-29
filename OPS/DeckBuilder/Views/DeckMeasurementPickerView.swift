@@ -20,7 +20,7 @@ enum DeckMeasurementPickerTokens {
     static let wheelHeight: CGFloat = 118
     static let waveformHeight: CGFloat = 24
     static let systemToggleWidth: CGFloat = 168
-    static let compactButtonHeight: CGFloat = 42
+    static let compactButtonHeight: CGFloat = 44
     static let valuePillMinWidth: CGFloat = 136
 
     static var panelRadius: CGFloat { OPSStyle.Layout.panelRadius }
@@ -95,7 +95,16 @@ struct DeckMeasurementPickerView: View {
             messageRow
             exitRow
         }
+        .padding(DeckMeasurementPickerTokens.standardGap)
         .frame(maxWidth: DeckMeasurementPickerTokens.panelMaxWidth)
+        // One L1 glass plate so the controls read as a single length instrument
+        // rather than ~11 separate frosted tiles scattered over the canvas. The
+        // continuous-radius contentShape makes the whole plate consume touches,
+        // so a thumb that lands in a gap between controls can't fall through to
+        // the canvas-wide reorient drag (the near-miss → silent-reorient hazard).
+        // Scoped to the plate only — bare canvas beside the plate still reorients.
+        .measurementControlChrome(cornerRadius: DeckMeasurementPickerTokens.panelRadius)
+        .contentShape(RoundedRectangle(cornerRadius: DeckMeasurementPickerTokens.panelRadius, style: .continuous))
         .onAppear(perform: loadInitialValue)
         .onChange(of: value) { _, newValue in
             syncFromExternalValue(newValue)
@@ -123,7 +132,7 @@ struct DeckMeasurementPickerView: View {
                         width: DeckMeasurementPickerTokens.minTouch,
                         height: DeckMeasurementPickerTokens.minTouch
                     )
-                    .measurementControlChrome()
+                    .measurementControlChrome(flat: true)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Back")
@@ -142,7 +151,7 @@ struct DeckMeasurementPickerView: View {
                         width: DeckMeasurementPickerTokens.minTouch,
                         height: DeckMeasurementPickerTokens.minTouch
                     )
-                    .measurementControlChrome(isProminent: canCommit(activeValue))
+                    .measurementControlChrome(isProminent: canCommit(activeValue), flat: true)
             }
             .buttonStyle(.plain)
             .disabled(!canCommit(activeValue))
@@ -165,17 +174,17 @@ struct DeckMeasurementPickerView: View {
                         .foregroundColor(OPSStyle.Colors.opsAccent)
                 }
                 Text(activeValue.formatted())
-                    .font(OPSStyle.Typography.dataValue)
+                    .font(OPSStyle.Typography.dataValueLg)
                     .foregroundColor(OPSStyle.Colors.text)
                     .monospacedDigit()
                     .lineLimit(1)
-                    .minimumScaleFactor(0.64)
+                    .minimumScaleFactor(0.8)
             }
         }
         .padding(.horizontal, DeckMeasurementPickerTokens.horizontalInset)
         .frame(minWidth: DeckMeasurementPickerTokens.valuePillMinWidth, maxWidth: .infinity)
         .frame(minHeight: DeckMeasurementPickerTokens.minTouch)
-        .measurementControlChrome()
+        .measurementControlChrome(flat: true, cornerRadius: DeckMeasurementPickerTokens.nestedRadius)
     }
 
     private var systemToggle: some View {
@@ -185,7 +194,7 @@ struct DeckMeasurementPickerView: View {
         }
         .padding(DeckMeasurementPickerTokens.tightGap)
         .frame(width: DeckMeasurementPickerTokens.systemToggleWidth)
-        .measurementControlChrome()
+        .measurementControlChrome(flat: true, cornerRadius: DeckMeasurementPickerTokens.nestedRadius)
     }
 
     private func measurementSystemButton(_ system: MeasurementSystem, label: String) -> some View {
@@ -198,7 +207,12 @@ struct DeckMeasurementPickerView: View {
                 .foregroundColor(isActive ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
                 .frame(maxWidth: .infinity)
                 .frame(height: DeckMeasurementPickerTokens.compactButtonHeight)
-                .measurementControlChrome(isActive: isActive)
+                // Single sliding indicator on the recessed track — no second
+                // frosted material (the old glass-in-glass toggle).
+                .background(
+                    RoundedRectangle(cornerRadius: DeckMeasurementPickerTokens.controlRadius, style: .continuous)
+                        .fill(isActive ? OPSStyle.Colors.surfaceActive : Color.clear)
+                )
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -222,7 +236,9 @@ struct DeckMeasurementPickerView: View {
                     set: { sixteenths = $0; publishImperialValue() }
                 ))
             }
+            .padding(DeckMeasurementPickerTokens.tightGap)
             .frame(maxWidth: .infinity)
+            .measurementControlChrome(flat: true, cornerRadius: DeckMeasurementPickerTokens.nestedRadius)
         case .metric:
             HStack(spacing: DeckMeasurementPickerTokens.tightGap) {
                 measurementWheel(label: "M", range: configuration.metricMetersRange, value: Binding(
@@ -238,7 +254,9 @@ struct DeckMeasurementPickerView: View {
                     set: { millimeters = $0; publishMetricValue() }
                 ))
             }
+            .padding(DeckMeasurementPickerTokens.tightGap)
             .frame(maxWidth: .infinity)
+            .measurementControlChrome(flat: true, cornerRadius: DeckMeasurementPickerTokens.nestedRadius)
         }
     }
 
@@ -253,7 +271,7 @@ struct DeckMeasurementPickerView: View {
                     width: DeckMeasurementPickerTokens.minTouch,
                     height: DeckMeasurementPickerTokens.minTouch
                 )
-                .measurementControlChrome(isActive: voiceInput.isListening)
+                .measurementControlChrome(isActive: voiceInput.isListening, flat: true)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(voiceInput.isListening ? "Stop dictation" : "Dictate measurement")
@@ -308,7 +326,7 @@ struct DeckMeasurementPickerView: View {
                             width: DeckMeasurementPickerTokens.minTouch,
                             height: DeckMeasurementPickerTokens.minTouch
                         )
-                        .measurementControlChrome()
+                        .measurementControlChrome(flat: true)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Exit speed draw")
@@ -349,8 +367,9 @@ struct DeckMeasurementPickerView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
         }
+        // No per-wheel chrome — the three wheels share one backing (wheelRow) so
+        // they read as a single dial cluster instead of three separate tiles.
         .frame(width: DeckMeasurementPickerTokens.wheelWidth, height: DeckMeasurementPickerTokens.wheelHeight)
-        .measurementControlChrome(cornerRadius: DeckMeasurementPickerTokens.nestedRadius)
     }
 
     private func loadInitialValue() {
@@ -435,9 +454,17 @@ struct DeckMeasurementPickerView: View {
 }
 
 extension View {
+    /// Frosted chrome for the speed-draw overlay, in two elevations so the
+    /// floating controls read as ONE instrument instead of a pile of glass tiles:
+    /// - default (`flat: false`) — full L1 glass plate (ultraThinMaterial + tint +
+    ///   hairline). Used by the overlay PANEL itself.
+    /// - `flat: true` — a flat L2 well/key (solid `surfaceInput` fill + hairline,
+    ///   NO material) for controls that sit ON the glass panel, so we never stack
+    ///   one blurred material on another (the old glass-on-glass clutter).
     func measurementControlChrome(
         isProminent: Bool = false,
         isActive: Bool = false,
+        flat: Bool = false,
         cornerRadius: CGFloat = DeckMeasurementPickerTokens.controlRadius
     ) -> some View {
         let isEmphasized = isProminent || isActive
@@ -445,18 +472,30 @@ extension View {
 
         return background(
             ZStack {
-                shape.fill(.ultraThinMaterial)
-                shape.fill(OPSStyle.Colors.glassApprox)
-                if isEmphasized {
-                    shape.fill(OPSStyle.Colors.surfaceActive)
+                if flat {
+                    // L2 control on the panel — solid recessed fill, no blur.
+                    shape.fill(OPSStyle.Colors.surfaceInput)
+                    if isProminent {
+                        // The single accent element per panel (valid Continue).
+                        shape.fill(OPSStyle.Colors.opsAccent.opacity(0.18))
+                    } else if isActive {
+                        shape.fill(OPSStyle.Colors.surfaceActive)
+                    }
+                } else {
+                    // L1 glass plate.
+                    shape.fill(.ultraThinMaterial)
+                    shape.fill(OPSStyle.Colors.glassApprox)
+                    if isEmphasized {
+                        shape.fill(OPSStyle.Colors.surfaceActive)
+                    }
+                    LinearGradient(
+                        colors: [OPSStyle.Colors.surfaceInput, .clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .clipShape(shape)
+                    .allowsHitTesting(false)
                 }
-                LinearGradient(
-                    colors: [OPSStyle.Colors.surfaceInput, .clear],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .clipShape(shape)
-                .allowsHitTesting(false)
             }
         )
         .overlay(

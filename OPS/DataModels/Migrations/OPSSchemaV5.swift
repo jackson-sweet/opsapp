@@ -24,6 +24,7 @@ enum OPSSchemaV5: VersionedSchema {
 
     static var models: [any PersistentModel.Type] {
         OPSSchemaCommon.unchangedModels
+            + OPSSchemaCommon.v1ToV10SiteVisitModel
             + OPSSchemaCommon.v4CoreModels
             + OPSSchemaCommon.v4TaskModels
             + OPSSchemaCommon.v3CatalogModels

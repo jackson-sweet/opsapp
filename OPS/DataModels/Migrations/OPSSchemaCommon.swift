@@ -457,6 +457,46 @@ enum OPSSchemaLegacyTaskModels {
     }
 }
 
+/// Frozen `SiteVisit` shape as it shipped through V1–V10: `opportunityId` is a
+/// REQUIRED `String`. The live `SiteVisit` (DataModels/Supabase/SiteVisit.swift)
+/// relaxed `opportunityId` to optional at the V10→V11 boundary so a site visit
+/// can start before a lead is selected. Because `SiteVisit` participates in
+/// every historical versioned schema, mutating the live model in place would
+/// shift the persistent (Core Data) entity-version hash of `SiteVisit` in V1–V10
+/// — the snapshots that must reproduce the already-shipped on-disk shape exactly.
+/// Freezing the old shape here keeps V1–V10 byte-identical to what shipped and
+/// confines the optionality relaxation to the single V10→V11 lightweight stage.
+/// (Same discipline as `OPSSchemaLegacyCoreModels` / `OPSSchemaLegacyTaskModels`.)
+enum OPSSchemaLegacySiteVisit {
+    @Model
+    final class SiteVisit: Identifiable {
+        @Attribute(.unique) var id: String
+        var opportunityId: String
+        var companyId: String
+        var status: SiteVisitStatus
+        var scheduledAt: Date?
+        var completedAt: Date?
+        var notes: String?
+        var address: String?
+        var assignedTo: String?
+        var createdAt: Date
+
+        init(
+            id: String = UUID().uuidString,
+            opportunityId: String,
+            companyId: String,
+            status: SiteVisitStatus = .scheduled,
+            createdAt: Date = Date()
+        ) {
+            self.id = id
+            self.opportunityId = opportunityId
+            self.companyId = companyId
+            self.status = status
+            self.createdAt = createdAt
+        }
+    }
+}
+
 enum OPSSchemaCommon {
     /// Models present in both V2 and V3 (and unchanged across the V2→V3
     /// boundary). The inventory entities live only in V2; the catalog/product-
@@ -480,7 +520,11 @@ enum OPSSchemaCommon {
         InvoiceLineItem.self,
         Payment.self,
         Product.self,
-        SiteVisit.self,
+        // NOTE: SiteVisit is intentionally NOT here. Its persistent shape
+        // changed at the V10→V11 boundary (opportunityId String → String?),
+        // so it is version-scoped: the frozen `OPSSchemaLegacySiteVisit.SiteVisit`
+        // (required opportunityId) backs V1–V10 and the live `SiteVisit`
+        // (optional) backs V11+. See `v1ToV10SiteVisitModel` / `v11SiteVisitModel`.
         ProjectNote.self,
         PhotoAnnotation.self,
         CalendarUserEvent.self,
@@ -579,6 +623,37 @@ enum OPSSchemaCommon {
     /// table so offcut provenance (source roll ↔ banked offcut) syncs locally.
     static let v10StockUnitEventModels: [any PersistentModel.Type] = [
         CatalogStockUnitEvent.self
+    ]
+
+    /// SiteVisit as it shipped through V1–V10 — frozen, required `opportunityId`.
+    /// Pulled out of `unchangedModels` so the V10→V11 optionality relaxation is
+    /// isolated to one boundary instead of silently rewriting every historical
+    /// schema's `SiteVisit` hash.
+    static let v1ToV10SiteVisitModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacySiteVisit.SiteVisit.self
+    ]
+
+    /// SiteVisit from V11 onward — the live model with optional `opportunityId`,
+    /// enabling lead-less (unlinked) site visits.
+    static let v11SiteVisitModel: [any PersistentModel.Type] = [
+        SiteVisit.self
+    ]
+
+    /// V11 site-visit capture packet. Additive over V10 — captures evidence,
+    /// visit types, checklist answers, LiDAR dimensioned photos, and CanPro
+    /// deck designs before a project exists so the reviewed packet can seed
+    /// project creation.
+    static let v11SiteVisitCaptureModels: [any PersistentModel.Type] = [
+        SiteVisitCaptureArtifact.self,
+        SiteVisitType.self,
+        SiteVisitChecklistAnswer.self
+    ]
+
+    /// V12 site-visit identity draft. Additive over V11 — stores local-first
+    /// client/lead contact details while the operator captures the visit before
+    /// selecting or creating the final lead.
+    static let v12SiteVisitIdentityModels: [any PersistentModel.Type] = [
+        SiteVisitIdentityDraft.self
     ]
 
     /// V3 catalog/product models other than ProductBundleItem. Historical

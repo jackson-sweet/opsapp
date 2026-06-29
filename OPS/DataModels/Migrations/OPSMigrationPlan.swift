@@ -51,6 +51,21 @@
 //  mirror of the append-only `catalog_stock_unit_events` ledger that records
 //  offcut provenance for the vinyl deck-builder cut path.
 //
+//  V10 → V11 stage: lightweight additive — site-visit capture artifacts,
+//  visit types, and checklist answer snapshots for rapid pre-project photos,
+//  notes, measurements, LiDAR dimensioned captures, custom questions, and
+//  CanPro deck-design references. This stage ALSO relaxes the existing
+//  `SiteVisit.opportunityId` from a required `String` to an optional `String?`
+//  so a visit can start before a lead is selected. Relaxing a required attribute
+//  to optional is an inferable lightweight transform. V1–V10 keep the frozen
+//  required shape (`OPSSchemaCommon.v1ToV10SiteVisitModel`); V11+ use the live
+//  optional shape (`OPSSchemaCommon.v11SiteVisitModel`), so the change is
+//  confined to this single boundary instead of silently rewriting every
+//  historical schema's `SiteVisit` hash.
+//
+//  V11 → V12 stage: lightweight additive — site-visit identity draft rows for
+//  client/lead contact capture inside the visit console.
+//
 
 import Foundation
 import SwiftData
@@ -67,7 +82,9 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV7.self,
             OPSSchemaV8.self,
             OPSSchemaV9.self,
-            OPSSchemaV10.self
+            OPSSchemaV10.self,
+            OPSSchemaV11.self,
+            OPSSchemaV12.self
         ]
     }
 
@@ -81,9 +98,29 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addVinylOrderMarkerV6toV7,
             addCatalogSetupModelsV7toV8,
             addProjectPhotosV8toV9,
-            addStockUnitEventsV9toV10
+            addStockUnitEventsV9toV10,
+            addSiteVisitCaptureArtifactsV10toV11,
+            addSiteVisitIdentityDraftsV11toV12
         ]
     }
+
+    /// V11 → V12: purely additive — identity drafts are local-first rows keyed
+    /// to a site visit. They preserve contact/client info before the lead is
+    /// selected or created.
+    static let addSiteVisitIdentityDraftsV11toV12 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV11.self,
+        toVersion: OPSSchemaV12.self
+    )
+
+    /// V10 → V11: additive site-visit capture/checklist models (brand-new
+    /// @Models, no pre-existing rows) PLUS one inferable relaxation: the frozen
+    /// `SiteVisit.opportunityId` (required, V1–V10) becomes optional (V11+) so a
+    /// visit can begin before a lead exists. Required→optional is a lightweight
+    /// transform; existing non-null `opportunityId` values are preserved.
+    static let addSiteVisitCaptureArtifactsV10toV11 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV10.self,
+        toVersion: OPSSchemaV11.self
+    )
 
     /// V9 → V10: purely additive — `CatalogStockUnitEvent` is a brand-new @Model
     /// backing the local mirror of `catalog_stock_unit_events`. No pre-existing

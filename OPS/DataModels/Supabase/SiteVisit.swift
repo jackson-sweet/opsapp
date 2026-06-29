@@ -11,7 +11,7 @@ import Foundation
 @Model
 class SiteVisit: Identifiable {
     @Attribute(.unique) var id: String
-    var opportunityId: String
+    var opportunityId: String?
     var companyId: String
     var status: SiteVisitStatus
     var scheduledAt: Date?
@@ -23,7 +23,7 @@ class SiteVisit: Identifiable {
 
     init(
         id: String = UUID().uuidString,
-        opportunityId: String,
+        opportunityId: String? = nil,
         companyId: String,
         status: SiteVisitStatus = .scheduled,
         createdAt: Date = Date()

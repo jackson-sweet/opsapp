@@ -17,6 +17,23 @@ final class DimensionEngineTests: XCTestCase {
         XCTAssertEqual(DimensionEngine.formatImperial(192), "16'")
     }
 
+    func testFormatImperial_fractionsNotDecimals() {
+        // Halves/quarters/eighths/sixteenths reduce, and render as fractions.
+        XCTAssertEqual(DimensionEngine.formatImperial(77.5), "6' 5 1/2\"")   // not 6' 5.5"
+        XCTAssertEqual(DimensionEngine.formatImperial(0.5), "1/2\"")
+        XCTAssertEqual(DimensionEngine.formatImperial(0.375), "3/8\"")
+        XCTAssertEqual(DimensionEngine.formatImperial(5.1875), "5 3/16\"")   // 1/16 precision kept
+        XCTAssertEqual(DimensionEngine.formatImperial(72.5), "6' 1/2\"")
+        XCTAssertEqual(DimensionEngine.formatImperial(73.5), "6' 1 1/2\"")
+    }
+
+    func testFormatImperial_roundsToNearestSixteenthWithCleanRollover() {
+        // 11.97" → nearest 1/16 is 12" → rolls to the next foot, no "11' 12\"".
+        XCTAssertEqual(DimensionEngine.formatImperial(11.97), "1'")
+        // Just under rolls to 11 15/16", not a decimal.
+        XCTAssertEqual(DimensionEngine.formatImperial(11.93), "11 15/16\"")
+    }
+
     // MARK: - Parsing
 
     func testParseImperial_feetAndInches() {

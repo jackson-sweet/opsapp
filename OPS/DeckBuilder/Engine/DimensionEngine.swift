@@ -12,25 +12,45 @@ struct DimensionEngine {
             print("[DeckBuilder] formatImperial: negative value \(totalInches), using absolute")
             return formatImperial(abs(totalInches))
         }
-        var feet = Int(totalInches) / 12
-        let inches = totalInches - Double(feet * 12)
+        // Snap to the picker's resolution — nearest 1/16" — and render as a
+        // reduced fraction (e.g. 5 1/2", 5 3/16"), never a decimal. Integer math
+        // on total sixteenths handles foot/inch rollover with no "11' 12\"" edge.
+        let totalSixteenths = Int((totalInches * 16).rounded())
+        let feet = totalSixteenths / 192          // 12" × 16
+        let remSixteenths = totalSixteenths % 192
+        let wholeInches = remSixteenths / 16
+        let sixteenths = remSixteenths % 16
 
-        // Round to nearest 0.5". 11.95" → 12.0" must roll over to the next foot,
-        // otherwise we print nonsense like "11' 12\"". Roll BEFORE the < 0.5 check
-        // so e.g. 11.99" reaches the rollover branch.
-        var roundedInches = (inches * 2).rounded() / 2
-        if roundedInches >= 12 {
-            feet += 1
-            roundedInches = 0
-        }
-
-        if roundedInches < 0.5 {
+        if wholeInches == 0 && sixteenths == 0 {
             return "\(feet)'"
         }
-        if roundedInches == roundedInches.rounded() {
-            return "\(feet)' \(Int(roundedInches))\""
+
+        let fraction = imperialFractionText(sixteenths: sixteenths)
+        let inchPart: String
+        if sixteenths == 0 {
+            inchPart = "\(wholeInches)\""
+        } else if wholeInches == 0 {
+            inchPart = "\(fraction)\""
+        } else {
+            inchPart = "\(wholeInches) \(fraction)\""
         }
-        return String(format: "%d' %.1f\"", feet, roundedInches)
+
+        return feet == 0 ? inchPart : "\(feet)' \(inchPart)"
+    }
+
+    /// Reduced fraction text for a count of sixteenths (8 → "1/2", 3 → "3/16").
+    /// Empty when there is no fractional part.
+    private static func imperialFractionText(sixteenths: Int) -> String {
+        guard sixteenths > 0 else { return "" }
+        let divisor = gcd(sixteenths, 16)
+        return "\(sixteenths / divisor)/\(16 / divisor)"
+    }
+
+    private static func gcd(_ a: Int, _ b: Int) -> Int {
+        var x = a
+        var y = b
+        while y != 0 { (x, y) = (y, x % y) }
+        return x
     }
 
     /// Format centimeters as meters and cm (e.g., 245 → "2.45 m")

@@ -1017,42 +1017,55 @@ struct DeckCanvasView: View {
     }
 
     private func drawPerimeterDraftPreview(context: GraphicsContext, preview: PerimeterDraftPreview) {
-        var path = Path()
-        path.move(to: preview.start)
-        path.addLine(to: preview.end)
+        let dx = preview.end.x - preview.start.x
+        let dy = preview.end.y - preview.start.y
+        let length = max(0.0001, sqrt(dx * dx + dy * dy))
+        let ux = dx / length
+        let uy = dy / length
 
-        let stroke = scaledSize(2, min: 1.25, max: 4)
-        let dash = [scaledSize(10, min: 6, max: 16), scaledSize(5, min: 3, max: 9)]
-        context.stroke(
-            path,
-            with: .color(OPSStyle.Colors.text.opacity(0.72)),
-            style: StrokeStyle(lineWidth: stroke, lineCap: .round, dash: dash)
-        )
+        // Start the line clear of the anchor marker (skip the gap on very short
+        // lines so it doesn't invert).
+        let gap = scaledSize(11, min: 8, max: 18)
+        let gappedStart = length > gap * 1.5
+            ? CGPoint(x: preview.start.x + ux * gap, y: preview.start.y + uy * gap)
+            : preview.start
 
-        let endRadius = scaledSize(5, min: 3.5, max: 9)
-        let endRect = CGRect(
-            x: preview.end.x - endRadius,
-            y: preview.end.y - endRadius,
-            width: endRadius * 2,
-            height: endRadius * 2
-        )
-        context.stroke(
-            Path(ellipseIn: endRect),
-            with: .color(OPSStyle.Colors.text2.opacity(0.75)),
-            lineWidth: scaledSize(1, min: 0.75, max: 2)
-        )
+        context.drawLayer { layer in
+            layer.addFilter(perimeterEntryShadow())
+
+            var path = Path()
+            path.move(to: gappedStart)
+            path.addLine(to: preview.end)
+            let stroke = scaledSize(2, min: 1.25, max: 4)
+            let dash = [scaledSize(10, min: 6, max: 16), scaledSize(5, min: 3, max: 9)]
+            layer.stroke(
+                path,
+                with: .color(OPSStyle.Colors.text.opacity(0.72)),
+                style: StrokeStyle(lineWidth: stroke, lineCap: .round, dash: dash)
+            )
+
+            let endRadius = scaledSize(5, min: 3.5, max: 9)
+            let endRect = CGRect(
+                x: preview.end.x - endRadius,
+                y: preview.end.y - endRadius,
+                width: endRadius * 2,
+                height: endRadius * 2
+            )
+            layer.stroke(
+                Path(ellipseIn: endRect),
+                with: .color(OPSStyle.Colors.text2.opacity(0.75)),
+                lineWidth: scaledSize(1, min: 0.75, max: 2)
+            )
+        }
 
         let midpoint = CGPoint(
             x: (preview.start.x + preview.end.x) / 2,
             y: (preview.start.y + preview.end.y) / 2
         )
-        let dx = preview.end.x - preview.start.x
-        let dy = preview.end.y - preview.start.y
-        let length = max(0.0001, sqrt(dx * dx + dy * dy))
         let offset = scaledSize(16, min: 10, max: 24)
         let labelPoint = CGPoint(
-            x: midpoint.x + (-dy / length) * offset,
-            y: midpoint.y + (dx / length) * offset
+            x: midpoint.x + (-uy) * offset,
+            y: midpoint.y + (ux) * offset
         )
         let label = DimensionEngine.format(
             preview.dimensionInches,
@@ -1066,6 +1079,19 @@ struct DeckCanvasView: View {
         )
     }
 
+    /// Subtle drop shadow that lifts the active perimeter line/marker off the
+    /// dotted canvas grid so the entry layer reads as deliberate, not tangled in
+    /// the grid. (Explicit exception to the no-shadow-on-dark rule — these float
+    /// over busy canvas content, not over a flat glass surface.)
+    private func perimeterEntryShadow() -> GraphicsContext.Filter {
+        .shadow(
+            color: Color.black.opacity(0.55),
+            radius: scaledSize(3, min: 2, max: 5),
+            x: 0,
+            y: scaledSize(1.5, min: 1, max: 3)
+        )
+    }
+
     /// Draw a translucent dashed ray with an accent arrowhead from the anchor in
     /// the chosen direction, shown while a direction is locked but no length is
     /// entered yet. Denotes "this way" before the line has a measured length.
@@ -1075,36 +1101,43 @@ struct DeckCanvasView: View {
         let dirY = sin(radians)
         let scale = Swift.max(canvasScale, 0.0001)
 
-        // Fixed on-screen ray + arrowhead length, independent of zoom.
+        // Start the ray clear of the anchor marker so it emanates from it rather
+        // than piercing it; fixed on-screen ray + arrowhead length.
+        let gap = scaledSize(11, min: 8, max: 18)
         let rayLength = 72 / scale
         let headLength = 16 / scale
-        let end = CGPoint(x: start.x + dirX * rayLength, y: start.y + dirY * rayLength)
+        let origin = CGPoint(x: start.x + dirX * gap, y: start.y + dirY * gap)
+        let end = CGPoint(x: start.x + dirX * (gap + rayLength), y: start.y + dirY * (gap + rayLength))
 
-        // Ghost line — the line-to-be, dashed and translucent until it has a length.
-        var line = Path()
-        line.move(to: start)
-        line.addLine(to: end)
-        let stroke = scaledSize(2, min: 1.25, max: 4)
-        let dash = [scaledSize(8, min: 5, max: 14), scaledSize(6, min: 4, max: 10)]
-        context.stroke(
-            line,
-            with: .color(OPSStyle.Colors.text.opacity(0.5)),
-            style: StrokeStyle(lineWidth: stroke, lineCap: .round, dash: dash)
-        )
+        context.drawLayer { layer in
+            layer.addFilter(perimeterEntryShadow())
 
-        // Accent arrowhead at the tip — denotes the chosen direction.
-        let headHalf = 26.0 * .pi / 180
-        let back = radians + .pi
-        let left = CGPoint(x: end.x + cos(back - headHalf) * headLength,
-                           y: end.y + sin(back - headHalf) * headLength)
-        let right = CGPoint(x: end.x + cos(back + headHalf) * headLength,
-                            y: end.y + sin(back + headHalf) * headLength)
-        var head = Path()
-        head.move(to: end)
-        head.addLine(to: left)
-        head.addLine(to: right)
-        head.closeSubpath()
-        context.fill(head, with: .color(OPSStyle.Colors.opsAccent.opacity(0.85)))
+            // Ghost line — the line-to-be, dashed and translucent until it has a length.
+            var line = Path()
+            line.move(to: origin)
+            line.addLine(to: end)
+            let stroke = scaledSize(2, min: 1.25, max: 4)
+            let dash = [scaledSize(8, min: 5, max: 14), scaledSize(6, min: 4, max: 10)]
+            layer.stroke(
+                line,
+                with: .color(OPSStyle.Colors.text.opacity(0.5)),
+                style: StrokeStyle(lineWidth: stroke, lineCap: .round, dash: dash)
+            )
+
+            // Accent arrowhead at the tip — denotes the chosen direction.
+            let headHalf = 26.0 * .pi / 180
+            let back = radians + .pi
+            let left = CGPoint(x: end.x + cos(back - headHalf) * headLength,
+                               y: end.y + sin(back - headHalf) * headLength)
+            let right = CGPoint(x: end.x + cos(back + headHalf) * headLength,
+                                y: end.y + sin(back + headHalf) * headLength)
+            var head = Path()
+            head.move(to: end)
+            head.addLine(to: left)
+            head.addLine(to: right)
+            head.closeSubpath()
+            layer.fill(head, with: .color(OPSStyle.Colors.opsAccent.opacity(0.85)))
+        }
     }
 
     // (Live dimension label moved to a SwiftUI screen-space HUD —
@@ -1175,10 +1208,9 @@ struct DeckCanvasView: View {
 
     private func drawPerimeterActiveAnchor(context: GraphicsContext, anchor: PerimeterEntryAnchor) {
         let point = anchor.position
-        let ringR = scaledSize(11, min: 8, max: 16)
-        let innerR = scaledSize(4, min: 3, max: 6)
+        let ringR = scaledSize(8, min: 6, max: 12)
+        let innerR = scaledSize(3, min: 2.5, max: 5)
         let stroke = scaledSize(1.75, min: 1.25, max: 3)
-        let tick = scaledSize(6, min: 4, max: 9)
 
         let ring = CGRect(
             x: point.x - ringR,
@@ -1193,28 +1225,13 @@ struct DeckCanvasView: View {
             height: innerR * 2
         )
 
-        context.fill(Path(ellipseIn: dot), with: .color(OPSStyle.Colors.opsAccent.opacity(0.26)))
-        context.stroke(
-            Path(ellipseIn: ring),
-            with: .color(OPSStyle.Colors.opsAccent.opacity(0.95)),
-            style: StrokeStyle(lineWidth: stroke, dash: [tick, tick * 0.75])
-        )
-
-        var reticle = Path()
-        reticle.move(to: CGPoint(x: point.x - ringR - tick, y: point.y))
-        reticle.addLine(to: CGPoint(x: point.x - ringR + tick * 0.2, y: point.y))
-        reticle.move(to: CGPoint(x: point.x + ringR - tick * 0.2, y: point.y))
-        reticle.addLine(to: CGPoint(x: point.x + ringR + tick, y: point.y))
-        reticle.move(to: CGPoint(x: point.x, y: point.y - ringR - tick))
-        reticle.addLine(to: CGPoint(x: point.x, y: point.y - ringR + tick * 0.2))
-        reticle.move(to: CGPoint(x: point.x, y: point.y + ringR - tick * 0.2))
-        reticle.addLine(to: CGPoint(x: point.x, y: point.y + ringR + tick))
-
-        context.stroke(
-            reticle,
-            with: .color(Color.white.opacity(0.88)),
-            style: StrokeStyle(lineWidth: scaledSize(1, min: 0.75, max: 1.6))
-        )
+        // One clean origin marker — solid ring + dot. Replaces the old dashed ring
+        // + crosshair reticle that piled up on the direction ray and read as noise.
+        context.drawLayer { layer in
+            layer.addFilter(perimeterEntryShadow())
+            layer.stroke(Path(ellipseIn: ring), with: .color(OPSStyle.Colors.opsAccent), lineWidth: stroke)
+            layer.fill(Path(ellipseIn: dot), with: .color(OPSStyle.Colors.opsAccent))
+        }
     }
 
     private func drawVertex(context: GraphicsContext, vertex: DeckVertex) {

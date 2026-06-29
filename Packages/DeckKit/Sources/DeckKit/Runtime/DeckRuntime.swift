@@ -60,6 +60,13 @@ public struct DeckRuntime {
     public let imageUploader: DeckImageUploader
     public let ocrService: DeckOCRService
     public let codeProfile: DeckCodeProfile?
+    public let codeProfileRequest: DeckCodeProfileRequest?
+    public let codeProfileResolution: DeckCodeProfileResolution?
+
+    public var activeCodeProfile: DeckCodeProfile? {
+        guard context.appSurface == .opsDecks else { return nil }
+        return codeProfileResolution?.profile ?? codeProfile
+    }
 
     @MainActor
     public init(
@@ -68,7 +75,9 @@ public struct DeckRuntime {
         syncQueue: DeckSyncQueue = NoopDeckSyncQueue(),
         imageUploader: DeckImageUploader = NoopDeckImageUploader(),
         ocrService: DeckOCRService = NoopDeckOCRService(),
-        codeProfile: DeckCodeProfile? = nil
+        codeProfile: DeckCodeProfile? = nil,
+        codeProfileRequest: DeckCodeProfileRequest? = nil,
+        codeProfileResolution: DeckCodeProfileResolution? = nil
     ) {
         self.context = context
         self.store = store
@@ -76,5 +85,7 @@ public struct DeckRuntime {
         self.imageUploader = imageUploader
         self.ocrService = ocrService
         self.codeProfile = codeProfile
+        self.codeProfileRequest = codeProfileRequest
+        self.codeProfileResolution = codeProfileResolution
     }
 }

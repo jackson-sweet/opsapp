@@ -27,7 +27,7 @@ public struct DeckDrawingEditorView: View {
             wrappedValue: DeckDrawingEditorModel(
                 drawingData: drawingData,
                 capabilities: DeckCapabilities.forSurface(runtime.context.appSurface),
-                codeProfile: runtime.codeProfile,
+                codeProfile: runtime.activeCodeProfile,
                 onPersist: onPersist
             )
         )

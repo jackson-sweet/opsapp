@@ -63,6 +63,9 @@ final class DeckRuntimeTests: XCTestCase {
         XCTAssertTrue(runtime.imageUploader is NoopDeckImageUploader)
         XCTAssertTrue(runtime.ocrService is NoopDeckOCRService)
         XCTAssertNil(runtime.codeProfile)
+        XCTAssertNil(runtime.codeProfileRequest)
+        XCTAssertNil(runtime.codeProfileResolution)
+        XCTAssertNil(runtime.activeCodeProfile)
     }
 
     func testRuntimeCarriesInjectedCodeProfileForStandaloneDesigner() {
@@ -83,6 +86,76 @@ final class DeckRuntimeTests: XCTestCase {
         )
 
         XCTAssertEqual(runtime.codeProfile, profile)
+        XCTAssertEqual(runtime.activeCodeProfile, profile)
+    }
+
+    func testRuntimeCarriesResolvedCodeProfileForStandaloneDesigner() {
+        let profile = DeckCodeProfile(
+            id: "profile-runtime",
+            jurisdiction: DeckJurisdiction(id: "jurisdiction-runtime"),
+            rules: []
+        )
+        let request = DeckCodeProfileRequest(
+            siteAddress: DeckSiteAddress(
+                addressLine1: "100 Example Ave",
+                locality: "North Ops",
+                administrativeArea: "WA",
+                postalCode: "98052",
+                countryCode: "US"
+            ),
+            jurisdictionId: "jurisdiction-runtime"
+        )
+        let resolution = DeckCodeProfileResolution(
+            request: request,
+            status: .available,
+            profile: profile
+        )
+        let runtime = DeckRuntime(
+            context: DeckRuntimeContext(
+                companyId: "company-1",
+                projectId: nil,
+                projectName: nil,
+                appSurface: .opsDecks
+            ),
+            store: nil,
+            codeProfileRequest: request,
+            codeProfileResolution: resolution
+        )
+
+        XCTAssertEqual(runtime.codeProfileRequest, request)
+        XCTAssertEqual(runtime.codeProfileResolution, resolution)
+        XCTAssertNil(runtime.codeProfile)
+        XCTAssertEqual(runtime.activeCodeProfile, profile)
+    }
+
+    func testRuntimeSuppressesActiveCodeProfileForEmbeddedOpsViewer() {
+        let profile = DeckCodeProfile(
+            id: "profile-runtime",
+            jurisdiction: DeckJurisdiction(id: "jurisdiction-runtime"),
+            rules: []
+        )
+        let request = DeckCodeProfileRequest(jurisdictionId: "jurisdiction-runtime")
+        let resolution = DeckCodeProfileResolution(
+            request: request,
+            status: .available,
+            profile: profile
+        )
+        let runtime = DeckRuntime(
+            context: DeckRuntimeContext(
+                companyId: "company-1",
+                projectId: "project-1",
+                projectName: "Alpha",
+                appSurface: .ops
+            ),
+            store: nil,
+            codeProfile: profile,
+            codeProfileRequest: request,
+            codeProfileResolution: resolution
+        )
+
+        XCTAssertEqual(runtime.codeProfile, profile)
+        XCTAssertEqual(runtime.codeProfileResolution, resolution)
+        XCTAssertNil(runtime.activeCodeProfile)
     }
 
     func testLightCapabilitiesAreViewerOnlyForEmbeddedOPS() {

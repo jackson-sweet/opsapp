@@ -25,10 +25,12 @@ struct AddLeadSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var onSaved: (Opportunity) -> Void = { _ in }
+    var onStartSiteVisit: ((Opportunity) -> Void)? = nil
 
     @State private var form = LeadForm()
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var saveAction: AddLeadSaveAction = .saveOnly
 
     private var canSave: Bool {
         !form.contactName.trimmingCharacters(in: .whitespaces).isEmpty && !isSaving
@@ -92,15 +94,39 @@ struct AddLeadSheet: View {
                 )
                 .disabled(isSaving)
             } primary: {
-                SheetCTAButton(
-                    label: "SAVE LEAD",
-                    icon: "checkmark",
-                    variant: .primary,
-                    isLoading: isSaving,
-                    action: save
-                )
-                .disabled(!canSave)
-                .opacity(canSave ? 1 : 0.5)
+                if onStartSiteVisit == nil {
+                    SheetCTAButton(
+                        label: "SAVE LEAD",
+                        icon: "checkmark",
+                        variant: .primary,
+                        isLoading: isSaving,
+                        action: { save(.saveOnly) }
+                    )
+                    .disabled(!canSave)
+                    .opacity(canSave ? 1 : 0.5)
+                } else {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        SheetCTAButton(
+                            label: "SAVE",
+                            icon: "checkmark",
+                            variant: .secondary,
+                            isLoading: isSaving && saveAction == .saveOnly,
+                            action: { save(.saveOnly) }
+                        )
+                        .disabled(!canSave)
+                        .opacity(canSave ? 1 : 0.5)
+
+                        SheetCTAButton(
+                            label: "VISIT",
+                            icon: "camera.viewfinder",
+                            variant: .primary,
+                            isLoading: isSaving && saveAction == .startSiteVisit,
+                            action: { save(.startSiteVisit) }
+                        )
+                        .disabled(!canSave)
+                        .opacity(canSave ? 1 : 0.5)
+                    }
+                }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.bottom, 28)
@@ -125,8 +151,9 @@ struct AddLeadSheet: View {
 
     // MARK: - Save
 
-    private func save() {
+    private func save(_ action: AddLeadSaveAction) {
         guard canSave else { return }
+        saveAction = action
         errorMessage = nil
         isSaving = true
 
@@ -141,6 +168,11 @@ struct AddLeadSheet: View {
                 )
                 onSaved(opportunity)
                 dismiss()
+                if action == .startSiteVisit, let onStartSiteVisit {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        onStartSiteVisit(opportunity)
+                    }
+                }
             } catch {
                 isSaving = false
                 errorMessage = simplifyError(error)
@@ -213,4 +245,9 @@ private enum AddLeadError: LocalizedError {
         case .missingCompany: return "NO COMPANY ON SESSION"
         }
     }
+}
+
+private enum AddLeadSaveAction {
+    case saveOnly
+    case startSiteVisit
 }

@@ -61,8 +61,12 @@ struct LeadDetailView: View {
     /// Routes to `LeadsSheet.convert(opportunity)` in the parent.
     /// Also bound to the WON · NOT CONVERTED card's primary button.
     var onMarkWon:  () -> Void = {}
+    /// Routes a site-visit handoff to conversion for the lead currently attached
+    /// to the visit. This can differ from `opportunity` after reassignment.
+    var onConvertLead: (Opportunity) -> Void = { _ in }
 
     @StateObject private var vm: LeadDetailViewModel
+    @State private var showingSiteVisitCapture = false
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
@@ -71,12 +75,14 @@ struct LeadDetailView: View {
         opportunity: Opportunity,
         onMarkLost: @escaping () -> Void = {},
         onEdit:     @escaping () -> Void = {},
-        onMarkWon:  @escaping () -> Void = {}
+        onMarkWon:  @escaping () -> Void = {},
+        onConvertLead: @escaping (Opportunity) -> Void = { _ in }
     ) {
         self.opportunity = opportunity
         self.onMarkLost = onMarkLost
         self.onEdit = onEdit
         self.onMarkWon = onMarkWon
+        self.onConvertLead = onConvertLead
         _vm = StateObject(wrappedValue: LeadDetailViewModel(
             opportunityId: opportunity.id,
             companyId: opportunity.companyId
@@ -116,6 +122,13 @@ struct LeadDetailView: View {
                                 .padding(.top, 22)
                         }
 
+                        if canManage && !opportunity.stage.isTerminal {
+                            SiteVisitLaunchCard {
+                                showingSiteVisitCapture = true
+                            }
+                            .padding(.top, 22)
+                        }
+
                         ActivityTimeline(activities: sortedActivities)
                             .padding(.top, 22)
 
@@ -139,6 +152,18 @@ struct LeadDetailView: View {
         .navigationBarHidden(true)
         .task {
             await vm.loadAll()
+        }
+        .fullScreenCover(isPresented: $showingSiteVisitCapture) {
+            SiteVisitCaptureView(
+                opportunity: opportunity,
+                onCreateProject: { lead in
+                    if lead.id == opportunity.id {
+                        onMarkWon()
+                    } else {
+                        onConvertLead(lead)
+                    }
+                }
+            )
         }
     }
 
@@ -267,6 +292,58 @@ private struct WonNotConvertedCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
                 .strokeBorder(OPSStyle.Colors.oliveLineM, lineWidth: 1)
+        )
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+    }
+}
+
+private struct SiteVisitLaunchCard: View {
+    let onStart: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: 0) {
+                Text("// ")
+                    .foregroundColor(OPSStyle.Colors.textMute)
+                Text("SITE VISIT CAPTURE")
+                    .foregroundColor(OPSStyle.Colors.tanTextM)
+            }
+            .font(OPSStyle.Typography.metadata)
+            .textCase(.uppercase)
+
+            Text("Capture the site packet before project creation: photos, notes, and measurements.")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.text)
+                .lineLimit(2)
+
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onStart()
+            }) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Image(systemName: "camera.viewfinder")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("START VISIT")
+                        .font(OPSStyle.Typography.captionBold)
+                        .textCase(.uppercase)
+                }
+                .foregroundColor(OPSStyle.Colors.invertedText)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                        .fill(OPSStyle.Colors.opsAccent)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+            .padding(.top, OPSStyle.Layout.spacing1)
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassSurface()
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
+                .strokeBorder(OPSStyle.Colors.tanLineM, lineWidth: 1)
         )
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }

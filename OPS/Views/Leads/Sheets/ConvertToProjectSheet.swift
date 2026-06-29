@@ -928,6 +928,8 @@ struct ConvertToProjectSheet: View {
         opportunity.stageManuallySet = true
         didCommitWon = true
 
+        applyPendingSiteVisitHandoff(projectId: projectId)
+
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         NotificationCenter.default.post(
             name: Notification.Name("LeadConvertedSuccess"),
@@ -940,6 +942,26 @@ struct ConvertToProjectSheet: View {
         // Operator stays on the LEADS queue — the success toast carries the
         // tap-through to the new project (P3-2 / PM).
         dismiss()
+    }
+
+    private func applyPendingSiteVisitHandoff(projectId: String) {
+        guard let payload = SiteVisitProjectHandoffStore.shared.consume(for: opportunity.id) else { return }
+        let siteVisitId = payload.siteVisitId
+        let descriptor = FetchDescriptor<SiteVisitCaptureArtifact>(
+            predicate: #Predicate<SiteVisitCaptureArtifact> { artifact in
+                artifact.siteVisitId == siteVisitId
+            },
+            sortBy: [SortDescriptor(\.capturedAt, order: .forward)]
+        )
+        let artifacts = (try? modelContext.fetch(descriptor)) ?? []
+        SiteVisitProjectHandoff.apply(
+            payload: payload,
+            artifacts: artifacts,
+            projectId: projectId,
+            companyId: opportunity.companyId,
+            userId: dataController.currentUser?.id,
+            modelContext: modelContext
+        )
     }
 
     private func openExistingProjectAction() {

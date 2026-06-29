@@ -128,6 +128,10 @@ struct FloatingActionMenu: View {
     @State private var showingPersonalEventSheet = false
     @State private var showingTimeOffSheet = false
     @State private var showingLogActivity = false
+    @State private var showingSiteVisitCapture = false
+    @State private var activeSiteVisitLead: Opportunity?
+    @State private var activeSiteVisitType: SiteVisitType?
+    @State private var siteVisitConvertLead: Opportunity?
     @State private var showingPrioritize = false
 
     // BOOKS FAB state — adapts MONEY group ordering based on selected segment in
@@ -318,6 +322,22 @@ struct FloatingActionMenu: View {
                     action: {
                         showCreateMenu = false
                         CallCaptureCoordinator.shared.present(.capture(.fab))
+                    }
+                )
+            )
+
+            workItems.append(
+                FABMenuItem(
+                    id: "site-visit",
+                    icon: "camera.viewfinder",
+                    label: "Site Visit",
+                    permission: "pipeline.manage",
+                    disabledInTutorial: true,
+                    action: {
+                        showCreateMenu = false
+                        activeSiteVisitLead = nil
+                        activeSiteVisitType = nil
+                        showingSiteVisitCapture = true
                     }
                 )
             )
@@ -749,12 +769,20 @@ struct FloatingActionMenu: View {
             EstimateFormSheet(viewModel: estimateViewModel)
         }
         .sheet(isPresented: $showingAddLead) {
-            AddLeadSheet { _ in
-                NotificationCenter.default.post(
-                    name: Notification.Name("LeadCreatedSuccess"),
-                    object: nil
-                )
-            }
+            AddLeadSheet(
+                onSaved: { _ in
+                    NotificationCenter.default.post(
+                        name: Notification.Name("LeadCreatedSuccess"),
+                        object: nil
+                    )
+                },
+                onStartSiteVisit: { lead in
+                    showingAddLead = false
+                    activeSiteVisitType = nil
+                    activeSiteVisitLead = lead
+                    showingSiteVisitCapture = true
+                }
+            )
             .environmentObject(dataController)
         }
         .sheet(isPresented: $showingCustomizeSheet) {
@@ -823,6 +851,28 @@ struct FloatingActionMenu: View {
         }
         .sheet(isPresented: $showingLogActivity) {
             LogActivitySheet()
+        }
+        .sheet(item: $siteVisitConvertLead) { lead in
+            ConvertToProjectSheet(opportunity: lead)
+        }
+        .fullScreenCover(isPresented: $showingSiteVisitCapture) {
+            SiteVisitCaptureView(
+                opportunity: activeSiteVisitLead,
+                onCreateProject: { convertedLead in
+                    showingSiteVisitCapture = false
+                    activeSiteVisitLead = nil
+                    activeSiteVisitType = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        siteVisitConvertLead = convertedLead
+                    }
+                },
+                initialSiteVisitType: activeSiteVisitType
+            )
+            .environmentObject(dataController)
+            .onDisappear {
+                activeSiteVisitLead = nil
+                activeSiteVisitType = nil
+            }
         }
         .fullScreenCover(isPresented: $showingPrioritize) {
             PriorityQueueView(displayMode: .fullScreen, dataController: dataController) {

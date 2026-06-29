@@ -111,7 +111,7 @@ private struct SiteVisitCaptureConsole: View {
     @State private var isPacketExpanded = true
     @State private var showingDimensionedCapture = false
     @State private var showingDiscardConfirm = false
-    @State private var identityExpanded = false
+    @State private var identityExpanded = true
     @State private var pendingIdentityFocus = false
     @State private var noteAutosaveTask: Task<Void, Never>?
     @State private var customChecklistQuestion = ""
@@ -131,17 +131,17 @@ private struct SiteVisitCaptureConsole: View {
 
                     ScrollView {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-                            // Capture-first: photos/notes/measure/checklist own
-                            // the top of the screen. Lead + client capture is
-                            // end-of-flow and lives (collapsed) at the bottom.
+                            // statusStrip is the at-a-glance readout (display).
+                            // Lead + client is the first input card. Capture
+                            // tools follow.
                             statusStrip
+                            SiteVisitIdentityPanel(viewModel: viewModel, isExpanded: $identityExpanded)
+                                .id(SiteVisitCaptureScrollTarget.identity)
                             quickNotePanel
                                 .id(SiteVisitCaptureScrollTarget.notes)
                             quickMeasurementPanel
                             checklistPanel
                             packetPanel
-                            SiteVisitIdentityPanel(viewModel: viewModel, isExpanded: $identityExpanded)
-                                .id(SiteVisitCaptureScrollTarget.identity)
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .padding(.top, OPSStyle.Layout.spacing2)
@@ -192,7 +192,14 @@ private struct SiteVisitCaptureConsole: View {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("DONE") {
+                    // Dismiss whatever is focused — the identity, checklist, and
+                    // ad-hoc fields live in child views and aren't bound to this
+                    // view's `focusedField`, so clear that AND resign globally.
                     focusedField = nil
+                    UIApplication.shared.sendAction(
+                        #selector(UIResponder.resignFirstResponder),
+                        to: nil, from: nil, for: nil
+                    )
                     viewModel.autosaveNote()
                 }
                 .font(OPSStyle.Typography.captionBold)
@@ -379,37 +386,43 @@ private struct SiteVisitCaptureConsole: View {
         .padding(.top, OPSStyle.Layout.spacing2)
     }
 
+    // Display readout (not an input card): a flat HUD header — visit identity +
+    // live capture counts as L2 tiles — deliberately distinct from the elevated
+    // glass input cards below it.
     private var statusStrip: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(viewModel.visitDisplayName)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.text)
                     .textCase(.uppercase)
                     .lineLimit(1)
 
-                Spacer(minLength: OPSStyle.Layout.spacing1)
+                Text(viewModel.captureAddress.uppercased())
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.text2)
+                    .lineLimit(2)
             }
 
-            Text(viewModel.captureAddress.uppercased())
-                .font(OPSStyle.Typography.metadata)
-                .foregroundColor(OPSStyle.Colors.text2)
-                .lineLimit(2)
-
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                SiteVisitCaptureMetric(label: "PHOTOS", value: "\(viewModel.summary.photoCount)")
-                SiteVisitCaptureMetric(label: "NOTES", value: "\(viewModel.summary.noteCount)")
-                SiteVisitCaptureMetric(label: "MEASURE", value: "\(viewModel.summary.measurementCount)")
-                SiteVisitCaptureMetric(label: "DECK", value: "\(viewModel.summary.deckDesignCount)")
+                metricTile(label: "PHOTOS", value: viewModel.summary.photoCount)
+                metricTile(label: "NOTES", value: viewModel.summary.noteCount)
+                metricTile(label: "MEASURE", value: viewModel.summary.measurementCount)
+                metricTile(label: "DECK", value: viewModel.summary.deckDesignCount)
             }
 
             Text("// SAVED ON THIS DEVICE · WORKS OFFLINE")
                 .font(OPSStyle.Typography.miniLabel)
                 .foregroundColor(OPSStyle.Colors.textMute)
         }
-        .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassSurface()
+    }
+
+    private func metricTile(label: String, value: Int) -> some View {
+        SiteVisitCaptureMetric(label: label, value: "\(value)")
+            .padding(OPSStyle.Layout.spacing2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .nestedCard()
     }
 
     private var quickNotePanel: some View {
@@ -520,6 +533,9 @@ private struct SiteVisitCaptureConsole: View {
         viewModel.measurementDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    // Display list (not an input card): the captured packet is rendered flat —
+    // a labelled list of L2 artifact tiles, no glass frame — so it reads as
+    // "what you've captured" rather than "a surface to act on".
     private var packetPanel: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Button {
@@ -562,8 +578,7 @@ private struct SiteVisitCaptureConsole: View {
                 }
             }
         }
-        .padding(OPSStyle.Layout.spacing3)
-        .glassSurface()
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var checklistPanel: some View {

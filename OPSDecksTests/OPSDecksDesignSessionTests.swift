@@ -27,6 +27,77 @@ final class OPSDecksDesignSessionTests: XCTestCase {
         XCTAssertEqual(DeckCapabilities.forSurface(activeDesign.runtime.context.appSurface), .full)
     }
 
+    func testStartNewDeckCarriesConfiguredCodeProfileResolutionIntoRuntime() throws {
+        let profile = codeProfile(jurisdictionId: "jurisdiction-runtime")
+        let request = DeckCodeProfileRequest(jurisdictionId: "jurisdiction-runtime")
+        let session = OPSDecksDesignSession(
+            companyId: "deck-company",
+            entitlement: .pro,
+            libraryStore: OPSDecksInMemoryDeckLibraryStore(),
+            codeProfiles: [profile],
+            codeProfileRequest: request
+        )
+
+        XCTAssertEqual(session.codeProfileRequest, request)
+        XCTAssertEqual(session.codeProfileResolution.status, .available)
+        XCTAssertEqual(session.codeProfileResolution.profile, profile)
+
+        XCTAssertTrue(session.startNewDeck())
+
+        let activeDesign = try XCTUnwrap(session.activeDesign)
+        XCTAssertEqual(activeDesign.runtime.codeProfileRequest, request)
+        XCTAssertEqual(activeDesign.runtime.codeProfileResolution, session.codeProfileResolution)
+        XCTAssertEqual(activeDesign.runtime.activeCodeProfile, profile)
+    }
+
+    func testUpdatingCodeProfileRequestRefreshesActiveRuntimeWithoutMutatingDocument() throws {
+        let profile = codeProfile(jurisdictionId: "jurisdiction-runtime")
+        let session = OPSDecksDesignSession(
+            companyId: "deck-company",
+            entitlement: .pro,
+            libraryStore: OPSDecksInMemoryDeckLibraryStore(),
+            codeProfiles: [profile]
+        )
+        XCTAssertTrue(session.startNewDeck())
+
+        var drawingData = DeckDrawingData()
+        drawingData.vertices.append(DeckVertex(position: CGPoint(x: 72, y: 96)))
+        session.updateActiveDrawingData(drawingData)
+
+        let before = try XCTUnwrap(session.activeDesign)
+        XCTAssertNil(before.runtime.activeCodeProfile)
+
+        let request = DeckCodeProfileRequest(jurisdictionId: "jurisdiction-runtime")
+        session.setCodeProfileRequest(request)
+
+        let after = try XCTUnwrap(session.activeDesign)
+        XCTAssertEqual(after.document.id, before.document.id)
+        XCTAssertEqual(after.document.drawingData.vertices.count, 1)
+        XCTAssertEqual(after.runtime.codeProfileRequest, request)
+        XCTAssertEqual(after.runtime.codeProfileResolution?.status, .available)
+        XCTAssertEqual(after.runtime.activeCodeProfile, profile)
+    }
+
+    func testUnknownCodeProfileRequestRemainsUnavailableWithoutRuntimeProfile() throws {
+        let session = OPSDecksDesignSession(
+            companyId: "deck-company",
+            entitlement: .pro,
+            libraryStore: OPSDecksInMemoryDeckLibraryStore(),
+            codeProfiles: [codeProfile(jurisdictionId: "jurisdiction-runtime")]
+        )
+
+        session.setCodeProfileRequest(DeckCodeProfileRequest(jurisdictionId: "jurisdiction-missing"))
+
+        XCTAssertEqual(session.codeProfileResolution.status, .unavailable)
+        XCTAssertNil(session.codeProfileResolution.profile)
+
+        XCTAssertTrue(session.startNewDeck())
+
+        let activeDesign = try XCTUnwrap(session.activeDesign)
+        XCTAssertEqual(activeDesign.runtime.codeProfileResolution?.status, .unavailable)
+        XCTAssertNil(activeDesign.runtime.activeCodeProfile)
+    }
+
     func testStartNewDeckDoesNotCreateDesignWhenFreeLimitIsReached() {
         let session = OPSDecksDesignSession(
             companyId: "deck-company",
@@ -361,6 +432,14 @@ final class OPSDecksDesignSessionTests: XCTestCase {
         XCTAssertNotNil(object["drawing_data"] as? [String: Any])
         XCTAssertNil(object["companyId"])
         XCTAssertNil(object["drawingData"])
+    }
+
+    private func codeProfile(jurisdictionId: String) -> DeckCodeProfile {
+        DeckCodeProfile(
+            id: "profile-\(jurisdictionId)",
+            jurisdiction: DeckJurisdiction(id: jurisdictionId),
+            rules: []
+        )
     }
 }
 

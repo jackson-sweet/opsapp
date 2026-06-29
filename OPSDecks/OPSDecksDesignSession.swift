@@ -49,10 +49,13 @@ final class OPSDecksDesignSession: ObservableObject {
     let companyId: String
     private let entitlement: DecksEntitlement
     private let libraryStore: OPSDecksDeckLibraryStore
+    private let codeProfileResolver: DeckManualCodeProfileResolver
 
     @Published private(set) var activeDesign: OPSDecksActiveDesign?
     @Published private(set) var savedDecks: [OPSDecksDeckDocument]
     @Published private(set) var libraryError: Error?
+    @Published private(set) var codeProfileRequest: DeckCodeProfileRequest
+    @Published private(set) var codeProfileResolution: DeckCodeProfileResolution
 
     private var syncingLibraryStore: OPSDecksRemoteSyncingDeckLibraryStore? {
         libraryStore as? OPSDecksRemoteSyncingDeckLibraryStore
@@ -61,7 +64,9 @@ final class OPSDecksDesignSession: ObservableObject {
     convenience init(
         companyId: String,
         savedDeckCount: Int,
-        entitlement: DecksEntitlement
+        entitlement: DecksEntitlement,
+        codeProfiles: [DeckCodeProfile] = [],
+        codeProfileRequest: DeckCodeProfileRequest = DeckCodeProfileRequest()
     ) {
         self.init(
             companyId: companyId,
@@ -69,18 +74,26 @@ final class OPSDecksDesignSession: ObservableObject {
             libraryStore: OPSDecksInMemoryDeckLibraryStore(
                 seedCount: savedDeckCount,
                 companyId: companyId
-            )
+            ),
+            codeProfiles: codeProfiles,
+            codeProfileRequest: codeProfileRequest
         )
     }
 
     init(
         companyId: String,
         entitlement: DecksEntitlement,
-        libraryStore: OPSDecksDeckLibraryStore
+        libraryStore: OPSDecksDeckLibraryStore,
+        codeProfiles: [DeckCodeProfile] = [],
+        codeProfileRequest: DeckCodeProfileRequest = DeckCodeProfileRequest()
     ) {
         self.companyId = companyId
         self.entitlement = entitlement
         self.libraryStore = libraryStore
+        let codeProfileResolver = DeckManualCodeProfileResolver(profiles: codeProfiles)
+        self.codeProfileResolver = codeProfileResolver
+        self.codeProfileRequest = codeProfileRequest
+        self.codeProfileResolution = codeProfileResolver.resolve(codeProfileRequest)
         do {
             self.savedDecks = Self.documents(
                 try libraryStore.listDecks(),
@@ -169,6 +182,12 @@ final class OPSDecksDesignSession: ObservableObject {
 
     func closeActiveDesign() {
         activeDesign = nil
+    }
+
+    func setCodeProfileRequest(_ request: DeckCodeProfileRequest) {
+        codeProfileRequest = request
+        codeProfileResolution = codeProfileResolver.resolve(request)
+        refreshActiveRuntime()
     }
 
     @discardableResult
@@ -279,10 +298,24 @@ final class OPSDecksDesignSession: ObservableObject {
     private func activate(_ document: OPSDecksDeckDocument) {
         activeDesign = OPSDecksActiveDesign(
             document: document,
-            runtime: OPSDecksRuntimeFactory.make(
-                document: document,
-                libraryStore: libraryStore
-            )
+            runtime: runtime(for: document)
+        )
+    }
+
+    private func refreshActiveRuntime() {
+        guard let activeDesign else { return }
+        self.activeDesign = OPSDecksActiveDesign(
+            document: activeDesign.document,
+            runtime: runtime(for: activeDesign.document)
+        )
+    }
+
+    private func runtime(for document: OPSDecksDeckDocument) -> DeckRuntime {
+        OPSDecksRuntimeFactory.make(
+            document: document,
+            libraryStore: libraryStore,
+            codeProfileRequest: codeProfileRequest,
+            codeProfileResolution: codeProfileResolution
         )
     }
 

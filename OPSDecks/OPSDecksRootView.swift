@@ -18,6 +18,7 @@ struct OPSDecksRootView: View {
         entitlement: DecksEntitlement = .free(savedDeckLimit: 1),
         libraryStore: OPSDecksDeckLibraryStore? = nil,
         remoteClient: OPSDecksRemoteDeckLibraryClient? = nil,
+        codeProfiles: [DeckCodeProfile] = [],
         accessTokenProvider: (@Sendable () async throws -> String)? = nil
     ) {
         let bootstrap = Self.makeLibraryBootstrap(
@@ -32,7 +33,8 @@ struct OPSDecksRootView: View {
             wrappedValue: OPSDecksDesignSession(
                 companyId: bootstrap.companyId,
                 entitlement: entitlement,
-                libraryStore: bootstrap.libraryStore
+                libraryStore: bootstrap.libraryStore,
+                codeProfiles: codeProfiles
             )
         )
     }
@@ -45,11 +47,14 @@ struct OPSDecksRootView: View {
             if let activeDesign = session.activeDesign {
                 OPSDecksDesignerSessionView(
                     activeDesign: activeDesign,
+                    availableCodeProfiles: session.availableCodeProfiles,
+                    codeProfileResolution: session.codeProfileResolution,
                     onPersist: { drawingData in
                         Task {
                             await session.updateActiveDrawingDataAndSync(drawingData)
                         }
                     },
+                    onSelectCodeProfile: session.setCodeProfileJurisdictionId,
                     onClose: session.closeActiveDesign
                 )
                 .padding(OPSStyle.Layout.spacing4)
@@ -57,6 +62,7 @@ struct OPSDecksRootView: View {
                 ScrollView {
                     VStack(spacing: OPSStyle.Layout.spacing4) {
                         shellPanel
+                        codeProfilePanel
                         libraryPanel
                         DecksUpgradeSurface()
                     }
@@ -174,6 +180,14 @@ struct OPSDecksRootView: View {
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius))
     }
 
+    private var codeProfilePanel: some View {
+        OPSDecksCodeProfileSettingsPanel(
+            availableProfiles: session.availableCodeProfiles,
+            resolution: session.codeProfileResolution,
+            onSelectJurisdiction: session.setCodeProfileJurisdictionId
+        )
+    }
+
     private var libraryPanel: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             Text(OPSDecksCopy.libraryEyebrow)
@@ -251,6 +265,7 @@ private struct OPSDecksShellButton: View {
     let title: String
     let variant: Variant
     let isDisabled: Bool
+    var fillsWidth: Bool = true
     let action: () -> Void
 
     var body: some View {
@@ -258,8 +273,9 @@ private struct OPSDecksShellButton: View {
             Text(title)
                 .font(OPSStyle.Typography.buttonLabel)
                 .foregroundStyle(foregroundColor)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: fillsWidth ? .infinity : nil)
                 .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+                .padding(.horizontal, fillsWidth ? 0 : OPSStyle.Layout.spacing3)
         }
         .buttonStyle(.plain)
         .background(backgroundColor)
@@ -308,6 +324,200 @@ private struct OPSDecksShellButton: View {
             OPSStyle.Colors.tanLineM
         case .destructive:
             OPSStyle.Colors.roseLineM
+        }
+    }
+}
+
+private struct OPSDecksCodeProfileSettingsPanel: View {
+    let availableProfiles: [DeckCodeProfile]
+    let resolution: DeckCodeProfileResolution
+    let onSelectJurisdiction: (String?) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing3) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                    Text(OPSDecksCopy.codeProfileEyebrow)
+                        .font(OPSStyle.Typography.panelTitle)
+                        .foregroundStyle(OPSStyle.Colors.textMute)
+
+                    Text(statusMessage)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundStyle(OPSStyle.Colors.text2)
+                }
+
+                Spacer(minLength: OPSStyle.Layout.spacing3)
+
+                statusBadge
+            }
+
+            if availableProfiles.isEmpty {
+                Text(OPSDecksCopy.codeProfileEmptyMessage)
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundStyle(OPSStyle.Colors.text3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(OPSStyle.Layout.spacing3)
+                    .background(OPSStyle.Colors.fillNeutralDim)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                            .stroke(OPSStyle.Colors.nestedBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
+            } else {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    ForEach(availableProfiles) { profile in
+                        profileRow(profile)
+                    }
+                }
+            }
+
+            if resolution.request.jurisdictionId != nil {
+                OPSDecksShellButton(
+                    title: OPSDecksCopy.codeProfileClear,
+                    variant: .secondary,
+                    isDisabled: false,
+                    fillsWidth: false,
+                    action: { onSelectJurisdiction(nil) }
+                )
+            }
+        }
+        .padding(OPSStyle.Layout.spacing5)
+        .background(OPSStyle.Colors.glassApprox)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
+                .stroke(OPSStyle.Colors.glassBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius))
+    }
+
+    private var statusBadge: some View {
+        Text(statusTitle)
+            .font(OPSStyle.Typography.badgeCake)
+            .foregroundStyle(statusTextColor)
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            .background(statusFillColor)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                    .stroke(statusLineColor, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
+            .accessibilityLabel(OPSDecksCopy.codeProfileEyebrow)
+            .accessibilityValue(statusTitle)
+    }
+
+    private func profileRow(_ profile: DeckCodeProfile) -> some View {
+        HStack(alignment: .center, spacing: OPSStyle.Layout.spacing3) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                Text(profile.jurisdiction.id)
+                    .font(OPSStyle.Typography.section)
+                    .foregroundStyle(OPSStyle.Colors.text)
+
+                Text(profile.source?.profileSourceToken ?? OPSDecksCopy.codeProfileSourceFallback)
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundStyle(OPSStyle.Colors.text3)
+            }
+
+            Spacer(minLength: OPSStyle.Layout.spacing3)
+
+            if selectedProfileId == profile.id {
+                Text(OPSDecksCopy.codeProfileAvailable)
+                    .font(OPSStyle.Typography.badgeCake)
+                    .foregroundStyle(OPSStyle.Colors.oliveTextM)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                    .background(OPSStyle.Colors.oliveFillM)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                            .stroke(OPSStyle.Colors.oliveLineM, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
+            } else {
+                OPSDecksShellButton(
+                    title: OPSDecksCopy.codeProfileUse,
+                    variant: .secondary,
+                    isDisabled: false,
+                    fillsWidth: false,
+                    action: { onSelectJurisdiction(profile.jurisdiction.id) }
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.glassApprox)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
+    }
+
+    private var selectedProfileId: String? {
+        resolution.profile?.id
+    }
+
+    private var statusTitle: String {
+        switch resolution.status {
+        case .notConfigured:
+            return OPSDecksCopy.codeProfileNotConfigured
+        case .available:
+            return OPSDecksCopy.codeProfileAvailable
+        case .unavailable:
+            return OPSDecksCopy.codeProfileUnavailable
+        case .failed:
+            return OPSDecksCopy.codeProfileFailed
+        }
+    }
+
+    private var statusMessage: String {
+        switch resolution.status {
+        case .notConfigured:
+            return OPSDecksCopy.codeProfileNotConfiguredMessage
+        case .available:
+            return OPSDecksCopy.codeProfileAvailableMessage
+        case .unavailable:
+            return OPSDecksCopy.codeProfileUnavailableMessage
+        case .failed:
+            return OPSDecksCopy.codeProfileFailedMessage
+        }
+    }
+
+    private var statusTextColor: Color {
+        switch resolution.status {
+        case .notConfigured:
+            return OPSStyle.Colors.text3
+        case .available:
+            return OPSStyle.Colors.oliveTextM
+        case .unavailable:
+            return OPSStyle.Colors.tanTextM
+        case .failed:
+            return OPSStyle.Colors.roseTextM
+        }
+    }
+
+    private var statusFillColor: Color {
+        switch resolution.status {
+        case .notConfigured:
+            return OPSStyle.Colors.fillNeutralDim
+        case .available:
+            return OPSStyle.Colors.oliveFillM
+        case .unavailable:
+            return OPSStyle.Colors.tanFillM
+        case .failed:
+            return OPSStyle.Colors.roseFillM
+        }
+    }
+
+    private var statusLineColor: Color {
+        switch resolution.status {
+        case .notConfigured:
+            return OPSStyle.Colors.nestedBorder
+        case .available:
+            return OPSStyle.Colors.oliveLineM
+        case .unavailable:
+            return OPSStyle.Colors.tanLineM
+        case .failed:
+            return OPSStyle.Colors.roseLineM
         }
     }
 }
@@ -452,7 +662,10 @@ private struct OPSDecksLibraryRow: View {
 
 private struct OPSDecksDesignerSessionView: View {
     let activeDesign: OPSDecksActiveDesign
+    let availableCodeProfiles: [DeckCodeProfile]
+    let codeProfileResolution: DeckCodeProfileResolution
     let onPersist: (DeckDrawingData) -> Void
+    let onSelectCodeProfile: (String?) -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -486,12 +699,18 @@ private struct OPSDecksDesignerSessionView: View {
                 .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
             }
 
+            OPSDecksCodeProfileSettingsPanel(
+                availableProfiles: availableCodeProfiles,
+                resolution: codeProfileResolution,
+                onSelectJurisdiction: onSelectCodeProfile
+            )
+
             DeckDrawingEditorView(
                 drawingData: activeDesign.document.drawingData,
                 runtime: activeDesign.runtime,
                 onPersist: onPersist
             )
-            .id(activeDesign.document.id)
+            .id(activeDesign.editorIdentity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }

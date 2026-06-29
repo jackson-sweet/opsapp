@@ -24,6 +24,19 @@ enum OPSDecksCopy {
     static let proActionPlaceholder = String(localized: "GET PRO")
     static let workspaceEyebrow = String(localized: "// OPS DECKS")
     static let closeWorkspace = String(localized: "CLOSE")
+    static let codeProfileEyebrow = String(localized: "// CODE PROFILE")
+    static let codeProfileNotConfigured = String(localized: "NOT SET")
+    static let codeProfileAvailable = String(localized: "ACTIVE")
+    static let codeProfileUnavailable = String(localized: "NO PROFILE")
+    static let codeProfileFailed = String(localized: "FAILED")
+    static let codeProfileNotConfiguredMessage = String(localized: "Pick the site jurisdiction before live code checks run.")
+    static let codeProfileAvailableMessage = String(localized: "Live checks use this jurisdiction profile.")
+    static let codeProfileUnavailableMessage = String(localized: "No verified profile is loaded for this jurisdiction.")
+    static let codeProfileFailedMessage = String(localized: "Profile lookup failed. Check settings and try again.")
+    static let codeProfileEmptyMessage = String(localized: "No code profiles loaded. Live checks stay off until OPS Decks receives a verified jurisdiction profile.")
+    static let codeProfileSourceFallback = String(localized: "PROFILE")
+    static let codeProfileUse = String(localized: "USE")
+    static let codeProfileClear = String(localized: "CLEAR")
 
     static func updatedLabel(_ formattedDate: String) -> String {
         "\(updatedPrefix) :: \(formattedDate)"

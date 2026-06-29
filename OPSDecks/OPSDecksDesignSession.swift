@@ -42,6 +42,16 @@ struct OPSDecksDeckDocument: Identifiable {
 struct OPSDecksActiveDesign {
     var document: OPSDecksDeckDocument
     let runtime: DeckRuntime
+
+    var editorIdentity: String {
+        guard let resolution = runtime.codeProfileResolution else {
+            return "\(document.id)::code:none"
+        }
+        guard let profile = runtime.activeCodeProfile else {
+            return "\(document.id)::code:\(resolution.status.rawValue)"
+        }
+        return "\(document.id)::code:\(resolution.status.rawValue):\(profile.id)"
+    }
 }
 
 @MainActor
@@ -54,6 +64,7 @@ final class OPSDecksDesignSession: ObservableObject {
     @Published private(set) var activeDesign: OPSDecksActiveDesign?
     @Published private(set) var savedDecks: [OPSDecksDeckDocument]
     @Published private(set) var libraryError: Error?
+    @Published private(set) var availableCodeProfiles: [DeckCodeProfile]
     @Published private(set) var codeProfileRequest: DeckCodeProfileRequest
     @Published private(set) var codeProfileResolution: DeckCodeProfileResolution
 
@@ -92,6 +103,7 @@ final class OPSDecksDesignSession: ObservableObject {
         self.libraryStore = libraryStore
         let codeProfileResolver = DeckManualCodeProfileResolver(profiles: codeProfiles)
         self.codeProfileResolver = codeProfileResolver
+        self.availableCodeProfiles = codeProfiles
         self.codeProfileRequest = codeProfileRequest
         self.codeProfileResolution = codeProfileResolver.resolve(codeProfileRequest)
         do {
@@ -188,6 +200,16 @@ final class OPSDecksDesignSession: ObservableObject {
         codeProfileRequest = request
         codeProfileResolution = codeProfileResolver.resolve(request)
         refreshActiveRuntime()
+    }
+
+    func setCodeProfileJurisdictionId(_ jurisdictionId: String?) {
+        let trimmedJurisdictionId = jurisdictionId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        setCodeProfileRequest(
+            DeckCodeProfileRequest(
+                siteAddress: codeProfileRequest.siteAddress,
+                jurisdictionId: trimmedJurisdictionId?.isEmpty == false ? trimmedJurisdictionId : nil
+            )
+        )
     }
 
     @discardableResult

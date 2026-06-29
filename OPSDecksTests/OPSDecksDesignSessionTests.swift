@@ -50,6 +50,39 @@ final class OPSDecksDesignSessionTests: XCTestCase {
         XCTAssertEqual(activeDesign.runtime.activeCodeProfile, profile)
     }
 
+    func testSessionExposesConfiguredCodeProfilesForSettings() {
+        let first = codeProfile(jurisdictionId: "jurisdiction-one")
+        let second = codeProfile(jurisdictionId: "jurisdiction-two")
+        let session = OPSDecksDesignSession(
+            companyId: "deck-company",
+            entitlement: .pro,
+            libraryStore: OPSDecksInMemoryDeckLibraryStore(),
+            codeProfiles: [first, second]
+        )
+
+        XCTAssertEqual(session.availableCodeProfiles, [first, second])
+    }
+
+    func testSettingJurisdictionIdTrimsInputAndClearsBlankSelection() {
+        let profile = codeProfile(jurisdictionId: "jurisdiction-runtime")
+        let session = OPSDecksDesignSession(
+            companyId: "deck-company",
+            entitlement: .pro,
+            libraryStore: OPSDecksInMemoryDeckLibraryStore(),
+            codeProfiles: [profile]
+        )
+
+        session.setCodeProfileJurisdictionId("  jurisdiction-runtime  ")
+
+        XCTAssertEqual(session.codeProfileRequest.jurisdictionId, "jurisdiction-runtime")
+        XCTAssertEqual(session.codeProfileResolution.status, .available)
+
+        session.setCodeProfileJurisdictionId("  ")
+
+        XCTAssertNil(session.codeProfileRequest.jurisdictionId)
+        XCTAssertEqual(session.codeProfileResolution.status, .notConfigured)
+    }
+
     func testUpdatingCodeProfileRequestRefreshesActiveRuntimeWithoutMutatingDocument() throws {
         let profile = codeProfile(jurisdictionId: "jurisdiction-runtime")
         let session = OPSDecksDesignSession(
@@ -76,6 +109,27 @@ final class OPSDecksDesignSessionTests: XCTestCase {
         XCTAssertEqual(after.runtime.codeProfileRequest, request)
         XCTAssertEqual(after.runtime.codeProfileResolution?.status, .available)
         XCTAssertEqual(after.runtime.activeCodeProfile, profile)
+    }
+
+    func testUpdatingCodeProfileRequestChangesEditorIdentityWithoutMutatingDocumentIdentity() throws {
+        let profile = codeProfile(jurisdictionId: "jurisdiction-runtime")
+        let session = OPSDecksDesignSession(
+            companyId: "deck-company",
+            entitlement: .pro,
+            libraryStore: OPSDecksInMemoryDeckLibraryStore(),
+            codeProfiles: [profile]
+        )
+        XCTAssertTrue(session.startNewDeck())
+
+        let before = try XCTUnwrap(session.activeDesign)
+        XCTAssertEqual(before.editorIdentity, "\(before.document.id)::code:notConfigured")
+
+        session.setCodeProfileRequest(DeckCodeProfileRequest(jurisdictionId: "jurisdiction-runtime"))
+
+        let after = try XCTUnwrap(session.activeDesign)
+        XCTAssertEqual(after.document.id, before.document.id)
+        XCTAssertEqual(after.editorIdentity, "\(after.document.id)::code:available:profile-jurisdiction-runtime")
+        XCTAssertNotEqual(after.editorIdentity, before.editorIdentity)
     }
 
     func testUnknownCodeProfileRequestRemainsUnavailableWithoutRuntimeProfile() throws {

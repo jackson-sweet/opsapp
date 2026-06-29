@@ -60,6 +60,7 @@ struct LeadsTabView: View {
     @State private var activeSheet: LeadsSheet?
     @State private var moreForLead: Opportunity?
     @State private var footerStage: PipelineStage?
+    @State private var activeSiteVisitLead: Opportunity?
 
     /// Guards the deep-link drain so a single tap resolves once even if both
     /// the `.task` load and the `pendingLeadDeepLinkId` change fire.
@@ -158,7 +159,10 @@ struct LeadsTabView: View {
                     opportunity: lead,
                     onMarkLost: { activeSheet = .lost(lead) },
                     onEdit:     { activeSheet = .edit(lead) },
-                    onMarkWon:  { activeSheet = .convert(lead) }
+                    onMarkWon:  { activeSheet = .convert(lead) },
+                    onConvertLead: { convertedLead in
+                        activeSheet = .convert(convertedLead)
+                    }
                 )
                 .environmentObject(dataController)
                 .environmentObject(permissionStore)
@@ -175,6 +179,18 @@ struct LeadsTabView: View {
             }
             .sheet(item: $activeSheet) { sheet in
                 sheetView(for: sheet)
+            }
+            .fullScreenCover(item: $activeSiteVisitLead) { lead in
+                SiteVisitCaptureView(
+                    opportunity: lead,
+                    onCreateProject: { convertedLead in
+                        activeSiteVisitLead = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            activeSheet = .convert(convertedLead)
+                        }
+                    }
+                )
+                .environmentObject(dataController)
             }
             .confirmationDialog(
                 "Actions",
@@ -393,7 +409,12 @@ struct LeadsTabView: View {
     private func sheetView(for sheet: LeadsSheet) -> some View {
         switch sheet {
         case .add:
-            AddLeadSheet(onSaved: { _ in })
+            AddLeadSheet(
+                onSaved: { _ in },
+                onStartSiteVisit: { lead in
+                    activeSiteVisitLead = lead
+                }
+            )
         case .edit(let opp):
             EditLeadSheet(opportunity: opp)
         case .lost(let opp):

@@ -131,6 +131,8 @@ public enum ComponentEmitter {
                 "color": AnyCodable(railing.color),
                 "mount_type": AnyCodable(railing.mountType),
                 "mount_surface": AnyCodable(railing.mountSurface),
+                "frame_style": AnyCodable(railing.frameStyle.rawValue),
+                "mount_placement": AnyCodable(railing.mountPlacement.rawValue),
                 "edge_id": AnyCodable(edge.id),
             ]
             if railing.railingType == .parapetWall {
@@ -149,6 +151,7 @@ public enum ComponentEmitter {
                     "height": AnyCodable(railing.postHeight),
                     "color": AnyCodable(railing.color),
                     "mount_type": AnyCodable(railing.mountType),
+                    "mount_placement": AnyCodable(railing.mountPlacement.rawValue),
                     "edge_id": AnyCodable(edge.id),
                 ]
                 if let levelId = levelId { postMeta["level_id"] = AnyCodable(levelId) }
@@ -179,6 +182,9 @@ public enum ComponentEmitter {
                 "width": AnyCodable(stair.width),
                 "color": AnyCodable(stair.color),
                 "mount_type": AnyCodable(stair.mountType),
+                "stringer_style": AnyCodable(stair.stringerStyle.rawValue),
+                "stringer_material": AnyCodable(stair.stringerMaterial.rawValue),
+                "tread_material": AnyCodable(stair.treadMaterial.rawValue),
                 "edge_id": AnyCodable(edge.id),
             ]
             if let levelId = levelId { meta["level_id"] = AnyCodable(levelId) }
@@ -192,6 +198,7 @@ public enum ComponentEmitter {
             let railingColor = edge.railingConfig?.color ?? "Black"
             let railingMountType = edge.railingConfig?.mountType ?? "Topmount"
             let railingMountSurface = edge.railingConfig?.mountSurface ?? "Surface"
+            let railingMountPlacement = edge.railingConfig?.mountPlacement ?? .topMounted
 
             var meta: [String: AnyCodable] = [
                 "count": AnyCodable(1),
@@ -199,6 +206,7 @@ public enum ComponentEmitter {
                 "color": AnyCodable(railingColor),
                 "mount_type": AnyCodable(railingMountType),
                 "mount_surface": AnyCodable(railingMountSurface),
+                "mount_placement": AnyCodable(railingMountPlacement.rawValue),
                 "edge_id": AnyCodable(edge.id),
             ]
             if let levelId = levelId { meta["level_id"] = AnyCodable(levelId) }
@@ -315,6 +323,9 @@ public enum ComponentEmitter {
             "width": AnyCodable(stair.width),
             "color": AnyCodable(stair.color),
             "mount_type": AnyCodable(stair.mountType),
+            "stringer_style": AnyCodable(stair.stringerStyle.rawValue),
+            "stringer_material": AnyCodable(stair.stringerMaterial.rawValue),
+            "tread_material": AnyCodable(stair.treadMaterial.rawValue),
             "level_id": AnyCodable(connection.upperLevelId),
             "connection_id": AnyCodable(connection.id),
         ]

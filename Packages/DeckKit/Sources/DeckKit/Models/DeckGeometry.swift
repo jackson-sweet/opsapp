@@ -321,6 +321,16 @@ public enum DimensionSource: String, Codable {
 
 // MARK: - Railing
 
+public enum RailingFrameStyle: String, Codable, CaseIterable {
+    case framed
+    case frameless
+}
+
+public enum RailingMountPlacement: String, Codable, CaseIterable {
+    case topMounted = "top_mounted"
+    case fasciaMounted = "fascia_mounted"
+}
+
 public struct RailingConfig: Codable, Equatable {
     public var railingType: RailingType
     public var maxPostSpacing: Double      // inches between posts (e.g., 60" for glass, 84" for picket)
@@ -335,12 +345,14 @@ public struct RailingConfig: Codable, Equatable {
     public var color: String = "Black"
     public var mountType: String = "Topmount"      // Topmount | Sidemount | Surface
     public var mountSurface: String = "Surface"    // Surface | Concrete | other
+    public var frameStyle: RailingFrameStyle = .framed
+    public var mountPlacement: RailingMountPlacement = .topMounted
     public var postHeight: Double = 36.0           // inches; drives post_set.height (IRC R312 minimum)
     public var wallMaterial: HouseEdgeMaterial = .parapet
 
     public enum CodingKeys: String, CodingKey {
         case railingType, maxPostSpacing, assignedItems
-        case color, mountType, mountSurface, postHeight, wallMaterial
+        case color, mountType, mountSurface, frameStyle, mountPlacement, postHeight, wallMaterial
     }
 
     public init(
@@ -350,6 +362,8 @@ public struct RailingConfig: Codable, Equatable {
         color: String = "Black",
         mountType: String = "Topmount",
         mountSurface: String = "Surface",
+        frameStyle: RailingFrameStyle = .framed,
+        mountPlacement: RailingMountPlacement = .topMounted,
         postHeight: Double = 36.0,
         wallMaterial: HouseEdgeMaterial = .parapet
     ) {
@@ -359,6 +373,8 @@ public struct RailingConfig: Codable, Equatable {
         self.color = color
         self.mountType = mountType
         self.mountSurface = mountSurface
+        self.frameStyle = frameStyle
+        self.mountPlacement = mountPlacement
         self.postHeight = postHeight
         self.wallMaterial = wallMaterial
     }
@@ -375,6 +391,8 @@ public struct RailingConfig: Codable, Equatable {
         self.color = try c.decodeIfPresent(String.self, forKey: .color) ?? "Black"
         self.mountType = try c.decodeIfPresent(String.self, forKey: .mountType) ?? "Topmount"
         self.mountSurface = try c.decodeIfPresent(String.self, forKey: .mountSurface) ?? "Surface"
+        self.frameStyle = try c.decodeIfPresent(RailingFrameStyle.self, forKey: .frameStyle) ?? .framed
+        self.mountPlacement = try c.decodeIfPresent(RailingMountPlacement.self, forKey: .mountPlacement) ?? .topMounted
         self.postHeight = try c.decodeIfPresent(Double.self, forKey: .postHeight) ?? 36.0
         self.wallMaterial = try c.decodeIfPresent(HouseEdgeMaterial.self, forKey: .wallMaterial) ?? .parapet
     }
@@ -431,6 +449,27 @@ public enum StairAlignment: String, Codable, CaseIterable {
     }
 }
 
+public enum StairStringerStyle: String, Codable, CaseIterable {
+    case open
+    case closed
+    case mono
+}
+
+public enum StairStringerMaterial: String, Codable, CaseIterable {
+    case pressureTreatedWood = "pressure_treated_wood"
+    case cedar
+    case steel
+    case aluminum
+}
+
+public enum StairTreadMaterial: String, Codable, CaseIterable {
+    case composite
+    case pressureTreatedWood = "pressure_treated_wood"
+    case cedar
+    case twoBySix = "2x6"
+    case fiveQuarterDecking = "5_4_decking"
+}
+
 public struct StairConfig: Codable, Equatable {
     public var width: Double               // inches
     public var risePerStep: Double = 7.5   // inches (IRC R311.7: max 7.75")
@@ -461,11 +500,14 @@ public struct StairConfig: Codable, Equatable {
     // the side of a deck — each maps to a distinct stair-product variant.
     public var color: String = "Black"
     public var mountType: String = "Surface"   // Surface | Top | Side
+    public var stringerStyle: StairStringerStyle = .open
+    public var stringerMaterial: StairStringerMaterial = .pressureTreatedWood
+    public var treadMaterial: StairTreadMaterial = .composite
 
     public enum CodingKeys: String, CodingKey {
         case width, risePerStep, runPerTread, treadCount, alignment, offset
         case railingConfig, assignedItems, totalRiseInches, flipDirection
-        case color, mountType
+        case color, mountType, stringerStyle, stringerMaterial, treadMaterial
     }
 
     public init(
@@ -480,7 +522,10 @@ public struct StairConfig: Codable, Equatable {
         totalRiseInches: Double? = nil,
         flipDirection: Bool = false,
         color: String = "Black",
-        mountType: String = "Surface"
+        mountType: String = "Surface",
+        stringerStyle: StairStringerStyle = .open,
+        stringerMaterial: StairStringerMaterial = .pressureTreatedWood,
+        treadMaterial: StairTreadMaterial = .composite
     ) {
         self.width = width
         self.risePerStep = risePerStep
@@ -494,6 +539,9 @@ public struct StairConfig: Codable, Equatable {
         self.flipDirection = flipDirection
         self.color = color
         self.mountType = mountType
+        self.stringerStyle = stringerStyle
+        self.stringerMaterial = stringerMaterial
+        self.treadMaterial = treadMaterial
     }
 
     public init(from decoder: Decoder) throws {
@@ -513,6 +561,9 @@ public struct StairConfig: Codable, Equatable {
         self.flipDirection = try c.decodeLegacyBoolIfPresent(forKey: .flipDirection) ?? false
         self.color = try c.decodeIfPresent(String.self, forKey: .color) ?? "Black"
         self.mountType = try c.decodeIfPresent(String.self, forKey: .mountType) ?? "Surface"
+        self.stringerStyle = try c.decodeIfPresent(StairStringerStyle.self, forKey: .stringerStyle) ?? .open
+        self.stringerMaterial = try c.decodeIfPresent(StairStringerMaterial.self, forKey: .stringerMaterial) ?? .pressureTreatedWood
+        self.treadMaterial = try c.decodeIfPresent(StairTreadMaterial.self, forKey: .treadMaterial) ?? .composite
     }
 
     /// Calculate tread count from total rise (elevation difference at edge endpoints)

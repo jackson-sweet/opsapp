@@ -215,15 +215,39 @@ struct PropertySheetView: View {
             }
 
             if let railing = edge.railingConfig {
-                Text(railing.railingType.displayName)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                enumMenuRow(
+                    label: "Type",
+                    value: railing.railingType,
+                    values: RailingType.allCases,
+                    displayName: { $0.displayName },
+                    onChange: { type in
+                        var updated = railing
+                        updated.railingType = type
+                        updated.maxPostSpacing = type.defaultMaxPostSpacing
+                        viewModel.setRailing(edgeId, config: updated)
+                    }
+                )
 
                 if railing.railingType == .parapetWall {
                     if showMaterialControls {
                         parapetFinishPicker(edgeIds: [edgeId], activeMaterial: railing.wallMaterial)
                     }
                 } else {
+                    enumMenuRow(
+                        label: "Frame",
+                        value: railing.frameStyle,
+                        values: RailingFrameStyle.allCases,
+                        displayName: railingFrameStyleDisplayName,
+                        onChange: { viewModel.setRailingMetadata(edgeId: edgeId, frameStyle: $0) }
+                    )
+                    enumMenuRow(
+                        label: "Mount",
+                        value: railing.mountPlacement,
+                        values: RailingMountPlacement.allCases,
+                        displayName: railingMountPlacementDisplayName,
+                        onChange: { viewModel.setRailingMetadata(edgeId: edgeId, mountPlacement: $0) }
+                    )
+
                     // Post spacing
                     HStack {
                         Text("Max post spacing")
@@ -281,8 +305,8 @@ struct PropertySheetView: View {
                 }
             } else {
                 // Railing type picker
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    ForEach(RailingType.assignableDefaultTypes, id: \.self) { type in
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    ForEach(RailingType.allCases, id: \.self) { type in
                         Button {
                             let config = RailingConfig(
                                 railingType: type,
@@ -290,13 +314,19 @@ struct PropertySheetView: View {
                             )
                             viewModel.setRailing(edgeId, config: config)
                         } label: {
-                            Text(type.displayName)
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-                                .padding(.vertical, OPSStyle.Layout.spacing2)
-                                .background(OPSStyle.Colors.background)
-                                .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+                            HStack {
+                                Text(type.displayName)
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                Spacer()
+                                Image(systemName: OPSStyle.Icons.plusCircle)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            }
+                            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
+                            .background(OPSStyle.Colors.background)
+                            .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                         }
                     }
                 }
@@ -313,11 +343,20 @@ struct PropertySheetView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 Spacer()
                 if edge.stairConfig != nil {
-                    Button("Remove") {
-                        viewModel.setStairs(edgeId, config: nil)
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Button("Edit") {
+                            viewModel.editingEdgeId = edgeId
+                            viewModel.showingStairConfig = true
+                        }
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                        Button("Remove") {
+                            viewModel.setStairs(edgeId, config: nil)
+                        }
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.errorStatus)
                     }
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.errorStatus)
                 } else {
                     Button("Add Stairs") {
                         viewModel.editingEdgeId = edgeId
@@ -354,6 +393,123 @@ struct PropertySheetView: View {
                     componentType: .stairSet,
                     onChange: { viewModel.setStairMetadata(edgeId: edgeId, mountType: $0) }
                 )
+                enumMenuRow(
+                    label: "Stringer",
+                    value: stair.stringerStyle,
+                    values: StairStringerStyle.allCases,
+                    displayName: stairStringerStyleDisplayName,
+                    onChange: { viewModel.setStairMetadata(edgeId: edgeId, stringerStyle: $0) }
+                )
+                enumMenuRow(
+                    label: "Stringer material",
+                    value: stair.stringerMaterial,
+                    values: StairStringerMaterial.allCases,
+                    displayName: stairStringerMaterialDisplayName,
+                    onChange: { viewModel.setStairMetadata(edgeId: edgeId, stringerMaterial: $0) }
+                )
+                enumMenuRow(
+                    label: "Tread",
+                    value: stair.treadMaterial,
+                    values: StairTreadMaterial.allCases,
+                    displayName: stairTreadMaterialDisplayName,
+                    onChange: { viewModel.setStairMetadata(edgeId: edgeId, treadMaterial: $0) }
+                )
+
+                stairRailingSection(edgeId: edgeId, stair: stair)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func stairRailingSection(edgeId: String, stair: StairConfig) -> some View {
+        Divider().background(OPSStyle.Colors.separator)
+
+        HStack {
+            Text("Stair railing")
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+            Spacer()
+            if stair.railingConfig != nil {
+                Button("Remove") {
+                    var updated = stair
+                    updated.railingConfig = nil
+                    viewModel.setStairs(edgeId, config: updated)
+                }
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.errorStatus)
+            }
+        }
+
+        if let railing = stair.railingConfig {
+            enumMenuRow(
+                label: "Type",
+                value: railing.railingType,
+                values: RailingType.allCases,
+                displayName: { $0.displayName },
+                onChange: { type in
+                    var updatedStair = stair
+                    var updatedRailing = railing
+                    updatedRailing.railingType = type
+                    updatedRailing.maxPostSpacing = type.defaultMaxPostSpacing
+                    updatedStair.railingConfig = updatedRailing
+                    viewModel.setStairs(edgeId, config: updatedStair)
+                }
+            )
+
+            if railing.railingType != .parapetWall {
+                enumMenuRow(
+                    label: "Frame",
+                    value: railing.frameStyle,
+                    values: RailingFrameStyle.allCases,
+                    displayName: railingFrameStyleDisplayName,
+                    onChange: { frameStyle in
+                        var updatedStair = stair
+                        var updatedRailing = railing
+                        updatedRailing.frameStyle = frameStyle
+                        updatedStair.railingConfig = updatedRailing
+                        viewModel.setStairs(edgeId, config: updatedStair)
+                    }
+                )
+                enumMenuRow(
+                    label: "Mount",
+                    value: railing.mountPlacement,
+                    values: RailingMountPlacement.allCases,
+                    displayName: railingMountPlacementDisplayName,
+                    onChange: { mountPlacement in
+                        var updatedStair = stair
+                        var updatedRailing = railing
+                        updatedRailing.mountPlacement = mountPlacement
+                        updatedStair.railingConfig = updatedRailing
+                        viewModel.setStairs(edgeId, config: updatedStair)
+                    }
+                )
+            }
+        } else {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
+                ForEach(RailingType.allCases, id: \.self) { type in
+                    Button {
+                        var updated = stair
+                        updated.railingConfig = RailingConfig(
+                            railingType: type,
+                            maxPostSpacing: type.defaultMaxPostSpacing
+                        )
+                        viewModel.setStairs(edgeId, config: updated)
+                    } label: {
+                        HStack {
+                            Text(type.displayName)
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                            Spacer()
+                            Image(systemName: OPSStyle.Icons.plusCircle)
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
+                        .background(OPSStyle.Colors.background)
+                        .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+                    }
+                }
             }
         }
     }
@@ -791,6 +947,73 @@ struct PropertySheetView: View {
             Text(value)
                 .font(OPSStyle.Typography.dataValue)
                 .foregroundColor(OPSStyle.Colors.primaryText)
+        }
+    }
+
+    @ViewBuilder
+    private func enumMenuRow<Value: Hashable>(
+        label: String,
+        value: Value,
+        values: [Value],
+        displayName: @escaping (Value) -> String,
+        onChange: @escaping (Value) -> Void
+    ) -> some View {
+        HStack {
+            Text(label)
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+            Spacer()
+            Picker("", selection: Binding(
+                get: { value },
+                set: { onChange($0) }
+            )) {
+                ForEach(values, id: \.self) { option in
+                    Text(displayName(option)).tag(option)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(OPSStyle.Colors.text)
+        }
+    }
+
+    private func railingFrameStyleDisplayName(_ style: RailingFrameStyle) -> String {
+        switch style {
+        case .framed: return "Framed"
+        case .frameless: return "Frameless"
+        }
+    }
+
+    private func railingMountPlacementDisplayName(_ placement: RailingMountPlacement) -> String {
+        switch placement {
+        case .topMounted: return "Top"
+        case .fasciaMounted: return "Fascia"
+        }
+    }
+
+    private func stairStringerStyleDisplayName(_ style: StairStringerStyle) -> String {
+        switch style {
+        case .open: return "Open"
+        case .closed: return "Closed"
+        case .mono: return "Mono"
+        }
+    }
+
+    private func stairStringerMaterialDisplayName(_ material: StairStringerMaterial) -> String {
+        switch material {
+        case .pressureTreatedWood: return "PT wood"
+        case .cedar: return "Cedar"
+        case .steel: return "Steel"
+        case .aluminum: return "Aluminum"
+        }
+    }
+
+    private func stairTreadMaterialDisplayName(_ material: StairTreadMaterial) -> String {
+        switch material {
+        case .composite: return "Composite"
+        case .pressureTreatedWood: return "PT wood"
+        case .cedar: return "Cedar"
+        case .twoBySix: return "2x6"
+        case .fiveQuarterDecking: return "5/4 decking"
         }
     }
 

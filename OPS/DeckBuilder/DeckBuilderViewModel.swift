@@ -2190,6 +2190,8 @@ class DeckBuilderViewModel: ObservableObject {
         color: String? = nil,
         mountType: String? = nil,
         mountSurface: String? = nil,
+        frameStyle: RailingFrameStyle? = nil,
+        mountPlacement: RailingMountPlacement? = nil,
         postHeight: Double? = nil
     ) {
         guard var edge = activeEdge(byId: edgeId), var railing = edge.railingConfig else { return }
@@ -2197,6 +2199,8 @@ class DeckBuilderViewModel: ObservableObject {
         if let color { railing.color = color }
         if let mountType { railing.mountType = mountType }
         if let mountSurface { railing.mountSurface = mountSurface }
+        if let frameStyle { railing.frameStyle = frameStyle }
+        if let mountPlacement { railing.mountPlacement = mountPlacement }
         if let postHeight { railing.postHeight = postHeight }
         edge.railingConfig = railing
         activeUpdateEdge(edge)
@@ -2209,12 +2213,18 @@ class DeckBuilderViewModel: ObservableObject {
     func setStairMetadata(
         edgeId: String,
         color: String? = nil,
-        mountType: String? = nil
+        mountType: String? = nil,
+        stringerStyle: StairStringerStyle? = nil,
+        stringerMaterial: StairStringerMaterial? = nil,
+        treadMaterial: StairTreadMaterial? = nil
     ) {
         guard var edge = activeEdge(byId: edgeId), var stair = edge.stairConfig else { return }
         pushUndo("set stair metadata")
         if let color { stair.color = color }
         if let mountType { stair.mountType = mountType }
+        if let stringerStyle { stair.stringerStyle = stringerStyle }
+        if let stringerMaterial { stair.stringerMaterial = stringerMaterial }
+        if let treadMaterial { stair.treadMaterial = treadMaterial }
         edge.stairConfig = stair
         activeUpdateEdge(edge)
         save()

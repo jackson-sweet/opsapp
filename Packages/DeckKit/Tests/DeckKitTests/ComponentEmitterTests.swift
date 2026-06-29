@@ -28,7 +28,9 @@ final class ComponentEmitterTests: XCTestCase {
             railingType: .picket,
             color: "Black",
             mountType: "Topmount",
-            mountSurface: "Surface"
+            mountSurface: "Surface",
+            frameStyle: .framed,
+            mountPlacement: .topMounted
         )
         let rows = ComponentEmitter.emit(data)
 
@@ -44,6 +46,8 @@ final class ComponentEmitterTests: XCTestCase {
             XCTAssertEqual(row.metadata["color"], AnyCodable("Black"))
             XCTAssertEqual(row.metadata["mount_type"], AnyCodable("Topmount"))
             XCTAssertEqual(row.metadata["mount_surface"], AnyCodable("Surface"))
+            XCTAssertEqual(row.metadata["frame_style"], AnyCodable("framed"))
+            XCTAssertEqual(row.metadata["mount_placement"], AnyCodable("top_mounted"))
         }
 
         // Each railing pair (railing + post_set) should reference the same edge_id.
@@ -87,6 +91,9 @@ final class ComponentEmitterTests: XCTestCase {
         XCTAssertEqual(row.metadata["width"], AnyCodable(stairWidthInches))
         XCTAssertEqual(row.metadata["color"], AnyCodable("Black"))
         XCTAssertEqual(row.metadata["mount_type"], AnyCodable("Surface"))
+        XCTAssertEqual(row.metadata["stringer_style"], AnyCodable("open"))
+        XCTAssertEqual(row.metadata["stringer_material"], AnyCodable("pressure_treated_wood"))
+        XCTAssertEqual(row.metadata["tread_material"], AnyCodable("composite"))
     }
 
     // MARK: - Multi-level connection stair (scenario 4)
@@ -148,6 +155,9 @@ final class ComponentEmitterTests: XCTestCase {
         XCTAssertEqual(row.metadata["level_id"], AnyCodable(upper.id),
                        "Connection stair's level_id is the upper level (stairs descend from there)")
         XCTAssertEqual(row.metadata["mount_type"], AnyCodable("Top"))
+        XCTAssertEqual(row.metadata["stringer_style"], AnyCodable("open"))
+        XCTAssertEqual(row.metadata["stringer_material"], AnyCodable("pressure_treated_wood"))
+        XCTAssertEqual(row.metadata["tread_material"], AnyCodable("composite"))
 
         let totalRiseInches = (upper.elevation! - lower.elevation!) * 12.0
         let expectedTreads = StairConfig.calculateTreadCount(totalRise: totalRiseInches)
@@ -217,6 +227,63 @@ final class ComponentEmitterTests: XCTestCase {
         XCTAssertEqual(gates[0].metadata["color"], AnyCodable("Black"))
         XCTAssertEqual(gates[0].metadata["mount_type"], AnyCodable("Topmount"))
         XCTAssertEqual(gates[0].metadata["mount_surface"], AnyCodable("Surface"))
+        XCTAssertEqual(gates[0].metadata["mount_placement"], AnyCodable("top_mounted"))
+    }
+
+    func test_emit_glassRailingCarriesFrameStyleAndMountPlacement() {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1.0
+        let v1 = DeckVertex(position: CGPoint(x: 0, y: 0))
+        let v2 = DeckVertex(position: CGPoint(x: 144, y: 0))
+        var edge = DeckEdge(startVertexId: v1.id, endVertexId: v2.id)
+        edge.dimension = 144
+        edge.railingConfig = RailingConfig(
+            railingType: .glass,
+            maxPostSpacing: 60,
+            color: "Clear",
+            mountType: "Sidemount",
+            mountSurface: "Fascia",
+            frameStyle: .frameless,
+            mountPlacement: .fasciaMounted
+        )
+
+        data.vertices = [v1, v2]
+        data.edges = [edge]
+
+        let rows = ComponentEmitter.emit(data)
+        let railing = rows.first { $0.componentType == "railing" }
+        let post = rows.first { $0.componentType == "post_set" }
+
+        XCTAssertEqual(railing?.metadata["frame_style"], AnyCodable("frameless"))
+        XCTAssertEqual(railing?.metadata["mount_placement"], AnyCodable("fascia_mounted"))
+        XCTAssertEqual(post?.metadata["mount_placement"], AnyCodable("fascia_mounted"))
+    }
+
+    func test_emit_stairCarriesStringerAndTreadProductOptions() {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1.0
+        data.overallElevation = 4.0
+
+        let v1 = DeckVertex(position: CGPoint(x: 0, y: 0))
+        let v2 = DeckVertex(position: CGPoint(x: 120, y: 0))
+        var edge = DeckEdge(startVertexId: v1.id, endVertexId: v2.id)
+        edge.dimension = 120
+        edge.stairConfig = StairConfig(
+            width: 48,
+            stringerStyle: .closed,
+            stringerMaterial: .steel,
+            treadMaterial: .twoBySix
+        )
+
+        data.vertices = [v1, v2]
+        data.edges = [edge]
+
+        let rows = ComponentEmitter.emit(data)
+        let stair = rows.first { $0.componentType == "stair_set" }
+
+        XCTAssertEqual(stair?.metadata["stringer_style"], AnyCodable("closed"))
+        XCTAssertEqual(stair?.metadata["stringer_material"], AnyCodable("steel"))
+        XCTAssertEqual(stair?.metadata["tread_material"], AnyCodable("2x6"))
     }
 
     // MARK: - Stair span subtracted from railing linear_feet
@@ -417,7 +484,9 @@ final class ComponentEmitterTests: XCTestCase {
         railingType: RailingType = .picket,
         color: String = "Black",
         mountType: String = "Topmount",
-        mountSurface: String = "Surface"
+        mountSurface: String = "Surface",
+        frameStyle: RailingFrameStyle = .framed,
+        mountPlacement: RailingMountPlacement = .topMounted
     ) -> DeckDrawingData {
         var data = DeckDrawingData()
         data.scaleFactor = 1.0
@@ -432,7 +501,9 @@ final class ComponentEmitterTests: XCTestCase {
             maxPostSpacing: railingType.defaultMaxPostSpacing,
             color: color,
             mountType: mountType,
-            mountSurface: mountSurface
+            mountSurface: mountSurface,
+            frameStyle: frameStyle,
+            mountPlacement: mountPlacement
         )
 
         var e1 = DeckEdge(startVertexId: v1.id, endVertexId: v2.id)

@@ -12,7 +12,12 @@ struct StairConfigView: View {
     @State private var runPerTread: Double = 10.0
     @State private var treadCountText: String = ""
     @State private var addRailing: Bool = false
-    @State private var railingType: RailingType = .parapetWall
+    @State private var railingType: RailingType = .picket
+    @State private var railingFrameStyle: RailingFrameStyle = .framed
+    @State private var railingMountPlacement: RailingMountPlacement = .topMounted
+    @State private var stringerStyle: StairStringerStyle = .open
+    @State private var stringerMaterial: StairStringerMaterial = .pressureTreatedWood
+    @State private var treadMaterial: StairTreadMaterial = .composite
     @State private var inlineHeightText: String = ""
     @State private var alignment: StairAlignment = .center
     @State private var offsetText: String = "0"
@@ -128,6 +133,9 @@ struct StairConfigView: View {
                         calculatedValues(spec: spec)
                     }
 
+                    // Construction options
+                    stairBuildSection
+
                     // Railing toggle
                     railingSection
 
@@ -167,9 +175,14 @@ struct StairConfigView: View {
                 alignment = existing.alignment
                 offsetText = String(format: "%.0f", existing.offset)
                 flipDirection = existing.flipDirection
+                stringerStyle = existing.stringerStyle
+                stringerMaterial = existing.stringerMaterial
+                treadMaterial = existing.treadMaterial
                 if let railing = existing.railingConfig {
                     addRailing = true
                     railingType = railing.railingType
+                    railingFrameStyle = railing.frameStyle
+                    railingMountPlacement = railing.mountPlacement
                 }
                 // Bug bfbc4068 — pre-fill stair height so the user can edit it.
                 if let storedRiseInches = existing.totalRiseInches, storedRiseInches > 0 {
@@ -541,6 +554,42 @@ struct StairConfigView: View {
         }
     }
 
+    // MARK: - Stair Build
+
+    @ViewBuilder
+    private var stairBuildSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            Text("Stair build")
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+
+            enumMenuRow(
+                label: "Stringer",
+                value: stringerStyle,
+                values: StairStringerStyle.allCases,
+                displayName: stairStringerStyleDisplayName,
+                onChange: { stringerStyle = $0 }
+            )
+            enumMenuRow(
+                label: "Stringer material",
+                value: stringerMaterial,
+                values: StairStringerMaterial.allCases,
+                displayName: stairStringerMaterialDisplayName,
+                onChange: { stringerMaterial = $0 }
+            )
+            enumMenuRow(
+                label: "Tread",
+                value: treadMaterial,
+                values: StairTreadMaterial.allCases,
+                displayName: stairTreadMaterialDisplayName,
+                onChange: { treadMaterial = $0 }
+            )
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.cardBackground)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+    }
+
     // MARK: - Railing
 
     @ViewBuilder
@@ -554,12 +603,30 @@ struct StairConfigView: View {
             .tint(OPSStyle.Colors.text)
 
             if addRailing {
-                Picker("Railing Type", selection: $railingType) {
-                    ForEach(RailingType.assignableDefaultTypes, id: \.self) { type in
-                        Text(type.displayName).tag(type)
-                    }
+                enumMenuRow(
+                    label: "Type",
+                    value: railingType,
+                    values: RailingType.allCases,
+                    displayName: { $0.displayName },
+                    onChange: { railingType = $0 }
+                )
+
+                if railingType != .parapetWall {
+                    enumMenuRow(
+                        label: "Frame",
+                        value: railingFrameStyle,
+                        values: RailingFrameStyle.allCases,
+                        displayName: railingFrameStyleDisplayName,
+                        onChange: { railingFrameStyle = $0 }
+                    )
+                    enumMenuRow(
+                        label: "Mount",
+                        value: railingMountPlacement,
+                        values: RailingMountPlacement.allCases,
+                        displayName: railingMountPlacementDisplayName,
+                        onChange: { railingMountPlacement = $0 }
+                    )
                 }
-                .pickerStyle(.segmented)
             }
         }
         .padding(OPSStyle.Layout.spacing3)
@@ -573,7 +640,18 @@ struct StairConfigView: View {
         guard let edgeId = viewModel.editingEdgeId,
               let spec = stairSpec else { return }
 
-        var config = StairConfig(width: spec.width, risePerStep: risePerStep, runPerTread: runPerTread)
+        let existing = viewModel.findEdge(byId: edgeId)?.stairConfig
+        var config = StairConfig(
+            width: spec.width,
+            risePerStep: risePerStep,
+            runPerTread: runPerTread,
+            assignedItems: existing?.assignedItems ?? [],
+            color: existing?.color ?? "Black",
+            mountType: existing?.mountType ?? "Surface",
+            stringerStyle: stringerStyle,
+            stringerMaterial: stringerMaterial,
+            treadMaterial: treadMaterial
+        )
         config.treadCount = spec.treadCount
         config.alignment = alignment
         config.offset = Double(offsetText) ?? 0
@@ -586,12 +664,88 @@ struct StairConfigView: View {
         }
 
         if addRailing {
+            let existingRailing = existing?.railingConfig
             config.railingConfig = RailingConfig(
                 railingType: railingType,
-                maxPostSpacing: railingType.defaultMaxPostSpacing
+                maxPostSpacing: railingType.defaultMaxPostSpacing,
+                assignedItems: existingRailing?.assignedItems ?? [],
+                color: existingRailing?.color ?? "Black",
+                mountType: existingRailing?.mountType ?? "Topmount",
+                mountSurface: existingRailing?.mountSurface ?? "Surface",
+                frameStyle: railingFrameStyle,
+                mountPlacement: railingMountPlacement,
+                postHeight: existingRailing?.postHeight ?? 36.0,
+                wallMaterial: existingRailing?.wallMaterial ?? .parapet
             )
         }
 
         viewModel.setStairs(edgeId, config: config)
+    }
+
+    @ViewBuilder
+    private func enumMenuRow<Value: Hashable>(
+        label: String,
+        value: Value,
+        values: [Value],
+        displayName: @escaping (Value) -> String,
+        onChange: @escaping (Value) -> Void
+    ) -> some View {
+        HStack {
+            Text(label)
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+            Spacer()
+            Picker("", selection: Binding(
+                get: { value },
+                set: { onChange($0) }
+            )) {
+                ForEach(values, id: \.self) { option in
+                    Text(displayName(option)).tag(option)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(OPSStyle.Colors.text)
+        }
+    }
+
+    private func railingFrameStyleDisplayName(_ style: RailingFrameStyle) -> String {
+        switch style {
+        case .framed: return "Framed"
+        case .frameless: return "Frameless"
+        }
+    }
+
+    private func railingMountPlacementDisplayName(_ placement: RailingMountPlacement) -> String {
+        switch placement {
+        case .topMounted: return "Top"
+        case .fasciaMounted: return "Fascia"
+        }
+    }
+
+    private func stairStringerStyleDisplayName(_ style: StairStringerStyle) -> String {
+        switch style {
+        case .open: return "Open"
+        case .closed: return "Closed"
+        case .mono: return "Mono"
+        }
+    }
+
+    private func stairStringerMaterialDisplayName(_ material: StairStringerMaterial) -> String {
+        switch material {
+        case .pressureTreatedWood: return "PT wood"
+        case .cedar: return "Cedar"
+        case .steel: return "Steel"
+        case .aluminum: return "Aluminum"
+        }
+    }
+
+    private func stairTreadMaterialDisplayName(_ material: StairTreadMaterial) -> String {
+        switch material {
+        case .composite: return "Composite"
+        case .pressureTreatedWood: return "PT wood"
+        case .cedar: return "Cedar"
+        case .twoBySix: return "2x6"
+        case .fiveQuarterDecking: return "5/4 decking"
+        }
     }
 }

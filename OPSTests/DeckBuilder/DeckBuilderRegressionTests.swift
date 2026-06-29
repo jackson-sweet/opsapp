@@ -83,6 +83,65 @@ final class DeckBuilderRegressionTests: XCTestCase {
         XCTAssertNil(viewModel.findEdge(byId: "e1")?.houseEdgeMaterial)
     }
 
+    func testRailingMetadata_updatesTypedProductOptionsWithoutClearingCatalogFields() throws {
+        var data = DeckDrawingData()
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 144, y: 0)),
+        ]
+        var edge = DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")
+        edge.railingConfig = RailingConfig(
+            railingType: .glass,
+            maxPostSpacing: 60,
+            color: "Bronze",
+            mountType: "Sidemount",
+            mountSurface: "Fascia"
+        )
+        data.edges = [edge]
+
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+
+        viewModel.setRailingMetadata(
+            edgeId: "e1",
+            frameStyle: .frameless,
+            mountPlacement: .fasciaMounted
+        )
+
+        let railing = try XCTUnwrap(viewModel.findEdge(byId: "e1")?.railingConfig)
+        XCTAssertEqual(railing.frameStyle, .frameless)
+        XCTAssertEqual(railing.mountPlacement, .fasciaMounted)
+        XCTAssertEqual(railing.color, "Bronze")
+        XCTAssertEqual(railing.mountType, "Sidemount")
+        XCTAssertEqual(railing.mountSurface, "Fascia")
+    }
+
+    func testStairMetadata_updatesStringerAndTreadOptionsWithoutClearingCatalogFields() throws {
+        var data = DeckDrawingData()
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 144, y: 0)),
+        ]
+        var edge = DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")
+        edge.stairConfig = StairConfig(width: 48, color: "Grey", mountType: "Top")
+        data.edges = [edge]
+
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+
+        viewModel.setStairMetadata(
+            edgeId: "e1",
+            stringerStyle: .closed,
+            stringerMaterial: .steel,
+            treadMaterial: .twoBySix
+        )
+
+        let stair = try XCTUnwrap(viewModel.findEdge(byId: "e1")?.stairConfig)
+        XCTAssertEqual(stair.stringerStyle, .closed)
+        XCTAssertEqual(stair.stringerMaterial, .steel)
+        XCTAssertEqual(stair.treadMaterial, .twoBySix)
+        XCTAssertEqual(stair.color, "Grey")
+        XCTAssertEqual(stair.mountType, "Top")
+    }
+
     func testSceneBuilder_usesVertexIdsForAngledHouseWallGeometry() {
         var data = DeckDrawingData()
         data.scaleFactor = 1.0

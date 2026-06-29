@@ -26,4 +26,52 @@ final class StairConfigCodableTests: XCTestCase {
         XCTAssertFalse(decoded.flipDirection,
                        "legacy JSON without flipDirection must default to false")
     }
+
+    func testRailingProductOptionsSurviveRoundTrip() throws {
+        let original = RailingConfig(
+            railingType: .glass,
+            maxPostSpacing: 60,
+            frameStyle: .frameless,
+            mountPlacement: .fasciaMounted
+        )
+
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(RailingConfig.self, from: data)
+
+        XCTAssertEqual(decoded.frameStyle, .frameless)
+        XCTAssertEqual(decoded.mountPlacement, .fasciaMounted)
+    }
+
+    func testRailingProductOptionsDefaultForLegacyJSON() throws {
+        let legacy = Data(#"{"railingType":"glass","maxPostSpacing":60}"#.utf8)
+        let decoded = try JSONDecoder().decode(RailingConfig.self, from: legacy)
+
+        XCTAssertEqual(decoded.frameStyle, .framed)
+        XCTAssertEqual(decoded.mountPlacement, .topMounted)
+    }
+
+    func testStairProductOptionsSurviveRoundTrip() throws {
+        let original = StairConfig(
+            width: 48,
+            stringerStyle: .closed,
+            stringerMaterial: .steel,
+            treadMaterial: .fiveQuarterDecking
+        )
+
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(StairConfig.self, from: data)
+
+        XCTAssertEqual(decoded.stringerStyle, .closed)
+        XCTAssertEqual(decoded.stringerMaterial, .steel)
+        XCTAssertEqual(decoded.treadMaterial, .fiveQuarterDecking)
+    }
+
+    func testStairProductOptionsDefaultForLegacyJSON() throws {
+        let legacy = Data(#"{"width":48}"#.utf8)
+        let decoded = try JSONDecoder().decode(StairConfig.self, from: legacy)
+
+        XCTAssertEqual(decoded.stringerStyle, .open)
+        XCTAssertEqual(decoded.stringerMaterial, .pressureTreatedWood)
+        XCTAssertEqual(decoded.treadMaterial, .composite)
+    }
 }

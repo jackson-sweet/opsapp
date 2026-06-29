@@ -142,7 +142,8 @@ struct DeckCanvasView: View {
                               case .enteringLength = viewModel.perimeterEntry,
                               let anchor = viewModel.perimeterEntry.activeAnchor else { return }
                         centerViewport(on: anchor.position, viewportSize: geometry.size)
-                    }
+                    },
+                    onInteractionBegan: { viewportSnap.stop() }
                 )
                 .allowsHitTesting(DeckCanvasGesturePolicy.allowsCanvasGestureOverlayHitTesting(for: viewModel.perimeterEntry))
             }
@@ -1981,6 +1982,10 @@ struct CanvasGestureView: UIViewRepresentable {
     /// can fade overlays during pan/zoom. Defaults to no-op — the editor passes
     /// nothing and is unaffected.
     var onInteractingChange: (Bool) -> Void = { _ in }
+    /// Fires on gesture `.began` so the host can cancel any in-flight programmatic
+    /// snap before the user grabs the canvas. Without this, the snap animator and
+    /// the pinch handler both write `offset` for ~200ms and visibly fight.
+    var onInteractionBegan: () -> Void = {}
 
     func makeUIView(context: Context) -> GesturePassthroughView {
         let view = GesturePassthroughView()
@@ -1999,6 +2004,7 @@ struct CanvasGestureView: UIViewRepresentable {
         context.coordinator.scaleBinding = $scale
         context.coordinator.offsetBinding = $offset
         context.coordinator.onInteractingChange = onInteractingChange
+        context.coordinator.onInteractionBegan = onInteractionBegan
         context.coordinator.pinchGesture?.isEnabled = !isDrawing
     }
 
@@ -2008,6 +2014,7 @@ struct CanvasGestureView: UIViewRepresentable {
         var scaleBinding: Binding<CGFloat>
         var offsetBinding: Binding<CGSize>
         var onInteractingChange: (Bool) -> Void = { _ in }
+        var onInteractionBegan: () -> Void = {}
         weak var pinchGesture: UIPinchGestureRecognizer?
         private var baseScale: CGFloat = 1.0
         private var lastMidpoint: CGPoint = .zero
@@ -2025,6 +2032,9 @@ struct CanvasGestureView: UIViewRepresentable {
             switch gesture.state {
             case .began:
                 endWork?.cancel()
+                // Cancel any in-flight snap before we start writing offset, so the
+                // animator and this handler don't fight over canvasOffset.
+                onInteractionBegan()
                 onInteractingChange(true)
                 baseScale = scaleBinding.wrappedValue
                 lastMidpoint = mid

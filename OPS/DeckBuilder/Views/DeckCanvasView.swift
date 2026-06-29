@@ -277,6 +277,8 @@ struct DeckCanvasView: View {
                     }
                     if let preview = viewModel.perimeterDraftPreview {
                         drawPerimeterDraftPreview(context: context, preview: preview)
+                    } else if let ghost = viewModel.perimeterDirectionGhost {
+                        drawPerimeterDirectionGhost(context: context, start: ghost.start, angleDegrees: ghost.angleDegrees)
                     }
                     if case .drawing(_, let startPos, let currentEnd) = viewModel.drawingMode {
                         drawActiveLine(context: context, startPosition: startPos, currentEnd: currentEnd)
@@ -315,6 +317,8 @@ struct DeckCanvasView: View {
                 }
                 if let preview = viewModel.perimeterDraftPreview {
                     drawPerimeterDraftPreview(context: context, preview: preview)
+                } else if let ghost = viewModel.perimeterDirectionGhost {
+                    drawPerimeterDirectionGhost(context: context, start: ghost.start, angleDegrees: ghost.angleDegrees)
                 }
                 if case .drawing(_, let startPos, let currentEnd) = viewModel.drawingMode {
                     drawActiveLine(context: context, startPosition: startPos, currentEnd: currentEnd)
@@ -1060,6 +1064,47 @@ struct DeckCanvasView: View {
                 .foregroundColor(OPSStyle.Colors.text2),
             at: labelPoint
         )
+    }
+
+    /// Draw a translucent dashed ray with an accent arrowhead from the anchor in
+    /// the chosen direction, shown while a direction is locked but no length is
+    /// entered yet. Denotes "this way" before the line has a measured length.
+    private func drawPerimeterDirectionGhost(context: GraphicsContext, start: CGPoint, angleDegrees: Double) {
+        let radians = angleDegrees * .pi / 180
+        let dirX = cos(radians)
+        let dirY = sin(radians)
+        let scale = Swift.max(canvasScale, 0.0001)
+
+        // Fixed on-screen ray + arrowhead length, independent of zoom.
+        let rayLength = 72 / scale
+        let headLength = 16 / scale
+        let end = CGPoint(x: start.x + dirX * rayLength, y: start.y + dirY * rayLength)
+
+        // Ghost line — the line-to-be, dashed and translucent until it has a length.
+        var line = Path()
+        line.move(to: start)
+        line.addLine(to: end)
+        let stroke = scaledSize(2, min: 1.25, max: 4)
+        let dash = [scaledSize(8, min: 5, max: 14), scaledSize(6, min: 4, max: 10)]
+        context.stroke(
+            line,
+            with: .color(OPSStyle.Colors.text.opacity(0.5)),
+            style: StrokeStyle(lineWidth: stroke, lineCap: .round, dash: dash)
+        )
+
+        // Accent arrowhead at the tip — denotes the chosen direction.
+        let headHalf = 26.0 * .pi / 180
+        let back = radians + .pi
+        let left = CGPoint(x: end.x + cos(back - headHalf) * headLength,
+                           y: end.y + sin(back - headHalf) * headLength)
+        let right = CGPoint(x: end.x + cos(back + headHalf) * headLength,
+                            y: end.y + sin(back + headHalf) * headLength)
+        var head = Path()
+        head.move(to: end)
+        head.addLine(to: left)
+        head.addLine(to: right)
+        head.closeSubpath()
+        context.fill(head, with: .color(OPSStyle.Colors.opsAccent.opacity(0.85)))
     }
 
     // (Live dimension label moved to a SwiftUI screen-space HUD —

@@ -1102,6 +1102,19 @@ class DeckBuilderViewModel: ObservableObject {
         )
     }
 
+    /// When a direction is chosen but no length is entered yet, expose the anchor
+    /// position and heading so the canvas can draw a ghost direction ray + arrow.
+    /// Mutually exclusive with `perimeterDraftPreview`, which requires length > 0.
+    var perimeterDirectionGhost: (start: CGPoint, angleDegrees: Double)? {
+        guard case .enteringLength(let anchor, let direction, let draft) = perimeterEntry,
+              draft.totalInches == 0,
+              let liveAnchor = makePerimeterAnchor(vertexId: anchor.vertexId, rootVertexId: anchor.rootVertexId) else {
+            return nil
+        }
+        let angle = direction.angleDegrees(incomingAngleDegrees: liveAnchor.incomingAngleDegrees)
+        return (liveAnchor.position, angle)
+    }
+
     @discardableResult
     func beginPerimeterEntry(at point: CGPoint, hitThreshold: Double = 25.0) -> Bool {
         if let vertexId = PolygonMath.findVertexAtPoint(point, vertices: activeVertices, hitThreshold: hitThreshold) {

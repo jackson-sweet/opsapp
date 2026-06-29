@@ -450,6 +450,30 @@ final class PerimeterEntryTests: XCTestCase {
         XCTAssertEqual(preview.end.y, -44, accuracy: 0.0001)
     }
 
+    func testDirectionGhostExposesHeadingBeforeLengthThenYieldsToPreview() throws {
+        var data = DeckDrawingData()
+        data.config.snappingEnabled = false
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 100, y: 100))
+        ]
+
+        let viewModel = viewModel(drawingData: data)
+        viewModel.beginPerimeterEntry(fromVertexId: "v1")
+        viewModel.selectPerimeterDirection(.right)
+
+        // Direction locked, no length yet → ghost ray present, measured preview absent.
+        let ghost = try XCTUnwrap(viewModel.perimeterDirectionGhost)
+        XCTAssertEqual(ghost.start.x, 100, accuracy: 0.0001)
+        XCTAssertEqual(ghost.start.y, 100, accuracy: 0.0001)
+        XCTAssertEqual(ghost.angleDegrees, 0, accuracy: 0.0001)
+        XCTAssertNil(viewModel.perimeterDraftPreview)
+
+        // Once a length is entered, the ghost yields to the measured preview.
+        viewModel.updatePerimeterLength(.imperial(feet: 6, inches: 0, sixteenths: 0))
+        XCTAssertNil(viewModel.perimeterDirectionGhost)
+        XCTAssertNotNil(viewModel.perimeterDraftPreview)
+    }
+
     func testRelativeContinuationFromOutgoingEdgeUsesForwardHeading() throws {
         var data = DeckDrawingData()
         data.config.snappingEnabled = false

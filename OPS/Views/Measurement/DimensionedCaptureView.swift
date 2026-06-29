@@ -50,6 +50,7 @@ public struct DimensionedCaptureView: View {
     public let projectName: String
     public let companyId: String
     public let userId: String
+    public let developerFlagOverride: Bool
 
     // Parent-injected closures for post-save routing. The capture view owns
     // the sync call and calibration continuity; the parent owns dismissal +
@@ -80,6 +81,7 @@ public struct DimensionedCaptureView: View {
         projectName: String = "",
         companyId: String = "",
         userId: String = "",
+        developerFlagOverride: Bool = false,
         onSavedSuccessfully: @escaping (PhotoAnnotation) -> Void = { _ in },
         onError: @escaping (Error) -> Void = { _ in }
     ) {
@@ -89,6 +91,7 @@ public struct DimensionedCaptureView: View {
         self.projectName = projectName
         self.companyId = companyId
         self.userId = userId
+        self.developerFlagOverride = developerFlagOverride
         self.onSavedSuccessfully = onSavedSuccessfully
         self.onError = onError
     }
@@ -746,6 +749,9 @@ public struct DimensionedCaptureView: View {
 
         coordinatorBox.coordinator = coordinator
         availability = .ready
+        if developerFlagOverride {
+            showError(toast: ErrorToast(copy: Feedback.Measure.devFlagOverride))
+        }
 
         // 5. Kick off the live-aim session — coordinator handles idempotency.
         coordinator.startLiveAim()

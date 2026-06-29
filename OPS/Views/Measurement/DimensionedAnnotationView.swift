@@ -297,6 +297,14 @@ public struct DimensionedAnnotationView: View {
                        alignment: .bottomTrailing)
                 .padding(.trailing, OPSStyle.Layout.spacing2_5)
                 .padding(.bottom, OPSStyle.Layout.spacing2_5)
+
+                if let limitation = manualMeasurementLimitationCopy {
+                    MeasurementLimitationBanner(copy: limitation)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity,
+                               alignment: .bottomLeading)
+                        .padding(.leading, OPSStyle.Layout.spacing2_5)
+                        .padding(.bottom, OPSStyle.Layout.spacing2_5)
+                }
             }
             .contentShape(Rectangle())
             .gesture(measurementGesture(fit: fit))
@@ -443,22 +451,41 @@ public struct DimensionedAnnotationView: View {
     // MARK: - Manual measurement commit
 
     private func commitManualMeasurement(from a: CGPoint, to b: CGPoint) {
-        guard let depth = currentDepthMap() else {
-            showDepthMissFeedback()
+        let measurement: DimensionsData.Measurement?
+        if let depth = currentDepthMap() {
+            let raycaster = DepthRaycaster(
+                intrinsics: assets.intrinsics,
+                depth: depth,
+                photoSize: photoPixelSize
+            )
+            measurement = raycaster.linearMeasurement(
+                from: a, to: b,
+                label: "Manual",
+                primaryDisplayUnit: primaryUnit,
+                source: .manual
+            )
+        } else if let planeNormal = calibration.planeNormal,
+                  let planeOffset = calibration.planeOffset {
+            let raycaster = PlaneRaycaster(
+                intrinsics: assets.intrinsics,
+                photoSize: photoPixelSize,
+                planeNormal: planeNormal,
+                planeOffset: planeOffset,
+                scaleFactor: calibration.scaleFactor
+            )
+            measurement = raycaster.linearMeasurement(
+                from: a, to: b,
+                label: "Manual",
+                primaryDisplayUnit: primaryUnit,
+                source: .manual
+            )
+        } else {
+            showManualMeasurementUnavailableFeedback()
             return
         }
-        let raycaster = DepthRaycaster(
-            intrinsics: assets.intrinsics,
-            depth: depth,
-            photoSize: photoPixelSize
-        )
-        guard let m = raycaster.linearMeasurement(
-            from: a, to: b,
-            label: "Manual",
-            primaryDisplayUnit: primaryUnit,
-            source: .manual
-        ) else {
-            showDepthMissFeedback()
+
+        guard let m = measurement else {
+            showManualMeasurementUnavailableFeedback()
             return
         }
         pushUndo()
@@ -473,6 +500,13 @@ public struct DimensionedAnnotationView: View {
     private func showDepthMissFeedback() {
         UINotificationFeedbackGenerator().notificationOccurred(.error)
         ToastCenter.shared.present(Toast(label: Feedback.Err.noDepth, tone: .error))
+    }
+
+    private func showManualMeasurementUnavailableFeedback() {
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        ToastCenter.shared.present(
+            Toast(label: manualMeasurementLimitationCopy ?? Feedback.Err.noDepth, tone: .error)
+        )
     }
 
     // MARK: - Auto measure
@@ -715,6 +749,21 @@ public struct DimensionedAnnotationView: View {
 
     // MARK: - Derived state
 
+    private var manualMeasurementLimitationCopy: String? {
+        if currentDepthMap() != nil { return nil }
+        if calibration.planeNormal != nil, calibration.planeOffset != nil {
+            return nil
+        }
+        switch capability {
+        case .lidar:
+            return Feedback.Measure.depthFileMissing
+        case .visual:
+            return Feedback.Measure.visualCalibrateFirst
+        case .noDepth:
+            return Feedback.Measure.hardwareRequired
+        }
+    }
+
     private var toolbarConfig: MeasurementToolbarConfig {
         MeasurementToolbarConfig(
             hasAuto: !detectedOpenings.isEmpty && anchors != nil,
@@ -842,6 +891,27 @@ public struct DimensionedAnnotationView: View {
 
     private func loadDepthFromDisk() -> DepthMap? {
         DepthMapLoader.load(from: assets.depthURL)
+    }
+}
+
+private struct MeasurementLimitationBanner: View {
+    let copy: String
+
+    var body: some View {
+        Text(copy)
+            .font(.panelTitle)
+            .textCase(.uppercase)
+            .foregroundColor(OPSStyle.Colors.tan)
+            .lineLimit(2)
+            .minimumScaleFactor(0.8)
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
+            .padding(.vertical, OPSStyle.Layout.spacing1)
+            .glassDense(cornerRadius: OPSStyle.Layout.chipRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                    .strokeBorder(OPSStyle.Colors.tanLine, lineWidth: 1)
+            )
+            .frame(maxWidth: 260, alignment: .leading)
     }
 }
 

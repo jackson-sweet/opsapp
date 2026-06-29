@@ -305,6 +305,10 @@ enum Feedback {
 
     enum Measure {
         static let pdfReady = Toast(label: "// PDF READY", tone: .success)
+        static let devFlagOverride = "// DEV FLAG OVERRIDE · FLAG OFF"
+        static let depthFileMissing = "// DEPTH FILE MISSING · RECAPTURE"
+        static let visualCalibrateFirst = "// VISUAL MODE · CALIBRATE FIRST"
+        static let hardwareRequired = "// NO AR DEPTH · HARDWARE REQUIRED"
         /// Dimensions saved to project — success toast with a tap-through to view.
         static func dimensionsSaved(view: @escaping () -> Void) -> Toast {
             Toast(label: "// DIMENSIONS SAVED", tone: .success, autoDismissAfter: 6,

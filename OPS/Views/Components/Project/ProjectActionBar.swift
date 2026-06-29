@@ -47,10 +47,9 @@ struct ProjectActionBar: View {
         return project.tasks.first(where: { $0.id == activeTaskID })
     }
 
-    /// Whether the MEASURE entry should render in the bar. Pure function of
-    /// (feature flag, device capability) — same gate exercised by
-    /// `MeasureActionButton.shouldRender(...)`, evaluated here so the divider
-    /// layout has access to the same answer.
+    /// Whether the MEASURE entry should render in the bar. Same shared policy
+    /// exercised by `MeasureActionButton`: release flag gate, debug override,
+    /// and visible hardware-limitation state when appropriate.
     private var showMeasureEntry: Bool {
         MeasureActionButton.shouldRender(
             flagEnabled: permissionStore.isFeatureEnabled(MeasurementFlag.dimensionedCapture),
@@ -246,11 +245,9 @@ struct ProjectActionBar: View {
             }
             .modifier(ActionButtonHighlightModifier(action: action))
         case .measure:
-            // Phase G — MEASURE entry. Renders only when the LiDAR feature
-            // flag is enabled AND the device supports depth-aware capture
-            // (LiDAR or visual SLAM). Hidden by default; flips visible
-            // once `feature.measurement.dimensioned_capture` is flipped ON
-            // remotely. Spec §3.1 + §10.3.
+            // Phase G — MEASURE entry. Shared policy preserves release
+            // rollout gating while keeping debug/test and hardware-limit
+            // states visible instead of silent.
             MeasureActionButton(project: project)
         }
     }

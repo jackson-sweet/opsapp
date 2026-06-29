@@ -116,4 +116,45 @@ final class DepthRaycasterTests: XCTestCase {
         XCTAssertEqual(m!.source, .manual)
         XCTAssertEqual(m!.type, .linear)
     }
+
+    func testPlaneRaycaster_betweenTwoPointsOnCalibratedPlane_equalsBaseline() {
+        // Same geometry as the depth test, but the depth comes from a marker
+        // plane at z=2. This is the visual-SLAM/reference-object fallback.
+        let raycaster = PlaneRaycaster(
+            intrinsics: intrinsics,
+            photoSize: photoSize,
+            planeNormal: .init(x: 0, y: 0, z: 1),
+            planeOffset: -2
+        )
+
+        let m = raycaster.linearMeasurement(
+            from: CGPoint(x: 400, y: 375),
+            to: CGPoint(x: 600, y: 375),
+            label: "Width"
+        )
+
+        XCTAssertNotNil(m)
+        XCTAssertEqual(m!.valueMeters, 0.4, accuracy: 1e-4)
+        XCTAssertEqual(m!.worldPoints.count, 2)
+        XCTAssertEqual(m!.imagePoints.count, 2)
+        XCTAssertEqual(m!.source, .manual)
+    }
+
+    func testPlaneRaycaster_parallelOrBehindPlane_returnsNil() {
+        let parallel = PlaneRaycaster(
+            intrinsics: intrinsics,
+            photoSize: photoSize,
+            planeNormal: .init(x: 1, y: 0, z: 0),
+            planeOffset: 0
+        )
+        XCTAssertNil(parallel.worldPoint(atPhotoPixel: CGPoint(x: 500, y: 375)))
+
+        let behindCamera = PlaneRaycaster(
+            intrinsics: intrinsics,
+            photoSize: photoSize,
+            planeNormal: .init(x: 0, y: 0, z: 1),
+            planeOffset: 2
+        )
+        XCTAssertNil(behindCamera.worldPoint(atPhotoPixel: CGPoint(x: 500, y: 375)))
+    }
 }

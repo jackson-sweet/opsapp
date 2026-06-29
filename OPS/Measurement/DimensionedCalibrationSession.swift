@@ -66,7 +66,13 @@ public struct DimensionedCalibrationSession {
             method: .referenceObject,
             referenceObject: result.referenceObject,
             scaleFactor: result.scaleFactor,
-            estimatedAccuracyMeters: result.accuracyMeters
+            estimatedAccuracyMeters: result.accuracyMeters,
+            planeNormal: DimensionsData.Point3(
+                x: result.markerPlaneNormal.x,
+                y: result.markerPlaneNormal.y,
+                z: result.markerPlaneNormal.z
+            ),
+            planeOffset: result.markerPlaneOffset
         )
         return DimensionedResolvedAnnotation(
             handoff: originalHandoff,

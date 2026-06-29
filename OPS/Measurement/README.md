@@ -13,6 +13,22 @@ only. The capture UI (`DimensionedCaptureView`) and annotation UI
 The measurement engine (`DepthRaycaster`, `PnPSolver`, `OpeningClassifier`,
 `ReferenceObjectCalibrator`) is Phase C.
 
+## Operator path
+
+`PROJECT -> MEASURE -> AIM -> SHUTTER -> TAP TWO POINTS -> SAVE`.
+
+MEASURE appears from the active project action bar, project quick actions, and
+site visit capture when `feature.measurement.dimensioned_capture` is enabled.
+Release builds hide the entry while the flag is off. Debug builds keep a field
+test path visible for AR-capable devices and show
+`// DEV FLAG OVERRIDE · FLAG OFF` inside capture.
+
+LiDAR devices get the full depth path. AUTO appears only when the shutter
+handoff contains real depth/mesh data and a measured opening. Non-LiDAR ARKit
+devices use visual capture: calibrate against a credit card or OPS marker, keep
+the measured points on the same plane, then tap two points. Simulator/no-AR
+devices show the hardware requirement instead of silently hiding or crashing.
+
 ## Public API
 
 ### `LiDARCaptureCoordinator`

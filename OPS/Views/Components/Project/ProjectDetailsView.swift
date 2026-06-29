@@ -100,6 +100,10 @@ struct ProjectDetailsView: View {
                             projectName: project.title,
                             companyId: project.companyId,
                             userId: dataController.currentUser?.id ?? "",
+                            developerFlagOverride: MeasureActionButton.usesDeveloperFlagOverride(
+                                flagEnabled: permissionStore.isFeatureEnabled(MeasurementFlag.dimensionedCapture),
+                                capability: CaptureCapability.detect().capability
+                            ),
                             onSavedSuccessfully: { _ in
                                 showingMeasureCapture = false
                             },
@@ -436,9 +440,9 @@ struct ProjectDetailsView: View {
                             canEdit: permissionStore.can("deck_builder.edit", requiredScope: "assigned")
                         ) ? { openDeckDesignFromActionBar() } : nil,
                         // LiDAR Dimensioned Photo Capture (spec §3.1) — gated
-                        // by `MeasureActionButton.shouldRender` so flag + capability
-                        // checks stay in one place. Same logic as Home's
-                        // ProjectActionBar entry.
+                        // by `MeasureActionButton.shouldRender` so rollout,
+                        // debug override, and hardware-limit states stay in
+                        // one place. Same logic as Home's ProjectActionBar entry.
                         onMeasure: MeasureActionButton.shouldRender(
                             flagEnabled: permissionStore.isFeatureEnabled(MeasurementFlag.dimensionedCapture),
                             capability: CaptureCapability.detect().capability

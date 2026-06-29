@@ -73,3 +73,85 @@ public struct DepthRaycaster {
         )
     }
 }
+
+/// Intersects camera rays with a calibrated reference-object plane. This is
+/// the non-LiDAR manual path: accurate only for points on the same plane as the
+/// detected card/OPS marker, so callers must pair it with the COPLANAR ONLY UI.
+public struct PlaneRaycaster {
+
+    public let intrinsics: DimensionsData.Intrinsics
+    public let photoSize: CGSize
+    public let planeNormal: DimensionsData.Point3
+    public let planeOffset: Double
+    public let scaleFactor: Double
+
+    public init(
+        intrinsics: DimensionsData.Intrinsics,
+        photoSize: CGSize,
+        planeNormal: DimensionsData.Point3,
+        planeOffset: Double,
+        scaleFactor: Double = 1.0
+    ) {
+        self.intrinsics = intrinsics
+        self.photoSize = photoSize
+        self.planeNormal = planeNormal
+        self.planeOffset = planeOffset
+        self.scaleFactor = scaleFactor
+    }
+
+    public func worldPoint(atPhotoPixel pixel: CGPoint) -> DimensionsData.Point3? {
+        guard pixel.x >= 0, pixel.y >= 0,
+              pixel.x <= photoSize.width, pixel.y <= photoSize.height else {
+            return nil
+        }
+
+        let ray = DimensionsData.Point3(
+            x: (Double(pixel.x) - intrinsics.cx) / intrinsics.fx,
+            y: (Double(pixel.y) - intrinsics.cy) / intrinsics.fy,
+            z: 1
+        )
+        let denominator = planeNormal.x * ray.x
+            + planeNormal.y * ray.y
+            + planeNormal.z * ray.z
+        guard abs(denominator) > 1e-9 else { return nil }
+
+        let t = -planeOffset / denominator
+        guard t.isFinite, t > 0 else { return nil }
+
+        return DimensionsData.Point3(
+            x: ray.x * t * scaleFactor,
+            y: ray.y * t * scaleFactor,
+            z: ray.z * t * scaleFactor
+        )
+    }
+
+    public func linearMeasurement(
+        from a: CGPoint,
+        to b: CGPoint,
+        label: String,
+        primaryDisplayUnit: DimensionsData.Measurement.DisplayUnit = .imperialFraction,
+        source: DimensionsData.Measurement.MeasurementSource = .manual
+    ) -> DimensionsData.Measurement? {
+        guard let pa = worldPoint(atPhotoPixel: a),
+              let pb = worldPoint(atPhotoPixel: b) else {
+            return nil
+        }
+        let dx = pa.x - pb.x
+        let dy = pa.y - pb.y
+        let dz = pa.z - pb.z
+        let dist = (dx * dx + dy * dy + dz * dz).squareRoot()
+        return DimensionsData.Measurement(
+            type: .linear,
+            label: label,
+            worldPoints: [pa, pb],
+            imagePoints: [
+                DimensionsData.Point2(x: Double(a.x), y: Double(a.y)),
+                DimensionsData.Point2(x: Double(b.x), y: Double(b.y))
+            ],
+            valueMeters: dist,
+            primaryDisplayUnit: primaryDisplayUnit,
+            labelPlacement: .init(side: .north, leaderLengthPx: 60),
+            source: source
+        )
+    }
+}

@@ -59,17 +59,23 @@ public struct DimensionsData: Codable, Equatable {
         public var referenceObject: ReferenceObject?
         public var scaleFactor: Double
         public var estimatedAccuracyMeters: Double
+        public var planeNormal: Point3?
+        public var planeOffset: Double?
 
         public init(
             method: Method,
             referenceObject: ReferenceObject? = nil,
             scaleFactor: Double = 1.0,
-            estimatedAccuracyMeters: Double
+            estimatedAccuracyMeters: Double,
+            planeNormal: Point3? = nil,
+            planeOffset: Double? = nil
         ) {
             self.method = method
             self.referenceObject = referenceObject
             self.scaleFactor = scaleFactor
             self.estimatedAccuracyMeters = estimatedAccuracyMeters
+            self.planeNormal = planeNormal
+            self.planeOffset = planeOffset
         }
 
         public enum Method: String, Codable {

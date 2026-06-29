@@ -115,7 +115,7 @@ struct DeckBuilderView: View {
 
                         if PerimeterSpeedDrawToolbarPolicy.showsCanvasOverlay(for: viewModel.perimeterEntry) {
                             PerimeterSpeedDrawOverlayView(viewModel: viewModel)
-                                .padding(.horizontal, OPSStyle.Layout.spacing4)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
                                 .padding(.bottom, OPSStyle.Layout.spacing3)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                                 .transition(.opacity.combined(with: .move(edge: .bottom)))

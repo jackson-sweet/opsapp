@@ -88,23 +88,17 @@ struct DeckMeasurementPickerView: View {
 
     var body: some View {
         VStack(spacing: DeckMeasurementPickerTokens.standardGap) {
-            systemToggle
             wheelRow
             actionRow
             voiceFeedbackRow
             messageRow
-            exitRow
         }
-        .padding(DeckMeasurementPickerTokens.standardGap)
-        .frame(maxWidth: DeckMeasurementPickerTokens.panelMaxWidth)
-        // One L1 glass plate so the controls read as a single length instrument
-        // rather than ~11 separate frosted tiles scattered over the canvas. The
-        // continuous-radius contentShape makes the whole plate consume touches,
-        // so a thumb that lands in a gap between controls can't fall through to
-        // the canvas-wide reorient drag (the near-miss → silent-reorient hazard).
-        // Scoped to the plate only — bare canvas beside the plate still reorients.
-        .measurementControlChrome(cornerRadius: DeckMeasurementPickerTokens.panelRadius)
-        .contentShape(RoundedRectangle(cornerRadius: DeckMeasurementPickerTokens.panelRadius, style: .continuous))
+        .frame(maxWidth: .infinity)
+        // No card behind the whole strip — the controls float over the canvas.
+        // An invisible content shape still consumes touches across the control
+        // footprint, so a gloved thumb that lands in a gap can't fall through to
+        // the canvas reorient drag; bare canvas above the strip still reorients.
+        .contentShape(Rectangle())
         .onAppear(perform: loadInitialValue)
         .onChange(of: value) { _, newValue in
             syncFromExternalValue(newValue)
@@ -122,25 +116,23 @@ struct DeckMeasurementPickerView: View {
 
     private var actionRow: some View {
         HStack(spacing: DeckMeasurementPickerTokens.standardGap) {
-            Button {
-                onBack()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: DeckMeasurementPickerTokens.iconSize, weight: .semibold))
-                    .foregroundColor(OPSStyle.Colors.text)
-                    .frame(
-                        width: DeckMeasurementPickerTokens.minTouch,
-                        height: DeckMeasurementPickerTokens.minTouch
-                    )
-                    .measurementControlChrome(flat: true)
+            // Escape hatches at the leading edge — bail out of speed draw, or
+            // step back to the direction wheel. Bare icons, no card.
+            if let onCancel {
+                bareIconButton(systemName: "xmark", tint: OPSStyle.Colors.text2,
+                               label: "Exit speed draw", action: onCancel)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Back")
+            bareIconButton(systemName: "chevron.left", tint: OPSStyle.Colors.text,
+                           label: "Back", action: onBack)
 
-            lengthValuePill
+            Spacer(minLength: 0)
+            systemToggle
+            Spacer(minLength: 0)
 
             voiceButton
 
+            // Continue — the one accent action, enabled only with a length. The
+            // committed value reads live on the canvas, so there is no readout here.
             Button {
                 onCommit(activeValue)
             } label: {
@@ -151,7 +143,11 @@ struct DeckMeasurementPickerView: View {
                         width: DeckMeasurementPickerTokens.minTouch,
                         height: DeckMeasurementPickerTokens.minTouch
                     )
-                    .measurementControlChrome(isProminent: canCommit(activeValue), flat: true)
+                    .background(
+                        Circle().fill(canCommit(activeValue)
+                            ? OPSStyle.Colors.opsAccent.opacity(0.18) : Color.clear)
+                    )
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(!canCommit(activeValue))
@@ -160,41 +156,41 @@ struct DeckMeasurementPickerView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var lengthValuePill: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("// \(title.uppercased())")
-                .font(OPSStyle.Typography.metadata)
-                .foregroundColor(OPSStyle.Colors.text3)
-                .lineLimit(1)
-
-            HStack(spacing: DeckMeasurementPickerTokens.tightGap) {
-                if let leadingSystemImage {
-                    Image(systemName: leadingSystemImage)
-                        .font(.system(size: DeckMeasurementPickerTokens.smallIconSize, weight: .semibold))
-                        .foregroundColor(OPSStyle.Colors.opsAccent)
-                }
-                Text(activeValue.formatted())
-                    .font(OPSStyle.Typography.dataValueLg)
-                    .foregroundColor(OPSStyle.Colors.text)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
+    private func bareIconButton(
+        systemName: String,
+        tint: Color,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: DeckMeasurementPickerTokens.iconSize, weight: .semibold))
+                .foregroundColor(tint)
+                .frame(
+                    width: DeckMeasurementPickerTokens.minTouch,
+                    height: DeckMeasurementPickerTokens.minTouch
+                )
+                .contentShape(Rectangle())
         }
-        .padding(.horizontal, DeckMeasurementPickerTokens.horizontalInset)
-        .frame(minWidth: DeckMeasurementPickerTokens.valuePillMinWidth, maxWidth: .infinity)
-        .frame(minHeight: DeckMeasurementPickerTokens.minTouch)
-        .measurementControlChrome(flat: true, cornerRadius: DeckMeasurementPickerTokens.nestedRadius)
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
+    // Compact unit toggle — a small segmented control, not a full-width row.
     private var systemToggle: some View {
-        HStack(spacing: DeckMeasurementPickerTokens.tightGap) {
+        HStack(spacing: 0) {
             measurementSystemButton(.imperial, label: "IMPERIAL")
             measurementSystemButton(.metric, label: "METRIC")
         }
-        .padding(DeckMeasurementPickerTokens.tightGap)
-        .frame(width: DeckMeasurementPickerTokens.systemToggleWidth)
-        .measurementControlChrome(flat: true, cornerRadius: DeckMeasurementPickerTokens.nestedRadius)
+        .background(
+            RoundedRectangle(cornerRadius: DeckMeasurementPickerTokens.nestedRadius, style: .continuous)
+                .fill(OPSStyle.Colors.surfaceInput)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DeckMeasurementPickerTokens.nestedRadius, style: .continuous)
+                .strokeBorder(OPSStyle.Colors.glassBorder, lineWidth: DeckMeasurementPickerTokens.borderWidth)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: DeckMeasurementPickerTokens.nestedRadius, style: .continuous))
     }
 
     private func measurementSystemButton(_ system: MeasurementSystem, label: String) -> some View {
@@ -205,10 +201,8 @@ struct DeckMeasurementPickerView: View {
             Text(label == "IMPERIAL" ? "IMP" : "MET")
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(isActive ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
-                .frame(maxWidth: .infinity)
-                .frame(height: DeckMeasurementPickerTokens.compactButtonHeight)
-                // Single sliding indicator on the recessed track — no second
-                // frosted material (the old glass-in-glass toggle).
+                .frame(width: DeckMeasurementPickerTokens.minTouch, height: DeckMeasurementPickerTokens.minTouch)
+                // Single sliding indicator on the recessed track — no nested glass.
                 .background(
                     RoundedRectangle(cornerRadius: DeckMeasurementPickerTokens.controlRadius, style: .continuous)
                         .fill(isActive ? OPSStyle.Colors.surfaceActive : Color.clear)
@@ -265,13 +259,13 @@ struct DeckMeasurementPickerView: View {
             toggleDictation()
         } label: {
             Image(systemName: voiceInput.isListening ? "mic.fill" : "mic")
-                .font(.system(size: DeckMeasurementPickerTokens.smallIconSize, weight: .semibold))
+                .font(.system(size: DeckMeasurementPickerTokens.iconSize, weight: .semibold))
                 .foregroundColor(voiceInput.isListening ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.text2)
                 .frame(
                     width: DeckMeasurementPickerTokens.minTouch,
                     height: DeckMeasurementPickerTokens.minTouch
                 )
-                .measurementControlChrome(isActive: voiceInput.isListening, flat: true)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(voiceInput.isListening ? "Stop dictation" : "Dictate measurement")
@@ -311,30 +305,6 @@ struct DeckMeasurementPickerView: View {
         }
     }
 
-    @ViewBuilder
-    private var exitRow: some View {
-        if let onCancel {
-            HStack {
-                Spacer(minLength: 0)
-                Button {
-                    onCancel()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: DeckMeasurementPickerTokens.smallIconSize, weight: .semibold))
-                        .foregroundColor(OPSStyle.Colors.text2)
-                        .frame(
-                            width: DeckMeasurementPickerTokens.minTouch,
-                            height: DeckMeasurementPickerTokens.minTouch
-                        )
-                        .measurementControlChrome(flat: true)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Exit speed draw")
-            }
-            .frame(maxWidth: .infinity)
-        }
-    }
-
     private var measurementSystemBinding: Binding<MeasurementSystem> {
         Binding(
             get: { measurementSystem },
@@ -368,8 +338,10 @@ struct DeckMeasurementPickerView: View {
                 .minimumScaleFactor(0.6)
         }
         // No per-wheel chrome — the three wheels share one backing (wheelRow) so
-        // they read as a single dial cluster instead of three separate tiles.
+        // they read as a single dial cluster. Each dial expands to an equal share
+        // of the strip so the cluster uses the full available width.
         .frame(width: DeckMeasurementPickerTokens.wheelWidth, height: DeckMeasurementPickerTokens.wheelHeight)
+        .frame(maxWidth: .infinity)
     }
 
     private func loadInitialValue() {

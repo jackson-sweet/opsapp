@@ -5,7 +5,8 @@ import SwiftUI
 enum PerimeterSpeedDrawOverlayLayout {
     static let touchZoneHeightFraction: CGFloat = 0.4
 
-    static var overlayMaxWidth: CGFloat { DeckMeasurementPickerTokens.panelMaxWidth }
+    // Speed-draw controls span the available width — no fixed cap.
+    static var overlayMaxWidth: CGFloat { .infinity }
     static var controlGap: CGFloat { OPSStyle.Layout.spacing2 }
 }
 
@@ -41,13 +42,10 @@ struct PerimeterSpeedDrawOverlayView: View {
                     Spacer(minLength: 0)
                     exitButton
                 }
-                .padding(DeckMeasurementPickerTokens.standardGap)
-                .frame(maxWidth: PerimeterSpeedDrawOverlayLayout.overlayMaxWidth)
-                // Same L1 plate + hit-shield as the length panel so this state's
-                // bottom zone is a contained instrument (not a lone floating x),
-                // and gap-taps can't fall through to the canvas reorient drag.
-                .measurementControlChrome(cornerRadius: DeckMeasurementPickerTokens.panelRadius)
-                .contentShape(RoundedRectangle(cornerRadius: DeckMeasurementPickerTokens.panelRadius, style: .continuous))
+                .frame(maxWidth: .infinity)
+                // No card — just a status line and exit, floating over the canvas.
+                // The content shape still consumes taps in this strip.
+                .contentShape(Rectangle())
             case .enteringLength(_, _, _):
                 PerimeterLengthControlView(viewModel: viewModel)
             }
@@ -62,13 +60,13 @@ struct PerimeterSpeedDrawOverlayView: View {
             viewModel.cancelPerimeterEntry()
         } label: {
             Image(systemName: "xmark")
-                .font(.system(size: DeckMeasurementPickerTokens.smallIconSize, weight: .semibold))
+                .font(.system(size: DeckMeasurementPickerTokens.iconSize, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.text2)
                 .frame(
                     width: DeckMeasurementPickerTokens.minTouch,
                     height: DeckMeasurementPickerTokens.minTouch
                 )
-                .measurementControlChrome(flat: true)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Exit speed draw")

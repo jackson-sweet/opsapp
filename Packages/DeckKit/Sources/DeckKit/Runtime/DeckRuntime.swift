@@ -59,6 +59,7 @@ public struct DeckRuntime {
     public let syncQueue: DeckSyncQueue
     public let imageUploader: DeckImageUploader
     public let ocrService: DeckOCRService
+    public let codeProfile: DeckCodeProfile?
 
     @MainActor
     public init(
@@ -66,12 +67,14 @@ public struct DeckRuntime {
         store: DeckStore?,
         syncQueue: DeckSyncQueue = NoopDeckSyncQueue(),
         imageUploader: DeckImageUploader = NoopDeckImageUploader(),
-        ocrService: DeckOCRService = NoopDeckOCRService()
+        ocrService: DeckOCRService = NoopDeckOCRService(),
+        codeProfile: DeckCodeProfile? = nil
     ) {
         self.context = context
         self.store = store
         self.syncQueue = syncQueue
         self.imageUploader = imageUploader
         self.ocrService = ocrService
+        self.codeProfile = codeProfile
     }
 }

@@ -20,8 +20,11 @@ public final class DeckDrawingEditorModel: ObservableObject {
     @Published public private(set) var activeLine: DeckEditorLinePreview?
     @Published public private(set) var alignmentGuides: [AlignmentGuide] = []
     @Published public private(set) var selectedLoadPreset: LoadPreset
+    @Published public private(set) var codeCheckSettings: DeckCodeCheckSettings
+    @Published public private(set) var codeReport: DeckCodeReport?
 
     public let capabilities: DeckCapabilities
+    public let codeProfile: DeckCodeProfile?
 
     private let onPersist: (DeckDrawingData) -> Void
     private var activeLineStartVertexId: String?
@@ -30,14 +33,18 @@ public final class DeckDrawingEditorModel: ObservableObject {
     public init(
         drawingData: DeckDrawingData,
         capabilities: DeckCapabilities,
+        codeProfile: DeckCodeProfile? = nil,
         onPersist: @escaping (DeckDrawingData) -> Void = { _ in }
     ) {
         let loaded = DeckSchemaMigration.stampFramingVersion(drawingData)
         self.drawingData = loaded
         self.capabilities = capabilities
+        self.codeProfile = codeProfile
         self.selectedLoadPreset = loaded.framing?.loadPreset ?? LoadPreset()
+        self.codeCheckSettings = capabilities.contains(.codeCompliance) && codeProfile != nil ? .enabled : .disabled
         self.onPersist = onPersist
         reconcileSurfaces()
+        refreshCodeReport()
     }
 
     public func replaceDrawingData(_ data: DeckDrawingData, persist: Bool = false) {
@@ -45,9 +52,24 @@ public final class DeckDrawingEditorModel: ObservableObject {
         selectedLoadPreset = drawingData.framing?.loadPreset ?? selectedLoadPreset
         clearActiveLine()
         reconcileSurfaces()
+        refreshCodeReport()
         if persist {
             persistDrawingData()
         }
+    }
+
+    public var canRunCodeChecks: Bool {
+        capabilities.contains(.codeCompliance) && codeProfile != nil
+    }
+
+    public var visibleCodeFindings: [DeckCodeFinding] {
+        guard codeCheckSettings == .enabled else { return [] }
+        return codeReport?.findings ?? []
+    }
+
+    public func setCodeChecksEnabled(_ isEnabled: Bool) {
+        codeCheckSettings = isEnabled && canRunCodeChecks ? .enabled : .disabled
+        refreshCodeReport()
     }
 
     public func beginLine(at rawPoint: CGPoint) {
@@ -229,7 +251,20 @@ public final class DeckDrawingEditorModel: ObservableObject {
     private func persistDrawingData() {
         reconcileSurfaces()
         drawingData.components = ComponentEmitter.emit(drawingData)
+        refreshCodeReport()
         onPersist(drawingData)
+    }
+
+    private func refreshCodeReport() {
+        guard canRunCodeChecks, let codeProfile else {
+            codeReport = nil
+            return
+        }
+        codeReport = DeckCodeCheckEngine.evaluate(
+            drawingData,
+            profile: codeProfile,
+            settings: codeCheckSettings
+        )
     }
 
     private func reconcileSurfaces() {

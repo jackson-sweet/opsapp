@@ -5,6 +5,9 @@ import SwiftUI
 private enum DeckDrawingEditorCopy {
     static let drawMode = String(localized: "DRAW")
     static let frameMode = String(localized: "FRAME")
+    static let codeMode = String(localized: "CODE")
+    static let codeAlert = String(localized: "CODE")
+    static let codeOff = String(localized: "OFF")
     static let openEndsPrefix = String(localized: "OPEN ENDS")
     static let areaPrefix = String(localized: "AREA")
     static let emptyArea = String(localized: "—")
@@ -24,6 +27,7 @@ public struct DeckDrawingEditorView: View {
             wrappedValue: DeckDrawingEditorModel(
                 drawingData: drawingData,
                 capabilities: DeckCapabilities.forSurface(runtime.context.appSurface),
+                codeProfile: runtime.codeProfile,
                 onPersist: onPersist
             )
         )
@@ -75,6 +79,10 @@ public struct DeckDrawingEditorView: View {
 
                 if model.capabilities.contains(.plausibleFrame) {
                     modePill(DeckDrawingEditorCopy.frameMode, isActive: model.drawingData.framing != nil)
+                }
+
+                if model.canRunCodeChecks {
+                    codeTogglePill
                 }
 
                 Spacer(minLength: OPSStyle.Layout.spacing2)
@@ -133,6 +141,60 @@ public struct DeckDrawingEditorView: View {
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
     }
 
+    private var codeTogglePill: some View {
+        Button {
+            model.setCodeChecksEnabled(model.codeCheckSettings == .disabled)
+        } label: {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                Text(DeckDrawingEditorCopy.codeMode)
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundStyle(OPSStyle.Colors.text3)
+                Text(codeStatusValue)
+                    .font(OPSStyle.Typography.dataValue)
+                    .foregroundStyle(codeStatusColor)
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            .background(codeStatusFill)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                    .stroke(codeStatusLine, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(DeckDrawingEditorCopy.codeMode)
+        .accessibilityValue(codeStatusValue)
+    }
+
+    private var codeStatusValue: String {
+        guard model.codeCheckSettings == .enabled else {
+            return DeckDrawingEditorCopy.codeOff
+        }
+        return "\(model.visibleCodeFindings.count)"
+    }
+
+    private var codeStatusColor: Color {
+        guard model.codeCheckSettings == .enabled else {
+            return OPSStyle.Colors.text3
+        }
+        return model.visibleCodeFindings.isEmpty ? OPSStyle.Colors.oliveTextM : OPSStyle.Colors.roseTextM
+    }
+
+    private var codeStatusFill: Color {
+        guard model.codeCheckSettings == .enabled else {
+            return OPSStyle.Colors.fillNeutralDim
+        }
+        return model.visibleCodeFindings.isEmpty ? OPSStyle.Colors.oliveFillM : OPSStyle.Colors.roseFillM
+    }
+
+    private var codeStatusLine: Color {
+        guard model.codeCheckSettings == .enabled else {
+            return OPSStyle.Colors.nestedBorder
+        }
+        return model.visibleCodeFindings.isEmpty ? OPSStyle.Colors.oliveLineM : OPSStyle.Colors.roseLineM
+    }
+
     private var drawGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
@@ -153,6 +215,7 @@ public struct DeckDrawingEditorView: View {
             drawGrid(context: context, size: size)
             drawSurfaces(context: context)
             drawFraming(context: context)
+            drawCodeFindings(context: context)
             drawEdges(context: context)
             drawActiveLine(context: context)
             drawVertices(context: context)
@@ -217,6 +280,32 @@ public struct DeckDrawingEditorView: View {
                 )
                 context.fill(Path(ellipseIn: rect), with: .color(OPSStyle.Colors.opsAccent))
             }
+        }
+    }
+
+    private func drawCodeFindings(context: GraphicsContext) {
+        for finding in model.visibleCodeFindings {
+            guard let anchor = finding.lineAnchor else { continue }
+            var path = Path()
+            path.move(to: anchor.start)
+            path.addLine(to: anchor.end)
+
+            let color = codeColor(for: finding.severity)
+            context.stroke(
+                path,
+                with: .color(color),
+                style: StrokeStyle(
+                    lineWidth: OPSStyle.Layout.Border.thick,
+                    dash: [OPSStyle.Layout.spacing2, OPSStyle.Layout.spacing1]
+                )
+            )
+
+            context.draw(
+                Text(DeckDrawingEditorCopy.codeAlert)
+                    .font(OPSStyle.Typography.badgeCake)
+                    .foregroundStyle(color),
+                at: codeLabelPoint(for: anchor)
+            )
         }
     }
 
@@ -304,6 +393,24 @@ public struct DeckDrawingEditorView: View {
         case .bridging, .cantilever:
             return OPSStyle.Colors.textMute
         }
+    }
+
+    private func codeColor(for severity: DeckCodeSeverity) -> Color {
+        switch severity {
+        case .advisory:
+            return OPSStyle.Colors.text3
+        case .warning:
+            return OPSStyle.Colors.tanTextM
+        case .violation:
+            return OPSStyle.Colors.roseTextM
+        }
+    }
+
+    private func codeLabelPoint(for anchor: DeckCodeLineAnchor) -> CGPoint {
+        CGPoint(
+            x: (anchor.start.x + anchor.end.x) / 2,
+            y: (anchor.start.y + anchor.end.y) / 2 - OPSStyle.Layout.spacing3
+        )
     }
 
     private func lineWidth(for role: FramingRole) -> CGFloat {

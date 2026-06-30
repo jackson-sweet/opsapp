@@ -2,22 +2,16 @@
 //  BooksTabView.swift
 //  OPS
 //
-//  Books Phase 2 (2026-05-11) — money command center.
-//  Mission Deck visual rebuild (2026-05-19) — sync banner, drill filter
-//  chip, inset-pill segments, half-sheet A/R detents, pull-to-refresh.
-//  Top: AppHeader + sync banner + swipeable 5-card HeroCarousel.
-//  Below: 3-segment inset-pill control (Invoices · Estimates · Expenses).
-//  Pipeline has moved to its own top-level tab (see `PIPELINE TAB - P1-1`).
+//  Books money command center.
+//  Money & Leads redesign (2026-06-30) — design direction "1b · COMMAND GRID".
+//  Top: AppHeader + sync banner + period pill + a scannable KPI command grid
+//  (NET CASH hero · CASH FLOW · RUNWAY · RECEIVABLES · FORECAST · JOB MARGIN),
+//  each tile drilling into the existing expand sheet / RUNWAY full screen.
+//  Below: a sticky ledger band (Invoices · Estimates · Expenses + filter chips)
+//  over flat, hairline-separated rows. Pipeline has its own top-level tab.
 //
 
 import SwiftUI
-
-private struct HeaderBottomKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
 
 struct BooksTabView: View {
     @StateObject private var dashboardVM: MoneyDashboardViewModel
@@ -31,7 +25,7 @@ struct BooksTabView: View {
     }
 
     #if DEBUG
-    /// Preview-only — injects a pre-seeded dashboard VM so the carousel
+    /// Preview-only — injects a pre-seeded dashboard VM so the command grid
     /// renders with realistic data on Xcode's preview canvas. Bypasses the
     /// usual setup() / loadData() chain (which is guarded by `currentUser`).
     init(previewDashboardVM: MoneyDashboardViewModel) {
@@ -47,10 +41,17 @@ struct BooksTabView: View {
 
     // Active segment persisted across sessions and visible to FloatingActionMenu.
     @AppStorage("books.selectedSegment") private var selectedSegmentRaw: String = BooksSection.invoices.rawValue
-    @AppStorage("books.lastViewedCard") private var lastViewedCardRaw: String = HeroCarousel.CardID.pl.rawValue
 
-    @State private var headerCollapsed = false
+    // Books owns the ledger filter state so the chip SETS can match the design
+    // (estimates ALL · OUT · WON here) independent of each list's standalone VM.
+    @State private var invoiceFilter: BooksInvoiceFilter = .all
+    @State private var estimateFilter: BooksEstimateFilter = .all
+    @State private var expenseFilter: BooksExpenseFilter = .all
+
+    @State private var expandedCard: HeroCarousel.CardID?
     @State private var showCashflowForecast = false
+
+    // MARK: - Derived state
 
     private var selectedSegment: BooksSection {
         BooksSection(rawValue: selectedSegmentRaw) ?? .invoices
@@ -60,27 +61,10 @@ struct BooksTabView: View {
         BooksSection.allCases.filter { permissionStore.can($0.requiredPermission) }
     }
 
-    /// Convenience gate for the Cashflow Forecast surfaces (preview card +
-    /// notification deep link). Same permission the Books-segment finances
-    /// section checks.
-    private var hasFinances: Bool { permissionStore.can("finances.view") }
-
-    private var carouselVisible: Bool {
-        permissionStore.can("finances.view") || permissionStore.can("pipeline.view")
-    }
-
-    private var visibleCarouselCards: [HeroCarousel.CardID] {
-        HeroCarousel.CardID.allCases.filter { permissionStore.can($0.permission) }
-    }
-
-    private var activeCarouselCard: HeroCarousel.CardID {
-        let restored = HeroCarousel.CardID(rawValue: lastViewedCardRaw) ?? .pl
-        return visibleCarouselCards.contains(restored) ? restored : (visibleCarouselCards.first ?? .pl)
-    }
-
-    private var expensesScopeIsOwn: Bool {
-        permissionStore.can("expenses.view") && !permissionStore.hasFullAccess("expenses.view")
-    }
+    private var canFinances: Bool { permissionStore.can("finances.view") }
+    private var canPipeline: Bool { permissionStore.can("pipeline.view") }
+    private var hasFinances: Bool { canFinances }
+    private var gridVisible: Bool { canFinances || canPipeline }
 
     /// Maps the dashboard VM's 4-case sync state onto `BooksSyncBanner`'s
     /// 3-case enum. `.synced` returns nil — banner hides when fully synced.
@@ -93,33 +77,52 @@ struct BooksTabView: View {
         }
     }
 
-    /// Drill filter chip — shown below the segmented control when a carousel
-    /// drill applied an invoice/estimate filter. Tapping × clears the filter.
-    /// `.expenses` has no drill-driven filter today, so it is omitted.
-    @ViewBuilder
-    private var activeFilterChip: some View {
-        if selectedSegment == .invoices, invoiceVM.selectedFilter == .overdue {
-            BooksDrillFilterChip(label: "OVERDUE", onClear: {
-                withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
-                    invoiceVM.selectedFilter = .all
-                }
-            })
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-            .padding(.top, OPSStyle.Layout.spacing2)
-            .transition(.opacity)
-        } else if selectedSegment == .estimates, estimateVM.selectedFilter == .sent {
-            BooksDrillFilterChip(label: "SENT", onClear: {
-                withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
-                    estimateVM.selectedFilter = .all
-                }
-            })
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-            .padding(.top, OPSStyle.Layout.spacing2)
-            .transition(.opacity)
+    private var ledgerLabel: String {
+        switch selectedSegment {
+        case .invoices:  return "WHO OWES YOU"
+        case .estimates: return "OUT & WON"
+        case .expenses:  return "SPEND LOG"
         }
     }
+
+    private var currentChips: [TacticalChip] {
+        switch selectedSegment {
+        case .invoices:  return BooksInvoiceFilter.chips(from: invoiceVM.invoices)
+        case .estimates: return BooksEstimateFilter.chips(from: estimateVM.estimates)
+        case .expenses:  return BooksExpenseFilter.chips(from: expenseVM.expenses)
+        }
+    }
+
+    private var currentCount: Int {
+        switch selectedSegment {
+        case .invoices:  return invoiceVM.invoices.filter(invoiceFilter.matches).count
+        case .estimates: return estimateVM.estimates.filter(estimateFilter.matches).count
+        case .expenses:  return expenseVM.expenses.filter(expenseFilter.matches).count
+        }
+    }
+
+    private var segmentBinding: Binding<BooksSection> {
+        Binding(
+            get: { selectedSegment },
+            set: { selectedSegmentRaw = $0.rawValue }
+        )
+    }
+
+    private var filterBinding: Binding<String> {
+        switch selectedSegment {
+        case .invoices:
+            return Binding(get: { invoiceFilter.rawValue },
+                           set: { invoiceFilter = BooksInvoiceFilter(rawValue: $0) ?? .all })
+        case .estimates:
+            return Binding(get: { estimateFilter.rawValue },
+                           set: { estimateFilter = BooksEstimateFilter(rawValue: $0) ?? .all })
+        case .expenses:
+            return Binding(get: { expenseFilter.rawValue },
+                           set: { expenseFilter = BooksExpenseFilter(rawValue: $0) ?? .all })
+        }
+    }
+
+    // MARK: - Body
 
     var body: some View {
         NavigationStack {
@@ -127,16 +130,11 @@ struct BooksTabView: View {
                 AppHeader(headerType: .books)
                     .padding(.bottom, OPSStyle.Layout.spacing2)
 
-                // Sync banner — sits above the hero whenever a sync is in
-                // flight, the network is unreachable, or the last fetch
-                // hard-failed. Hidden entirely once fully synced.
                 if let state = bannerState {
                     BooksSyncBanner(
                         lastSyncedAt: dashboardVM.lastSyncedAt,
                         state: state,
-                        onRetry: state != .syncing
-                            ? { Task { await dashboardVM.loadData() } }
-                            : nil
+                        onRetry: state != .syncing ? { Task { await refreshAll() } } : nil
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .padding(.bottom, OPSStyle.Layout.spacing2)
@@ -144,98 +142,76 @@ struct BooksTabView: View {
                 }
 
                 ScrollView {
-                    // One scroll surface owns the whole page (no nested
-                    // ScrollViews in the embedded lists). The segment picker +
-                    // section label are a pinned section header, so the active
-                    // list always has a clear, delineated start (P6 issue #2).
                     LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                        // Hero carousel — borderless, top-level data.
-                        // PeriodPill lives inline on each card's top row (inside HeroCarousel).
-                        // Operator role lands here with zero permitted cards and skips the hero.
-                        if carouselVisible {
-                            HeroCarousel(
+                        if gridVisible {
+                            if canFinances {
+                                HStack {
+                                    PeriodPill(selected: $dashboardVM.selectedPeriod)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                                .padding(.top, OPSStyle.Layout.spacing1)
+                                .padding(.bottom, OPSStyle.Layout.spacing2_5)
+                            }
+
+                            BooksCommandGrid(
                                 viewModel: dashboardVM,
                                 cashflowVM: cashflowVM,
-                                onDrillOutstanding: {
-                                    selectedSegmentRaw = BooksSection.invoices.rawValue
-                                    invoiceVM.selectedFilter = .overdue
-                                },
-                                onDrillForecast: {
-                                    selectedSegmentRaw = BooksSection.estimates.rawValue
-                                    estimateVM.selectedFilter = .sent
-                                }
+                                canFinances: canFinances,
+                                canPipeline: canPipeline,
+                                onExpand: { card in expandedCard = card },
+                                onOpenRunway: { showCashflowForecast = true }
                             )
-                            .environmentObject(permissionStore)
-                            .environmentObject(dataController)
-                            .padding(.bottom, OPSStyle.Layout.spacing2)
-                            .background(
-                                GeometryReader { geo in
-                                    Color.clear.preference(
-                                        key: HeaderBottomKey.self,
-                                        value: geo.frame(in: .named("scroll")).maxY
-                                    )
-                                }
-                            )
+                            .padding(.bottom, OPSStyle.Layout.spacing3)
                         }
 
-                        // Pinned section: the picker + drill chip + section label
-                        // stay docked under the (collapsing) carousel, giving the
-                        // list a clear delineated start.
                         if !visibleSegments.isEmpty {
                             Section {
-                                contentForSegment
-                                    .padding(.top, OPSStyle.Layout.spacing2)
+                                BooksLedger(
+                                    segment: selectedSegment,
+                                    invoiceVM: invoiceVM,
+                                    estimateVM: estimateVM,
+                                    expenseVM: expenseVM,
+                                    invoiceFilter: invoiceFilter,
+                                    estimateFilter: estimateFilter,
+                                    expenseFilter: expenseFilter
+                                )
+                                .padding(.top, OPSStyle.Layout.spacing2)
                             } header: {
-                                booksSectionHeader
+                                ledgerBand
                             }
                         }
                     }
                 }
-                .coordinateSpace(name: "scroll")
-                .onPreferenceChange(HeaderBottomKey.self) { bottomY in
-                    // bottomY is the carousel's maxY in scroll space: positive
-                    // near the top, negative once it scrolls above the viewport.
-                    // Exactly 0 means the lazy carousel was discarded deep in a
-                    // long list — latch the current state rather than snapping the
-                    // collapsed strip back open.
-                    let shouldCollapse: Bool
-                    if bottomY > 0 {
-                        shouldCollapse = false
-                    } else if bottomY < 0 {
-                        shouldCollapse = true
-                    } else {
-                        shouldCollapse = headerCollapsed
-                    }
-                    if shouldCollapse != headerCollapsed {
-                        withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
-                            headerCollapsed = shouldCollapse
-                        }
-                    }
-                }
-                // Pull-to-refresh — native SwiftUI PTR. The Mission Deck
-                // BooksPTRIndicator (custom OPS-mark + spin arc) is a
-                // standalone visual component, not a ProgressViewStyle, so it
-                // cannot drive the system refresh control. Native .refreshable
-                // is the canonical pattern: it ties into the sync-state flow
-                // and inherits all accessibility behavior for free. The custom
-                // indicator is deferred to a future polish phase (spec § 7.5).
-                .refreshable {
-                    await dashboardVM.loadData()
-                }
-                // Clear the 100pt CustomTabBar overlay so the last list row / card
-                // isn't hidden behind it — matches the app's primary-tab convention
-                // (JobBoard pads 120). safeAreaInset keeps pull-to-refresh and the
-                // pinned-header collapse math correct.
+                .refreshable { await refreshAll() }
+                // Clear the 100pt CustomTabBar overlay so the last row isn't
+                // hidden behind it — matches the app's primary-tab convention.
                 .safeAreaInset(edge: .bottom) {
                     Color.clear.frame(height: 120)
                 }
             }
-            // Fade the sync banner / drill filter chip in and out on the
-            // canonical OPS easing curve when the underlying state flips.
             .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: dashboardVM.syncState)
-            .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: invoiceVM.selectedFilter)
-            .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: estimateVM.selectedFilter)
+            .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: selectedSegmentRaw)
+            .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: invoiceFilter)
+            .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: estimateFilter)
+            .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: expenseFilter)
             .background(OPSStyle.Colors.background.ignoresSafeArea())
+            .sheet(item: $expandedCard) { card in
+                ExpandedCardSheet(
+                    card: card,
+                    viewModel: dashboardVM,
+                    onDrillOutstanding: {
+                        selectedSegmentRaw = BooksSection.invoices.rawValue
+                        invoiceFilter = .overdue
+                    },
+                    onDrillForecast: {
+                        selectedSegmentRaw = BooksSection.estimates.rawValue
+                        estimateFilter = .out
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
             .fullScreenCover(isPresented: $showCashflowForecast) {
                 CashflowForecastScreen(viewModel: cashflowVM)
             }
@@ -243,13 +219,12 @@ struct BooksTabView: View {
         .trackScreen("Books")
         .task {
             setupViewModels()
-            await dashboardVM.loadData()
-            // If the persisted segment is no longer permitted, snap to first visible.
+            await refreshAll()
             if !visibleSegments.contains(selectedSegment), let first = visibleSegments.first {
                 selectedSegmentRaw = first.rawValue
             }
         }
-        // Bug 8ed0d2ed — segment routing from notification rail / push deep links.
+        // Segment routing from notification rail / push deep links.
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("BooksSelectSegment"))) { notification in
             guard let raw = notification.userInfo?["segment"] as? String,
                   let segment = BooksSection(rawValue: raw),
@@ -258,114 +233,34 @@ struct BooksTabView: View {
                 selectedSegmentRaw = segment.rawValue
             }
         }
-        .onChange(of: carouselVisible) { _, isVisible in
-            guard !isVisible, headerCollapsed else { return }
-            withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
-                headerCollapsed = false
-            }
-        }
         .onChange(of: visibleSegments.map(\.rawValue).joined(separator: "|")) { _, _ in
             guard !visibleSegments.contains(selectedSegment), let first = visibleSegments.first else { return }
             withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
                 selectedSegmentRaw = first.rawValue
             }
         }
-        // Cashflow forecast deep-link from notification rail. Presents the
-        // full forecast screen on top of the Books surface.
+        // Cashflow forecast deep-link from notification rail.
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenCashflowForecast"))) { _ in
             guard hasFinances else { return }
             showCashflowForecast = true
         }
     }
 
-    // MARK: - Segmented control
+    // MARK: - Pinned ledger band (segments + chips + section marker)
 
-    /// Mission Deck inset-pill style (spec § 7.3 / D7).
-    /// Neutral fill on active — no accent color (OPS rule "no accent on toggles").
-    /// Active pill uses white@0.10 fill + 1pt white@0.22 border + 1pt inset top-light.
-    private var insetPillSegmentedControl: some View {
-        HStack(spacing: 2) {
-            ForEach(visibleSegments) { segment in
-                let isActive = selectedSegment == segment
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
-                        selectedSegmentRaw = segment.rawValue
-                    }
-                } label: {
-                    Text(segment.rawValue)
-                        .font(.custom("JetBrainsMono-Medium", size: 10.5))
-                        .tracking(1.68)  // 0.16em at 10.5pt
-                        .textCase(.uppercase)
-                        .foregroundColor(
-                            isActive
-                                ? OPSStyle.Colors.primaryText
-                                : OPSStyle.Colors.tertiaryText
-                        )
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(segmentBackground(isActive: isActive))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(segment.rawValue) segment, currently \(isActive ? "selected" : "not selected")")
-                .accessibilityHint("Double-tap to view \(segment.rawValue)")
-            }
-        }
-        .padding(3)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .fill(Color.white.opacity(0.03))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.lineSoft, lineWidth: 1)
-        )
-        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-    }
-
-    @ViewBuilder
-    private func segmentBackground(isActive: Bool) -> some View {
-        if isActive {
-            ZStack(alignment: .top) {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(OPSStyle.Colors.line)
-                // 1pt inset top-light — recessed/embossed effect (spec § 7.3)
-                Rectangle()
-                    .fill(Color.white.opacity(0.18))
-                    .frame(height: 1)
-                    .padding(.horizontal, 1)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 3))
-            .overlay(
-                RoundedRectangle(cornerRadius: 3)
-                    .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
-            )
-        } else {
-            Color.clear
-        }
-    }
-
-    // MARK: - Pinned section header
-
-    /// Docked header for the active segment: the collapse strip (once the
-    /// carousel scrolls away) + segment picker + drill chip + a `// SEGMENT · N`
-    /// label and a hairline that visually opens the list section (P6 issue #2).
-    private var booksSectionHeader: some View {
+    private var ledgerBand: some View {
         VStack(spacing: 0) {
-            if headerCollapsed && carouselVisible {
-                CollapsedCarouselStrip(
-                    viewModel: dashboardVM,
-                    cashflowVM: cashflowVM,
-                    activeCard: activeCarouselCard,
-                    visibleCards: visibleCarouselCards
-                )
-            }
-            insetPillSegmentedControl
+            BooksLedgerSegments(segments: visibleSegments, selected: segmentBinding)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.top, OPSStyle.Layout.spacing2_5)
-            activeFilterChip
-            segmentLabel
+
+            TacticalChipRow(chips: currentChips, selectedId: filterBinding)
+                .padding(.top, OPSStyle.Layout.spacing2_5)
+
+            ledgerMarker
                 .padding(.top, OPSStyle.Layout.spacing2_5)
                 .padding(.bottom, OPSStyle.Layout.spacing2)
+
             Rectangle()
                 .fill(OPSStyle.Colors.line)
                 .frame(height: 1)
@@ -373,71 +268,47 @@ struct BooksTabView: View {
         .background(OPSStyle.Colors.background)
     }
 
-    /// `// INVOICES · 12` data-section marker that anchors the list start.
-    private var segmentLabel: some View {
+    private var ledgerMarker: some View {
         HStack(spacing: OPSStyle.Layout.spacing1) {
             Text("//").foregroundColor(OPSStyle.Colors.textMute)
-            Text(selectedSegment.rawValue).foregroundColor(OPSStyle.Colors.tertiaryText)
-            if let count = segmentCount {
-                Text("·").foregroundColor(OPSStyle.Colors.textMute)
-                Text("\(count)").foregroundColor(OPSStyle.Colors.secondaryText)
-            }
+            Text(ledgerLabel).foregroundColor(OPSStyle.Colors.tertiaryText)
+            Text("·").foregroundColor(OPSStyle.Colors.textMute)
+            Text("\(currentCount)").foregroundColor(OPSStyle.Colors.secondaryText)
             Spacer()
         }
         .font(.custom("JetBrainsMono-Medium", size: 10))
-        .tracking(1.6)  // 0.16em at 10pt
+        .tracking(1.6)
         .textCase(.uppercase)
         .monospacedDigit()
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
-    /// Item count for the active segment's list, where this view owns the VM.
-    /// Expenses lists own their own data, so they show no count.
-    private var segmentCount: Int? {
-        switch selectedSegment {
-        case .invoices:  return invoiceVM.filteredInvoices.count
-        case .estimates: return estimateVM.filteredEstimates.count
-        case .expenses:  return nil
-        }
-    }
-
-    // MARK: - Content per segment
-
-    @ViewBuilder
-    private var contentForSegment: some View {
-        Group {
-            switch selectedSegment {
-            case .invoices:
-                if visibleSegments.contains(.invoices) {
-                    InvoicesListView(embedded: true, viewModel: invoiceVM)
-                }
-            case .estimates:
-                if visibleSegments.contains(.estimates) {
-                    EstimatesListView(embedded: true, viewModel: estimateVM)
-                }
-            case .expenses:
-                if visibleSegments.contains(.expenses) {
-                    if expensesScopeIsOwn {
-                        MyExpensesView(embedded: true)
-                    } else {
-                        ExpensesListView(embedded: true)
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: selectedSegment)
-    }
-
-    // MARK: - Setup
+    // MARK: - Setup + load
 
     private func setupViewModels() {
         guard let companyId = dataController.currentUser?.companyId, !companyId.isEmpty else { return }
         dashboardVM.setup(companyId: companyId, modelContext: modelContext)
         estimateVM.setup(companyId: companyId, modelContext: modelContext)
         invoiceVM.setup(companyId: companyId, modelContext: modelContext)
-        expenseVM.setup(companyId: companyId)
+        expenseVM.setup(
+            companyId: companyId,
+            currentUserId: dataController.currentUser?.id,
+            currentUserName: dataController.currentUser?.fullName
+        )
         cashflowVM.setup(companyId: companyId, dashboardVM: dashboardVM)
+    }
+
+    /// Refreshes the dashboard first (above the fold), then the three ledgers in
+    /// parallel, then the runway forecast. Drives both `.task` and pull-to-refresh.
+    private func refreshAll() async {
+        await dashboardVM.loadData()
+        async let invoices: Void = invoiceVM.loadInvoices()
+        async let estimates: Void = estimateVM.loadEstimates()
+        async let expenses: Void = expenseVM.loadAll()
+        _ = await (invoices, estimates, expenses)
+        if canFinances {
+            await cashflowVM.load()
+        }
     }
 }
 
@@ -451,7 +322,7 @@ struct BooksTabView: View {
         .preferredColorScheme(.dark)
 }
 
-#Preview("BooksTabView — Operator (no carousel)") {
+#Preview("BooksTabView — Operator (forecast only)") {
     BooksTabView(previewDashboardVM: .previewEmpty())
         .environmentObject(DataController())
         .environmentObject(PermissionStore.previewOperator())

@@ -401,20 +401,20 @@ public struct DimensionedCaptureView: View {
 
     @ViewBuilder
     private func bottomBar(coordinator: LiDARCaptureCoordinator) -> some View {
-        HStack(alignment: .center) {
-            torchToggle()
+        ZStack {
+            HStack(alignment: .center) {
+                torchToggle()
 
-            Spacer()
+                Spacer()
+
+                CapabilityChip(capability: coordinator.capability)
+                    .frame(width: 100, alignment: .trailing)
+            }
 
             ShutterButton(
                 action: { Task { await fireShutter(coordinator: coordinator) } },
                 isEnabled: DimensionedCaptureWorkflow.shutterEnabled(for: coordinator.state)
             )
-
-            Spacer()
-
-            CapabilityChip(capability: coordinator.capability)
-                .frame(maxWidth: 100, alignment: .center)
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.bottom, OPSStyle.Layout.spacing4)

@@ -297,6 +297,14 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
         #endif
     }
 
+    /// ARSessionDelegate is the authoritative state path, but the preview layer
+    /// also sees the same AR frame. If the camera feed is live, manual capture
+    /// must be armed even when ARKit is still reporting limited tracking.
+    func markLiveFrameAvailableForManualCapture() {
+        guard state == .warmingUp else { return }
+        transition(to: .ready)
+    }
+
     /// Resets the state machine to `.idle` and tears down any running sessions.
     /// Called by the view on dismiss or after the user acks a captured payload.
     public func reset() {
@@ -583,28 +591,52 @@ extension LiDARCaptureCoordinator: ARSessionDelegate {
     @MainActor
     private func advanceAimStateIfNeeded(using frame: ARFrame) {
         // Coarse state machine — Phase D will refine with classification confidence.
+        let hasVerticalPlane = frame.anchors.contains { anchor in
+            guard let plane = anchor as? ARPlaneAnchor else { return false }
+            return plane.alignment == .vertical
+        }
+        let trackingCanCapture = Self.trackingStateSupportsManualCapture(
+            frame.camera.trackingState
+        )
+        if let next = Self.nextAimState(
+            from: state,
+            trackingCanCapture: trackingCanCapture,
+            hasVerticalPlane: hasVerticalPlane
+        ) {
+            transition(to: next)
+        }
+    }
+
+    static func trackingStateSupportsManualCapture(_ trackingState: ARCamera.TrackingState) -> Bool {
+        switch trackingState {
+        case .notAvailable:
+            return false
+        case .normal, .limited:
+            return true
+        @unknown default:
+            return false
+        }
+    }
+
+    static func nextAimState(
+        from state: CaptureState,
+        trackingCanCapture: Bool,
+        hasVerticalPlane: Bool
+    ) -> CaptureState? {
         switch state {
         case .warmingUp:
-            if frame.camera.trackingState == .normal {
-                transition(to: .ready)
-            }
+            return trackingCanCapture ? .ready : nil
         case .ready:
-            transition(to: .searching)
+            return trackingCanCapture ? .searching : nil
         case .searching:
-            let hasVerticalPlane = frame.anchors.contains { anchor in
-                guard let plane = anchor as? ARPlaneAnchor else { return false }
-                return plane.alignment == .vertical
-            }
-            if hasVerticalPlane {
-                transition(to: .wallDetected)
-            }
+            return hasVerticalPlane ? .wallDetected : nil
         case .wallDetected:
             // Phase C `OpeningClassifier` will promote to .openingLocked when
             // a rectangular opening is classified with >0.8 confidence. For Phase B
             // we stay in .wallDetected until shutter.
-            break
-        default:
-            break
+            return nil
+        case .idle, .openingLocked, .capturing, .captured, .failed:
+            return nil
         }
     }
 

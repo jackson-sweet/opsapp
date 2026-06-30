@@ -44,7 +44,9 @@ struct ARCaptureViewRepresentable: UIViewRepresentable {
             // Bounce out to the next runloop so we don't fight SwiftUI's
             // update phase when the very first frame arrives.
             DispatchQueue.main.async {
-                if hasFrame && !meshVisible {
+                guard hasFrame else { return }
+                coordinator.markLiveFrameAvailableForManualCapture()
+                if !meshVisible {
                     meshVisible = true
                 }
             }

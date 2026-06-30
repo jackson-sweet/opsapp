@@ -8,6 +8,7 @@
 //  and live in a hardware-gated integration test (see `requiresLiDAR`).
 //
 
+import ARKit
 import AVFoundation
 import Combine
 import XCTest
@@ -339,6 +340,65 @@ final class LiDARCaptureCoordinatorTests: XCTestCase {
         coordinator.startLiveAim()
         coordinator.startLiveAim()
         XCTAssertEqual(coordinator.state, .warmingUp)
+    }
+
+    func test_livePreviewFrame_armsManualCaptureFromWarmingUp() {
+        let coordinator = LiDARCaptureCoordinator(
+            capabilityReport: CaptureCapabilityReport(capability: .lidar, supportsAutoDetect: true)
+        )
+        coordinator.startLiveAim()
+        XCTAssertEqual(coordinator.state, .warmingUp)
+
+        coordinator.markLiveFrameAvailableForManualCapture()
+
+        XCTAssertEqual(coordinator.state, .ready)
+    }
+
+    func test_livePreviewFrame_doesNotRecoverFailedPrewarm() {
+        let coordinator = LiDARCaptureCoordinator(
+            capabilityReport: CaptureCapabilityReport(capability: .lidar, supportsAutoDetect: true)
+        )
+        let failure = LiDARCaptureCoordinator.CaptureError.avCaptureFailed("camera input unavailable")
+        coordinator._test_transition(to: .failed(failure))
+
+        coordinator.markLiveFrameAvailableForManualCapture()
+
+        XCTAssertEqual(coordinator.state, .failed(failure))
+    }
+
+    func test_limitedTrackingStillSupportsManualCapture() {
+        XCTAssertTrue(
+            LiDARCaptureCoordinator.trackingStateSupportsManualCapture(.limited(.initializing)),
+            "Manual capture only needs a live AR frame; wall/opening confidence must not block the photo path."
+        )
+        XCTAssertTrue(LiDARCaptureCoordinator.trackingStateSupportsManualCapture(.normal))
+        XCTAssertFalse(LiDARCaptureCoordinator.trackingStateSupportsManualCapture(.notAvailable))
+    }
+
+    func test_nextAimState_usesLimitedTrackingAsReadyForManualCapture() {
+        XCTAssertEqual(
+            LiDARCaptureCoordinator.nextAimState(
+                from: .warmingUp,
+                trackingCanCapture: true,
+                hasVerticalPlane: false
+            ),
+            .ready
+        )
+        XCTAssertEqual(
+            LiDARCaptureCoordinator.nextAimState(
+                from: .ready,
+                trackingCanCapture: true,
+                hasVerticalPlane: false
+            ),
+            .searching
+        )
+        XCTAssertNil(
+            LiDARCaptureCoordinator.nextAimState(
+                from: .warmingUp,
+                trackingCanCapture: false,
+                hasVerticalPlane: false
+            )
+        )
     }
 
     // MARK: - Internal state transitions

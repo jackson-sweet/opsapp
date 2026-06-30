@@ -42,7 +42,6 @@ struct PriorityQueueView: View {
     var body: some View {
         VStack(spacing: 0) {
             if displayMode == .fullScreen { header }
-            toggles
             list
             runBar
         }
@@ -88,14 +87,6 @@ struct PriorityQueueView: View {
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
         }
         .padding(OPSStyle.Layout.spacing3)
-    }
-
-    private var toggles: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2_5) {
-            toggleChip("INCLUDE UNRANKED", isOn: vm.includeUnranked) { vm.includeUnranked.toggle() }
-            Spacer()
-        }
-        .padding(.horizontal, OPSStyle.Layout.spacing3).padding(.vertical, OPSStyle.Layout.spacing2)
     }
 
     // MARK: - The prioritized list (custom scroll + VStack)
@@ -213,23 +204,44 @@ struct PriorityQueueView: View {
         .gesture(waterlineGesture)
     }
 
+    // State-aware. SCHEDULE ALL is the anchor — present in both states, pinned to
+    // the bottom (most thumb-reachable) so it never jumps when priorities appear.
+    // Once something is ranked, the two selective actions surface above it.
     private var runBar: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2_5) {
-            Button { Task { await vm.tapToPlaceNext() } } label: {
-                Text("SCHEDULE NEXT").frame(maxWidth: .infinity)
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
+            if vm.hasPriorities {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                    secondaryRunButton("SCHEDULE NEXT", enabled: vm.canScheduleNext) {
+                        Task { await vm.tapToPlaceNext() }
+                    }
+                    secondaryRunButton("SCHEDULE RANKED", enabled: vm.canSchedule(.ranked)) {
+                        vm.buildPlan(scope: .ranked)
+                    }
+                }
             }
-            .buttonStyle(SecondaryRunButtonStyle())
-            .disabled(!vm.canScheduleNext)
 
-            Button {
-                vm.buildPlan()
-            } label: {
-                Text("SCHEDULE ALL").frame(maxWidth: .infinity)
+            Button { vm.buildPlan(scope: .all) } label: {
+                Text("SCHEDULE ALL")
             }
-            .buttonStyle(PrimaryRunButtonStyle())
-            .disabled(!vm.canScheduleAll)
+            .opsPrimaryButtonStyle(isDisabled: !vm.canSchedule(.all))
+            .disabled(!vm.canSchedule(.all))
         }
         .padding(OPSStyle.Layout.spacing3)
+        .animation(reduceMotion ? nil : OPSStyle.Animation.standard, value: vm.hasPriorities)
+    }
+
+    /// A half-width secondary run button. The design-system Secondary style has no
+    /// disabled variant, so dim + un-hit-test it here to keep the disabled read.
+    @ViewBuilder
+    private func secondaryRunButton(_ title: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+        .opsSecondaryButtonStyle()
+        .opacity(enabled ? 1 : 0.4)
+        .disabled(!enabled)
     }
 
     private var waterlineLabel: String {
@@ -414,39 +426,4 @@ struct PriorityQueueView: View {
         return s
     }
 
-    @ViewBuilder
-    private func toggleChip(_ label: String, isOn: Bool, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(isOn ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, OPSStyle.Layout.spacing2_5).padding(.vertical, OPSStyle.Layout.spacing2)
-                .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius).fill(isOn ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput))
-                .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius).stroke(isOn ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard))
-        }
-    }
-}
-
-private struct PrimaryRunButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(OPSStyle.Typography.button)
-            .foregroundColor(.white)
-            .frame(height: OPSStyle.Layout.touchTargetStandard)
-            .background(OPSStyle.Colors.primaryAccent)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .opacity(configuration.isPressed ? 0.85 : 1)
-    }
-}
-private struct SecondaryRunButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(OPSStyle.Typography.button)
-            .foregroundColor(OPSStyle.Colors.primaryText)
-            .frame(height: OPSStyle.Layout.touchTargetStandard)
-            .background(OPSStyle.Colors.surfaceInput)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius).stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard))
-            .opacity(configuration.isPressed ? 0.85 : 1)
-    }
 }

@@ -14,7 +14,6 @@ import SwiftUI
 final class PriorityQueueViewModel: ObservableObject {
     @Published var ranked: [Project] = []        // above the waterline, priority order
     @Published var unranked: [Project] = []      // below, default order
-    @Published var includeUnranked = false
     @Published var anchorDate = Date()
     @Published var previewPlan: PlanPreview?
     @Published var justScheduledCount: Int?           // set after a batch commit → drives the confirmation overlay
@@ -114,29 +113,30 @@ final class PriorityQueueViewModel: ObservableObject {
 
     // MARK: Run
 
-    /// A project still has work to auto-schedule: an active, non-deleted task
-    /// missing a start or end date. Shared by the run buttons' enable state and
-    /// the SCHEDULE NEXT selector so the UI and the engine agree on "schedulable".
-    func hasSchedulableTask(_ project: Project) -> Bool {
-        project.tasks.contains { $0.deletedAt == nil && $0.status == .active && ($0.startDate == nil || $0.endDate == nil) }
+    /// True once at least one project is ranked — drives the state-aware run bar
+    /// (no priorities → a single SCHEDULE ALL; priorities set → NEXT / RANKED / ALL).
+    var hasPriorities: Bool { !ranked.isEmpty }
+
+    /// A run of `scope` is live only when a candidate actually has work to place.
+    /// Targeting lives in `PriorityScheduleScoping` so the buttons and the engine
+    /// agree on "schedulable" and a button can never sit live over an empty plan.
+    func canSchedule(_ scope: PriorityScheduleScope) -> Bool {
+        PriorityScheduleScoping.canSchedule(scope: scope, ranked: ranked, unranked: unranked)
     }
 
-    /// Candidate projects for SCHEDULE ALL — ranked, plus unranked when included.
-    private var scheduleAllCandidates: [Project] {
-        includeUnranked ? ranked + unranked : ranked
-    }
+    /// SCHEDULE NEXT is live only when a RANKED project still has work to place
+    /// (it places the top-ranked one). Same condition as scheduling all ranked.
+    var canScheduleNext: Bool { canSchedule(.ranked) }
 
-    /// SCHEDULE ALL is live only when some candidate actually has work to place.
-    /// (The old `!ranked.isEmpty` check both ignored INCLUDE UNRANKED and let the
-    /// button build an empty plan when every ranked task was already scheduled.)
-    var canScheduleAll: Bool { scheduleAllCandidates.contains(where: hasSchedulableTask) }
-
-    /// SCHEDULE NEXT is live only when a RANKED project still has work to place.
-    var canScheduleNext: Bool { ranked.contains(where: hasSchedulableTask) }
-
-    func buildPlan() {
+    /// Build a review plan for the given scope and present it. `.all` schedules
+    /// every project (ranked first, then the rest) and works even with nothing
+    /// ranked; `.ranked` schedules only the prioritized projects.
+    func buildPlan(scope: PriorityScheduleScope) {
+        let orderedIds = PriorityScheduleScoping
+            .candidates(for: scope, ranked: ranked, unranked: unranked)
+            .map(\.id)
         let plan = dataController.autoSchedulePriorityProjects(
-            orderedProjectIds: scheduleAllCandidates.map(\.id), anchorDate: anchorDate)
+            orderedProjectIds: orderedIds, anchorDate: anchorDate)
         guard !plan.placements.isEmpty else {
             // Nothing landed — don't present an empty review sheet.
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
@@ -168,7 +168,7 @@ final class PriorityQueueViewModel: ObservableObject {
 
     /// One-at-a-time: schedule the top ranked project that still has unscheduled tasks.
     func tapToPlaceNext() async {
-        guard let project = ranked.first(where: hasSchedulableTask) else { return }
+        guard let project = ranked.first(where: PriorityScheduleScoping.hasSchedulableTask) else { return }
         let plan = dataController.autoScheduleProjectV2(project.id, anchorDate: anchorDate)
         let committed = await applyPlacements(plan)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()

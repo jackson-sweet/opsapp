@@ -119,7 +119,11 @@ class DeckBuilderViewModel: ObservableObject {
     var canViewInAR: Bool { can3DMode }
     var canFrame: Bool { capabilities.contains(.plausibleFrame) }
     var canPickGround: Bool { capabilities.contains(.groundCover) }
+    var deckCapabilities: DeckCapabilities { capabilities }
     var canEditHouseOpenings: Bool { capabilities.contains(.houseOpenings) }
+    var houseToolEntries: [DeckHouseToolEntry] {
+        DeckHouseToolEntry.houseToolEntries(for: capabilities)
+    }
     var houseEdges: [DeckEdge] {
         drawingData.allEdges.filter { $0.edgeType == .houseEdge }
     }
@@ -3046,6 +3050,11 @@ class DeckBuilderViewModel: ObservableObject {
     }
 
     // MARK: - House Model / Openings / Ledger
+
+    func presentHouseTool(_ entry: DeckHouseToolEntry) {
+        guard entry.isActionable, capabilities.contains(.houseOpenings) else { return }
+        showingHouseModelSheet = true
+    }
 
     @discardableResult
     func setFloorLine(feet: Double?) -> Bool {

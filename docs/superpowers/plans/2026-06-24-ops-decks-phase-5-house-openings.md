@@ -813,10 +813,10 @@ public struct HouseOpeningScheduleView: View {
 - `test_light_capabilities_hide_house_entries()` — VM with `.light`; assert none of the three appear (the menu model excludes them). LIGHT may show **one** "Available in OPS Decks" upsell stub — assert exactly one stub, no functional entry.
 - `test_light_vm_never_invokes_house_engines()` — attempt to trigger a house intent on a `.light` VM; assert it is a no-op / unreachable (guards from T12). Engines must never run in LIGHT (contract §4).
 
-- [ ] **Step 1 — Write gating tests; run, expect FAIL.**
-- [ ] **Step 2 — Build a `houseToolEntries(for capabilities:)` pure helper** returning the visible entries; drive the toolbar from it; add the single upsell stub for `.light`.
-- [ ] **Step 3 — Run tests, expect `TEST SUCCEEDED`; build device target.**
-- [ ] **Step 4 — Commit** (`feat(decks-p5): capability-gate house/elevation/schedule surfaces`).
+- [x] **Step 1 — Write gating tests; run, expect FAIL.**
+- [x] **Step 2 — Build a `houseToolEntries(for capabilities:)` pure helper** returning the visible entries; drive the toolbar from it; add the single upsell stub for `.light`.
+- [x] **Step 3 — Run tests, expect `TEST SUCCEEDED`; build device target.**
+- [x] **Step 4 — Commit** (`feat(decks-p5): capability-gate house/elevation/schedule surfaces`).
 
 **Dependencies:** P1 `CapabilityProvider`/`DeckCapabilities.houseOpenings`; T12/T13 surfaces.
 **References:** contract §4 (hide-not-disable, one upsell stub), §8.6.

@@ -181,25 +181,19 @@ struct DeckSettingsSheet: View {
                     Text("DISPLAY")
                 }
 
-                if viewModel.canEditHouseOpenings {
+                if !viewModel.houseToolEntries.isEmpty {
                     Section {
-                        Button {
-                            dismiss()
-                            DispatchQueue.main.asyncAfter(deadline: .now() + OPSStyle.Animation.durationPanel) {
-                                viewModel.showingHouseModelSheet = true
-                            }
-                        } label: {
-                            Label("HOUSE MODEL", systemImage: "house.and.flag")
-                                .font(OPSStyle.Typography.buttonLabel)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        ForEach(viewModel.houseToolEntries) { entry in
+                            houseToolButton(entry)
                         }
-                        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
                     } header: {
                         Text("HOUSE")
                     } footer: {
-                        Text("DOORS, WINDOWS, WALL HEIGHTS, LEDGER DETAIL.")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        if viewModel.canEditHouseOpenings {
+                            Text("DOORS, WINDOWS, WALL HEIGHTS, LEDGER DETAIL.")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        }
                     }
                 }
 
@@ -271,6 +265,22 @@ struct DeckSettingsSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    private func houseToolButton(_ entry: DeckHouseToolEntry) -> some View {
+        Button {
+            guard entry.isActionable else { return }
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + OPSStyle.Animation.durationPanel) {
+                viewModel.presentHouseTool(entry)
+            }
+        } label: {
+            Label(entry.title, systemImage: entry.systemImage)
+                .font(OPSStyle.Typography.buttonLabel)
+                .foregroundColor(entry.isActionable ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+        }
+        .disabled(!entry.isActionable)
+        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
     }
 }
 

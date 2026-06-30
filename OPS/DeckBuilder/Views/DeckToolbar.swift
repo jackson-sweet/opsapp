@@ -382,6 +382,8 @@ struct DeckToolbar: View {
                         }
                     }
 
+                    houseToolsMenu
+
                     toolDivider
 
                     actionButton(icon: "trash", label: "Clear", tint: OPSStyle.Colors.errorStatus) {
@@ -639,6 +641,35 @@ struct DeckToolbar: View {
         if viewModel.canPasteSelection {
             actionButton(icon: "doc.on.clipboard", label: "Paste") {
                 viewModel.beginPaste()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var houseToolsMenu: some View {
+        let entries = viewModel.houseToolEntries.filter { $0.isActionable }
+        if !entries.isEmpty {
+            Menu {
+                ForEach(entries) { entry in
+                    Button {
+                        viewModel.presentHouseTool(entry)
+                    } label: {
+                        Label(entry.title, systemImage: entry.systemImage)
+                    }
+                }
+            } label: {
+                VStack(spacing: 3) {
+                    Image(systemName: "house.and.flag")
+                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    Text("House")
+                        .font(OPSStyle.Typography.miniLabel)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing1)
+                .frame(minWidth: OPSStyle.Layout.touchTargetStandard, minHeight: OPSStyle.Layout.touchTargetStandard)
             }
         }
     }

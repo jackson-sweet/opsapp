@@ -781,6 +781,7 @@ public struct DeckDrawingData: Codable {
     // MARK: - Surface Feature Blocks
 
     public var surfaceFeatures: SurfaceFeaturePlan? = nil
+    public var overhead: OverheadStructurePlan? = nil
 
     // MARK: - Estimate Settings
 
@@ -819,6 +820,7 @@ public struct DeckDrawingData: Codable {
         case footings
         case house
         case surfaceFeatures
+        case overhead
         case wasteSettings
         case components
     }
@@ -844,6 +846,7 @@ public struct DeckDrawingData: Codable {
         self.footings = try? c.decodeIfPresent(FootingPlan.self, forKey: .footings)
         self.house = try? c.decodeIfPresent(HouseModel.self, forKey: .house)
         self.surfaceFeatures = try? c.decodeIfPresent(SurfaceFeaturePlan.self, forKey: .surfaceFeatures)
+        self.overhead = try? c.decodeIfPresent(OverheadStructurePlan.self, forKey: .overhead)
         self.wasteSettings = try c.decodeIfPresent(WasteSettings.self, forKey: .wasteSettings)
         self.components = try c.decodeIfPresent([DesignComponentRow].self, forKey: .components)
         self.futureBlocks = [:]
@@ -868,6 +871,7 @@ public struct DeckDrawingData: Codable {
         try c.encodeIfPresent(footings, forKey: .footings)
         try c.encodeIfPresent(house, forKey: .house)
         try c.encodeIfPresent(surfaceFeatures, forKey: .surfaceFeatures)
+        try c.encodeIfPresent(overhead, forKey: .overhead)
         try c.encodeIfPresent(wasteSettings, forKey: .wasteSettings)
         try c.encodeIfPresent(components, forKey: .components)
     }

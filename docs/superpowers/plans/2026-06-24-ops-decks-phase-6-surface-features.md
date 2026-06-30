@@ -215,6 +215,10 @@ var overhead: OverheadStructurePlan? = nil
 
 **Risks:** `OverheadStructure.framing` carrying `FramingMember.sizing` couples this block to P3's `MemberSizingResult` shape — if P3 ever changes `MemberSizingResult`, the overhead block inherits it (acceptable, it's the *same* type by design). The `louveredRoof` raw value `"louvered_roof"` must match exactly.
 
+**Implementation status (2026-06-30):** Complete. Added `Models/OverheadStructurePlan.swift`, wired `DeckDrawingData.overhead`, added `DeckSchemaMigration.overheadSchemaVersion`, and covered missing-key tolerance, partial defaults, stable round-trip, LIGHT preservation, malformed framing-member isolation, `FramingMember`/`MemberSizingResult` reuse, and version-6 stamping in `OverheadStructurePlanCodableTests`.
+
+**Verification (2026-06-30):** `swift test --package-path Packages/DeckKit --filter OverheadStructurePlanCodableTests` (7 tests), `swift test --package-path Packages/DeckKit` (408 tests), `scripts/verify-ops-decks-style-tokens.sh .`, `git diff --check`, and `xcodebuild -project OPS.xcodeproj -scheme OPSDecks -destination generic/platform=iOS -derivedDataPath /private/tmp/ops-decks-p6-task2-OPSDecks-dd CODE_SIGNING_ALLOWED=NO build` all passed.
+
 ---
 
 ### Task 3 — `DeckingPatternEngine` (pattern + board-direction + picture-frame)

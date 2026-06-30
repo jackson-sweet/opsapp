@@ -5,6 +5,7 @@ public enum DeckSchemaMigration {
     public static let framingSchemaVersion = 2
     public static let houseSchemaVersion = 5
     public static let surfaceFeaturesSchemaVersion = 6
+    public static let overheadSchemaVersion = 6
 
     public static func stampFramingVersion(_ data: DeckDrawingData) -> DeckDrawingData {
         var targetVersion = data.schemaVersion ?? 0
@@ -16,6 +17,9 @@ public enum DeckSchemaMigration {
         }
         if data.surfaceFeatures != nil {
             targetVersion = max(targetVersion, surfaceFeaturesSchemaVersion)
+        }
+        if data.overhead != nil {
+            targetVersion = max(targetVersion, overheadSchemaVersion)
         }
         guard targetVersion > (data.schemaVersion ?? 0) || data.framing != nil else { return data }
 

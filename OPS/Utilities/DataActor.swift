@@ -3636,6 +3636,61 @@ actor DataActor {
 
     // MARK: - Cleanup: TaskTypes
 
+    /// Canonicalizes `TaskType.id` (and the `ProjectTask.taskTypeId` strings +
+    /// taskType `SyncOperation.entityId`s that reference it) to lowercase.
+    ///
+    /// Same root cause as `normalizeTaskIdsToLowercase`: Postgres stores `uuid`
+    /// columns lowercase, but Swift's `UUID().uuidString` is UPPERCASE. Before
+    /// the create paths were fixed, a new task type was inserted locally with an
+    /// uppercase id while the server (and its realtime echo / inbound delta)
+    /// carried the lowercase form. The case-sensitive fetch-by-id missed the
+    /// local row and inserted a second one — a duplicate that
+    /// `cleanupDuplicateTaskTypes` never collapsed because it groups by exact
+    /// `id` (uppercase and lowercase land in different groups).
+    ///
+    /// Running this BEFORE `cleanupDuplicateTaskTypes` collapses the two casings
+    /// onto one id so the dedup sees them as a single group and rewires tasks
+    /// onto the surviving row. Idempotent — safe to run on every launch.
+    func normalizeTaskTypeIdsToLowercase() async {
+        do {
+            try modelContext.transaction {
+                let allTaskTypes = try modelContext.fetch(FetchDescriptor<TaskType>())
+                var typeIdCount = 0
+                for taskType in allTaskTypes {
+                    let lower = taskType.id.lowercased()
+                    if taskType.id != lower { taskType.id = lower; typeIdCount += 1 }
+                }
+
+                // ProjectTask.taskTypeId is the id-string column rewireRelationships
+                // resolves against — keep it consistent with the canonical id.
+                let allTasks = try modelContext.fetch(FetchDescriptor<ProjectTask>())
+                var taskRefCount = 0
+                for task in allTasks {
+                    let lower = task.taskTypeId.lowercased()
+                    if task.taskTypeId != lower { task.taskTypeId = lower; taskRefCount += 1 }
+                }
+
+                let typeEntityRaw = SyncEntityType.taskType.rawValue
+                let opDescriptor = FetchDescriptor<SyncOperation>(
+                    predicate: #Predicate<SyncOperation> { $0.entityType == typeEntityRaw }
+                )
+                let ops = try modelContext.fetch(opDescriptor)
+                var opCount = 0
+                for op in ops {
+                    let lower = op.entityId.lowercased()
+                    if op.entityId != lower { op.entityId = lower; opCount += 1 }
+                }
+
+                let total = typeIdCount + taskRefCount + opCount
+                if total > 0 {
+                    print("[DataActor] Normalized to lowercase: \(typeIdCount) TaskType.id, \(taskRefCount) ProjectTask.taskTypeId, \(opCount) taskType SyncOps (total \(total))")
+                }
+            }
+        } catch {
+            print("[DataActor] normalizeTaskTypeIdsToLowercase failed: \(error)")
+        }
+    }
+
     /// Deduplicates local TaskType rows. Rewires ProjectTask.taskType references
     /// before delete. Ported from DataController.cleanupDuplicateTaskTypes.
     func cleanupDuplicateTaskTypes() async {

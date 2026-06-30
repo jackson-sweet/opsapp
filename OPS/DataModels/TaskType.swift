@@ -128,7 +128,7 @@ final class TaskType: Identifiable {
     static func createDefaults(companyId: String) -> [TaskType] {
         return [
             TaskType(
-                id: UUID().uuidString,
+                id: UUID().uuidString.lowercased(),
                 display: "Site Estimate",
                 color: "#A5B368",  // Green
                 companyId: companyId,
@@ -136,7 +136,7 @@ final class TaskType: Identifiable {
                 icon: "clipboard.fill"
             ),
             TaskType(
-                id: UUID().uuidString,
+                id: UUID().uuidString.lowercased(),
                 display: "Quote/Proposal",
                 color: "#59779F",  // Blue
                 companyId: companyId,
@@ -144,7 +144,7 @@ final class TaskType: Identifiable {
                 icon: "doc.text.fill"
             ),
             TaskType(
-                id: UUID().uuidString,
+                id: UUID().uuidString.lowercased(),
                 display: "Material Order",
                 color: "#C4A868",  // Amber
                 companyId: companyId,
@@ -152,7 +152,7 @@ final class TaskType: Identifiable {
                 icon: "shippingbox.fill"
             ),
             TaskType(
-                id: UUID().uuidString,
+                id: UUID().uuidString.lowercased(),
                 display: "Installation",
                 color: "#931A32",  // Red
                 companyId: companyId,
@@ -160,7 +160,7 @@ final class TaskType: Identifiable {
                 icon: "hammer.fill"
             ),
             TaskType(
-                id: UUID().uuidString,
+                id: UUID().uuidString.lowercased(),
                 display: "Inspection",
                 color: "#7B68A6",  // Purple
                 companyId: companyId,
@@ -168,7 +168,7 @@ final class TaskType: Identifiable {
                 icon: "magnifyingglass"
             ),
             TaskType(
-                id: UUID().uuidString,
+                id: UUID().uuidString.lowercased(),
                 display: "Completion",
                 color: "#4A4A4A",  // Gray
                 companyId: companyId,

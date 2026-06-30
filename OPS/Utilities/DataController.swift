@@ -277,6 +277,11 @@ class DataController: ObservableObject {
                 // any sync so outbound pushes use canonicalized ids too.
                 await actor.normalizeTaskIdsToLowercase()
 
+                // Same casing fix for task types: collapse uppercase/lowercase id
+                // variants onto one id BEFORE cleanupDuplicateTaskTypes so its
+                // exact-id grouping sees the case-variant duplicate as one group.
+                await actor.normalizeTaskTypeIdsToLowercase()
+
                 await actor.cleanupDuplicateUsers()
                 #if DEBUG
                 await actor.cleanupDuplicateProjects()

@@ -394,7 +394,7 @@ struct AddTaskTypeSheet: View {
         guard let companyId = dataController.currentUser?.companyId else { return }
         
         let taskType = TaskType(
-            id: UUID().uuidString,
+            id: UUID().uuidString.lowercased(),
             display: display,
             color: color,
             companyId: companyId,

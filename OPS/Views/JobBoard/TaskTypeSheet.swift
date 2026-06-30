@@ -1668,7 +1668,12 @@ struct TaskTypeSheet: View {
         // (matches the TaskFormSheet.saveTask pattern that resolved an iOS 18
         // crash vector plus duplicate-insert race). Capturing strings/value types
         // keeps the closure Sendable; the @Model is looked up inside the actor.
-        let newTaskTypeId = UUID().uuidString
+        // Lowercase to match Postgres uuid canonicalization. Swift's
+        // UUID().uuidString is UPPERCASE; the task_types.id column is uuid and
+        // stores lowercase, so an uppercase local id makes the realtime echo /
+        // inbound merge fetch-by-id miss (case-sensitive compare) and insert a
+        // second local row. Same fix the Project/Task create paths already use.
+        let newTaskTypeId = UUID().uuidString.lowercased()
         let capturedName = taskTypeName
         let capturedColor = taskTypeColorHex
         let capturedIcon = taskTypeIcon
@@ -1738,6 +1743,10 @@ struct TaskTypeSheet: View {
             isSaving = false
             onSave(newTaskType)
             dismiss()
+
+            // Push promptly, matching the edit/delete paths — the recorded create
+            // op otherwise waits for the next scheduled sweep before it syncs.
+            dataController.triggerBackgroundSync()
         }
     }
 

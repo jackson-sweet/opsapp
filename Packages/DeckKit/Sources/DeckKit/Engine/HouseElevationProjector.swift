@@ -69,7 +69,9 @@ public enum HouseElevationProjector {
         )
         let firstStoryHeight = inches(fromFeet: house.storyHeights.first ?? 0)
         let storyLines = storyLineYValues(storyHeightsFeet: house.storyHeights, deckSurfaceYInches: deckSurfaceY)
-        let calloutTags = calloutTagsByOpeningId(for: house.openings)
+        let calloutTags = Dictionary(
+            uniqueKeysWithValues: HouseOpeningSchedule.rows(for: data).map { ($0.id, $0.calloutTag) }
+        )
         let projectedOpenings = house.openings
             .filter { $0.edgeId == edgeId }
             .sorted { lhs, rhs in
@@ -198,43 +200,6 @@ public enum HouseElevationProjector {
             y += inches(fromFeet: height)
         }
         return lines
-    }
-
-    private static func calloutTagsByOpeningId(for openings: [WallOpening]) -> [String: String] {
-        var doorIndex = 0
-        var windowIndex = 0
-        var tags: [String: String] = [:]
-
-        for opening in openings.sorted(by: openingSort) {
-            if isDoor(opening.kind) {
-                doorIndex += 1
-                tags[opening.id] = "D\(doorIndex)"
-            } else {
-                windowIndex += 1
-                tags[opening.id] = "W\(windowIndex)"
-            }
-        }
-
-        return tags
-    }
-
-    private static func openingSort(lhs: WallOpening, rhs: WallOpening) -> Bool {
-        if lhs.edgeId != rhs.edgeId {
-            return lhs.edgeId < rhs.edgeId
-        }
-        if lhs.offsetAlongEdgeInches != rhs.offsetAlongEdgeInches {
-            return lhs.offsetAlongEdgeInches < rhs.offsetAlongEdgeInches
-        }
-        return lhs.id < rhs.id
-    }
-
-    private static func isDoor(_ kind: OpeningKind) -> Bool {
-        switch kind {
-        case .patioDoor, .frenchDoor, .sliderDoor:
-            return true
-        case .window:
-            return false
-        }
     }
 
     private static func inches(fromFeet feet: Double) -> Double {

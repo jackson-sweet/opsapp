@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **Execution status - 2026-06-29:** Phase 5 has started with the schema/storage foundation. `HouseModel`, `WallOpening`, `OpeningKind`, and `LedgerDetail` now live in DeckKit; `DeckDrawingData.house` round-trips as a schema-version-5 additive block; malformed house payloads drop only the house block; and new `DeckDesign` rows default to the current deck schema version. `WallOpeningGeometry`, `HouseElevationProjector`, `LedgerStrategyEngine`, and `StairsToGradeEngine` are now implemented. The ledger fallback also landed the minimal P4 `FootingPlan` contract types so freestanding house-side beam geometry can emit real unsized footing anchors. The editor UI, elevation rendering, component emission, and 3D wall cutouts remain pending tasks.
+> **Execution status - 2026-06-29:** Phase 5 has started with the schema/storage foundation. `HouseModel`, `WallOpening`, `OpeningKind`, and `LedgerDetail` now live in DeckKit; `DeckDrawingData.house` round-trips as a schema-version-5 additive block; malformed house payloads drop only the house block; and new `DeckDesign` rows default to the current deck schema version. `WallOpeningGeometry`, `HouseElevationProjector`, `LedgerStrategyEngine`, `StairsToGradeEngine`, and `HouseOpeningSchedule` are now implemented. The ledger fallback also landed the minimal P4 `FootingPlan` contract types so freestanding house-side beam geometry can emit real unsized footing anchors. The editor UI, elevation rendering, component emission, and 3D wall cutouts remain pending tasks.
 
 > **HEADER NOTE — read first.** This plan is authored **before its predecessor phases (P1–P4) exist in code.** It therefore decomposes Phase 5 into the exact files, public types, and engine contracts mandated by the Architecture Contract (`docs/superpowers/plans/2026-06-24-ops-decks-architecture-contract.md`), but **the bite-sized TDD steps with literal, runnable Swift are finalized at phase start once predecessors exist.** Where the contract pins a type or signature, it is reproduced **verbatim** below and is binding. Where a step depends on a P1–P4 type whose *body* is not yet written (e.g. `DeckKit`'s `unknownBlocks` passthrough, `CapabilityProvider` injection point, the elevation/terrain datum from P4), the step states the dependency and the assertion it must satisfy, and leaves the literal call site to be filled at execution time against the real predecessor signature. **Do not fabricate predecessor signatures beyond what the contract fixes.**
 
@@ -547,11 +547,11 @@ public enum HouseOpeningSchedule {
 - `test_empty_house_yields_no_rows()` — `house == nil` or empty `openings` → `[]`.
 - `test_frenchDoor_and_sliderDoor_count_as_doors()` — all three door kinds share the D-sequence (D1, D2, D3), windows separate.
 
-- [ ] **Step 1 — Write tests.**
-- [ ] **Step 2 — Run, expect FAIL.**
-- [ ] **Step 3 — Implement.** Partition `openings` into doors (`patioDoor`/`frenchDoor`/`sliderDoor`) and windows; sort each by `(edgeId, offsetAlongEdgeInches)`; assign `D{n}` / `W{n}`.
-- [ ] **Step 4 — Run, expect `TEST SUCCEEDED`.**
-- [ ] **Step 5 — Commit** (`feat(decks-p5): door/window schedule + stable callout tags`).
+- [x] **Step 1 — Write tests.**
+- [x] **Step 2 — Run, expect FAIL.**
+- [x] **Step 3 — Implement.** Partition `openings` into doors (`patioDoor`/`frenchDoor`/`sliderDoor`) and windows; sort each by `(edgeId, offsetAlongEdgeInches)`; assign `D{n}` / `W{n}`.
+- [x] **Step 4 — Run, expect `TEST SUCCEEDED`.**
+- [x] **Step 5 — Commit** (`feat(decks-p5): door/window schedule + stable callout tags`).
 
 **Dependencies:** T1.
 **References:** contract §5.1 (numbers JetBrains Mono, formatted — applied in the VIEW, not here); roadmap §2.4 "Door/window schedule + plan callouts".

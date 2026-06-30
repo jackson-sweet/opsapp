@@ -773,6 +773,7 @@ public struct DeckDrawingData: Codable {
 
     public var framing: FramingPlan? = nil
     public var terrain: TerrainModel? = nil
+    public var footings: FootingPlan? = nil
     /// House-attachment model: floor-line datum, story heights, wall openings,
     /// and cladding-driven ledger strategy for the standalone OPS Decks app.
     public var house: HouseModel? = nil
@@ -811,6 +812,7 @@ public struct DeckDrawingData: Codable {
         case levelConnections
         case framing
         case terrain
+        case footings
         case house
         case wasteSettings
         case components
@@ -834,6 +836,7 @@ public struct DeckDrawingData: Codable {
         self.levelConnections = try c.decodeIfPresent([LevelConnection].self, forKey: .levelConnections) ?? []
         self.framing = try? c.decodeIfPresent(FramingPlan.self, forKey: .framing)
         self.terrain = try? c.decodeIfPresent(TerrainModel.self, forKey: .terrain)
+        self.footings = try? c.decodeIfPresent(FootingPlan.self, forKey: .footings)
         self.house = try? c.decodeIfPresent(HouseModel.self, forKey: .house)
         self.wasteSettings = try c.decodeIfPresent(WasteSettings.self, forKey: .wasteSettings)
         self.components = try c.decodeIfPresent([DesignComponentRow].self, forKey: .components)
@@ -856,6 +859,7 @@ public struct DeckDrawingData: Codable {
         try c.encode(levelConnections, forKey: .levelConnections)
         try c.encodeIfPresent(framing, forKey: .framing)
         try c.encodeIfPresent(terrain, forKey: .terrain)
+        try c.encodeIfPresent(footings, forKey: .footings)
         try c.encodeIfPresent(house, forKey: .house)
         try c.encodeIfPresent(wasteSettings, forKey: .wasteSettings)
         try c.encodeIfPresent(components, forKey: .components)
@@ -1359,26 +1363,5 @@ public struct DeckDrawingData: Codable {
         }
 
         return decoded
-    }
-}
-
-// MARK: - CGPoint Codable
-
-extension CGPoint: @retroactive Codable {
-    public enum CodingKeys: String, CodingKey {
-        case x, y
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let x = try container.decode(Double.self, forKey: .x)
-        let y = try container.decode(Double.self, forKey: .y)
-        self.init(x: x, y: y)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(Double(x), forKey: .x)
-        try container.encode(Double(y), forKey: .y)
     }
 }

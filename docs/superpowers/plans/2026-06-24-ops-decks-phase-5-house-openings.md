@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **Execution status - 2026-06-29:** Phase 5 has started with the schema/storage foundation. `HouseModel`, `WallOpening`, `OpeningKind`, and `LedgerDetail` now live in DeckKit; `DeckDrawingData.house` round-trips as a schema-version-5 additive block; malformed house payloads drop only the house block; and new `DeckDesign` rows default to the current deck schema version. The editor UI, opening geometry, elevation rendering, ledger strategy, component emission, and 3D wall cutouts remain pending tasks.
+> **Execution status - 2026-06-29:** Phase 5 has started with the schema/storage foundation. `HouseModel`, `WallOpening`, `OpeningKind`, and `LedgerDetail` now live in DeckKit; `DeckDrawingData.house` round-trips as a schema-version-5 additive block; malformed house payloads drop only the house block; and new `DeckDesign` rows default to the current deck schema version. `WallOpeningGeometry`, `HouseElevationProjector`, and `LedgerStrategyEngine` are now implemented. The ledger fallback also landed the minimal P4 `FootingPlan` contract types so freestanding house-side beam geometry can emit real unsized footing anchors. The editor UI, elevation rendering, component emission, and 3D wall cutouts remain pending tasks.
 
 > **HEADER NOTE — read first.** This plan is authored **before its predecessor phases (P1–P4) exist in code.** It therefore decomposes Phase 5 into the exact files, public types, and engine contracts mandated by the Architecture Contract (`docs/superpowers/plans/2026-06-24-ops-decks-architecture-contract.md`), but **the bite-sized TDD steps with literal, runnable Swift are finalized at phase start once predecessors exist.** Where the contract pins a type or signature, it is reproduced **verbatim** below and is binding. Where a step depends on a P1–P4 type whose *body* is not yet written (e.g. `DeckKit`'s `unknownBlocks` passthrough, `CapabilityProvider` injection point, the elevation/terrain datum from P4), the step states the dependency and the assertion it must satisfy, and leaves the literal call site to be filled at execution time against the real predecessor signature. **Do not fabricate predecessor signatures beyond what the contract fixes.**
 
@@ -438,11 +438,11 @@ public enum LedgerStrategyEngine {
 - `test_rationale_is_objective_negative_only()` — assert `fallback.rationale` contains neither "safe", "compliant", "guaranteed", nor "will pass" (case-insensitive), and DOES read as an objective-negative claim (e.g. contains "not a code-recognized ledger" / "freestanding"). Lock the exact string via `ops-copywriter`; assert against the locked constant.
 - `test_nil_package_still_decides_cladding_but_notes_jurisdiction()` — `package == nil`, brick → `.freestanding`, `detail.fastenerSchedule == nil`, rationale mentions selecting a jurisdiction.
 
-- [ ] **Step 1 — Write tests.**
-- [ ] **Step 2 — Run, expect FAIL.**
-- [ ] **Step 3 — Implement.** Decision table: `{stucco, hardie, vinyl, woodVertical} → attach`; `{brick, stone, parapet} → freestanding`. Beam line = a single `FramingMember(role: .beam, start: v0, end: v1)` along the edge; footing anchors at both vertices + one interior per `ceil(span/96")−1` (conservative). Set `rationale` from the locked objective-negative constant. **Do NOT size the beam or footing** — leave `nominalSize`/`sizing` nil for P4.
-- [ ] **Step 4 — Run, expect `TEST SUCCEEDED`.**
-- [ ] **Step 5 — Commit** (`feat(decks-p5): cladding-driven ledger strategy + freestanding beam-line fallback`).
+- [x] **Step 1 — Write tests.**
+- [x] **Step 2 — Run, expect FAIL.**
+- [x] **Step 3 — Implement.** Decision table: `{stucco, hardie, vinyl, woodVertical} → attach`; `{brick, stone, parapet} → freestanding`. Beam line = a single `FramingMember(role: .beam, start: v0, end: v1)` along the edge; footing anchors at both vertices + one interior per `ceil(span/96")−1` (conservative). Set `rationale` from the locked objective-negative constant. **Do NOT size the beam or footing** — leave `nominalSize`/`sizing` nil for P4.
+- [x] **Step 4 — Run, expect `TEST SUCCEEDED`.**
+- [x] **Step 5 — Commit** (`feat(decks-p5): cladding-driven ledger strategy + freestanding beam-line fallback`).
 
 **Dependencies:** T1; P4 `FramingMember`/`FramingRole.beam`/`Footing` (consumed as value types — if P4 not yet present, this task is **blocked on P4's structs landing**; the engine cannot emit `FramingMember`/`Footing` it cannot reference). P1 `CodePackage` (optional arg, nullable). Baseline `HouseEdgeMaterial`, `DeckEdge`.
 **References:** contract §2.6 (`LedgerDetail`), §6.1/§6.2; roadmap §2.4 "Ledger attachment detail + code check per cladding; brick/stone → freestanding fallback"; IRC R507.9 (ledger), R507.9.2 (lateral connectors). NADRA: ~90% of deck collapses are ledger failures — this is the highest-liability surface in P5, hence the strict objective-negative test.

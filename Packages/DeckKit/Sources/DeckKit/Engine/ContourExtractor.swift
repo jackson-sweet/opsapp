@@ -159,7 +159,7 @@ public struct ContourExtractor {
         }
 
         // Filter segments shorter than minimum length
-        var filtered = rawSegments.filter { $0.lengthPixels >= minLength }
+        let filtered = rawSegments.filter { $0.lengthPixels >= minLength }
 
         guard !filtered.isEmpty else { return [] }
 

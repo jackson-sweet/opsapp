@@ -110,8 +110,10 @@ private struct SiteVisitCaptureConsole: View {
     @State private var previewArtifact: SiteVisitCaptureArtifact?
     @State private var isPacketExpanded = true
     @State private var showingDimensionedCapture = false
-    @State private var showingDiscardConfirm = false
+    @State private var showingCloseConfirm = false
     @State private var identityExpanded = true
+    @State private var recordingPulse = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pendingIdentityFocus = false
     @State private var noteAutosaveTask: Task<Void, Never>?
     @State private var customChecklistQuestion = ""
@@ -139,7 +141,6 @@ private struct SiteVisitCaptureConsole: View {
                                 .id(SiteVisitCaptureScrollTarget.identity)
                             quickNotePanel
                                 .id(SiteVisitCaptureScrollTarget.notes)
-                            quickMeasurementPanel
                             checklistPanel
                             packetPanel
                         }
@@ -277,10 +278,13 @@ private struct SiteVisitCaptureConsole: View {
             .environmentObject(dataController)
         }
         .confirmationDialog(
-            "DISCARD THIS VISIT?",
-            isPresented: $showingDiscardConfirm,
+            "CLOSE THIS VISIT?",
+            isPresented: $showingCloseConfirm,
             titleVisibility: .visible
         ) {
+            Button("SAVE DRAFT & CLOSE") {
+                onClose()
+            }
             Button("DISCARD VISIT", role: .destructive) {
                 viewModel.discardVisit()
                 UINotificationFeedbackGenerator().notificationOccurred(.warning)
@@ -288,7 +292,7 @@ private struct SiteVisitCaptureConsole: View {
             }
             Button("KEEP CAPTURING", role: .cancel) {}
         } message: {
-            Text("Photos, notes, and measurements on this visit will be removed. This can't be undone.")
+            Text("Your draft is saved on this device — pick it back up anytime. Or discard it for good.")
         }
         .errorToast($viewModel.errorMessage, label: Feedback.Err.operationFailed)
     }
@@ -296,38 +300,26 @@ private struct SiteVisitCaptureConsole: View {
     private var header: some View {
         OPSScreenHeader(
             "SITE VISIT",
-            leading: { OPSHeaderCloseButton(action: onClose) },
+            leading: { OPSHeaderCloseButton(action: attemptClose) },
             trailing: {
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    Menu {
-                        Button("DISCARD VISIT", role: .destructive) {
-                            showingDiscardConfirm = true
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
-                            .foregroundColor(OPSStyle.Colors.text2)
-                            .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                    }
-                    .accessibilityLabel("Visit options")
-
-                    Button {
-                        showingReview = true
-                    } label: {
-                        Text("REVIEW")
-                            .font(OPSStyle.Typography.captionBold)
-                            .tracking(1.2)
-                            .foregroundColor(viewModel.canComplete ? OPSStyle.Colors.invertedText : OPSStyle.Colors.text3)
-                            .padding(.horizontal, OPSStyle.Layout.spacing3)
-                            .frame(height: 40)
-                            .background(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                                    .fill(viewModel.canComplete ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.surfaceHover)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!viewModel.canComplete)
+                Button {
+                    showingReview = true
+                } label: {
+                    Text("DONE")
+                        .font(OPSStyle.Typography.captionBold)
+                        .tracking(1.2)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .foregroundColor(viewModel.canComplete ? OPSStyle.Colors.invertedText : OPSStyle.Colors.text3)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                        .frame(height: 40)
+                        .background(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                                .fill(viewModel.canComplete ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.surfaceHover)
+                        )
                 }
+                .buttonStyle(.plain)
+                .disabled(!viewModel.canComplete)
             }
         )
         .padding(.top, OPSStyle.Layout.spacing2)
@@ -342,7 +334,7 @@ private struct SiteVisitCaptureConsole: View {
             } label: {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("// UNFINISHED VISIT · TAP TO RESUME")
+                        Text("// RECOVER UNSAVED DRAFT · TAP TO PICK UP")
                             .font(OPSStyle.Typography.metadata)
                             .foregroundColor(OPSStyle.Colors.tanTextM)
                             .lineLimit(1)
@@ -442,8 +434,32 @@ private struct SiteVisitCaptureConsole: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                        .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
+                        .strokeBorder(speechManager.state == .recording ? OPSStyle.Colors.roseLineM : OPSStyle.Colors.line, lineWidth: 1)
                 )
+
+            if speechManager.state == .recording {
+                HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
+                    Circle()
+                        .fill(OPSStyle.Colors.roseTextM)
+                        .frame(width: 8, height: 8)
+                        .opacity(recordingPulse ? 1.0 : 0.3)
+                        .padding(.top, 4)
+                    Text(speechManager.transcription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                         ? "LISTENING…"
+                         : speechManager.transcription)
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.text2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .animation(nil, value: speechManager.transcription)
+                }
+                .onAppear {
+                    guard !reduceMotion else { return }
+                    withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) {
+                        recordingPulse = true
+                    }
+                }
+                .onDisappear { recordingPulse = false }
+            }
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 Button(action: toggleSpeech) {
@@ -483,54 +499,6 @@ private struct SiteVisitCaptureConsole: View {
 
     private var isNoteDraftEmpty: Bool {
         viewModel.noteDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private var quickMeasurementPanel: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            panelHeader("RAPID MEASURE", trailing: "TYPE IT")
-
-            TextField("12 FT 4 IN BY 18 FT 2 IN", text: $viewModel.measurementDraft, axis: .vertical)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.text)
-                .textInputAutocapitalization(.characters)
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .frame(minHeight: 48)
-                .focused($focusedField, equals: .measurement)
-                .background(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                        .fill(OPSStyle.Colors.surfaceInput)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                        .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
-                )
-
-            Button {
-                let hadText = !isMeasurementDraftEmpty
-                viewModel.addMeasurement()
-                if hadText {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                }
-            } label: {
-                Text("SAVE MEASUREMENT")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(isMeasurementDraftEmpty ? OPSStyle.Colors.text3 : OPSStyle.Colors.invertedText)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-                    .background(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                            .fill(isMeasurementDraftEmpty ? OPSStyle.Colors.surfaceHover : OPSStyle.Colors.opsAccent)
-                    )
-            }
-            .buttonStyle(.plain)
-            .disabled(isMeasurementDraftEmpty)
-        }
-        .padding(OPSStyle.Layout.spacing3)
-        .glassSurface()
-    }
-
-    private var isMeasurementDraftEmpty: Bool {
-        viewModel.measurementDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     // Display list (not an input card): the captured packet is rendered flat —
@@ -631,20 +599,18 @@ private struct SiteVisitCaptureConsole: View {
                     .foregroundColor(OPSStyle.Colors.textMute)
                     .frame(maxWidth: .infinity, minHeight: 60, alignment: .center)
             } else {
-                VStack(spacing: OPSStyle.Layout.spacing1) {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach(viewModel.checklistAnswers) { answer in
                         SiteVisitChecklistAnswerRow(
                             answer: answer,
                             onUpdate: { value in
                                 viewModel.updateChecklistAnswer(answer, value: value)
                             },
-                            onUseCaptured: {
-                                viewModel.useCapturedEvidence(for: answer)
-                            },
                             onStartDeckDesign: startDeckDesign
                         )
                     }
                 }
+                .padding(.bottom, OPSStyle.Layout.spacing1)
             }
 
             HStack(spacing: OPSStyle.Layout.spacing1) {
@@ -778,6 +744,14 @@ private struct SiteVisitCaptureConsole: View {
         }
         .font(OPSStyle.Typography.metadata)
         .textCase(.uppercase)
+    }
+
+    private func attemptClose() {
+        if viewModel.hasCapturedAnything {
+            showingCloseConfirm = true
+        } else {
+            onClose()
+        }
     }
 
     private func toggleSpeech() {
@@ -1076,8 +1050,55 @@ private struct SiteVisitIdentityPanel: View {
         .accessibilityLabel("Lead and client details")
     }
 
+    private var boundDisplayName: String? {
+        if viewModel.hasBoundOpportunity {
+            return viewModel.currentOpportunity?.displayContactName
+                ?? contactName.trimmedNilIfEmpty
+                ?? clientName.trimmedNilIfEmpty
+        }
+        if viewModel.activeClientId != nil {
+            return contactName.trimmedNilIfEmpty ?? clientName.trimmedNilIfEmpty
+        }
+        return nil
+    }
+
+    @ViewBuilder
     private var searchField: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+        if let bound = boundDisplayName {
+            // Linked to an existing lead/client — show who, with an X to clear.
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                Image(systemName: "person.crop.circle.badge.checkmark")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundColor(OPSStyle.Colors.oliveTextM)
+
+                Text(bound.uppercased())
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                Button(action: clearSelection) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundColor(OPSStyle.Colors.text3)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear linked lead or client")
+            }
+            .padding(.leading, OPSStyle.Layout.spacing3)
+            .frame(height: 48)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .fill(OPSStyle.Colors.surfaceInput)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .strokeBorder(OPSStyle.Colors.oliveLineM, lineWidth: 1)
+            )
+        } else {
             HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 16, weight: .regular))
@@ -1088,8 +1109,23 @@ private struct SiteVisitIdentityPanel: View {
                     .foregroundColor(OPSStyle.Colors.text)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.words)
+
+                if searchText.trimmedNilIfEmpty != nil {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16, weight: .regular))
+                            .foregroundColor(OPSStyle.Colors.text3)
+                            .frame(width: 32, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
+                }
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.leading, OPSStyle.Layout.spacing3)
+            .padding(.trailing, searchText.trimmedNilIfEmpty == nil ? OPSStyle.Layout.spacing3 : OPSStyle.Layout.spacing1)
             .frame(height: 48)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
@@ -1100,6 +1136,13 @@ private struct SiteVisitIdentityPanel: View {
                     .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
             )
         }
+    }
+
+    private func clearSelection() {
+        viewModel.clearIdentitySelection()
+        syncFromDraft()
+        searchText = ""
+        UISelectionFeedbackGenerator().selectionChanged()
     }
 
     @ViewBuilder
@@ -1221,8 +1264,8 @@ private struct SiteVisitIdentityPanel: View {
                 .autocorrectionDisabled(keyboard == .emailAddress || keyboard == .phonePad)
                 .lineLimit(axis == .vertical ? 3 : 1)
                 .padding(.horizontal, OPSStyle.Layout.spacing2)
-                .padding(.vertical, axis == .vertical ? OPSStyle.Layout.spacing2 : 0)
-                .frame(minHeight: axis == .vertical ? 58 : 44, alignment: .topLeading)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
+                .frame(minHeight: axis == .vertical ? 58 : 44, alignment: axis == .vertical ? .topLeading : .leading)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
                         .fill(OPSStyle.Colors.surfaceInput)
@@ -1390,7 +1433,6 @@ private struct SiteVisitIdentitySuggestion: Identifiable {
 private struct SiteVisitChecklistAnswerRow: View {
     let answer: SiteVisitChecklistAnswer
     let onUpdate: (SiteVisitChecklistValue) -> Void
-    let onUseCaptured: () -> Void
     let onStartDeckDesign: () -> Void
 
     var body: some View {
@@ -1449,47 +1491,44 @@ private struct SiteVisitChecklistAnswerRow: View {
                 choiceButton("N/A")
             }
         case .shortText, .longText, .measurement:
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                TextField("ANSWER", text: Binding(
-                    get: { answer.answerValue.text ?? "" },
-                    set: { onUpdate(.text($0)) }
-                ), axis: .vertical)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.text)
-                .textInputAutocapitalization(.sentences)
-                .frame(minHeight: answer.kind == .longText ? 72 : 42, alignment: .topLeading)
-
-                if answer.kind == .measurement {
-                    useCapturedButton("USE CAPTURED MEASURE")
-                }
-            }
+            // Measurement auto-fills from captured measurements; all three remain
+            // freely editable.
+            TextField("ANSWER", text: Binding(
+                get: { answer.answerValue.text ?? "" },
+                set: { onUpdate(.text($0)) }
+            ), axis: .vertical)
+            .font(OPSStyle.Typography.body)
+            .foregroundColor(OPSStyle.Colors.text)
+            .textInputAutocapitalization(.sentences)
+            .frame(minHeight: answer.kind == .longText ? 72 : 42, alignment: .topLeading)
         case .photo:
-            capturedEvidenceControl(
-                label: answer.answerValue.artifactIds.isEmpty
-                    ? "NO PHOTOS LINKED"
+            // Site photos link automatically as they're captured — no action needed.
+            capturedStatus(
+                answer.answerValue.artifactIds.isEmpty
+                    ? "TAKE PHOTOS — THEY LINK HERE AUTOMATICALLY"
                     : "\(answer.answerValue.artifactIds.count) PHOTOS LINKED",
-                button: "USE PHOTOS"
+                linked: !answer.answerValue.artifactIds.isEmpty
             )
         case .photoMarkup:
-            capturedEvidenceControl(
-                label: answer.answerValue.artifactIds.isEmpty
-                    ? "NO MARKUP LINKED"
+            capturedStatus(
+                answer.answerValue.artifactIds.isEmpty
+                    ? "TAKE PHOTOS — THEY LINK HERE AUTOMATICALLY"
                     : "\(answer.answerValue.artifactIds.count) ITEMS LINKED",
-                button: "USE PHOTOS"
+                linked: !answer.answerValue.artifactIds.isEmpty
             )
         case .deckDesign:
             HStack(spacing: OPSStyle.Layout.spacing1) {
-                Text(answer.answerValue.deckDesignId == nil ? "NO DESIGN LINKED" : "DESIGN LINKED")
-                    .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(OPSStyle.Colors.text3)
+                capturedStatus(
+                    answer.answerValue.deckDesignId == nil ? "NO DESIGN YET" : "DESIGN LINKED",
+                    linked: answer.answerValue.deckDesignId != nil
+                )
                 Spacer(minLength: OPSStyle.Layout.spacing1)
-                useCapturedButton("USE DESIGN")
                 Button(action: onStartDeckDesign) {
-                    Text("START")
+                    Text(answer.answerValue.deckDesignId == nil ? "START" : "EDIT")
                         .font(OPSStyle.Typography.miniLabel)
                         .foregroundColor(OPSStyle.Colors.invertedText)
-                        .frame(height: 34)
-                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .frame(height: OPSStyle.Layout.touchTargetMin)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
                                 .fill(OPSStyle.Colors.opsAccent)
@@ -1498,6 +1537,13 @@ private struct SiteVisitChecklistAnswerRow: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+
+    private func capturedStatus(_ text: String, linked: Bool) -> some View {
+        Text(text)
+            .font(OPSStyle.Typography.metadata)
+            .foregroundColor(linked ? OPSStyle.Colors.oliveTextM : OPSStyle.Colors.text3)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var statusLabel: String {
@@ -1535,30 +1581,6 @@ private struct SiteVisitChecklistAnswerRow: View {
         .buttonStyle(.plain)
     }
 
-    private func capturedEvidenceControl(label: String, button: String) -> some View {
-        HStack(spacing: OPSStyle.Layout.spacing1) {
-            Text(label)
-                .font(OPSStyle.Typography.metadata)
-                .foregroundColor(OPSStyle.Colors.text3)
-            Spacer(minLength: OPSStyle.Layout.spacing1)
-            useCapturedButton(button)
-        }
-    }
-
-    private func useCapturedButton(_ label: String) -> some View {
-        Button(action: onUseCaptured) {
-            Text(label)
-                .font(OPSStyle.Typography.miniLabel)
-                .foregroundColor(OPSStyle.Colors.text2)
-                .frame(height: 34)
-                .padding(.horizontal, OPSStyle.Layout.spacing2)
-                .background(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                        .fill(OPSStyle.Colors.surfaceHover)
-                )
-        }
-        .buttonStyle(.plain)
-    }
 }
 
 private struct SiteVisitArtifactRow: View {
@@ -1602,12 +1624,23 @@ private struct SiteVisitArtifactRow: View {
                 .accessibilityLabel("Markup photo")
             }
 
-            Toggle("", isOn: Binding(
-                get: { artifact.includedInProjectReview },
-                set: onIncludedChange
-            ))
-            .labelsHidden()
-            .tint(OPSStyle.Colors.text3)
+            // Whether this capture flows into the project when the visit converts.
+            Button {
+                onIncludedChange(!artifact.includedInProjectReview)
+                UISelectionFeedbackGenerator().selectionChanged()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: artifact.includedInProjectReview ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 15, weight: .regular))
+                    Text(artifact.includedInProjectReview ? "IN PROJECT" : "SKIP")
+                        .font(OPSStyle.Typography.miniLabel)
+                }
+                .foregroundColor(artifact.includedInProjectReview ? OPSStyle.Colors.oliveTextM : OPSStyle.Colors.text3)
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(artifact.includedInProjectReview ? "Included in project, tap to skip" : "Skipped, tap to include")
         }
         .padding(OPSStyle.Layout.spacing2)
         .background(

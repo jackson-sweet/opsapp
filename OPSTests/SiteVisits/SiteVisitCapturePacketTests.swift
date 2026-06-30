@@ -18,11 +18,11 @@ final class SiteVisitCapturePacketTests: XCTestCase {
             deckBuilderEnabled: true
         )
 
-        let generic = try XCTUnwrap(templates.first { $0.slug == "generic_site_visit" })
-        XCTAssertEqual(generic.name, "Generic Site Visit")
-        XCTAssertTrue(generic.isSystemTemplate)
-        XCTAssertTrue(generic.isDefault)
-        XCTAssertTrue(generic.fields.contains { $0.kind == .longText && $0.label == "Scope notes" })
+        let estimate = try XCTUnwrap(templates.first { $0.slug == "estimate" })
+        XCTAssertEqual(estimate.name, "Estimate")
+        XCTAssertTrue(estimate.isSystemTemplate)
+        XCTAssertTrue(estimate.isDefault)
+        XCTAssertTrue(estimate.fields.contains { $0.kind == .longText && $0.label == "Scope of work" })
 
         let deck = try XCTUnwrap(templates.first { $0.slug == "deck_estimate" })
         XCTAssertTrue(deck.fields.contains { field in

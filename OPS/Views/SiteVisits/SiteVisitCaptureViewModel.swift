@@ -60,6 +60,14 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         SiteVisitCaptureCompletionPolicy.canComplete(artifacts) || hasAnsweredChecklistEvidence
     }
 
+    /// Anything the operator would lose if they closed without finishing —
+    /// drives the "are you sure?" close confirmation.
+    var hasCapturedAnything: Bool {
+        !activeArtifacts.isEmpty
+            || (identityDraft?.filledFieldCount ?? 0) > 0
+            || checklistAnswers.contains { $0.isActive && $0.isAnswered }
+    }
+
     var hasProjectEvidence: Bool {
         summary.canCreateProject || hasAnsweredChecklistEvidence
     }
@@ -586,9 +594,8 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     func bindClient(_ client: Client) {
         guard let draft = requireIdentityDraft() else { return }
         draft.clientId = client.id
-        if draft.clientName.trimmedNilIfEmpty == nil {
-            draft.clientName = client.name
-        }
+        // A selected client's name is the person/company you're capturing for →
+        // NAME. COMPANY stays whatever the operator typed (usually empty).
         if draft.contactName.trimmedNilIfEmpty == nil {
             draft.contactName = client.name
         }
@@ -603,6 +610,38 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         }
         draft.touch()
         siteVisit?.address = draft.address.trimmedNilIfEmpty ?? siteVisit?.address
+        saveContext()
+        objectWillChange.send()
+    }
+
+    /// Clears the linked lead/client and wipes the identity fields — the X on the
+    /// search box. Captured photos/notes/measurements are kept; only identity and
+    /// the binding are reset.
+    func clearIdentitySelection() {
+        guard let draft = requireIdentityDraft() else { return }
+        draft.opportunityId = nil
+        draft.clientId = nil
+        draft.subClientId = nil
+        draft.searchText = ""
+        draft.clientName = ""
+        draft.contactName = ""
+        draft.preferredEmail = ""
+        draft.additionalEmails = []
+        draft.phoneNumber = ""
+        draft.address = ""
+        draft.notes = ""
+        draft.touch()
+
+        currentOpportunity = nil
+        if let visit = siteVisit {
+            visit.opportunityId = nil
+            visit.address = nil
+        }
+        for artifact in artifacts {
+            artifact.opportunityId = nil
+            artifact.updatedAt = Date()
+            artifact.needsSync = true
+        }
         saveContext()
         objectWillChange.send()
     }
@@ -918,7 +957,9 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             opportunityId: currentOpportunity?.id,
             clientId: currentOpportunity?.clientId,
             searchText: "",
-            clientName: currentOpportunity?.displayContactName ?? "",
+            // NAME holds the person; COMPANY (clientName) stays empty unless the
+            // operator types a business — never seed it with the contact's name.
+            clientName: "",
             contactName: currentOpportunity?.displayContactName ?? "",
             preferredEmail: currentOpportunity?.contactEmail ?? "",
             phoneNumber: currentOpportunity?.contactPhone ?? "",
@@ -944,9 +985,6 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         guard let draft = requireIdentityDraft() else { return }
         draft.opportunityId = opportunity.id
         draft.clientId = opportunity.clientId
-        if draft.clientName.trimmedNilIfEmpty == nil {
-            draft.clientName = opportunity.displayContactName
-        }
         if draft.contactName.trimmedNilIfEmpty == nil {
             draft.contactName = opportunity.displayContactName
         }
@@ -1166,6 +1204,19 @@ final class SiteVisitCaptureViewModel: ObservableObject {
                 didChange = true
             }
         }
+
+        // Retire system templates we no longer ship (renamed slugs, or the deck
+        // type when the deck builder is off) so old/inappropriate defaults stop
+        // appearing. User-created types (isSystemTemplate == false) are untouched.
+        let builtInSlugs = Set(builtIns.map(\.slug))
+        for existing in existingTypes where existing.isSystemTemplate
+            && existing.deletedAt == nil
+            && !builtInSlugs.contains(existing.slug) {
+            existing.deletedAt = Date()
+            existing.updatedAt = Date()
+            didChange = true
+        }
+
         if didChange {
             saveContext()
         }

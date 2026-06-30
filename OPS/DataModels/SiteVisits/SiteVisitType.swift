@@ -170,63 +170,86 @@ final class SiteVisitType: Identifiable {
         }
     }
 
+    /// Trade-agnostic starter visit types. Every subtrade does these three;
+    /// the deck-specific type is only seeded for companies running the deck
+    /// builder (CanPro). Companies can add their own types on top of these.
     static func builtInTemplates(
         companyId: String,
         deckBuilderEnabled: Bool
     ) -> [SiteVisitType] {
-        var deckFields: [SiteVisitTypeFieldDefinition] = [
-            .init(id: "client-goals", label: "Client goals", kind: .longText, sortOrder: 10),
-            .init(id: "existing-structure", label: "Existing structure", kind: .photoMarkup, sortOrder: 20),
-            .init(id: "field-measurements", label: "Field measurements", kind: .measurement, required: true, sortOrder: 30),
-        ]
-        if deckBuilderEnabled {
-            deckFields.append(
-                .init(id: "deck-design", label: "Deck design", kind: .deckDesign, required: true, sortOrder: 40)
-            )
-        }
-
-        return [
+        var templates: [SiteVisitType] = [
+            // The default: scoping a job to quote it.
             SiteVisitType(
-                id: "system-\(companyId)-generic-site-visit",
+                id: "system-\(companyId)-estimate",
                 companyId: companyId,
-                slug: "generic_site_visit",
-                name: "Generic Site Visit",
-                descriptionText: "Base scope visit.",
+                slug: "estimate",
+                name: "Estimate",
+                descriptionText: "Scope a job to quote it.",
                 isSystemTemplate: true,
                 isDefault: true,
                 sortOrder: 0,
                 fields: [
-                    .init(id: "scope-notes", label: "Scope notes", kind: .longText, sortOrder: 10),
+                    .init(id: "scope-of-work", label: "Scope of work", kind: .longText, required: true, sortOrder: 10),
                     .init(id: "site-photos", label: "Site photos", kind: .photo, sortOrder: 20),
                     .init(id: "measurements", label: "Measurements", kind: .measurement, sortOrder: 30),
+                    .init(id: "access-parking", label: "Access & parking", kind: .shortText, helpText: "Gate codes, parking, pets", sortOrder: 40),
+                    .init(id: "client-priorities", label: "What the client wants", kind: .longText, sortOrder: 50),
                 ]
             ),
+            // Diagnose / repair a reported problem.
             SiteVisitType(
-                id: "system-\(companyId)-deck-estimate",
+                id: "system-\(companyId)-service-call",
                 companyId: companyId,
-                slug: "deck_estimate",
-                name: "Deck Estimate",
-                descriptionText: "Deck scope, photos, measurements, and design.",
+                slug: "service_call",
+                name: "Service Call",
+                descriptionText: "Diagnose and fix a reported issue.",
                 isSystemTemplate: true,
                 sortOrder: 10,
-                fields: deckFields
+                fields: [
+                    .init(id: "reported-issue", label: "Reported issue", kind: .longText, required: true, sortOrder: 10),
+                    .init(id: "service-photos", label: "Photos", kind: .photo, sortOrder: 20),
+                    .init(id: "work-done", label: "Work done & findings", kind: .longText, sortOrder: 30),
+                    .init(id: "return-needed", label: "Return visit needed", kind: .yesNoNA, sortOrder: 40),
+                ]
             ),
+            // Take-offs for an install.
             SiteVisitType(
-                id: "system-\(companyId)-repair-inspection",
+                id: "system-\(companyId)-measure-survey",
                 companyId: companyId,
-                slug: "repair_inspection",
-                name: "Repair Inspection",
-                descriptionText: "Defect, cause, access, and photo evidence.",
+                slug: "measure_survey",
+                name: "Measure / Survey",
+                descriptionText: "Take measurements and document conditions.",
                 isSystemTemplate: true,
                 sortOrder: 20,
                 fields: [
-                    .init(id: "reported-issue", label: "Reported issue", kind: .longText, required: true, sortOrder: 10),
-                    .init(id: "cause", label: "Likely cause", kind: .shortText, sortOrder: 20),
-                    .init(id: "repair-photos", label: "Repair photos", kind: .photoMarkup, required: true, sortOrder: 30),
-                    .init(id: "access", label: "Access clear", kind: .yesNoNA, sortOrder: 40),
+                    .init(id: "measurements", label: "Measurements", kind: .measurement, required: true, sortOrder: 10),
+                    .init(id: "site-photos", label: "Site photos", kind: .photo, sortOrder: 20),
+                    .init(id: "conditions", label: "Conditions & obstructions", kind: .longText, sortOrder: 30),
                 ]
             ),
         ]
+
+        if deckBuilderEnabled {
+            templates.append(
+                SiteVisitType(
+                    id: "system-\(companyId)-deck-estimate",
+                    companyId: companyId,
+                    slug: "deck_estimate",
+                    name: "Deck",
+                    descriptionText: "Deck scope, photos, measurements, and design.",
+                    isSystemTemplate: true,
+                    sortOrder: 30,
+                    fields: [
+                        .init(id: "client-goals", label: "What the client wants", kind: .longText, sortOrder: 10),
+                        .init(id: "existing-structure", label: "Existing structure", kind: .photoMarkup, sortOrder: 20),
+                        .init(id: "field-measurements", label: "Field measurements", kind: .measurement, required: true, sortOrder: 30),
+                        .init(id: "deck-design", label: "Deck design", kind: .deckDesign, required: true, sortOrder: 40),
+                    ]
+                )
+            )
+        }
+
+        return templates
     }
 }
 

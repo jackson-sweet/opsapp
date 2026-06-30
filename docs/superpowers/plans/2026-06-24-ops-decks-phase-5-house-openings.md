@@ -703,10 +703,10 @@ private static func renderHouseOpenings(
 - `test_no_openings_no_overlay_anchors()` — empty → `[]`.
 - Plan-view snapshot attachment for human review.
 
-- [ ] **Step 1 — Extract `openingGlyphAnchors`; write tests; run, expect FAIL.**
-- [ ] **Step 2 — Implement the anchors + the CG overlay pass; wire into `renderToPNG`.**
-- [ ] **Step 3 — Run, expect `TEST SUCCEEDED`; inspect snapshot.**
-- [ ] **Step 4 — Commit** (`feat(decks-p5): plan-view door/window glyphs + callouts`).
+- [x] **Step 1 — Extract `openingGlyphAnchors`; write tests; run, expect FAIL.**
+- [x] **Step 2 — Implement the anchors + the CG overlay pass; wire into `renderToPNG`.**
+- [x] **Step 3 — Run, expect `TEST SUCCEEDED`; inspect snapshot.**
+- [x] **Step 4 — Commit** (`feat(decks-p5): plan-view door/window glyphs + callouts`).
 
 **Dependencies:** T1, T7; existing `DeckRenderer` transform.
 **References:** `Rendering/DeckRenderer.swift:13`; roadmap §2.4 "Door/window schedule + plan callouts".

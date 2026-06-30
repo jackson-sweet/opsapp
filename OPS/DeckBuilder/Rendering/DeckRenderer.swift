@@ -2,6 +2,7 @@
 
 import UIKit
 import DeckKit
+import OPSDesignKit
 import SwiftUI
 
 struct DeckRenderer {
@@ -44,9 +45,17 @@ struct DeckRenderer {
 
             let offsetX = padding + (availableSize.width - bounds.width * fitScale) / 2 - bounds.origin.x * fitScale
             let offsetY = padding + (availableSize.height - bounds.height * fitScale) / 2 - bounds.origin.y * fitScale
+            let canvasToImageTransform = CGAffineTransform(
+                a: fitScale,
+                b: 0,
+                c: 0,
+                d: fitScale,
+                tx: offsetX,
+                ty: offsetY
+            )
 
             func transform(_ point: CGPoint) -> CGPoint {
-                CGPoint(x: point.x * fitScale + offsetX, y: point.y * fitScale + offsetY)
+                point.applying(canvasToImageTransform)
             }
 
             if drawingData.isMultiLevel {
@@ -249,6 +258,12 @@ struct DeckRenderer {
                     gc.fillEllipse(in: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8))
                 }
             }
+
+            renderHouseOpenings(
+                gc: gc,
+                data: drawingData,
+                transform: canvasToImageTransform
+            )
         }
         return image
     }
@@ -273,6 +288,220 @@ struct DeckRenderer {
         )
 
         return publicUrl
+    }
+
+    // MARK: - House Opening Overlay
+
+    private static func renderHouseOpenings(
+        gc: CGContext,
+        data: DeckDrawingData,
+        transform: CGAffineTransform
+    ) {
+        let anchors = DeckPlanOpeningOverlay.openingGlyphAnchors(
+            data: data,
+            transform: transform
+        )
+        guard !anchors.isEmpty else { return }
+
+        let tokens = HouseOpeningPlanOverlayTokens()
+        let palette = HouseOpeningPlanOverlayPalette()
+
+        gc.saveGState()
+        gc.setLineCap(.butt)
+        gc.setLineJoin(.miter)
+
+        for anchor in anchors {
+            drawHouseOpeningBreak(
+                anchor,
+                gc: gc,
+                tokens: tokens,
+                palette: palette
+            )
+
+            if isDoor(anchor.kind) {
+                drawDoorSwing(
+                    anchor,
+                    gc: gc,
+                    tokens: tokens,
+                    palette: palette
+                )
+            } else {
+                drawWindowMullions(
+                    anchor,
+                    gc: gc,
+                    tokens: tokens,
+                    palette: palette
+                )
+            }
+
+            drawOpeningCallout(
+                anchor,
+                gc: gc,
+                tokens: tokens,
+                palette: palette
+            )
+        }
+
+        gc.restoreGState()
+    }
+
+    private static func drawHouseOpeningBreak(
+        _ anchor: DeckPlanOpeningGlyphAnchor,
+        gc: CGContext,
+        tokens: HouseOpeningPlanOverlayTokens,
+        palette: HouseOpeningPlanOverlayPalette
+    ) {
+        let endpoints = openingEndpoints(anchor)
+
+        gc.setStrokeColor(palette.gap.cgColor)
+        gc.setLineWidth(tokens.wallBreakLineWidth)
+        gc.beginPath()
+        gc.move(to: endpoints.start)
+        gc.addLine(to: endpoints.end)
+        gc.strokePath()
+
+        gc.setStrokeColor(palette.glyph.cgColor)
+        gc.setLineWidth(tokens.hairlineWidth)
+        gc.beginPath()
+        gc.move(to: endpoints.start)
+        gc.addLine(to: endpoints.end)
+        gc.strokePath()
+    }
+
+    private static func drawDoorSwing(
+        _ anchor: DeckPlanOpeningGlyphAnchor,
+        gc: CGContext,
+        tokens: HouseOpeningPlanOverlayTokens,
+        palette: HouseOpeningPlanOverlayPalette
+    ) {
+        let endpoints = openingEndpoints(anchor)
+        let radius = min(anchor.openingWidthPoints, tokens.doorSwingRadius)
+        guard radius > 0 else { return }
+
+        let hinge = endpoints.start
+        let leafEnd = CGPoint(
+            x: hinge.x + anchor.normal.dx * radius,
+            y: hinge.y + anchor.normal.dy * radius
+        )
+        let tangentAngle = atan2(anchor.tangent.dy, anchor.tangent.dx)
+        let normalAngle = atan2(anchor.normal.dy, anchor.normal.dx)
+
+        gc.setStrokeColor(palette.glyph.cgColor)
+        gc.setLineWidth(tokens.hairlineWidth)
+        gc.beginPath()
+        gc.move(to: hinge)
+        gc.addLine(to: leafEnd)
+        gc.strokePath()
+
+        gc.beginPath()
+        gc.addArc(
+            center: hinge,
+            radius: radius,
+            startAngle: tangentAngle,
+            endAngle: normalAngle,
+            clockwise: false
+        )
+        gc.strokePath()
+    }
+
+    private static func drawWindowMullions(
+        _ anchor: DeckPlanOpeningGlyphAnchor,
+        gc: CGContext,
+        tokens: HouseOpeningPlanOverlayTokens,
+        palette: HouseOpeningPlanOverlayPalette
+    ) {
+        let endpoints = openingEndpoints(anchor)
+        gc.setStrokeColor(palette.glyph.cgColor)
+        gc.setLineWidth(tokens.hairlineWidth)
+
+        for offset in [-tokens.windowMullionOffset, tokens.windowMullionOffset] {
+            let start = CGPoint(
+                x: endpoints.start.x + anchor.normal.dx * offset,
+                y: endpoints.start.y + anchor.normal.dy * offset
+            )
+            let end = CGPoint(
+                x: endpoints.end.x + anchor.normal.dx * offset,
+                y: endpoints.end.y + anchor.normal.dy * offset
+            )
+            gc.beginPath()
+            gc.move(to: start)
+            gc.addLine(to: end)
+            gc.strokePath()
+        }
+    }
+
+    private static func drawOpeningCallout(
+        _ anchor: DeckPlanOpeningGlyphAnchor,
+        gc: CGContext,
+        tokens: HouseOpeningPlanOverlayTokens,
+        palette: HouseOpeningPlanOverlayPalette
+    ) {
+        let calloutCenter = CGPoint(
+            x: anchor.point.x + anchor.normal.dx * tokens.calloutOffset,
+            y: anchor.point.y + anchor.normal.dy * tokens.calloutOffset
+        )
+        let calloutRect = CGRect(
+            x: calloutCenter.x - tokens.calloutDiameter / 2,
+            y: calloutCenter.y - tokens.calloutDiameter / 2,
+            width: tokens.calloutDiameter,
+            height: tokens.calloutDiameter
+        )
+
+        gc.setStrokeColor(palette.leader.cgColor)
+        gc.setLineWidth(tokens.hairlineWidth)
+        gc.beginPath()
+        gc.move(to: anchor.point)
+        gc.addLine(to: calloutCenter)
+        gc.strokePath()
+
+        gc.setFillColor(palette.calloutFill.cgColor)
+        gc.fillEllipse(in: calloutRect)
+        gc.setStrokeColor(palette.calloutStroke.cgColor)
+        gc.setLineWidth(tokens.hairlineWidth)
+        gc.strokeEllipse(in: calloutRect)
+
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: tokens.calloutFont,
+            .foregroundColor: palette.calloutText,
+            .paragraphStyle: paragraph,
+        ]
+        let textRect = calloutRect.offsetBy(
+            dx: 0,
+            dy: (calloutRect.height - tokens.calloutFont.lineHeight) / 2
+        )
+        (anchor.tag as NSString).draw(
+            with: textRect,
+            options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
+            attributes: attributes,
+            context: nil
+        )
+    }
+
+    private static func openingEndpoints(
+        _ anchor: DeckPlanOpeningGlyphAnchor
+    ) -> (start: CGPoint, end: CGPoint) {
+        let halfWidth = anchor.openingWidthPoints / 2
+        return (
+            start: CGPoint(
+                x: anchor.point.x - anchor.tangent.dx * halfWidth,
+                y: anchor.point.y - anchor.tangent.dy * halfWidth
+            ),
+            end: CGPoint(
+                x: anchor.point.x + anchor.tangent.dx * halfWidth,
+                y: anchor.point.y + anchor.tangent.dy * halfWidth
+            )
+        )
+    }
+
+    private static func isDoor(_ kind: OpeningKind) -> Bool {
+        switch kind {
+        case .patioDoor, .frenchDoor, .sliderDoor:
+            return true
+        case .window:
+            return false
+        }
     }
 
     // MARK: - Edge Stair Rendering (bug 3d72ce0b)
@@ -466,6 +695,28 @@ struct DeckRenderer {
             maxY = max(maxY, p.y)
         }
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    private struct HouseOpeningPlanOverlayTokens {
+        let wallBreakLineWidth = OPSStyle.Layout.Border.thick + OPSStyle.Layout.Border.standard
+        let hairlineWidth = OPSStyle.Layout.Border.standard
+        let windowMullionOffset = OPSStyle.Layout.spacing1
+        let doorSwingRadius = OPSStyle.Layout.spacing5
+        let calloutDiameter = OPSStyle.Layout.IconSize.lg
+        let calloutOffset = OPSStyle.Layout.spacing5
+        let calloutFont = UIFont.monospacedSystemFont(
+            ofSize: OPSStyle.Layout.spacing2_5,
+            weight: .semibold
+        )
+    }
+
+    private struct HouseOpeningPlanOverlayPalette {
+        let gap = UIColor(OPSStyle.Colors.background)
+        let glyph = UIColor(OPSStyle.Colors.text)
+        let leader = UIColor(OPSStyle.Colors.text2)
+        let calloutFill = UIColor(OPSStyle.Colors.glassDenseApprox)
+        let calloutStroke = UIColor(OPSStyle.Colors.text2)
+        let calloutText = UIColor(OPSStyle.Colors.text)
     }
 
     enum DeckRendererError: Error {

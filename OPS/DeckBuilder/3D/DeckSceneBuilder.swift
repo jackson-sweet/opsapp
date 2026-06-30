@@ -135,6 +135,7 @@ struct DeckSceneBuilder {
                     framingLevelId: level.id,
                     framingCanvasCenter: sharedCenter,
                     houseWallCapM: houseWallCapM,
+                    house: drawingData.house,
                     surfacesIn3D: surfacesIn3D
                 )
             }
@@ -214,6 +215,7 @@ struct DeckSceneBuilder {
                 framing: drawingData.framing,
                 framingLevelId: "",
                 framingCanvasCenter: sharedCenter,
+                house: drawingData.house,
                 surfacesIn3D: surfacesIn3D
             )
         }
@@ -364,6 +366,7 @@ struct DeckSceneBuilder {
         framingCanvasCenter: CGPoint? = nil,
         skipHouseWall: Bool = false,
         houseWallCapM: Float? = nil,  // bug fb007839 — wall cap on multi-level designs
+        house: HouseModel? = nil,
         surfacesIn3D: [SurfaceMesh3D]? = nil  // DECK-NEW-1 — per-surface meshes + materials
     ) {
         let deckGroup = SCNNode()
@@ -488,7 +491,10 @@ struct DeckSceneBuilder {
                     end: endPos3D,
                     deckElevationM: elevationM,
                     maxHeightM: houseWallCapM,
-                    material: edge.houseEdgeMaterial
+                    material: edge.houseEdgeMaterial,
+                    openings: house?.openings.filter { $0.edgeId == edge.id } ?? [],
+                    wallLengthInches: edgeLengthInches,
+                    storyHeightInches: house?.storyHeights.first.map { $0 * 12 } ?? 96
                 )
             }
         }
@@ -1219,7 +1225,10 @@ struct DeckSceneBuilder {
         end: SCNVector3,
         deckElevationM: Float,
         maxHeightM: Float? = nil,
-        material: HouseEdgeMaterial? = nil
+        material: HouseEdgeMaterial? = nil,
+        openings: [WallOpening] = [],
+        wallLengthInches: Double = 0,
+        storyHeightInches: Double = 96
     ) {
         // The wall rises from the deck surface upward (not from the ground)
         // so house edges read as a wall section the deck attaches to.
@@ -1259,6 +1268,22 @@ struct DeckSceneBuilder {
         let wallBottom = deckElevationM
         let wallTop = deckElevationM + wallHeight
 
+        if !openings.isEmpty {
+            let wallNode = buildHouseWallWithOpenings(
+                start: start,
+                end: end,
+                wallBottomM: wallBottom,
+                wallHeightM: wallHeight,
+                wallLengthInches: wallLengthInches,
+                storyHeightInches: storyHeightInches,
+                openings: openings,
+                material: makeMaterial(color: wallColor)
+            )
+            wallNode.name = "houseWall"
+            parent.addChildNode(wallNode)
+            return
+        }
+
         let wallNode = buildSpanningBox(
             from: start, to: end,
             yCenter: (wallBottom + wallTop) / 2,
@@ -1268,6 +1293,72 @@ struct DeckSceneBuilder {
         )
         wallNode.name = "houseWall"
         parent.addChildNode(wallNode)
+    }
+
+    static func wallFacePath(
+        wallLengthInches: Double,
+        wallHeightInches: Double,
+        openings: [WallOpening],
+        storyHeightInches: Double
+    ) -> UIBezierPath {
+        let wallRect = CGRect(
+            x: 0,
+            y: 0,
+            width: max(0, wallLengthInches),
+            height: max(0, wallHeightInches)
+        )
+        let path = UIBezierPath(rect: wallRect)
+        path.usesEvenOddFillRule = true
+
+        for opening in openings {
+            guard let profile = WallOpeningGeometry.cutoutProfile3D(
+                opening,
+                storyHeightInches: storyHeightInches
+            ) else { continue }
+            let clipped = profile.intersection(wallRect)
+            guard !clipped.isNull,
+                  clipped.width > 0,
+                  clipped.height > 0 else { continue }
+            path.append(UIBezierPath(rect: clipped))
+        }
+
+        return path
+    }
+
+    private static func buildHouseWallWithOpenings(
+        start: SCNVector3,
+        end: SCNVector3,
+        wallBottomM: Float,
+        wallHeightM: Float,
+        wallLengthInches: Double,
+        storyHeightInches: Double,
+        openings: [WallOpening],
+        material: SCNMaterial
+    ) -> SCNNode {
+        let wallHeightInches = Double(wallHeightM / inchesToMeters)
+        let path = wallFacePath(
+            wallLengthInches: wallLengthInches,
+            wallHeightInches: wallHeightInches,
+            openings: openings,
+            storyHeightInches: storyHeightInches
+        )
+        let shape = SCNShape(path: path, extrusionDepth: CGFloat(2.0 * inchesToMeters))
+        shape.firstMaterial = material
+
+        let node = SCNNode(geometry: shape)
+        node.position = SCNVector3(start.x, wallBottomM, start.z)
+        node.simdScale = SIMD3<Float>(inchesToMeters, inchesToMeters, 1)
+        node.simdOrientation = wallOpeningOrientation(from: start, to: end)
+        return node
+    }
+
+    private static func wallOpeningOrientation(from start: SCNVector3, to end: SCNVector3) -> simd_quatf {
+        let delta = SIMD3<Float>(end.x - start.x, 0, end.z - start.z)
+        guard simd_length(delta) > 1e-6 else { return simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0)) }
+        let xAxis = simd_normalize(delta)
+        let yAxis = SIMD3<Float>(0, 1, 0)
+        let zAxis = simd_normalize(simd_cross(xAxis, yAxis))
+        return simd_quatf(simd_float3x3(columns: (xAxis, yAxis, zAxis)))
     }
 
     // MARK: - Rim Joist

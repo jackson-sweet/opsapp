@@ -56,7 +56,9 @@ public struct DimensionedCaptureView: View {
     // the sync call and calibration continuity; the parent owns dismissal +
     // error UX so the action bar can route the user back to the project on
     // success.
+    let saveOverride: ((CapturedAssets, DimensionsData) async throws -> DimensionedAnnotationSaveResult)?
     let onSavedSuccessfully: (PhotoAnnotation) -> Void
+    let onSavedLocally: () -> Void
     let onError: (Error) -> Void
 
     @StateObject private var coordinatorBox = CoordinatorBox()
@@ -82,7 +84,9 @@ public struct DimensionedCaptureView: View {
         companyId: String = "",
         userId: String = "",
         developerFlagOverride: Bool = false,
+        saveOverride: ((CapturedAssets, DimensionsData) async throws -> DimensionedAnnotationSaveResult)? = nil,
         onSavedSuccessfully: @escaping (PhotoAnnotation) -> Void = { _ in },
+        onSavedLocally: @escaping () -> Void = {},
         onError: @escaping (Error) -> Void = { _ in }
     ) {
         self.injectedCoordinator = coordinator
@@ -92,7 +96,9 @@ public struct DimensionedCaptureView: View {
         self.companyId = companyId
         self.userId = userId
         self.developerFlagOverride = developerFlagOverride
+        self.saveOverride = saveOverride
         self.onSavedSuccessfully = onSavedSuccessfully
+        self.onSavedLocally = onSavedLocally
         self.onError = onError
     }
 
@@ -681,6 +687,16 @@ public struct DimensionedCaptureView: View {
         assets: CapturedAssets,
         dimensions: DimensionsData
     ) async throws -> DimensionedAnnotationSaveResult {
+        if let saveOverride {
+            let result = try await saveOverride(assets, dimensions)
+            if result == .synced {
+                pendingAnnotation = nil
+                onSavedLocally()
+                dismiss()
+            }
+            return result
+        }
+
         do {
             let annotation = try await DimensionedPhotoSyncManager.shared.sync(
                 captured: assets,

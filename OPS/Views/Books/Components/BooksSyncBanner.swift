@@ -36,16 +36,19 @@ struct BooksSyncBanner: View {
     private var dotColor: Color {
         switch state {
         case .syncing: return OPSStyle.Colors.tertiaryText
-        case .offline, .error: return OPSStyle.Colors.roseMobile
+        // A failed refresh or dropped connection is not a fault — cached data is
+        // still on screen. Amber (tanMobile), never red, so it reads as a state,
+        // not an alarm.
+        case .offline, .error: return OPSStyle.Colors.tanMobile
         }
     }
 
     private var labelText: String {
-        let ts = lastSyncedAt.map { Self.timestampFormatter.string(from: $0) } ?? "—"
+        let ts = lastSyncedAt.map { Self.timestampFormatter.string(from: $0) }
         switch state {
-        case .syncing: return "SYS :: SYNC · \(ts)"
-        case .offline: return "SYS :: OFFLINE · CACHED \(ts)"
-        case .error:   return "SYS :: ERROR · LAST \(ts)"
+        case .syncing: return "SYNCING"
+        case .offline: return ts.map { "OFFLINE · SYNCED \($0)" } ?? "OFFLINE"
+        case .error:   return ts.map { "COULDN'T REFRESH · SYNCED \($0)" } ?? "COULDN'T REFRESH"
         }
     }
 
@@ -81,7 +84,7 @@ struct BooksSyncBanner: View {
                     Text("RETRY")
                         .font(.custom("CakeMono-Light", size: 11))
                         .tracking(1.3)
-                        .foregroundColor(OPSStyle.Colors.roseMobile)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Retry sync")

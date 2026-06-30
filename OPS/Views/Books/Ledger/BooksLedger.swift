@@ -86,7 +86,7 @@ struct BooksLedger: View {
     private var invoiceContent: some View {
         if invoiceRows.isEmpty {
             if invoiceVM.invoices.isEmpty {
-                BooksLedgerEmpty(value: "$0", label: "NO INVOICES", hint: "INVOICES APPEAR WHEN ESTIMATES ARE WON")
+                BooksLedgerEmpty(value: "$0", label: "NO INVOICES", hint: "INVOICES COME FROM WON ESTIMATES")
             } else {
                 BooksLedgerEmpty(value: "$0", label: "NO MATCHES", hint: "NOTHING IN THIS FILTER")
             }
@@ -129,7 +129,7 @@ struct BooksLedger: View {
     private var estimateContent: some View {
         if estimateRows.isEmpty {
             if estimateVM.estimates.isEmpty {
-                BooksLedgerEmpty(value: "$0", label: "NO ESTIMATES", hint: "QUOTE A JOB TO GET STARTED",
+                BooksLedgerEmpty(value: "$0", label: "NO ESTIMATES", hint: "QUOTE YOUR FIRST JOB",
                                  ctaTitle: "NEW ESTIMATE", onCreate: { showCreateEstimate = true })
             } else {
                 BooksLedgerEmpty(value: "$0", label: "NO MATCHES", hint: "NOTHING IN THIS FILTER")

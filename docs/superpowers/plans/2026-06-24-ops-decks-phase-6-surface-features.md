@@ -369,17 +369,24 @@ public enum StairDetailEngine {
         stringerSpacingInchesOC: Double,
         species: WoodSpecies,
         grade: LumberGrade,
-        package: CodePackage
+        package: CodePackage,
+        stringerType: StairStringerType = .notchedWoodOpen,
+        winder: StairWinderSpec? = nil
     ) -> StairDetailResult
 }
 public enum TreadType: String, Codable, CaseIterable { case openRiser = "open_riser", closedRiser = "closed_riser" }
+public enum StairStringerType: String, Codable, CaseIterable {
+    case notchedWoodOpen = "notched_wood_open", closedWood = "closed_wood", steel
+}
 public struct StairDetailResult: Codable, Equatable {
     public var stringerCount: Int
     public var stringerSpacingInchesOC: Double
+    public var stringerType: StairStringerType
     /// Stringer member sizing — delegated to StructuralSizingEngine; carries the
     /// EngineOutcome envelope (result + limiting check + cited section + edition).
     public var stringerSizing: MemberSizingResult?
     public var treadType: TreadType
+    public var treadMaterial: String
     public var noseProjectionInches: Double          // R311.7.5.3 (≥ 0.75", ≤ 1.25")
     public var landings: [StairLanding]              // R311.7.6 — empty if none required
     public var winders: [WinderTread]                // R311.7.5.2.1 — empty if straight flight
@@ -387,6 +394,7 @@ public struct StairDetailResult: Codable, Equatable {
     public var handrailCodeSection: String
 }
 public struct StairLanding: Codable, Equatable { public var afterRiserIndex: Int; public var depthInches: Double }
+public struct StairWinderSpec: Codable, Equatable { public var turnDegrees: Double; public var treadCount: Int }
 public struct WinderTread: Codable, Equatable {
     public var index: Int; public var innerRunInches: Double; public var walklineRunInches: Double
 }
@@ -399,15 +407,20 @@ public struct WinderTread: Codable, Equatable {
 - `testLandingInserted_whenRiseExceedsMax` — a total rise exceeding the package's max single-flight vertical (e.g. 147″ per R311.7.3) → exactly one `StairLanding` at the correct riser index with `depthInches >= width` (≥ 36″ min).
 - `testWinderGeometry_walkline` — a winder flight → `walklineRunInches` measured 12″ from the narrow end ≥ the package min run; `innerRunInches >= 6` (R311.7.5.2.1).
 - `testNosing_withinRange` — `noseProjectionInches` between 0.75 and 1.25 for closed-riser; open-riser has its own rule (4″ sphere).
+- `testSteelStringerDoesNotUseWoodNotchedStringerRows` — steel stringers hard-stop unless the code package includes a steel-specific stringer row; never reuse wood notched-stringer rows.
 - Date/dimension brittleness: never hardcode; derive expecteds from the fixture `CodePackage.stairRules` cells.
 
 Key assertions: `StairCalculator` untouched + reused; stringer sizing routed through `StructuralSizingEngine` (inherits hard-stop); handrail/landing/winder code triggers + cited sections.
 
-**Dependencies:** `StairCalculator.StairSpec`/`StairConfig` (existing, **unchanged**); `StructuralSizingEngine.postSizing`/`beamSizing`/`sizeAll` + `MemberSizingResult` + `EngineOutcome` **[P3, C§3.1]**; `CodePackage.stairRules` **[P3, C§3.4]**; `WoodSpecies`/`LumberGrade` **[P2]**.
+**Dependencies:** `StairCalculator.StairSpec`/`StairConfig` (existing, **unchanged**); `MemberSizingResult` + `EngineOutcome` (existing P2 envelope); `WoodSpecies`/`LumberGrade` **[P2]**; `CodePackage.stairRules` and `StructuralSizingEngine.stringerSizing` (implemented here as the stair-only package-backed slice because the broader P3 structural package is not present in this worktree).
 
 **References:** C§3.6 (`StairCalculator` unchanged, detail around it); IRC R311.7.5 (treads/nosing), R311.7.5.2.1 (winders), R311.7.6 (landings), R311.7.8 (handrails); DCA6 stair guidance (stringer sizing).
 
 **Risks:** Winder geometry is `VH` complexity (roadmap §2.6) — the walkline + inner-radius math must be exact or it's a safety claim that's wrong. Scope v1 winders to the common 90° L-turn winder set, hard-stop curved/spiral to PE (`outOfEnvelope`). Stringer sizing as a notched member is *not* a plain joist span — model the net section (notch reduces depth); if the package lacks a notched-stringer table, hard-stop rather than mis-applying the joist table (§6.5).
+
+**Implementation status (2026-06-30):** Complete. Added `Engine/StairDetailEngine.swift`, a stair-only `Engine/StructuralSizingEngine.swift` entry point for package-backed stringer sizing, and additive `CodePackage` stair-rule structs (`PackageUnits`, `StairRules`, `StairStringerType`, `StairStringerSizingRow`). `StairCalculator` was not modified. The detail result now preserves tread material tokens and stringer type, computes handrail trigger, landing placement, 90-degree winder treads, closed/open-riser nosing, and emits `MemberSizingResult.outOfEnvelope` instead of a fabricated size when a notched/closed/steel stringer row is missing or outside the package envelope.
+
+**Verification (2026-06-30):** `swift test --package-path Packages/DeckKit --filter StairDetailEngineTests` (7 tests), `swift test --package-path Packages/DeckKit` (427 tests), `scripts/verify-ops-decks-style-tokens.sh .`, `git diff --check`, and `xcodebuild -project OPS.xcodeproj -scheme OPSDecks -destination generic/platform=iOS -derivedDataPath /private/tmp/ops-decks-p6-task5-OPSDecks-dd CODE_SIGNING_ALLOWED=NO build` all passed.
 
 ---
 

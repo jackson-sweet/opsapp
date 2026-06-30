@@ -33,6 +33,7 @@ struct DeckSceneBuilder {
     private static let topRailThicknessM: Float = 2.0 * inchesToMeters
     private static let treadThicknessM: Float = 1.5 * inchesToMeters  // 1.5" thick tread
     private static let houseWallHeightM: Float = 8.0 * feetToMeters   // 8' wall above deck
+    private static let defaultDeckBoardWidthInches: Double = 5.5
 
     // MARK: - Main Build
 
@@ -90,6 +91,7 @@ struct DeckSceneBuilder {
                     )
                     let resolved = resolvedSurfacePresentation(for: face, in: level.surfaces)
                     return SurfaceMesh3D(
+                        surfaceId: resolved.surfaceId,
                         positionsInMeters: metersPositions,
                         vertexIds: face.vertexIds,
                         assignedItems: resolved.assignedItems,
@@ -136,6 +138,7 @@ struct DeckSceneBuilder {
                     framingCanvasCenter: sharedCenter,
                     houseWallCapM: houseWallCapM,
                     house: drawingData.house,
+                    surfaceFeatures: drawingData.surfaceFeatures,
                     surfacesIn3D: surfacesIn3D
                 )
             }
@@ -143,6 +146,16 @@ struct DeckSceneBuilder {
             for connection in drawingData.levelConnections {
                 buildLevelConnection(parent: scene.rootNode, connection: connection, drawingData: drawingData, scaleFactor: scaleFactor, center: sharedCenter)
             }
+            let overheadElevationM = drawingData.levels.enumerated()
+                .map { Float(drawingData.renderElevationFeet(for: $0.element, levelIndex: $0.offset)) * feetToMeters }
+                .max() ?? 0
+            buildOverheadStructures(
+                parent: scene.rootNode,
+                overhead: drawingData.overhead,
+                scaleFactor: scaleFactor,
+                center: sharedCenter,
+                deckElevationM: overheadElevationM
+            )
         } else {
             // DECK-NEW-1 — same multi-surface treatment for single-level designs.
             let detected = drawingData.detectedSurfaces
@@ -177,6 +190,7 @@ struct DeckSceneBuilder {
                 )
                 let resolved = resolvedSurfacePresentation(for: face, in: drawingData.surfaces)
                 return SurfaceMesh3D(
+                    surfaceId: resolved.surfaceId,
                     positionsInMeters: metersPositions,
                     vertexIds: face.vertexIds,
                     assignedItems: resolved.assignedItems,
@@ -216,7 +230,15 @@ struct DeckSceneBuilder {
                 framingLevelId: "",
                 framingCanvasCenter: sharedCenter,
                 house: drawingData.house,
+                surfaceFeatures: drawingData.surfaceFeatures,
                 surfacesIn3D: surfacesIn3D
+            )
+            buildOverheadStructures(
+                parent: scene.rootNode,
+                overhead: drawingData.overhead,
+                scaleFactor: scaleFactor,
+                center: sharedCenter,
+                deckElevationM: elevationM
             )
         }
 
@@ -346,11 +368,28 @@ struct DeckSceneBuilder {
     /// than every face inheriting the legacy single-footprint material.
     /// DECK-NEW-1 follow-up.
     struct SurfaceMesh3D {
+        let surfaceId: String?
         let positionsInMeters: [CGPoint]
         let vertexIds: [String]   // ordered, matching positions
         let assignedItems: [AssignedItem]
         let color: String
         let boardMaterial: String
+
+        init(
+            surfaceId: String? = nil,
+            positionsInMeters: [CGPoint],
+            vertexIds: [String],
+            assignedItems: [AssignedItem],
+            color: String,
+            boardMaterial: String
+        ) {
+            self.surfaceId = surfaceId
+            self.positionsInMeters = positionsInMeters
+            self.vertexIds = vertexIds
+            self.assignedItems = assignedItems
+            self.color = color
+            self.boardMaterial = boardMaterial
+        }
     }
 
     private static func buildDeckLevel(
@@ -367,6 +406,7 @@ struct DeckSceneBuilder {
         skipHouseWall: Bool = false,
         houseWallCapM: Float? = nil,  // bug fb007839 — wall cap on multi-level designs
         house: HouseModel? = nil,
+        surfaceFeatures: SurfaceFeaturePlan? = nil,
         surfacesIn3D: [SurfaceMesh3D]? = nil  // DECK-NEW-1 — per-surface meshes + materials
     ) {
         let deckGroup = SCNNode()
@@ -378,6 +418,7 @@ struct DeckSceneBuilder {
         // surfaces (single-loop legacy path).
         let surfaces = surfacesIn3D ?? [
             SurfaceMesh3D(
+                surfaceId: nil,
                 positionsInMeters: vertices2D,
                 vertexIds: [],
                 assignedItems: [],
@@ -396,7 +437,24 @@ struct DeckSceneBuilder {
         }
         let deckingLayer = SCNNode()
         deckingLayer.name = FramingLayer.decking.layerNodeName
+        let patternSpecsBySurfaceId = surfaceFeatures?.patterns.reduce(
+            into: [String: SurfacePatternSpec]()
+        ) { specs, spec in
+            specs[spec.surfaceId] = spec
+        } ?? [:]
         for surf in surfaces {
+            if let surfaceId = surf.surfaceId,
+               let spec = patternSpecsBySurfaceId[surfaceId],
+               let surfaceNode = DeckPatternMeshBuilder.surfaceNode(
+                polygon: surf.positionsInMeters,
+                scaleFactor: 1,
+                spec: spec,
+                boardWidthInches: defaultDeckBoardWidthInches,
+                yHeightMeters: elevationM
+               ) {
+                deckingLayer.addChildNode(surfaceNode)
+                continue
+            }
             guard let surfaceGeo = DeckMeshGenerator.createPolygonGeometry(vertices: surf.positionsInMeters, yHeight: elevationM) else { continue }
             surfaceGeo.firstMaterial = surfaceMaterial(for: surf, levelColor: levelTint)
             let surfaceNode = SCNNode(geometry: surfaceGeo)
@@ -500,6 +558,26 @@ struct DeckSceneBuilder {
         }
 
         parent.addChildNode(deckGroup)
+    }
+
+    private static func buildOverheadStructures(
+        parent: SCNNode,
+        overhead: OverheadStructurePlan?,
+        scaleFactor: Double,
+        center: CGPoint,
+        deckElevationM: Float
+    ) {
+        guard let overhead else { return }
+        for structure in overhead.structures {
+            let node = OverheadSceneNodes.nodes(
+                for: structure,
+                scaleFactor: scaleFactor,
+                center: center,
+                deckElevationMeters: deckElevationM
+            )
+            guard !node.childNodes.isEmpty else { continue }
+            parent.addChildNode(node)
+        }
     }
 
     // MARK: - Support Structure
@@ -1547,10 +1625,10 @@ struct DeckSceneBuilder {
     private static func resolvedSurfacePresentation(
         for detected: DetectedSurface,
         in persisted: [DeckSurface]
-    ) -> (assignedItems: [AssignedItem], color: String, boardMaterial: String) {
+    ) -> (surfaceId: String?, assignedItems: [AssignedItem], color: String, boardMaterial: String) {
         let dSet = Set(detected.vertexIds)
         if let exact = persisted.first(where: { $0.vertexIds == dSet }) {
-            return (exact.assignedItems, exact.color, exact.boardMaterial)
+            return (exact.id, exact.assignedItems, exact.color, exact.boardMaterial)
         }
         var best: (surface: DeckSurface, jaccard: Double)? = nil
         for p in persisted {
@@ -1563,9 +1641,9 @@ struct DeckSceneBuilder {
             }
         }
         if let match = best, match.jaccard >= SurfaceReconciler.rebindThreshold {
-            return (match.surface.assignedItems, match.surface.color, match.surface.boardMaterial)
+            return (match.surface.id, match.surface.assignedItems, match.surface.color, match.surface.boardMaterial)
         }
-        return ([], "Brown", "composite")
+        return (nil, [], "Brown", "composite")
     }
 
     /// Per-surface material. Board-like materials keep the deck board texture;

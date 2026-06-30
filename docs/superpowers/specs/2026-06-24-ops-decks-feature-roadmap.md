@@ -3,7 +3,7 @@
 **Date:** 2026-06-24
 **Status:** Draft for Jackson's review (functionality roadmap; companion to the Phase 1 foundation spec)
 **Companion:** `docs/superpowers/specs/2026-06-24-ops-decks-standalone-app-design.md` (Phase 1 foundation/carve-out)
-**Grounded in:** direct code inspection of 73 files under `OPS/DeckBuilder/` + `OPS/DataModels/DeckDesign.swift`; 8 feature domains benchmarked vs pro tools (RedX Decks, Simpson Deck Planner, Chief Architect) + building code (IRC R507/R311.7/R312, AWC DCA6, NBC/BCBC Part 9); plus a dedicated as-built code-audit study.
+**Grounded in:** direct code inspection of 73 files under `OPS/DeckBuilder/` + `OPS/DataModels/DeckDesign.swift`; official competitor/support documentation for Trex Deck Designer, Decks.com Deck Designer, and Simpson Strong-Tie Deck Planner; building-code/source review against IRC R507/R311.7/R312 and AWC DCA6; plus the as-built code-audit study. Forum/review mining is not assumed complete until a dedicated corpus is captured.
 
 ---
 
@@ -43,7 +43,7 @@ A salesperson in a backyard or an estimator at a desk needs a believable picture
 - House model + door/window placement + wall cutouts + elevation/section drawing views.
 - Roofs / overhead structures with engineered load paths.
 - Decking-pattern + picture-frame engines, board-nesting cut optimization, fastener takeoff, finish takeoff.
-- Setbacks/site plan, the multi-sheet **permit plan set**, the **structural calc report**, the **engineer (PE) stamp workflow**, and CAD interop.
+- Address-aware parcel/zoning precheck, setbacks/site plan, the multi-sheet **permit plan set**, the **structural calc report**, the **engineer (PE) stamp workflow**, and CAD interop.
 - Advanced stairs (tread types, stringer count, landings, winders), lighting/electrical, built-ins.
 - The **as-built CURRENT → TARGET code audit** (§3).
 
@@ -51,9 +51,36 @@ A salesperson in a backyard or an estimator at a desk needs a believable picture
 
 ---
 
+## 1.1 Competitive pain points OPS Decks must beat
+
+Official competitor/support docs surface a clear product gap: existing deck planners can produce attractive 3D views, material lists, and permit-style plans, but they are mostly desktop/laptop workflows and they expose too many structural decisions as hidden defaults, support articles, or late errors.
+
+**Non-negotiable responses:**
+- **Field-native first.** The core draw/measure/edit flow must work on iPhone and iPad in a backyard, offline, in sunlight, with voice dimensions and large touch targets. Mac is the engineering/document desk surface, not the only place the product works.
+- **No hidden joist-direction hacks.** Joist/decking direction is an explicit control with visible arrows, snap handles, and framing consequences. The user must never have to move the deck away from the house to trick the engine into changing joist direction.
+- **Framing is editable, not a black box.** Joist size, beam size, beam role, post spacing, rim/band joists, blocking, hangers, and hardware are inspectable and editable where the tier permits. If a value is locked by LIGHT/default assumptions, the UI says so.
+- **Railing is a real object.** Guard runs can be added, removed, split, copied, assigned by edge, and configured independently for deck runs and stair runs. Railing removal must not be a height workaround.
+- **Errors explain themselves at the geometry.** Permit/export failures, code findings, and calculation conflicts appear live on the offending member or feature, with the reason, assumption, and next action. Do not wait until PDF generation to reveal a red-mark failure.
+- **Brand-neutral by default.** Material, railing, fastener, and hardware catalogs use brand-neutral profiles first, with manufacturer/SKU overlays second. This prevents the app from feeling like a supplier-owned configurator.
+- **Permit outputs stay honest.** Existing tools lean on disclaimers because local AHJ rules, site conditions, and hidden work vary. OPS keeps that honesty but moves useful checks inline: objective negative findings, code-package edition, assumptions, and not-assessable states.
+- **Address-aware zoning becomes a sales weapon.** A contractor who can stand in the yard, enter the site address, show parcel/setback/coverage constraints, and export a city-ready site sheet is doing preconstruction work competitors still leave to office staff or the AHJ counter.
+
 ## 2. Feature roadmap by domain
 
 Complexity: **L** low · **M** medium · **H** high · **VH** very-high. Tier: **LIGHT** / **FULL** / **BOTH** (shared, degrades into LIGHT).
+
+### 2.0 Field-first drawing flow & learning curve
+
+The drawing flow must feel like marking up a jobsite sketch, not operating CAD. Default path:
+1. **Start method:** blank rectangle, common template, photo/sketch scan, AR perimeter/height measure, or duplicate an existing deck.
+2. **House anchor:** mark the house wall/ledger edge first, set floor datum/door threshold if known, then draw outward from that reference.
+3. **Draw perimeter:** tap corners or drag edges; dimensions can be typed, spoken, or captured from AR. Snaps cover square, parallel, perpendicular, 45-degree, equal length, midpoint, offset, and align-to-house.
+4. **Constrain dimensions:** lock key dimensions, enter diagonals for squareness, show unresolved or over-constrained geometry immediately, and allow partial/incomplete shapes to save.
+5. **Assign edges/features:** tap an edge to assign railing, stairs, gate, house/ledger, fascia, beam role, or no-guard condition. Multi-select lets crews assign the same railing/material to multiple runs.
+6. **Preview consequences:** the app shows live surface area, perimeter, height above grade, rough material impact, stair count impact, and where FULL will evaluate code findings.
+7. **Progressive disclosure:** first-time users see one next action at a time; power users get keyboard/Pencil shortcuts, persistent inspectors, and batch edit on iPad/Mac.
+
+Drawing failure states are first-class: impossible geometry, missing house edge, unsupported curve, unresolved dimension, conflicting locked members, not-enough-data-for-code, and export-blocking geometry. Each state must point to the exact edge/member that needs attention.
 
 ### 2.1 Structural framing & load engineering — *the largest net-new build*
 | Feature | Today | Cplx | Tier | Code / dep |
@@ -70,6 +97,29 @@ Complexity: **L** low · **M** medium · **H** high · **VH** very-high. Tier: *
 | Manual framing editor (select/size/move/lock) | none | H | FULL | mirrors Chief Architect edit |
 | Framing-layer 3D render (real members) | partial | M | BOTH | `DeckMeshGenerator` |
 | Framing takeoff/BOM (lumber + hardware + concrete) | partial (footings only) | M | BOTH | `ComponentEmitter` |
+
+**Framing Mode / Structural Mode workflow.** The app needs a first-class mode, not a hidden auto-generated layer:
+1. User draws or imports the deck surface geometry first: perimeter, levels, stairs/landings, height above grade, and deck-surface material direction.
+2. User marks each boundary edge as **house/ledger**, flush beam, drop beam, cantilever/free edge, or freestanding edge. House edges require the wall object and cladding context from §2.4.
+3. User selects framing assumptions: joist direction, joist spacing, default member family, species/grade, pressure-treatment class, live/dead/snow load preset, deflection preset, and jurisdiction/code package when FULL checks are enabled.
+4. The auto-framing engine derives joists, beams, posts, ledgers, rim/band joists, blocking/bridging, hangers, footings, and default hardware from the surface outline.
+5. User manually edits the generated frame: select, move, split, resize, duplicate, delete, lock, unlock, and exclude from auto-regeneration. Locked members remain fixed when the outline changes unless the edit becomes geometrically impossible.
+6. Recompute runs after every geometry or assumption change. LIGHT updates the visual frame and rough BOM only. FULL updates sizing, span/load checks, code overlay findings, calc report data, and permit-plan callouts.
+
+**Member inspector contract.** Every structural member carries source (`auto` / `manual` / `imported`), lock state, phase/tier availability, linked geometry, and BOM impact. Editing a field must state whether it changes geometry, calculation assumptions, material takeoff, hardware takeoff, or code findings.
+
+| Member / feature | Inspector fields and behavior |
+|---|---|
+| **Joist** | nominal + actual size, species/grade, spacing, direction, start/end bearing, span segment(s), cantilever length, tributary width/area, applied load, blocking requirement, hanger/fastener, material SKU/length, cut count, waste source. FULL shows current span vs max span and assumptions. |
+| **Beam** | built-up ply count, nominal + actual size, species/grade or steel profile, dropped/flush role, supported joist spans, post spacing, bearing length, splice locations, reactions, connectors, material/SKU/lengths. |
+| **Post / column** | material/profile, nominal + actual size, height, base/top connection, tributary area/load, supported beam(s), footing link, guard/roof load participation, hardware, cut length. |
+| **Ledger** | house wall link, cladding/WRB condition, ledger size, attachment strategy, flashing, fastener pattern, lateral-load connection, blocked/isolated spans, freestanding fallback state. |
+| **Rim joist / band joist** | structural role, ply count, nominal + actual size, species/grade, edge links, guard-post attachment context, blocking, hold-downs/hardware, splice rules, BOM line. This is distinct from cosmetic fascia. |
+| **Blocking / bridging** | type, bay range, spacing, purpose (edge support, picture-frame, diagonal decking, guard-post blocking, joist stability), material, fastener/hanger impact. |
+| **Hangers / connectors / hardware** | family, size, load direction, fastener schedule, corrosion class, linked members, included/excluded from BOM. Brand-specific SKUs are optional overlays on brand-neutral profiles. |
+| **Cantilevers and span segments** | measured segment, backspan relationship, controlling member, out-of-envelope state, redraw/resize handle, code finding link. |
+
+**LIGHT vs FULL boundary for framing.** LIGHT may visualize a plausible frame, price a rough substructure BOM, and label assumptions as visual/default only. LIGHT must not assert member adequacy, allowable spans, footing adequacy, code status, permit readiness, or inspection outcome. FULL owns those checks and still uses objective-negative language only.
 
 ### 2.2 Footings & foundations
 | Feature | Today | Cplx | Tier | Code / dep |
@@ -93,7 +143,10 @@ Complexity: **L** low · **M** medium · **H** high · **VH** very-high. Tier: *
 | Louvered / adjustable roof (aluminum product) | none | M | FULL | StruXure/Azenco as catalog products |
 | Solid roof / patio cover (shed/gable/hip) + ledger & flashing | none | VH | FULL | IRC App. H + R507 *(App. H paywalled — unverified)* |
 | Engineered members via shared structural engine | partial | VH | FULL | build engine once, apply to deck + overhead |
-| Overhead 3D render + roof covering + estimate + code check | partial | VH | BOTH | extends `ComponentEmitter` |
+| Overhead 3D render + roof covering + estimate | partial | H | BOTH | extends `ComponentEmitter` |
+| Overhead roof/load code findings | none | VH | FULL | routes loads into Phase 3/4 structural engines |
+
+**Roof / pergola / patio-cover config fields.** Overhead structures are modeled as real load paths, not decoration. Fields: type (pergola, louvered roof, shed roof, gable, hip, patio cover), attachment mode (house ledger, wall brackets, freestanding), roof plane geometry, slope/pitch, overhangs, post grid, beams, rafters, purlins, roof covering, ceiling/soffit if present, snow/live/dead/wind uplift assumptions, drainage direction, gutters/downspouts when included, flashing assumptions, and connection hardware. FULL checks must route roof loads into posts/footings/ledger and flag unsupported attachment, out-of-envelope load paths, drainage conflicts, and unverified Appendix H / AHJ conditions without claiming approval.
 
 ### 2.4 House attachment (ledger, doors, windows, cladding, multi-story)
 | Feature | Today | Cplx | Tier | Code / dep |
@@ -108,6 +161,15 @@ Complexity: **L** low · **M** medium · **H** high · **VH** very-high. Tier: *
 | Multi-story deck at upper floor + stairs to grade | partial (multi-level only) | H | FULL | `DeckLevel`, `LevelConnection`, `StairCalculator` |
 | Door/window schedule + plan callouts | none | M | FULL | |
 
+**House wall and opening config.** A house wall is a coordinate surface with a floor datum, exterior grade datum, wall height/story height, wall thickness reference, cladding type, WRB/flashing note, and ledger/attachment strategy. Doors and windows are placed in that wall coordinate system, not as loose annotations.
+
+| Opening / wall object | Required fields |
+|---|---|
+| **Wall / floor datum** | wall segment, origin, floor elevation, story height, wall height, cladding, sheathing/WRB note, ledger-allowed state, freestanding fallback flag. |
+| **Door family** | patio slider, French, hinged, multi-slide, garage/service where needed; rough opening, actual size, sill height, head height, swing/operation type, threshold/drop condition, wall coordinate, trim/casing clearance, cutout geometry, schedule mark. |
+| **Window family** | fixed, slider, casement, awning, double-hung; rough opening, actual size, sill height, head height, operation type, wall coordinate, egress note if user-supplied, cutout geometry, schedule mark. |
+| **Schedules / callouts** | wall elevation labels, opening tags, size schedule, cutout dimensions, ledger conflict notes, flashing/attachment assumptions. |
+
 ### 2.5 Site, terrain & ground
 | Feature | Today | Cplx | Tier | Code / dep |
 |---|---|---|---|---|
@@ -117,10 +179,31 @@ Complexity: **L** low · **M** medium · **H** high · **VH** very-high. Tier: *
 | Height-above-grade engine (post heights + 30″ guard auto-flag) | partial | H | FULL | IRC R312.1.1/.1.2 |
 | Grade-driven stair total-rise & step count | partial | M | FULL | `StairCalculator`; IRC R311.7 |
 | Footing depth from frost line (zip/AHJ-driven) | partial | M | FULL | IRC R403.1.4 |
-| Setbacks & property-line site overlay | none | H | FULL | local zoning (user-supplied) |
+| Address → parcel resolver | none | H | FULL | geocode + parcel/APN lookup; confidence scored |
+| Parcel/property-line site overlay | none | H | FULL | official GIS parcel layer or user-imported survey |
+| Zoning district + overlay lookup | none | VH | FULL | official GIS/open data where available; manual fallback |
+| Setback / coverage / height precheck | none | VH | FULL | local zoning; objective-negative only |
+| Easement / flood / wildfire / coastal / historic overlay flags | none | VH | FULL | source-dependent; advisory/not-assessable states |
 | Drainage / grade-fall check (R401.3) | none | M | FULL | 6″ in 10′; 2% impervious |
 | Multi-level grade & retaining walls | partial | VH | FULL | IRC R404/R403 |
 | Survey/contour import (DWG/DXF) → terrain TIN | none | VH | FULL | **recommend EXCLUDE** — desktop-CAD territory |
+
+**Under-deck / substrate fields.** Site data must include what is under the deck because it affects renderings, drainage notes, access, skirting takeoff, and some permit drawings. Fields: substrate type (soil, concrete, gravel, pavers, grass), slope/fall direction, drainage path, waterproofing or under-deck ceiling, skirting/lattice/enclosure, access panels, minimum clearance, crawl/access zone, obstructions (meters, vents, hose bibbs, AC units, wells, trees), and notes for non-assessable hidden conditions.
+
+**Address-aware zoning precheck.** This is a FULL-tier pre-permit subsystem, not a promise of zoning approval. The user enters a site address or drops a pin; the app geocodes it, resolves the parcel/APN where available, pulls parcel geometry, zoning district, overlay layers, and jurisdiction/AHJ metadata, then checks the proposed deck footprint against the zoning data it can verify.
+
+| Zoning object | Required fields and behavior |
+|---|---|
+| **Site address** | normalized address, geocode provider, match precision (`rooftop` / parcel / interpolated / approximate), confidence, user-confirmed pin, privacy/export consent. |
+| **Parcel** | APN/PID/folio, owner-visible label when allowed, parcel polygon, property-line dimensions, lot area, source URL, source date, data license, confidence, manual survey/import override. |
+| **Jurisdiction / AHJ** | city/county/province/state, permit office, code/zoning package version, official portal URL, contact/inspection notes where available. |
+| **Zoning district** | district code, district name, allowed/accessory-use notes, source citation, source date, linked ordinance section or map layer. |
+| **Zoning constraints** | front/side/rear/flanking setbacks, lot coverage, impervious coverage, structure height, accessory-structure/deck-specific rules, encroachment allowances, stairs/landing projections, corner-lot rules, easements, overlays, and source/confidence per field. |
+| **Manual fallback** | user-entered setback/coverage/height criteria with explicit source label (`user supplied`, `planner email`, `survey`, `permit handout`) and `verify with AHJ` status. |
+
+**Zoning finding model.** Findings attach to the deck footprint, stair footprint, landing, roof/cover projection, railing/guard projection when relevant, or parcel/site layer. Severity states mirror the code overlay: `violation`, `warning`, `out-of-envelope`, `unknown`, and `not-assessable`. Examples: `REAR SETBACK CONCERN`, `LOT COVERAGE OVER LIMIT`, `PARCEL SOURCE UNVERIFIED`, `OVERLAY REVIEW REQUIRED`, `EASEMENT CONFLICT`, `AHJ CONFIRMATION REQUIRED`.
+
+**Zoning site-plan export.** The permit package must include a site/zoning sheet when parcel data is present: north arrow, scale, parcel boundary, proposed deck footprint, stair/landing/roof projections, property-line offsets, setback envelope, lot/impervious coverage table, zoning district, overlay list, source citations, source date, confidence notes, and AHJ verification advisory. If parcel data is unavailable, the export includes a manual site-plan checklist instead of silently omitting zoning.
 
 ### 2.6 Deck surface features (railings, stairs, gates, fascia, skirting, built-ins, lighting, patterns)
 | Feature | Today | Cplx | Tier | Code / dep |
@@ -145,6 +228,23 @@ Complexity: **L** low · **M** medium · **H** high · **VH** very-high. Tier: *
 | Built-in benches / planters / privacy walls | none | H | FULL | IRC R312 (bench ≠ guard unless 36″) |
 | Automated guard/stair code review | none | VH | FULL | IRC R312/R311.7; 30″ rule |
 
+**Railing / guard configuration.** A guard run is a parametric system with separate deck-run and stair-run settings. Required fields: guard-required basis from height above grade, mount type (**top mount** / surface mount / fascia mount / side mount), guard height, post spacing, post material/profile, sleeves, caps, top rail profile, bottom rail, infill type, color/finish, brand-neutral product profile, gates, corner behavior, stair transition behavior, and hardware/fastener takeoff. Code checks cover guard-required status, guard height, opening behavior including 4-inch sphere logic where applicable, stair guard/handrail separation, graspable handrail profile when required, and the rule that benches/privacy walls do not count as guards unless explicitly modeled to qualify.
+
+**Glass guard families.** Include framed glass, semi-frameless glass, and frameless glass. Fields: panel width limits, panel height, glass tint/frost/privacy option, clamp/spigot/shoe system, post/no-post mode, corner conditions, gate compatibility, edge clearance, breakage/replacement note, and fastener/hardware takeoff.
+
+**Cable guard families.** Include horizontal cable and vertical cable. Fields: post material, cable orientation, cable spacing/opening check inputs, terminal/tension hardware, intermediate post behavior, corner/tension run breaks, stair angle transitions, and maintenance/tension note. FULL flags openings or geometry that cannot be assessed from the model.
+
+**Picket / baluster families.** Include aluminum, wood, composite, and PVC. Fields: picket/baluster size, spacing, pattern, rail family, stair rake behavior, corner behavior, gate compatibility, finish, and fastener takeoff.
+
+**Stair / stringer configuration.** Stairs need construction fields separate from the current basic run:
+- Construction type: open stringers, closed/housed stringers, mono/steel stringer, dual steel stringers, boxed/platform stairs, and multi-flight with landings where appropriate.
+- Stringer material: PT wood, LVL/engineered where allowed, steel; count, spacing, sizing, bearing/support, hanger/connection hardware, intermediate supports, bottom landing connection.
+- Tread types: composite/PVC deck boards, PT wood, cedar, **2x6**, **5/4** decking, stair-specific boards, metal grating where appropriate; tread board count per step, nosing, overhang, riser board material, open vs closed riser, slip/finish note.
+- Rail/handrail: stair guard mount type, stair-run mount separate from deck-run mount, handrail profile, returns, post locations, transition to deck guard.
+- Code overlay checks: rise, run, uniformity, nosing, open riser/opening, landing size, headroom, handrail requirement, handrail height/profile, guard requirement, and stair guard opening behavior.
+
+**Rim/band joist vs fascia.** These are separate systems. The structural rim joist / band joist belongs to the framing model and carries ply count, nominal/actual size, species/grade, structural role, guard-post attachment context, blocking/hardware, splice rules, and code findings. Cosmetic fascia is an independent finish with material, profile, thickness, height, color/finish, SKU, reveal/drop, miter/return rules, fastener pattern, joints, and replacement/takeoff behavior. A fascia board must never be treated as structural unless the user explicitly models a qualifying structural member behind it.
+
 ### 2.7 Materials, finishes, patterns & fasteners
 | Feature | Today | Cplx | Tier | Code / dep |
 |---|---|---|---|---|
@@ -157,6 +257,8 @@ Complexity: **L** low · **M** medium · **H** high · **VH** very-high. Tier: *
 | Fastener system takeoff (hidden clips vs face screws) | none | H | FULL | couples to joist layout |
 | Finish/coatings takeoff (stain/sealant/paint) | none | L | FULL | |
 | Brand preset packs (Trex/TimberTech/Fiberon/Duradek… editable seed) | partial | M | FULL | |
+
+**Fastener, connector, and manufacturer-approval fields.** Material and hardware profiles must carry corrosion environment, coastal/salt exposure flag, preservative-treatment compatibility, coating class/material family, allowed substrate/member types, manufacturer installation constraints, evaluation-report/reference link where available, and AHJ/engineer-required state. Glass, cable, composite, PVC, steel stringer, and proprietary railing systems inherit these constraints so the BOM, code overlay, and permit notes do not treat manufacturer-specific limits as generic material choices.
 
 ### 2.8 Outputs (permit plan sets, framing plans, elevations, schedules, deliverables)
 | Feature | Today | Cplx | Tier | Code / dep |
@@ -172,11 +274,15 @@ Complexity: **L** low · **M** medium · **H** high · **VH** very-high. Tier: *
 | **Cross-section** (footing→post→beam→joist→decking→guard) | none | VH | FULL | DCA6 |
 | Footing & connection detail callouts | partial | H | FULL | |
 | Site plan sheet (deck vs property lines/setbacks) | none | H | FULL | |
-| **Multi-sheet permit plan set + compliant title block (export to city)** | none | VH | FULL | NCS title-block standard |
+| **Multi-sheet permit plan set + jurisdiction-ready title block (export to city)** | none | VH | FULL | NCS title-block standard |
 | **Engineering / structural calc report (engineer-reviewable)** | none | VH | FULL | RedX per-member output; DCA6 |
 | **Engineer (PE) stamp / seal workflow** | none | H | FULL | prescriptive-envelope check + PDF signing |
 | Full lumber + fastener + hardware + concrete schedule (BOM) | partial | H | FULL | |
-| CAD interop export (vector PDF; DWG/DXF) | none | H | FULL | **DWG/DXF needs 3rd-party lib/server — cost TBD** |
+| CAD interop export (vector PDF; DWG/DXF) | none | H | FULL | **DWG/DXF needs 3rd-party lib/server — price before commitment** |
+
+**Rendering engine split.** SceneKit remains the engineering/model viewport: fast, editable, layer-toggled, and suitable for 2D/3D coordination, framing visibility, dimensions, sections, and code overlays. Realistic/client renderings need a separate RealityKit/Metal/PBR-capable render path or an equivalent renderer that supports material fidelity beyond SceneKit's current non-PBR model.
+
+**Client render requirements.** Renders must support realistic decking grain/color, fascia and rim-board visibility, glass transparency/refraction approximation, cable density, picket/baluster density, shadows, ambient occlusion where available, sun orientation by compass/time preset, camera presets (client hero, plan oblique, stair detail, railing detail, under-deck view), layer visibility, background/ground material, and export sizes for phone share, proposal PDF, App Store screenshot, and high-resolution client image. If an early phase only produces non-photoreal renders, label it as "model render" or "concept render" and do not present it as photoreal.
 
 ---
 
@@ -252,6 +358,16 @@ The highest-risk part of the product is any claim that a deck "meets code" or is
 6. **Every structural/footing output surfaces its assumptions** — assumed load, species, soil, and the **code package edition** in force.
 7. **As-built audit** never outputs a clean pass; hidden elements are tagged "not assessable — verify on site" (§3).
 8. **Code tables ingested verbatim, versioned, treated as data** — this research confirmed structure + key thresholds but did **not** transcribe span/footing/connection tables cell-by-cell; each package is built from the adopted edition's actual tables.
+
+### 7.1 Live inline code overlay
+
+Code checking is live while the user draws or edits whenever FULL code checks are enabled. It is toggleable in settings and per-document view controls, but the default FULL workflow surfaces objective negative findings directly on the offending geometry, not only in a report.
+
+**Finding model:** every finding attaches to a specific element or feature (`joist`, `beam`, `post`, `ledger`, `rim joist`, `guard run`, `stair flight`, `opening`, `roof`, `footing`, `site condition`) and carries severity: `violation`, `warning`, `out-of-envelope`, `unknown`, or `not-assessable`. Each finding stores current value, target/limit where applicable, rule/table citation, code package edition, assumptions, source confidence, and recommended next action. Unknown and not-assessable states are first-class outcomes, not hidden errors.
+
+**Tokenized geometry styling:** overlays use design-system tokens directly on geometry: stroke, fill, halo, hatch, badge, and inspector state all derive from severity tokens. A selected member shows the same finding state in the inspector, roll-up list, plan view, 3D view, and report. Reduced-motion mode suppresses animated pulses but keeps the tokenized visual state.
+
+**Example:** if a joist exceeds the selected jurisdiction's span table, the joist receives a styled token along the full offending span. The inline badge reads in the objective-negative form: `SPAN OVER TABLE :: 12'-4" current / 10'-11" max`, then exposes the rule/table citation, code package edition, species/grade/load assumptions, bearing condition, and the affected BOM/member sizing implications. It must never say the rest of the deck is safe, compliant, approved, guaranteed, or will pass inspection.
 
 ---
 

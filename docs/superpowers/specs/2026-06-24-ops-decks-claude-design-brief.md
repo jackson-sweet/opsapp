@@ -20,11 +20,11 @@ A power-user deck-design app for contractors: **draw a deck → see it in 3D →
 
 Design each surface so it **reflows** across these — phone = one thing at a time (sheets/tabs); iPad/Mac = multi-pane with a persistent inspector. Note where a surface is **primarily** a Mac/iPad surface (the document/engineering ones) vs iPhone (capture).
 
-**Canvas / 3D / AR are NATIVE — do not design them here.** Design the *chrome around* them (toolbars, inspectors, pickers, panels, overlays, badges). The drawing surface, 3D viewport, and AR camera view are placeholders in the prototype.
+**Canvas / 3D / AR are NATIVE — do not design them here.** Design the *chrome around* them (toolbars, inspectors, pickers, panels, overlays, badges). The drawing surface, 3D viewport, and AR camera view are native-view blocks in the prototype.
 
 ## 2. Voice & numbers (applies to every surface)
 
-- Terse, tactical, sentence case for content / UPPERCASE for authority. No emoji, no exclamation. (Final copy comes from `ops-copywriter` — use plausible placeholder copy in that register.)
+- Terse, tactical, sentence case for content / UPPERCASE for authority. No emoji, no exclamation. (Final copy comes from `ops-copywriter` — use plausible draft copy in that register.)
 - All numbers monospaced, tabular, formatted (`9′-2″`, `$4,250`, `40 psf`). Empty = `—`.
 - **Compliance language is objective-negative only:** "No code failures detected," "3 code concerns found," never "safe" / "compliant" / "guaranteed." Every compliance/structural output carries a one-line advisory ("Not a guarantee — have plans reviewed by a licensed engineer in your jurisdiction").
 - Every surface needs its **empty / loading / populated / error** states designed, plus **free vs Pro** where gating applies.
@@ -61,35 +61,39 @@ Each entry: **purpose · key contents · states · platform notes · priority**.
 
 ### D. Designer workspace chrome (around the native canvas)
 
-**D1 · Toolbar** — drawing tools (draw/edit/measure/dimension/voice), undo/redo, level switcher, view switch (2D ⇄ 3D), share/export. Platform: bottom bar (phone), top/side bar (iPad/Mac). **P0**
+**D1 · Field-first drawing flow** — Purpose: make a first deck drawable in the field without CAD training. Contents: start method (blank/template/photo-sketch/AR/duplicate), house-wall anchor, tap/drag perimeter, typed or voice dimensions, AR measurement confidence, snap/lock states, diagonal/square check, unresolved/conflicting dimension state, and one clear next action. Platform: phone single-step sheets; iPad/Mac canvas + persistent inspector. **P0**
 
-**D2 · Assignment wheel / material+feature selector** — radial or palette to tag edges/surfaces (material, railing, stairs, gate, house edge). States: open / item-selected. **P0**
+**D2 · Toolbar** — drawing tools (draw/edit/measure/dimension/voice), undo/redo, level switcher, view switch (2D ⇄ 3D), share/export. Platform: bottom bar (phone), top/side bar (iPad/Mac). **P0**
 
-**D3 · Property / inspector panel** — context properties for the selected element (edge type, dimension, elevation, footing, railing config). Platform: sheet (phone) / persistent inspector (iPad/Mac). **P0**
+**D3 · Assignment wheel / material+feature selector** — radial or palette to tag edges/surfaces (material, railing, stairs, gate, house edge, fascia, beam role, no-guard condition). States: open / item-selected / multi-select assignment. **P0**
 
-**D4 · Level tabs + level-connection** — multi-level deck switcher; connect levels (stairs/step-down). **P1**
+**D4 · Property / inspector panel** — context properties for the selected element (edge type, dimension, elevation, footing, material/profile, railing config). Include inspector states for `auto-derived`, `manual`, `locked`, `conflict`, `out-of-envelope`, `unknown`, and `not-assessable`. Platform: sheet (phone) / persistent inspector (iPad/Mac). **P0**
 
-**D5 · 3D view controls** — camera presets, **layer toggles** (decking / joists / beams / posts / footings / railings), share-render button. (Viewport is native; design the controls + the toggle panel + on-model badges.) **P1**
+**D5 · Level tabs + level-connection** — multi-level deck switcher; connect levels (stairs/step-down). **P1**
 
-**D6 · Dimension / elevation / voice input** — numeric entry for a dimension or height; voice-dimension affordance + waveform. States: entering / confirmed. **P1**
+**D6 · 3D view controls** — camera presets, **layer toggles** (decking / joists / beams / posts / footings / railings / roof / under-deck), sun/shadow orientation controls for client renders, share-render button, and model-render vs realistic-render state. (Viewport is native; design the controls + the toggle panel + on-model badges.) **P1**
+
+**D7 · Dimension / elevation / voice input** — numeric entry for a dimension or height; voice-dimension affordance + waveform. States: entering / confirmed / low-confidence capture / conflicts-with-locked-geometry. **P1**
 
 ### E. Materials
 
 **E1 · Material catalog** — browse/select material families (PT, cedar, composite/PVC boards by brand, vinyl membrane, aluminum), profiles, lengths, finish. Contents: family → product → detail; brand-neutral. States: built-in vs user-added. **P0**
 
-**E2 · Material editor (Pro)** — add/edit a material: price, vendor/SKU, per-length pricing, coverage, fastener system. States: new / edit / validation. Platform: form sheet (phone) / inspector (Mac). **P1**
+**E2 · Material editor (Pro)** — add/edit a material: price, vendor/SKU, per-length pricing, coverage, fastener system, corrosion environment, treatment compatibility, coastal/salt flag, manufacturer constraints, and approval/evaluation-reference link. States: new / edit / validation / requires engineer-or-AHJ review. Platform: form sheet (phone) / inspector (Mac). **P1**
 
 **E3 · Decking pattern picker** — parallel / diagonal / picture-frame / herringbone / chevron, board direction, border. **P2**
 
 ### F. Structural / framing surfaces
 
-**F1 · Framing inspector** — for a selected member (joist/beam/post/ledger): size, species/grade, spacing, ply, the computed span/load result, and any code flag. Contents: readouts + editable fields (manual override). States: auto-derived / user-locked / out-of-envelope ("requires a licensed engineer"). **P1**
+**F1 · Framing Mode / Structural Mode setup** — Purpose: take the user from deck surface geometry to a generated structural frame. Contents: edge-role marking (house/ledger, freestanding, flush beam, drop beam, cantilever/free edge), joist direction picker, spacing, species/grade, load preset, code package state, and "generate frame." States: not-started / missing house edge / generated / regenerated-with-locked-members / conflict. Platform: phone stepper sheet; iPad/Mac side panel with canvas overlays. **P1**
 
-**F2 · Load & assumptions panel** — per-post/column load readout; the assumed load/species/soil + code edition surfaced. **P1**
+**F2 · Framing inspector** — for selected joist, beam, post, ledger, rim joist/band joist, blocking/bridging, hanger, hardware, cantilever, or span segment. Contents: size, ply, species/grade, spacing, bearing/support, tributary area/load, span segment, lock state, BOM impact, hardware takeoff, computed result when FULL is enabled. States: auto-derived / manual / user-locked / missing input / violation / warning / out-of-envelope / unknown / not-assessable. **P1**
 
-**F3 · Inline code-flag + roll-up** — a violating member shows an inline flag on the model; a roll-up chip shows total concerns → opens the list. (Objective-negative wording.) **P1**
+**F3 · Load & assumptions panel** — per-post/column load readout; the assumed load/species/soil + code edition surfaced. Include edit affordances and "affects entire model" confirmation state. **P1**
 
-**F4 · Species / load preset selector** — pick lumber species/grade + a load preset (live/dead/snow). **P1**
+**F4 · Live code overlay controls** — settings and canvas controls for enabling/disabling live checks, filtering severities, and showing per-element findings directly on the member/feature. Severity states: violation, warning, out-of-envelope, unknown, not-assessable. Include tokenized inline badges, member hover/selection state, roll-up chip, and findings list. Example state: joist span over table with current span, max span, rule/table citation, code package edition, and assumptions. Objective-negative wording only. **P1**
+
+**F5 · Species / load preset selector** — pick lumber species/grade + a load preset (live/dead/snow), deflection preset, treatment class, and default member family. **P1**
 
 ### G. Footings / terrain
 
@@ -97,29 +101,39 @@ Each entry: **purpose · key contents · states · platform notes · priority**.
 
 **G2 · Terrain / grade** — ground-type per zone (grass/dirt/gravel/rock/concrete/pavers); grade/slope capture handoff (AR on iPhone/iPad; manual on Mac); frost-depth + soil inputs. **P1**
 
+**G3 · Address / parcel / zoning precheck** — Purpose: turn a site address into an actionable site-plan layer. Contents: address entry, geocode confidence, user-confirmed pin, parcel/APN match, parcel boundary preview, AHJ/jurisdiction, zoning district, overlay list, source/date/confidence chips, manual fallback when official data is missing. States: no address / resolving / multiple matches / parcel found / low-confidence / no official source / manual criteria. **P1**
+
+**G4 · Zoning constraints panel** — live setback, lot coverage, impervious coverage, height, easement, flood/coastal/wildfire/historic overlay, and AHJ confirmation findings. Show property-line offset readouts directly on the site plan. States: no concerns detected in assessable zoning data / N concerns / unknown / not-assessable / manual-only. **P2**
+
 ### H. House attachment & openings
 
-**H1 · House wall + ledger** — mark the house edge, cladding type (stucco/Hardie/brick/stone/vinyl), the ledger/attachment strategy (incl. brick/stone → freestanding fallback). **P2**
+**H1 · House wall + ledger** — mark the house edge, wall/floor datum, wall height/story height, cladding type (stucco/Hardie/brick/stone/vinyl), and the ledger/attachment strategy (incl. brick/stone → freestanding fallback). Include cutout conflict and flashing-assumption states. **P2**
 
-**H2 · Door & window placement** — place/size patio/French/slider doors and windows on the house wall; schedule. Platform: best on iPad/Mac. **P2**
+**H2 · Door & window placement** — place/size patio/French/slider doors and window families on the house wall. Fields: rough opening, actual size, sill/head height, swing/operation type, placement in wall coordinate system, cutout, and schedule mark. Platform: best on iPad/Mac. **P2**
 
-**H3 · Elevation view** — front-on orthographic drawing surface (chrome + placeholder). **P2**
+**H3 · Elevation view** — front-on orthographic drawing surface (chrome + native drawing block). **P2**
 
 ### I. Surface features
 
-**I1 · Railing/guard config** — system (cable/glass/aluminum/wood/composite), height, infill, posts, gates. **P1**
+**I1 · Railing/guard config** — separate deck-run and stair-run settings. Contents: mount type (top mount/surface mount, fascia mount/side mount), guard height, post spacing, posts/sleeves/caps, top rail profile, bottom rail, infill type, color/finish, product profile, gates, and hardware/fastener takeoff. Include code states for guard-required, guard height, opening checks, stair guard/handrail rules, and bench/privacy-wall-not-guard messaging. **P1**
 
-**I2 · Stairs config** — flights/landings/winders, **tread type** (open/closed riser, material, nosing), **stringer count/spacing**, rise/run readout + code check. **P1**
+**I2 · Glass / cable / picket rail variants** — design variant controls for framed glass, semi-frameless glass, frameless glass, panel widths, clamps/spigots/shoes, privacy/frost/tint options, horizontal/vertical cable, terminals/tension hardware, cable spacing/opening checks, aluminum/wood/composite/PVC pickets, picket spacing, pattern, and stair rake behavior. **P1**
 
-**I3 · Built-ins & lighting** — benches/planters/privacy walls; deck lighting layout + basic electrical notes. **P2**
+**I3 · Stairs config** — flights/landings/winders, construction type (open stringer, closed/housed stringer, mono/steel stringer, dual steel stringers, boxed/platform), stringer material/count/spacing/sizing/bearing/support, connection hardware, tread type (composite/PVC, PT wood, cedar, 2x6, 5/4, stair-specific boards, metal grating), tread board count, nosing, overhang, riser material, open/closed riser, stair guard mount, handrail profile, and code overlay for rise/run/uniformity/headroom/landings/handrails/guards. **P1**
 
-**I4 · Overhead structures** — pergola / cover / roof config (type, posts/beams/rafters, shade %). **P2**
+**I4 · Fascia / rim / under-deck config** — separate structural rim joist/band joist controls from cosmetic fascia. Contents: rim ply/size/species/role/hardware/guard-post blocking; fascia material/profile/thickness/height/color/SKU/reveal/drop/miters/fastener pattern; substrate type, slope, drainage, waterproofing/under-deck ceiling, skirting/lattice/enclosure, access panels, clearance, and obstructions. **P2**
+
+**I5 · Built-ins & lighting** — benches/planters/privacy walls; deck lighting layout + basic electrical notes. **P2**
+
+**I6 · Overhead structures** — pergola / cover / roof config: type, slope/pitch, overhang, posts/beams/rafters, loads, drainage/gutters if included, flashing/attachment assumptions, and code-check implications. **P2**
 
 ### J. Compliance (design-time)
 
-**J1 · Code-compliance report** — objective pass/fail by item, each with the current value, the code target, the cited section, severity, and the advisory disclaimer. Contents: summary-first (count of concerns) → per-item rows. States: no concerns / N concerns / out-of-envelope → "requires a licensed engineer." Platform: document on Mac/iPad, scrollable report on phone. **P1**
+**J1 · Code-compliance report** — objective negative findings by item, each with the current value, target/limit when applicable, cited section/table, code package edition, severity, assumptions, source confidence, and advisory disclaimer. Contents: summary-first (count of concerns) → per-item rows. States: no concerns detected in assessable items / N concerns / out-of-envelope / unknown / not-assessable. Platform: document on Mac/iPad, scrollable report on phone. **P1**
 
 **J2 · Code-package management** — installed jurisdictions, editions, "current to [date]," update-available, download/offline state. **P2**
+
+**J3 · Zoning-source management** — official GIS/open-data source status by AHJ, parcel/zoning source links, last refreshed date, confidence, manual override history, and "verify with AHJ" export state. **P2**
 
 ### K. As-built CURRENT → TARGET audit (flagship)
 
@@ -135,7 +149,7 @@ Each entry: **purpose · key contents · states · platform notes · priority**.
 
 **L2 · Cut list** — material cut/nesting output (boards + vinyl roll/offcut plan). **P1**
 
-**L3 · Permit plan set** — multi-sheet: plan view, framing plan, elevations, cross-section, detail callouts, site plan, title block; "export to city." Platform: Mac/iPad document surface. **P2**
+**L3 · Permit plan set** — multi-sheet: plan view, framing plan, elevations, cross-section, detail callouts, zoning/site plan, title block; "export to city." Zoning/site sheet includes parcel boundary, proposed deck footprint, property-line offsets, setback envelope, lot/impervious coverage table, zoning district, overlays, source citations, source date, confidence notes, and AHJ advisory. Platform: Mac/iPad document surface. **P2**
 
 **L4 · Structural calc report (engineer-reviewable)** — per-member loads/spans/sizes + assumptions + code edition; PE-stamp workflow affordance. **P2**
 
@@ -143,7 +157,7 @@ Each entry: **purpose · key contents · states · platform notes · priority**.
 
 ### M. Settings & account
 
-**M1 · Settings** — account, jurisdiction/code packages, units, default material catalog, subscription status. **P1**
+**M1 · Settings** — account, jurisdiction/code packages, units, default material catalog, live code overlay toggle/default severity filter, realistic-render availability, subscription status. **P1**
 
 **M2 · Account & billing** — plan, manage/restore subscription, **account deletion** (Apple-required), data export. **P1**
 
@@ -163,8 +177,8 @@ Each entry: **purpose · key contents · states · platform notes · priority**.
 ## 5. Prototype priority (suggested order)
 
 1. **P0 set** — the spine that proves the product: Welcome/onboarding (A1–A3), deck library (B), paywall (C1), designer chrome (D1–D3), material catalog (E1), and the **estimate/proposal** (L1). This is a usable, demoable standalone app.
-2. **P1 set** — the engineering & document depth: structural inspector + flags (F), footings/terrain (G), stairs/railings (I1–I2), compliance report (J1), cut list (L2), client render (L5), settings/account (M).
-3. **P2 set** — the differentiated heavy surfaces: house/openings (H), as-built audit (K), permit plan set + calc report (L3–L4), overhead/built-ins (I3–I4), patterns (E3), code-package mgmt (J2).
+2. **P1 set** — the engineering & document depth: framing mode, structural inspector + flags (F), footings/terrain (G), railing/stair config (I1–I3), compliance report (J1), cut list (L2), client render (L5), settings/account (M).
+3. **P2 set** — the differentiated heavy surfaces: house/openings (H), as-built audit (K), permit plan set + calc report (L3–L4), fascia/rim/under-deck, overhead/built-ins (I4–I6), patterns (E3), code-package mgmt (J2).
 
 ## 6. Notes for Claude Design
 
@@ -172,4 +186,4 @@ Each entry: **purpose · key contents · states · platform notes · priority**.
 - Design **states**, not just the happy path — empty, loading, error, offline, and free-vs-Pro.
 - Make the **adaptive story explicit**: show the same surface as phone (single-focus) and iPad/Mac (multi-pane with inspector) for at least the designer workspace, library, and a document.
 - Placeholder copy in the OPS voice; final copy comes from `ops-copywriter`.
-- The canvas, 3D viewport, and AR view are native — represent them as labeled placeholders and design the surrounding chrome.
+- The canvas, 3D viewport, and AR view are native — represent them as labeled native-view blocks and design the surrounding chrome.

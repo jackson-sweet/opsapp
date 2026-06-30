@@ -176,7 +176,7 @@ Phase 1 stands up what's structurally required; the *creative* (screenshots, cop
 - **Account deletion in-app** (Apple requirement for account-based apps) — deletes the company-of-one + decks.
 - **App Privacy** nutrition labels + privacy policy URL covering deck data, photos, and analytics.
 - Subscription products configured in App Store Connect + wired to RevenueCat.
-- A placeholder in-app **"This is the design layer of OPS"** upsell surface (full design Phase 2).
+- A minimal in-app **"This is the design layer of OPS"** upsell surface (full design Phase 2).
 
 ---
 
@@ -184,7 +184,7 @@ Phase 1 stands up what's structurally required; the *creative* (screenshots, cop
 
 **In scope (Phase 1):** `OPSDesignKit` + `DeckKit` packages; the extraction/decoupling; the OPS Decks app target booting the existing designer; Sign in with Apple; company-of-one provisioning; RevenueCat entitlement + 1-deck gate enforcement hook; same-backend sync; offline/autosave; the `deck_subscriptions` mirror + RevenueCat webhook; account deletion; the structural upgrade-to-OPS continuity.
 
-**Out of scope (Phases 2–7, see roadmap & §13):** the *polished* standalone deck **library/home**, the refined onboarding-to-first-deck flow, the full **paywall**/gating UX, estimate/cut-list/permit-PDF output **tuned for a solo contractor**, material breadth/catalog UX, the full **upgrade-to-OPS** offer UX, ASO/screenshots/marketing copy, and all net-new deck *features* (structure, code-compliance, footings, roofs, openings, terrain, advanced stairs, etc.). Phase 1 ships only the minimal shell needed to create/open/save a deck.
+**Out of scope (Phases 2–7, see roadmap & §13):** the *polished* standalone deck **library/home**, the refined onboarding-to-first-deck flow, the full **paywall**/gating UX, estimate/cut-list/permit-PDF output **tuned for a solo contractor**, material breadth/catalog UX, the full **upgrade-to-OPS** offer UX, ASO/screenshots/marketing copy, and all net-new deck *features* (structure, code-compliance, footings, roofs, openings, terrain, advanced stairs, etc.). Phase 1 ships only the minimal shell needed to create/open/save a deck. It does **not** ship Framing Mode, Structural Mode, live code overlay, permit-ready checks, roof/opening modeling, advanced railing/stair configuration, realistic rendering, or engineering reports.
 
 ---
 
@@ -218,6 +218,15 @@ Rough net contribution per Pro sub: ~$12.74 (Apple 15%) − ~$0.13 (RevenueCat) 
 
 Phases 2–7 — the actual power-user functionality buildout (framing model, structural engineering, footings/terrain, house openings, surface features, compliance engine + as-built audit + permit outputs) — are defined in the companion roadmap (`2026-06-24-ops-decks-feature-roadmap.md`) and planned in full in the implementation plan. The standalone **experience** layer (polished deck library/home, onboarding-to-first-value, paywall + gating UX, OPS upsell surface, ASO/marketing creative) is woven across those phases, beginning with the minimal app shell in Phase 1. Phase 1 stands up only the *minimum* library/create/open surface needed for the app to function; the refined experience is layered in as the feature set grows.
 
+**Later-phase modeling surfaces that Phase 1 must preserve room for:**
+- Field-first drawing flow: template/photo-sketch/AR/blank starts, house-wall anchor, tap/drag perimeter, typed/voice dimensions, snap/lock/diagonal checks, and clear geometry-conflict states.
+- Framing Mode / Structural Mode: start from deck surface geometry, mark ledger/freestanding edges, select joist direction/spacing/species/load assumptions, auto-generate a frame, then edit/lock members.
+- Member-level inspectors for joists, beams, posts, ledgers, rim/band joists, blocking, hangers, hardware, cantilevers, span segments, tributary area/load, and BOM impact.
+- Address-aware parcel/zoning precheck: site address, geocode confidence, parcel/APN, AHJ, zoning district, overlays, setbacks, coverage/height limits, manual fallback, source citations, and zoning/site-plan export data.
+- Live inline code overlay with tokenized per-element findings (`violation`, `warning`, `out-of-envelope`, `unknown`, `not-assessable`) and objective-negative liability language only.
+- Full configuration surfaces for railings/guards, stairs/stringers/treads, roofs/pergolas/covers, wall datum, doors/windows/openings, fascia vs structural rim joist, and under-deck/substrate conditions.
+- Rendering split: SceneKit remains the editable engineering/model viewport; client-realistic render exports require a later RealityKit/Metal/PBR-capable path or equivalent.
+
 ---
 
 ## 14. Open questions for the plan (not the spec)
@@ -227,3 +236,4 @@ Phases 2–7 — the actual power-user functionality buildout (framing model, st
 - Bundle id, App Store Connect setup specifics, subscription group naming.
 - `deck_subscriptions` exact columns + the RevenueCat webhook → ops-web endpoint contract.
 - Sequencing against the in-flight deck-overhaul Drops.
+- Exact schema blocks for later-phase framing, roof/opening, railing/stair, fascia/rim, under-deck, address/parcel/zoning, rendering, and code-overlay data. Phase 1 only needs additive `drawing_data` versioning and unknown-block preservation so these blocks round-trip later.

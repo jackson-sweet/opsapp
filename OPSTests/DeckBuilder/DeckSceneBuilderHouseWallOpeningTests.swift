@@ -106,6 +106,24 @@ final class DeckSceneBuilderHouseWallOpeningTests: XCTestCase {
         XCTAssertEqual(shape.extrusionDepth, CGFloat(2.0 / 39.3701), accuracy: 0.0001)
     }
 
+    @MainActor
+    func test_fullTwoStorySceneBuildsHouseWallWithThreeOpeningHolesAndFallbackBeam() throws {
+        let data = resolvedTwoStoryFreestandingData()
+
+        let scene = DeckSceneBuilder.buildScene(from: data)
+        let wallNode = try houseWallNode(in: scene)
+        let shape = try XCTUnwrap(wallNode.geometry as? SCNShape)
+        let path = try XCTUnwrap(shape.path)
+
+        XCTAssertEqual(path.cgPath.moveToSubpathCount, 4)
+        XCTAssertNotNil(
+            scene.rootNode.childNode(
+                withName: "framing.beam.ledger-fallback-beam-upper-house-edge",
+                recursively: true
+            )
+        )
+    }
+
     private func drawingData() -> DeckDrawingData {
         var data = DeckDrawingData()
         data.scaleFactor = 1.0
@@ -122,6 +140,103 @@ final class DeckSceneBuilderHouseWallOpeningTests: XCTestCase {
             DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4"),
             DeckEdge(id: "e4", startVertexId: "v4", endVertexId: "v1"),
         ]
+        return data
+    }
+
+    @MainActor
+    private func resolvedTwoStoryFreestandingData() -> DeckDrawingData {
+        let model = DeckDrawingEditorModel(
+            drawingData: twoStoryHouseDrawingData(),
+            capabilities: .full
+        )
+
+        guard case .freestanding? = model.resolveLedger(
+            forEdge: "upper-house-edge",
+            houseSideBeamSpanInches: 240
+        ) else {
+            XCTFail("Expected brick cladding to resolve as freestanding.")
+            return model.drawingData
+        }
+
+        return model.drawingData
+    }
+
+    private func twoStoryHouseDrawingData() -> DeckDrawingData {
+        var lower = DeckLevel(id: "lower-level", name: "Lower deck", displayColor: .green, sortOrder: 0)
+        lower.elevation = 0
+        lower.vertices = [
+            DeckVertex(id: "lower-v1", position: CGPoint(x: 80, y: 220)),
+            DeckVertex(id: "lower-v2", position: CGPoint(x: 260, y: 220)),
+            DeckVertex(id: "lower-v3", position: CGPoint(x: 260, y: 340)),
+            DeckVertex(id: "lower-v4", position: CGPoint(x: 80, y: 340)),
+        ]
+        lower.edges = [
+            DeckEdge(id: "lower-back", startVertexId: "lower-v1", endVertexId: "lower-v2"),
+            DeckEdge(id: "lower-side", startVertexId: "lower-v2", endVertexId: "lower-v3"),
+            DeckEdge(id: "lower-front", startVertexId: "lower-v3", endVertexId: "lower-v4"),
+            DeckEdge(id: "lower-return", startVertexId: "lower-v4", endVertexId: "lower-v1"),
+        ]
+
+        var upper = DeckLevel(id: "upper-level", name: "Upper deck", displayColor: .blue, sortOrder: 1)
+        upper.elevation = 9
+        upper.vertices = [
+            DeckVertex(id: "upper-v1", position: CGPoint(x: 40, y: 20)),
+            DeckVertex(id: "upper-v2", position: CGPoint(x: 280, y: 20)),
+            DeckVertex(id: "upper-v3", position: CGPoint(x: 280, y: 164)),
+            DeckVertex(id: "upper-v4", position: CGPoint(x: 40, y: 164)),
+        ]
+        upper.edges = [
+            DeckEdge(
+                id: "upper-house-edge",
+                startVertexId: "upper-v1",
+                endVertexId: "upper-v2",
+                edgeType: .houseEdge,
+                dimension: 240,
+                label: "Kitchen wall",
+                houseEdgeMaterial: .brick
+            ),
+            DeckEdge(id: "upper-side", startVertexId: "upper-v2", endVertexId: "upper-v3"),
+            DeckEdge(id: "upper-front", startVertexId: "upper-v3", endVertexId: "upper-v4"),
+            DeckEdge(id: "upper-return", startVertexId: "upper-v4", endVertexId: "upper-v1"),
+        ]
+
+        var data = DeckDrawingData()
+        data.schemaVersion = 5
+        data.scaleFactor = 1
+        data.levels = [lower, upper]
+        data.house = HouseModel(
+            floorLineFeet: 9,
+            storyHeights: [9, 8],
+            openings: [
+                WallOpening(
+                    id: "patio-door",
+                    edgeId: "upper-house-edge",
+                    kind: .patioDoor,
+                    widthInches: 72,
+                    heightInches: 80,
+                    sillHeightInches: 0,
+                    offsetAlongEdgeInches: 24
+                ),
+                WallOpening(
+                    id: "kitchen-window",
+                    edgeId: "upper-house-edge",
+                    kind: .window,
+                    widthInches: 42,
+                    heightInches: 48,
+                    sillHeightInches: 36,
+                    offsetAlongEdgeInches: 132
+                ),
+                WallOpening(
+                    id: "living-window",
+                    edgeId: "upper-house-edge",
+                    kind: .window,
+                    widthInches: 36,
+                    heightInches: 36,
+                    sillHeightInches: 42,
+                    offsetAlongEdgeInches: 184
+                ),
+            ]
+        )
         return data
     }
 

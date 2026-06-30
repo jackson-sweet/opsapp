@@ -829,6 +829,7 @@ public struct HouseOpeningScheduleView: View {
 **Files:**
 - Test: `DeckKit/Tests/DeckKitTests/HousePhase5IntegrationTests.swift`
 - Test: `DeckKit/Tests/DeckKitTests/HouseElevationSnapshotTests.swift` (final multi-story scene + elevation snapshots)
+- Test: `OPSTests/DeckBuilder/DeckSceneBuilderHouseWallOpeningTests.swift` (app SceneKit renderer integration: two-story wall + three opening cutouts + freestanding beam node)
 
 **TEST STRATEGY (end-to-end across the phase):**
 
@@ -837,11 +838,11 @@ public struct HouseOpeningScheduleView: View {
 - `test_stairs_to_grade_present_for_upper_story()` — assert `StairsToGradeEngine.stairsToGrade(levelId: upperLevelId, …)` yields ≥1 flight with total rise == floor-line datum.
 - `test_brick_ledger_drives_freestanding_in_the_full_design()` — assert the persisted ledger has `attachmentAllowed == false` and the framing block carries the house-side beam members.
 
-- [ ] **Step 1 — Write the integration + snapshot tests; run, expect FAIL where engines/views not yet integrated.**
-- [ ] **Step 2 — Wire any missing integration glue** (e.g. T5's fallback members landing in `data.framing` via the T12 `resolveLedger` intent).
-- [ ] **Step 3 — Run full suite** on the simulator destination; grep `TEST SUCCEEDED`. Inspect snapshot attachments.
-- [ ] **Step 4 — Build device target** (`grep BUILD SUCCEEDED`).
-- [ ] **Step 5 — Commit** (`test(decks-p5): full two-story house + freestanding ledger integration`).
+- [x] **Step 1 — Write the integration + snapshot tests; run, expect FAIL where engines/views not yet integrated.**
+- [x] **Step 2 — Wire any missing integration glue** (e.g. T5's fallback members landing in `data.framing` via the T12 `resolveLedger` intent).
+- [x] **Step 3 — Run full suite** on the simulator destination; grep `TEST SUCCEEDED`. Inspect snapshot attachments.
+- [x] **Step 4 — Build device target** (`grep BUILD SUCCEEDED`).
+- [x] **Step 5 — Commit** (`test(decks-p5): full two-story house + freestanding ledger integration`).
 
 **Dependencies:** ALL prior tasks; P2 `FramingPlan`/`framing` block, P4 footing/framing types.
 **References:** contract §0.2, §1.4, §5.2; roadmap §2.4 (entire house-attachment domain).
@@ -853,9 +854,9 @@ public struct HouseOpeningScheduleView: View {
 
 - [ ] `LedgerDetailSheet` shows the §6.2 disclaimer ("This is not a guarantee of full code adherence. Have plans reviewed by a licensed engineer in your jurisdiction.") before presenting any ledger decision.
 - [ ] `LedgerStrategyEngine.rationale` is **objective-negative only** — asserted by `test_rationale_is_objective_negative_only` (no "safe"/"compliant"/"guaranteed"/"will pass").
-- [ ] P5 asserts **no span/footing/sizing number** — the freestanding fallback emits geometry for P4 to size; `nominalSize`/`sizing` stay nil (asserted in T5).
+- [x] P5 asserts **no span/footing/sizing number** — the freestanding fallback emits geometry for P4 to size; `nominalSize`/`sizing` stay nil (asserted in T5).
 - [ ] Stairs-to-grade landing split is documented as a geometry convenience, not a code pass (T6 doc comment + risk note).
-- [ ] All FULL surfaces hidden in LIGHT; engines never invoked in LIGHT (T14).
+- [x] All FULL surfaces hidden in LIGHT; engines never invoked in LIGHT (T14).
 - [ ] No IRC Appendix H reliance (P5 doesn't touch overhead/roof — that's P6).
 
 ## Design-system & field checklist (CLAUDE.md)

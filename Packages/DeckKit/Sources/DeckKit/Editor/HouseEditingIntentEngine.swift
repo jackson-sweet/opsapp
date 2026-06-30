@@ -126,12 +126,16 @@ public enum HouseEditingIntentEngine {
 
         let strategy = LedgerStrategyEngine.strategy(
             for: edge,
-            houseSideBeamSpanInches: houseSideBeamSpanInches,
+            in: data,
             package: package
         )
         var house = data.house ?? HouseModel()
         house.ledger = LedgerStrategyEngine.resolvedDetail(strategy)
         data.house = house
+
+        if case let .freestanding(_, fallback) = strategy {
+            upsertFreestandingFallback(fallback, forEdgeId: edgeId, in: &data)
+        }
         return strategy
     }
 
@@ -246,6 +250,64 @@ public enum HouseEditingIntentEngine {
     private static func storyHeightInches(in house: HouseModel) -> Double {
         let firstStoryFeet = house.storyHeights.first(where: { $0 > 0 })
         return (firstStoryFeet ?? defaultStoryHeightFeet) * 12
+    }
+
+    private static func upsertFreestandingFallback(
+        _ fallback: LedgerStrategyEngine.FreestandingFallback,
+        forEdgeId edgeId: String,
+        in data: inout DeckDrawingData
+    ) {
+        upsertFallbackBeamMembers(
+            fallback.beamMembers,
+            levelId: levelId(containingEdge: edgeId, in: data),
+            in: &data
+        )
+        upsertFallbackFootings(fallback.footingAnchors, in: &data)
+    }
+
+    private static func upsertFallbackBeamMembers(
+        _ members: [FramingMember],
+        levelId: String,
+        in data: inout DeckDrawingData
+    ) {
+        guard !members.isEmpty else { return }
+
+        var framing = data.framing ?? FramingPlan(
+            members: [],
+            generationSource: .auto
+        )
+        let incomingIds = Set(members.map(\.id))
+
+        if let setIndex = framing.members.firstIndex(where: { $0.levelId == levelId }) {
+            framing.members[setIndex].members.removeAll { incomingIds.contains($0.id) }
+            framing.members[setIndex].members.append(contentsOf: members)
+        } else {
+            framing.members.append(FramingMemberSet(levelId: levelId, members: members))
+        }
+
+        data.framing = framing
+    }
+
+    private static func upsertFallbackFootings(
+        _ footings: [Footing],
+        in data: inout DeckDrawingData
+    ) {
+        guard !footings.isEmpty else { return }
+
+        var footingPlan = data.footings ?? FootingPlan()
+        let incomingIds = Set(footings.map(\.id))
+        footingPlan.footings.removeAll { incomingIds.contains($0.id) }
+        footingPlan.footings.append(contentsOf: footings)
+        data.footings = footingPlan
+    }
+
+    private static func levelId(
+        containingEdge edgeId: String,
+        in data: DeckDrawingData
+    ) -> String {
+        data.levels.first { level in
+            level.edges.contains { $0.id == edgeId }
+        }?.id ?? ""
     }
 
     private static func houseEdge(

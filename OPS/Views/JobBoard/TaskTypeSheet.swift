@@ -1799,76 +1799,68 @@ struct ColorOption: View {
     var usedByName: String? = nil
     let action: () -> Void
 
-    @State private var showingUsedBy = false
-
     var body: some View {
         Button {
             if isInUse && !isSelected {
-                withAnimation(OPSStyle.Animation.fast) {
-                    showingUsedBy.toggle()
+                // In-use colours can't be picked (one colour per type). Name the
+                // owner via a toast — the OPS transient-info surface — instead of
+                // an inline label that overflowed the swatch grid.
+                if let name = usedByName {
+                    ToastCenter.shared.present(
+                        Toast(label: "// IN USE — \(name.uppercased())", tone: .warning)
+                    )
                 }
             } else {
                 action()
             }
         } label: {
-            VStack(spacing: OPSStyle.Layout.spacing1) {
-                ZStack {
-                    Circle()
-                        .fill(color)
-                        .opacity(isInUse && !isSelected ? 0.35 : 1.0)
-                        .frame(width: isSelected ? 38 : 32, height: isSelected ? 38 : 32)
-                        .overlay(
-                            Circle()
-                                .stroke(OPSStyle.Colors.primaryText, lineWidth: isSelected ? 3 : 0)
-                        )
-                        .overlay(
-                            Circle()
-                                .stroke(OPSStyle.Colors.text, lineWidth: isSelected ? 1.5 : 0)
-                                .padding(-5)
-                        )
-                        .scaleEffect(isSelected ? 1.1 : 1.0)
+            // Fixed cell so selected and unselected swatches occupy identical
+            // space — the selection ring never reflows or collides with peers.
+            ZStack {
+                Circle()
+                    .fill(color)
+                    .opacity(isInUse && !isSelected ? 0.35 : 1.0)
+                    .frame(width: 32, height: 32)
 
-                    if isSelected {
-                        Circle()
-                            .fill(OPSStyle.Colors.background.opacity(0.82))
-                            .frame(width: 18, height: 18)
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-
-                    // Diagonal line for in-use colors
-                    if isInUse && !isSelected {
-                        GeometryReader { geo in
-                            Path { path in
-                                path.move(to: CGPoint(x: geo.size.width * 0.2, y: geo.size.height * 0.8))
-                                path.addLine(to: CGPoint(x: geo.size.width * 0.8, y: geo.size.height * 0.2))
-                            }
-                            .stroke(OPSStyle.Colors.primaryText, lineWidth: 2)
-                        }
-                        .frame(width: 32, height: 32)
-                    }
-                }
-
-                // "USED BY" label on tap
-                if showingUsedBy, let name = usedByName {
-                    Text(name)
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .lineLimit(1)
-                        .frame(width: 48)
-                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
-                }
-
+                // Selection = one hairline gap-ring (focus-ring grammar,
+                // MOBILE.md §1) + a checkmark. One restrained, accessible
+                // signal — not a stack of size, scale, double-ring and label.
                 if isSelected {
-                    Text("SELECTED")
-                        .font(OPSStyle.Typography.microLabel)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .frame(width: 64)
+                    Circle()
+                        .stroke(OPSStyle.Colors.text, lineWidth: 2)
+                        .frame(width: 38, height: 38)
+
+                    Circle()
+                        .fill(OPSStyle.Colors.background.opacity(0.55))
+                        .frame(width: 16, height: 16)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(OPSStyle.Colors.text)
+                }
+
+                // Diagonal slash marks an in-use (unpickable) colour — a
+                // non-colour cue so the disabled state survives glare and
+                // colour-blindness.
+                if isInUse && !isSelected {
+                    Path { path in
+                        path.move(to: CGPoint(x: 8, y: 24))
+                        path.addLine(to: CGPoint(x: 24, y: 8))
+                    }
+                    .stroke(OPSStyle.Colors.primaryText, lineWidth: 2)
+                    .frame(width: 32, height: 32)
                 }
             }
+            .frame(width: 40, height: 40)
         }
         .buttonStyle(PlainButtonStyle())
-        .accessibilityLabel(isSelected ? "Selected color" : "Color option")
+        .accessibilityLabel(accessibilityText)
+    }
+
+    /// The selected color name + in-use ownership are no longer drawn as inline
+    /// labels, so the accessibility label carries that state instead.
+    private var accessibilityText: String {
+        if isSelected { return "Selected color" }
+        if isInUse { return usedByName.map { "Color in use by \($0)" } ?? "Color in use" }
+        return "Color option"
     }
 }

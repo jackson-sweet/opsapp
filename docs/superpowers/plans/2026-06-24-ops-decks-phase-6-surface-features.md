@@ -450,7 +450,10 @@ public struct FastenerTakeoff: Codable, Equatable {
     public var clipCount: Int            // 0 for face-screw system
     public var screwCount: Int           // 0 for hidden-clip system (excl. starter/fascia)
     public var boardToJoistCrossings: Int
+    public var joistSpacingInchesOC: Double
+    public var basis: FastenerTakeoffBasis
 }
+public enum FastenerTakeoffBasis: String, Codable, CaseIterable { case layoutDerived = "layout_derived", estimateGrade = "estimate_grade" }
 public struct FinishTakeoff: Codable, Equatable {
     public var kind: String; public var coats: Int; public var unitsRequired: Double  // gallons/units, ceil at call site
 }
@@ -461,6 +464,7 @@ public struct FinishTakeoff: Codable, Equatable {
 - `testFaceScrew_twoPerCrossing` — same geometry, `.faceScrew` → `screwCount == 2 * crossings`, `clipCount == 0`.
 - `testFinish_areaTimesCoatsOverCoverage` — 200 sqft × 2 coats ÷ 250 sqft/gal coverage → 1.6 units (caller ceils to 2). Assert raw `unitsRequired == 1.6`.
 - `testZeroBoards_zeroFasteners` — empty board layout → zero counts (defensive).
+- `testInvalidSpacingFallsBackToEstimateGradeFieldDefault` — missing/invalid joist spacing uses 16″ o.c. field default and marks `basis == .estimateGrade`.
 
 Key assertions: crossing math from joist spacing, clip-vs-screw exclusivity, finish quantity = area × coats ÷ coverage (raw, un-ceiled).
 
@@ -469,6 +473,10 @@ Key assertions: crossing math from joist spacing, clip-vs-screw exclusivity, fin
 **References:** roadmap §2.7 (fastener takeoff coupled to joist layout; finish takeoff); no code-claim — pure takeoff.
 
 **Risks:** Fastener count "couples to joist layout" (roadmap §2.7) — if P2's `FramingPlan` isn't populated (LIGHT plausible-frame may have members but no engineered spacing), fall back to the field default spacing (16″ o.c.) and tag the takeoff as estimate-grade, never code-grade. Keep this a quantity, never a structural claim.
+
+**Implementation status (2026-06-30):** Complete. Added `Engine/FastenerFinishTakeoff.swift` with hidden-clip vs face-screw board-to-joist crossing counts, raw finish units, defensive non-negative finish math, and `FastenerTakeoffBasis` so fallback 16″ o.c. spacing is explicitly estimate-grade. The engine uses `DeckBoardCut.lengthInches` and can fall back to the surface polygon span when a board cut lacks length; it emits quantities only and makes no structural/code claim.
+
+**Verification (2026-06-30):** `swift test --package-path Packages/DeckKit --filter FastenerFinishTakeoffTests` (6 tests), `swift test --package-path Packages/DeckKit` (433 tests), `scripts/verify-ops-decks-style-tokens.sh .`, `git diff --check`, and `xcodebuild -project OPS.xcodeproj -scheme OPSDecks -destination generic/platform=iOS -derivedDataPath /private/tmp/ops-decks-p6-task6-OPSDecks-dd CODE_SIGNING_ALLOWED=NO build` all passed.
 
 ---
 

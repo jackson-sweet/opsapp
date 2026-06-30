@@ -669,10 +669,10 @@ private static func emitHouseComponents(_ data: DeckDrawingData) -> [DesignCompo
 - `test_nil_house_emits_no_house_rows()` — `house == nil` (LIGHT) → none of the four types appear. Guarantees LIGHT (whose editable `house` is nil) emits nothing new.
 - `test_does_not_rename_existing_component_types()` — assert `railing`/`deck_board`/`stair_set`/`gate`/`post_set` still emitted unchanged for a geometry that produced them pre-P5 (regression guard on §3.6 contract break).
 
-- [ ] **Step 1 — Write tests; run, expect FAIL.**
-- [ ] **Step 2 — Implement `emitHouseComponents`** and append its rows in `emit`. Use `AnyCodable` scalar metadata (the P1-extended `AnyCodable` supports nested, but keep house metadata scalar for `DesignToEstimateAdapter` simplicity).
-- [ ] **Step 3 — Run, expect `TEST SUCCEEDED`.**
-- [ ] **Step 4 — Commit** (`feat(decks-p5): emit door/window/ledger/beam-line component rows (additive)`).
+- [x] **Step 1 — Write tests; run, expect FAIL.**
+- [x] **Step 2 — Implement `emitHouseComponents`** and append its rows in `emit`. Use `AnyCodable` scalar metadata (the P1-extended `AnyCodable` supports nested, but keep house metadata scalar for `DesignToEstimateAdapter` simplicity).
+- [x] **Step 3 — Run, expect `TEST SUCCEEDED`.**
+- [x] **Step 4 — Commit** (`feat(decks-p5): emit door/window/ledger/beam-line component rows (additive)`).
 
 **Dependencies:** T1, T5, T7.
 **References:** `ComponentEmitter.swift:31/322` (the "Adding component_type strings is fine; renaming is a contract break" doc comment); contract §3.6.

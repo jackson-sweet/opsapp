@@ -67,6 +67,8 @@ public enum ComponentEmitter {
             ))
         }
 
+        rows.append(contentsOf: emitHouseComponents(data))
+
         return rows
     }
 
@@ -394,14 +396,101 @@ public enum ComponentEmitter {
         if let value { return AnyCodable(value) }
         return AnyCodable(NSNull())
     }
+
+    // MARK: - House components
+
+    private static func emitHouseComponents(_ data: DeckDrawingData) -> [DesignComponentRow] {
+        guard let house = data.house else { return [] }
+
+        var rows: [DesignComponentRow] = []
+        let calloutTags = Dictionary(
+            uniqueKeysWithValues: HouseOpeningSchedule.rows(for: data).map {
+                ($0.id, $0.calloutTag)
+            }
+        )
+
+        for opening in house.openings {
+            let componentType = isDoor(opening.kind) ? "door" : "window"
+            var meta: [String: AnyCodable] = [
+                "kind": AnyCodable(opening.kind.rawValue),
+                "widthInches": AnyCodable(opening.widthInches),
+                "heightInches": AnyCodable(opening.heightInches),
+                "edgeId": AnyCodable(opening.edgeId),
+                "calloutTag": AnyCodable(calloutTags[opening.id] ?? ""),
+            ]
+            if !isDoor(opening.kind) {
+                meta["sillHeightInches"] = AnyCodable(opening.sillHeightInches)
+            }
+            rows.append(DesignComponentRow(componentType: componentType, metadata: meta))
+        }
+
+        if let ledger = house.ledger {
+            rows.append(ledgerComponentRow(ledger))
+            if !ledger.attachmentAllowed {
+                rows.append(contentsOf: freestandingBeamLineRows(ledger: ledger, data: data))
+            }
+        }
+
+        return rows
+    }
+
+    private static func ledgerComponentRow(_ ledger: LedgerDetail) -> DesignComponentRow {
+        var meta: [String: AnyCodable] = [
+            "cladding": AnyCodable(ledger.cladding.rawValue),
+            "attachmentAllowed": AnyCodable(ledger.attachmentAllowed),
+        ]
+        if let lateralConnectors = ledger.lateralConnectors {
+            meta["lateralConnectors"] = AnyCodable(lateralConnectors)
+        }
+
+        return DesignComponentRow(componentType: "ledger", metadata: meta)
+    }
+
+    private static func freestandingBeamLineRows(
+        ledger: LedgerDetail,
+        data: DeckDrawingData
+    ) -> [DesignComponentRow] {
+        data.allEdges
+            .filter { $0.edgeType == .houseEdge }
+            .sorted { $0.id < $1.id }
+            .compactMap { edge in
+                var ledgerEdge = edge
+                ledgerEdge.houseEdgeMaterial = ledger.cladding
+                guard case let .freestanding(_, fallback) = LedgerStrategyEngine.strategy(
+                    for: ledgerEdge,
+                    in: data,
+                    package: nil
+                ) else {
+                    return nil
+                }
+
+                let spanInches = WallOpeningGeometry.wallLengthInches(edge: edge, in: data)
+                let meta: [String: AnyCodable] = [
+                    "spanInches": AnyCodable(roundToTwo(spanInches)),
+                    "footingCount": AnyCodable(fallback.footingAnchors.count),
+                    "edgeId": AnyCodable(edge.id),
+                ]
+                return DesignComponentRow(componentType: "freestanding_beam_line", metadata: meta)
+            }
+    }
+
+    private static func isDoor(_ kind: OpeningKind) -> Bool {
+        switch kind {
+        case .patioDoor, .frenchDoor, .sliderDoor:
+            return true
+        case .window:
+            return false
+        }
+    }
 }
 
 /// One row in `DeckDrawingData.components` — the projection
 /// `DesignToEstimateAdapter` consumes. `componentType` matches the
 /// catalog's `DesignComponentType` raw values (`railing`, `deck_board`,
 /// `stair_set`, `gate`, `post_set`) plus additive structural rows (`joist`,
-/// `beam`, `post`, `rim_joist`, `blocking`). Adding component_type strings
-/// is fine; renaming is a contract break.
+/// `beam`, `post`, `rim_joist`, `blocking`) and additive house rows (`door`,
+/// `window`, `ledger`, `freestanding_beam_line`). Adding component_type
+/// strings is fine; renaming is a contract break.
 public struct DesignComponentRow: Codable, Equatable {
     public let componentType: String
     public let metadata: [String: AnyCodable]

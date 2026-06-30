@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **Execution status - 2026-06-29:** Phase 5 has started with the schema/storage foundation. `HouseModel`, `WallOpening`, `OpeningKind`, and `LedgerDetail` now live in DeckKit; `DeckDrawingData.house` round-trips as a schema-version-5 additive block; malformed house payloads drop only the house block; and new `DeckDesign` rows default to the current deck schema version. `WallOpeningGeometry`, `HouseElevationProjector`, and `LedgerStrategyEngine` are now implemented. The ledger fallback also landed the minimal P4 `FootingPlan` contract types so freestanding house-side beam geometry can emit real unsized footing anchors. The editor UI, elevation rendering, component emission, and 3D wall cutouts remain pending tasks.
+> **Execution status - 2026-06-29:** Phase 5 has started with the schema/storage foundation. `HouseModel`, `WallOpening`, `OpeningKind`, and `LedgerDetail` now live in DeckKit; `DeckDrawingData.house` round-trips as a schema-version-5 additive block; malformed house payloads drop only the house block; and new `DeckDesign` rows default to the current deck schema version. `WallOpeningGeometry`, `HouseElevationProjector`, `LedgerStrategyEngine`, and `StairsToGradeEngine` are now implemented. The ledger fallback also landed the minimal P4 `FootingPlan` contract types so freestanding house-side beam geometry can emit real unsized footing anchors. The editor UI, elevation rendering, component emission, and 3D wall cutouts remain pending tasks.
 
 > **HEADER NOTE — read first.** This plan is authored **before its predecessor phases (P1–P4) exist in code.** It therefore decomposes Phase 5 into the exact files, public types, and engine contracts mandated by the Architecture Contract (`docs/superpowers/plans/2026-06-24-ops-decks-architecture-contract.md`), but **the bite-sized TDD steps with literal, runnable Swift are finalized at phase start once predecessors exist.** Where the contract pins a type or signature, it is reproduced **verbatim** below and is binding. Where a step depends on a P1–P4 type whose *body* is not yet written (e.g. `DeckKit`'s `unknownBlocks` passthrough, `CapabilityProvider` injection point, the elevation/terrain datum from P4), the step states the dependency and the assertion it must satisfy, and leaves the literal call site to be filled at execution time against the real predecessor signature. **Do not fabricate predecessor signatures beyond what the contract fixes.**
 
@@ -494,11 +494,11 @@ public enum StairsToGradeEngine {
 - `test_each_flight_uses_StairCalculator_unchanged()` — assert a flight's `treadCount`/`stringerLength` equal a direct `StairCalculator.calculate` call with the same per-flight rise/width (proves no re-implementation).
 - `test_zero_rise_yields_no_flights()` — rise 0 → empty `flights`, `landingCount == 0`.
 
-- [ ] **Step 1 — Write tests** computing expected per-flight specs by calling `StairCalculator.calculate` in the test itself (so the assertion tracks the real engine, not a hardcoded number).
-- [ ] **Step 2 — Run, expect FAIL.**
-- [ ] **Step 3 — Implement.** `totalRise = datum`. If `totalRise <= max`, one flight via `StairCalculator.calculate`. Else split into `ceil(totalRise / max)` equal flights, `landingCount = flights − 1`, each flight sized via `StairCalculator.calculate`. Grade datum reads P4 `TerrainModel` when present (lowest `gradePoint.dropFeet` under the stair foot) else 0 — wire the P4 read behind availability; default 0 if P4 absent.
-- [ ] **Step 4 — Run, expect `TEST SUCCEEDED`.**
-- [ ] **Step 5 — Commit** (`feat(decks-p5): stairs-to-grade engine with landing insertion`).
+- [x] **Step 1 — Write tests** computing expected per-flight specs by calling `StairCalculator.calculate` in the test itself (so the assertion tracks the real engine, not a hardcoded number).
+- [x] **Step 2 — Run, expect FAIL.**
+- [x] **Step 3 — Implement.** `totalRise = datum`. If `totalRise <= max`, one flight via `StairCalculator.calculate`. Else split into `ceil(totalRise / max)` equal flights, `landingCount = flights − 1`, each flight sized via `StairCalculator.calculate`. Grade datum reads P4 `TerrainModel` when present (lowest `gradePoint.dropFeet` under the stair foot) else 0 — wire the P4 read behind availability; default 0 if P4 absent.
+- [x] **Step 4 — Run, expect `TEST SUCCEEDED`.**
+- [x] **Step 5 — Commit** (`feat(decks-p5): stairs-to-grade engine with landing insertion`).
 
 **Dependencies:** T1; existing `StairCalculator`, `DeckLevel`; P4 `TerrainModel` (optional read — degrades to grade 0 if absent).
 **References:** contract §3.6 ("`StairCalculator` … signature unchanged"); roadmap §2.4 "Multi-story deck at upper floor + stairs to grade"; IRC R311.7 (rise/run), R311.7.6 (landings). The `147"` (12'-3") split default is a conservative geometry threshold — the real code single-rise limit is jurisdiction-data (P3/P7); P5 uses a safe default and never claims compliance.

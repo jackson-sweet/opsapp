@@ -4,7 +4,7 @@ import Foundation
 
 public struct StairCalculator {
 
-    public struct StairSpec {
+    public struct StairSpec: Equatable {
         public let treadCount: Int
         public let risePerStep: Double      // inches
         public let runPerTread: Double      // inches

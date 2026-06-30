@@ -121,12 +121,12 @@ public struct HouseOpeningScheduleView: View {
     private var header: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             Text("// DOOR/WINDOW SCHEDULE")
-                .font(OPSStyle.Typography.panelTitle)
+                .font(OPSStyle.Typography.fieldPanelTitle)
                 .foregroundColor(OPSStyle.Colors.text3)
                 .textCase(.uppercase)
 
             Text(model.isEmpty ? model.emptyStateText : "\(model.displayRows.count)")
-                .font(OPSStyle.Typography.badgeCake)
+                .font(OPSStyle.Typography.fieldBadge)
                 .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.text)
                 .padding(.horizontal, OPSStyle.Layout.spacing2)
@@ -172,7 +172,7 @@ public struct HouseOpeningScheduleView: View {
 
     private func headerCell(_ value: String) -> some View {
         Text(value)
-            .font(OPSStyle.Typography.metadata)
+            .font(OPSStyle.Typography.fieldMetadata)
             .foregroundColor(OPSStyle.Colors.text3)
             .lineLimit(1)
             .padding(.horizontal, OPSStyle.Layout.spacing2)
@@ -185,7 +185,7 @@ public struct HouseOpeningScheduleView: View {
         numeric: Bool = false
     ) -> some View {
         Text(value)
-            .font(emphasis ? OPSStyle.Typography.badgeCake : OPSStyle.Typography.dataValue)
+            .font(emphasis ? OPSStyle.Typography.fieldBadge : OPSStyle.Typography.fieldDataValue)
             .monospacedDigit()
             .foregroundColor(emphasis ? OPSStyle.Colors.text : OPSStyle.Colors.text2)
             .lineLimit(1)
@@ -195,7 +195,7 @@ public struct HouseOpeningScheduleView: View {
 
     private var emptyState: some View {
         Text(model.emptyStateText)
-            .font(OPSStyle.Typography.dataValueLg)
+            .font(OPSStyle.Typography.fieldDataValueLg)
             .monospacedDigit()
             .foregroundColor(OPSStyle.Colors.text3)
             .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetStandard * 3)

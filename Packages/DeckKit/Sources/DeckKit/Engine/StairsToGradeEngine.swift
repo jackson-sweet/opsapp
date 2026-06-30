@@ -5,8 +5,8 @@ public enum StairsToGradeEngine {
         public var flights: [StairCalculator.StairSpec]
         public var landingCount: Int
         public var totalRiseInches: Double
-        /// True when a single uninterrupted flight exceeds the configured
-        /// max-rise-without-landing and the engine split it. Geometry only.
+        /// True when the engine split a tall run into multiple drawable flights.
+        /// This is a geometry convenience, not a code-pass determination.
         public var landingInserted: Bool
 
         public init(
@@ -22,8 +22,10 @@ public enum StairsToGradeEngine {
         }
     }
 
-    /// Total rise from a level's floor-line datum down to grade, then a stair
-    /// spec. Grade is captured terrain when present, else zero.
+    /// Total rise from a level's floor-line datum down to grade, then stair
+    /// geometry. Grade is captured terrain when present, else zero. Landing
+    /// insertion only splits tall runs for layout; jurisdictional stair-code
+    /// checks stay in the compliance engine.
     public static func stairsToGrade(
         levelId: String?,
         widthInches: Double,

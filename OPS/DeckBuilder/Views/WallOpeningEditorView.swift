@@ -2,6 +2,7 @@
 
 import DeckKit
 import SwiftUI
+import UIKit
 
 struct WallOpeningEditorView: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
@@ -56,12 +57,13 @@ struct WallOpeningEditorView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("CANCEL") { dismiss() }
-                        .font(OPSStyle.Typography.buttonLabel)
+                        .font(OPSStyle.Typography.fieldButtonLabel)
                         .foregroundColor(OPSStyle.Colors.text)
                 }
             }
         }
         .presentationDetents([.medium, .large])
+        .onAppear(perform: lightImpact)
     }
 
     private var wallPreviewSection: some View {
@@ -94,7 +96,7 @@ struct WallOpeningEditorView: View {
 
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("HOUSE EDGE")
-                        .font(OPSStyle.Typography.category)
+                        .font(OPSStyle.Typography.fieldCategory)
                         .foregroundColor(OPSStyle.Colors.text3)
                     Picker("HOUSE EDGE", selection: $selectedEdgeId) {
                         ForEach(Array(viewModel.houseEdges.enumerated()), id: \.element.id) { index, edge in
@@ -102,7 +104,8 @@ struct WallOpeningEditorView: View {
                         }
                     }
                     .pickerStyle(.menu)
-                    .font(OPSStyle.Typography.dataValue)
+                    .font(OPSStyle.Typography.fieldDataValue)
+                    .monospacedDigit()
                     .foregroundColor(OPSStyle.Colors.text)
                     .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.inputHeight, alignment: .leading)
                     .padding(.horizontal, OPSStyle.Layout.spacing2_5)
@@ -135,7 +138,8 @@ struct WallOpeningEditorView: View {
                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                 .foregroundColor(validationColor)
             Text(validationMessage)
-                .font(OPSStyle.Typography.metadata)
+                .font(OPSStyle.Typography.fieldMetadata)
+                .monospacedDigit()
                 .foregroundColor(validationColor)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -152,7 +156,7 @@ struct WallOpeningEditorView: View {
                     Image(systemName: "checkmark")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                     Text("COMMIT OPENING")
-                        .font(OPSStyle.Typography.buttonLabel)
+                        .font(OPSStyle.Typography.fieldButtonLabel)
                 }
                 .foregroundColor(saveDisabled ? OPSStyle.Colors.textMute : OPSStyle.Colors.invertedText)
                 .frame(maxWidth: .infinity)
@@ -177,7 +181,7 @@ struct WallOpeningEditorView: View {
                         Image(systemName: "trash")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                         Text("REMOVE")
-                            .font(OPSStyle.Typography.buttonLabel)
+                            .font(OPSStyle.Typography.fieldButtonLabel)
                     }
                     .foregroundColor(OPSStyle.Colors.roseTextM)
                     .frame(maxWidth: .infinity)
@@ -196,7 +200,7 @@ struct WallOpeningEditorView: View {
 
     private var noHouseEdges: some View {
         Text("MARK ONE EDGE AS HOUSE EDGE BEFORE ADDING OPENINGS.")
-            .font(OPSStyle.Typography.metadata)
+            .font(OPSStyle.Typography.fieldMetadata)
             .foregroundColor(OPSStyle.Colors.tanTextM)
             .fixedSize(horizontal: false, vertical: true)
             .padding(OPSStyle.Layout.spacing3)
@@ -375,18 +379,19 @@ struct WallOpeningEditorView: View {
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(OPSStyle.Typography.panelTitle)
+            .font(OPSStyle.Typography.fieldPanelTitle)
             .foregroundColor(OPSStyle.Colors.text3)
     }
 
     private func labeledValue(_ label: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
             Text(label.uppercased())
-                .font(OPSStyle.Typography.category)
+                .font(OPSStyle.Typography.fieldCategory)
                 .foregroundColor(OPSStyle.Colors.text3)
             Spacer()
             Text(value)
-                .font(OPSStyle.Typography.dataValue)
+                .font(OPSStyle.Typography.fieldDataValue)
+                .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.text)
                 .multilineTextAlignment(.trailing)
         }
@@ -395,10 +400,11 @@ struct WallOpeningEditorView: View {
     private func tokenTextField(label: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             Text(label.uppercased())
-                .font(OPSStyle.Typography.category)
+                .font(OPSStyle.Typography.fieldCategory)
                 .foregroundColor(OPSStyle.Colors.text3)
             TextField("0", text: text)
-                .font(OPSStyle.Typography.dataValue)
+                .font(OPSStyle.Typography.fieldDataValue)
+                .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.text)
                 .keyboardType(.decimalPad)
                 .padding(.horizontal, OPSStyle.Layout.spacing2_5)
@@ -424,6 +430,10 @@ struct WallOpeningEditorView: View {
         return String(format: "%.2f", rounded)
             .trimmingCharacters(in: CharacterSet(charactersIn: "0"))
             .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+    }
+
+    private func lightImpact() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     private static var defaultWidthInches: Double { 48 }

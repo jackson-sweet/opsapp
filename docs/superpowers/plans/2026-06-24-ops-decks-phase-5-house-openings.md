@@ -219,7 +219,7 @@ git commit -m "feat(decks-p5): add HouseModel block to drawing_data (schema v5)"
 - [x] **Step 2 — Run, expect FAIL** if Task 1 used `decodeIfPresent` without the `try?` wrapper (the malformed test fails). Run: `xcodebuild -scheme OPS -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' test -only-testing:DeckKitTests/HouseModelCodableTests 2>&1 | grep -E 'TEST SUCCEEDED|TEST FAILED|failed'`
 - [x] **Step 3 — Apply the `try?` wrapper fix** to `DeckDrawingData.init(from:)` for the `house` key (and confirm the same hardening exists for other optional blocks per P1's pattern).
 - [x] **Step 4 — Run, expect `TEST SUCCEEDED`.**
-- [ ] **Step 5 — Commit.**
+- [x] **Step 5 — Commit.**
 
 ```bash
 git add DeckKit/Tests/DeckKitTests/HouseModelCodableTests.swift DeckKit/Sources/DeckKit/Models/DeckGeometry.swift
@@ -852,21 +852,21 @@ public struct HouseOpeningScheduleView: View {
 
 ## Compliance & liability checklist (P5-specific, §6)
 
-- [ ] `LedgerDetailSheet` shows the §6.2 disclaimer ("This is not a guarantee of full code adherence. Have plans reviewed by a licensed engineer in your jurisdiction.") before presenting any ledger decision.
-- [ ] `LedgerStrategyEngine.rationale` is **objective-negative only** — asserted by `test_rationale_is_objective_negative_only` (no "safe"/"compliant"/"guaranteed"/"will pass").
+- [x] `LedgerDetailSheet` shows the §6.2 disclaimer ("This is not a guarantee of full code adherence. Have plans reviewed by a licensed engineer in your jurisdiction.") before presenting any ledger decision.
+- [x] `LedgerStrategyEngine.rationale` is **objective-negative only** — asserted by `test_rationale_is_objective_negative_only` (no "safe"/"compliant"/"guaranteed"/"will pass").
 - [x] P5 asserts **no span/footing/sizing number** — the freestanding fallback emits geometry for P4 to size; `nominalSize`/`sizing` stay nil (asserted in T5).
-- [ ] Stairs-to-grade landing split is documented as a geometry convenience, not a code pass (T6 doc comment + risk note).
+- [x] Stairs-to-grade landing split is documented as a geometry convenience, not a code pass (T6 doc comment + risk note).
 - [x] All FULL surfaces hidden in LIGHT; engines never invoked in LIGHT (T14).
-- [ ] No IRC Appendix H reliance (P5 doesn't touch overhead/roof — that's P6).
+- [x] No IRC Appendix H reliance (P5 doesn't touch overhead/roof — that's P6).
 
 ## Design-system & field checklist (CLAUDE.md)
 
-- [ ] Every color/spacing/radius/font traces to `OPSStyle`/`OPSDesignKit` tokens — zero hardcoded design values (snapshot review confirms tone).
-- [ ] Numbers are JetBrains Mono, tabular, formatted; empty state `—`.
-- [ ] Touch targets ≥ 44pt (prefer 60pt for primary); text ≥ 16pt.
-- [ ] Haptics: medium on opening-commit / ledger-resolve, light on sheet arrival, success notification on a completed house setup.
-- [ ] Copy authored via `ops-copywriter` (labels, the upsell stub, the disclaimer surface, schedule headers, empty states).
-- [ ] House-attachment UI is state-aware and progressively disclosed — one "House & openings" entry, freestanding fallback shown only when triggered, no card-per-option dump.
+- [x] Every color/spacing/radius/font traces to `OPSStyle`/`OPSDesignKit` tokens — zero hardcoded design values (snapshot review confirms tone).
+- [x] Numbers are JetBrains Mono, tabular, formatted; empty state `—`.
+- [x] Touch targets ≥ 44pt (prefer 60pt for primary); text ≥ 16pt.
+- [x] Haptics: medium on opening-commit / ledger-resolve, light on sheet arrival, success notification on a completed house setup.
+- [x] Copy authored via `ops-copywriter` (labels, the upsell stub, the disclaimer surface, schedule headers, empty states).
+- [x] House-attachment UI is state-aware and progressively disclosed — one "House & openings" entry, freestanding fallback shown only when triggered, no card-per-option dump.
 
 ---
 

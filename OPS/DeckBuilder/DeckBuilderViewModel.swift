@@ -3113,7 +3113,7 @@ class DeckBuilderViewModel: ObservableObject {
         pushUndo("add wall opening")
         drawingData = copy
         save()
-        hapticSuccess()
+        hapticMedium()
         return result
     }
 
@@ -3130,7 +3130,7 @@ class DeckBuilderViewModel: ObservableObject {
         pushUndo("update wall opening")
         drawingData = copy
         save()
-        hapticLight()
+        hapticMedium()
         return result
     }
 
@@ -3178,7 +3178,8 @@ class DeckBuilderViewModel: ObservableObject {
         pushUndo("resolve ledger strategy")
         drawingData = copy
         save()
-        hapticLight()
+        hapticMedium()
+        hapticSuccess()
         return strategy
     }
 

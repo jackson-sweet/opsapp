@@ -338,6 +338,27 @@ public enum OPSStyle {
         /// Metadata — JetBrains Mono 11pt (timestamps, IDs, subtotals)
         public static let metadata = Font.custom("JetBrainsMono-Regular", size: 11)
 
+        /// Field button label — Cake Mono Light 16pt for glove-first editing sheets.
+        public static let fieldButtonLabel = Font.custom("CakeMono-Light", size: 16)
+
+        /// Field badge — Cake Mono Light 16pt for callouts and counts.
+        public static let fieldBadge = Font.custom("CakeMono-Light", size: 16)
+
+        /// Field panel title — JetBrains Mono 16pt for standalone deck field surfaces.
+        public static let fieldPanelTitle = Font.custom("JetBrainsMono-Regular", size: 16)
+
+        /// Field data value (large) — JetBrains Mono Medium 20pt for empty/data states.
+        public static let fieldDataValueLg = Font.custom("JetBrainsMono-Medium", size: 20)
+
+        /// Field data value — JetBrains Mono 16pt for measurements and numeric values.
+        public static let fieldDataValue = Font.custom("JetBrainsMono-Regular", size: 16)
+
+        /// Field category label — JetBrains Mono 16pt for field form labels.
+        public static let fieldCategory = Font.custom("JetBrainsMono-Regular", size: 16)
+
+        /// Field metadata — JetBrains Mono 16pt for advisories, validation, and empty states.
+        public static let fieldMetadata = Font.custom("JetBrainsMono-Regular", size: 16)
+
         // MARK: Legacy roles (preserved so existing call sites keep compiling)
 
         // Titles

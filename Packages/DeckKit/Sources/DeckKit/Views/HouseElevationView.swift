@@ -89,12 +89,12 @@ public struct HouseElevationView: View {
     private var header: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             Text("// HOUSE ELEVATION")
-                .font(OPSStyle.Typography.panelTitle)
+                .font(OPSStyle.Typography.fieldPanelTitle)
                 .foregroundColor(OPSStyle.Colors.text3)
                 .textCase(.uppercase)
 
             Text(model.isEmpty ? model.emptyStateText : "\(model.faces.count)")
-                .font(OPSStyle.Typography.badgeCake)
+                .font(OPSStyle.Typography.fieldBadge)
                 .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.text)
                 .padding(.horizontal, OPSStyle.Layout.spacing2)
@@ -112,7 +112,7 @@ public struct HouseElevationView: View {
 
     private var emptyState: some View {
         Text(model.emptyStateText)
-            .font(OPSStyle.Typography.dataValueLg)
+            .font(OPSStyle.Typography.fieldDataValueLg)
             .monospacedDigit()
             .foregroundColor(OPSStyle.Colors.text3)
             .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetStandard * 4)
@@ -152,14 +152,14 @@ public struct HouseElevationView: View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 Text(face.label)
-                    .font(OPSStyle.Typography.badgeCake)
+                    .font(OPSStyle.Typography.fieldBadge)
                     .foregroundColor(OPSStyle.Colors.text)
                     .lineLimit(1)
 
                 Spacer(minLength: 0)
 
                 Text(DimensionEngine.formatImperial(face.elevation.wallLengthInches))
-                    .font(OPSStyle.Typography.dataValue)
+                    .font(OPSStyle.Typography.fieldDataValue)
                     .monospacedDigit()
                     .foregroundColor(OPSStyle.Colors.text2)
                     .lineLimit(1)

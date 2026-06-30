@@ -2,6 +2,7 @@
 
 import DeckKit
 import SwiftUI
+import UIKit
 
 struct HouseModelSheet: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
@@ -48,7 +49,7 @@ struct HouseModelSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("DONE") { dismiss() }
-                        .font(OPSStyle.Typography.buttonLabel)
+                        .font(OPSStyle.Typography.fieldButtonLabel)
                         .foregroundColor(OPSStyle.Colors.text)
                 }
             }
@@ -73,7 +74,10 @@ struct HouseModelSheet: View {
         .sheet(isPresented: $showingLedgerDetail) {
             LedgerDetailSheet(viewModel: viewModel)
         }
-        .onAppear(perform: syncFields)
+        .onAppear {
+            syncFields()
+            lightImpact()
+        }
         .onChange(of: viewModel.drawingData.house) { _, _ in
             syncFields()
         }
@@ -87,7 +91,7 @@ struct HouseModelSheet: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.tanTextM)
                 Text("FULL DECKS APP REQUIRED. OPS CAN VIEW STANDARDIZED DECK OBJECTS ONLY.")
-                    .font(OPSStyle.Typography.metadata)
+                    .font(OPSStyle.Typography.fieldMetadata)
                     .foregroundColor(OPSStyle.Colors.tanTextM)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -192,7 +196,7 @@ struct HouseModelSheet: View {
             if let ledger = house.ledger {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     labeledValue("Cladding", ledger.cladding.displayName)
-                    labeledValue("Attachment", ledger.attachmentAllowed ? "Ledger allowed" : "Freestanding beam")
+                    labeledValue("Attachment", ledger.attachmentAllowed ? "Attached ledger detail" : "Freestanding house-side beam")
                     labeledValue("Fasteners", ledger.fastenerSchedule ?? "—")
                     labeledValue("Lateral connectors", ledger.lateralConnectors.map(String.init) ?? "—")
                 }
@@ -228,8 +232,8 @@ struct HouseModelSheet: View {
     }
 
     private var advisorySection: some View {
-        Text("ENGINEER REVIEW REQUIRED. OPS FLAGS ATTACHMENT RISK ONLY. HAVE PLANS REVIEWED BY A LICENSED ENGINEER BEFORE PERMIT OR BUILD.")
-            .font(OPSStyle.Typography.metadata)
+        Text(DeckHouseComplianceCopy.engineerReviewNotice)
+            .font(OPSStyle.Typography.fieldMetadata)
             .foregroundColor(OPSStyle.Colors.text3)
             .fixedSize(horizontal: false, vertical: true)
             .padding(OPSStyle.Layout.spacing3)
@@ -244,17 +248,18 @@ struct HouseModelSheet: View {
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Text(row.calloutTag)
-                    .font(OPSStyle.Typography.badgeCake)
+                    .font(OPSStyle.Typography.fieldBadge)
                     .foregroundColor(OPSStyle.Colors.text)
                     .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
                     .background(OPSStyle.Colors.surfaceActive)
                     .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(row.kindDisplay.uppercased())
-                        .font(OPSStyle.Typography.category)
+                        .font(OPSStyle.Typography.fieldCategory)
                         .foregroundColor(OPSStyle.Colors.text)
                     Text("\(formatInches(row.widthInches)) × \(formatInches(row.heightInches)) · sill \(formatInches(row.sillHeightInches))")
-                        .font(OPSStyle.Typography.metadata)
+                        .font(OPSStyle.Typography.fieldMetadata)
+                        .monospacedDigit()
                         .foregroundColor(OPSStyle.Colors.text2)
                         .lineLimit(2)
                 }
@@ -274,16 +279,17 @@ struct HouseModelSheet: View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text("HOUSE EDGE \(index + 1)")
-                    .font(OPSStyle.Typography.category)
+                    .font(OPSStyle.Typography.fieldCategory)
                     .foregroundColor(OPSStyle.Colors.text)
                 Text(edge.label?.isEmpty == false ? edge.label ?? edge.id : edge.id)
-                    .font(OPSStyle.Typography.metadata)
+                    .font(OPSStyle.Typography.fieldMetadata)
                     .foregroundColor(OPSStyle.Colors.text3)
                     .lineLimit(1)
             }
             Spacer()
             Text(edge.dimension.map(formatInches) ?? "—")
-                .font(OPSStyle.Typography.dataValue)
+                .font(OPSStyle.Typography.fieldDataValue)
+                .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.text2)
         }
         .padding(.horizontal, OPSStyle.Layout.spacing2_5)
@@ -293,18 +299,19 @@ struct HouseModelSheet: View {
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(OPSStyle.Typography.panelTitle)
+            .font(OPSStyle.Typography.fieldPanelTitle)
             .foregroundColor(OPSStyle.Colors.text3)
     }
 
     private func labeledValue(_ label: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
             Text(label.uppercased())
-                .font(OPSStyle.Typography.category)
+                .font(OPSStyle.Typography.fieldCategory)
                 .foregroundColor(OPSStyle.Colors.text3)
             Spacer()
             Text(value)
-                .font(OPSStyle.Typography.dataValue)
+                .font(OPSStyle.Typography.fieldDataValue)
+                .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.text)
                 .multilineTextAlignment(.trailing)
         }
@@ -312,7 +319,7 @@ struct HouseModelSheet: View {
 
     private func emptyLine(_ text: String) -> some View {
         Text(text)
-            .font(OPSStyle.Typography.metadata)
+            .font(OPSStyle.Typography.fieldMetadata)
             .foregroundColor(OPSStyle.Colors.text3)
             .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin, alignment: .leading)
     }
@@ -324,10 +331,11 @@ struct HouseModelSheet: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             Text(label.uppercased())
-                .font(OPSStyle.Typography.category)
+                .font(OPSStyle.Typography.fieldCategory)
                 .foregroundColor(OPSStyle.Colors.text3)
             TextField(placeholder, text: text)
-                .font(OPSStyle.Typography.dataValue)
+                .font(OPSStyle.Typography.fieldDataValue)
+                .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.text)
                 .keyboardType(.numbersAndPunctuation)
                 .padding(.horizontal, OPSStyle.Layout.spacing2_5)
@@ -353,7 +361,7 @@ struct HouseModelSheet: View {
                 Image(systemName: systemImage)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                 Text(title)
-                    .font(OPSStyle.Typography.buttonLabel)
+                    .font(OPSStyle.Typography.fieldButtonLabel)
             }
             .foregroundColor(buttonForeground(isPrimary: isPrimary, isDisabled: isDisabled))
             .frame(maxWidth: .infinity)
@@ -393,6 +401,10 @@ struct HouseModelSheet: View {
         guard viewModel.canEditHouseOpenings else { return }
         _ = viewModel.setFloorLine(feet: decimalValue(floorLineText))
         _ = viewModel.setStoryHeights(decimalList(storyHeightsText))
+    }
+
+    private func lightImpact() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     private func decimalValue(_ text: String) -> Double? {

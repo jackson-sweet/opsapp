@@ -2,6 +2,7 @@
 
 import DeckKit
 import SwiftUI
+import UIKit
 
 struct LedgerDetailSheet: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
@@ -27,9 +28,9 @@ struct LedgerDetailSheet: View {
                         noHouseEdges
                     } else {
                         edgeSection
+                        advisorySection
                         strategySection
                         detailSection
-                        advisorySection
                         commitButton
                     }
                 }
@@ -41,12 +42,13 @@ struct LedgerDetailSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("CANCEL") { dismiss() }
-                        .font(OPSStyle.Typography.buttonLabel)
+                        .font(OPSStyle.Typography.fieldButtonLabel)
                         .foregroundColor(OPSStyle.Colors.text)
                 }
             }
         }
         .presentationDetents([.medium, .large])
+        .onAppear(perform: lightImpact)
     }
 
     private var edgeSection: some View {
@@ -54,7 +56,7 @@ struct LedgerDetailSheet: View {
             sectionHeader("// HOUSE EDGE")
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text("EDGE")
-                    .font(OPSStyle.Typography.category)
+                    .font(OPSStyle.Typography.fieldCategory)
                     .foregroundColor(OPSStyle.Colors.text3)
                 Picker("EDGE", selection: $selectedEdgeId) {
                     ForEach(Array(viewModel.houseEdges.enumerated()), id: \.element.id) { index, edge in
@@ -62,7 +64,8 @@ struct LedgerDetailSheet: View {
                     }
                 }
                 .pickerStyle(.menu)
-                .font(OPSStyle.Typography.dataValue)
+                .font(OPSStyle.Typography.fieldDataValue)
+                .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.text)
                 .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.inputHeight, alignment: .leading)
                 .padding(.horizontal, OPSStyle.Layout.spacing2_5)
@@ -93,10 +96,10 @@ struct LedgerDetailSheet: View {
                         .foregroundColor(strategyColor(strategy))
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                         Text(strategyTitle(strategy))
-                            .font(OPSStyle.Typography.category)
+                            .font(OPSStyle.Typography.fieldCategory)
                             .foregroundColor(strategyColor(strategy))
                         Text(strategyDetail(strategy))
-                            .font(OPSStyle.Typography.metadata)
+                            .font(OPSStyle.Typography.fieldMetadata)
                             .foregroundColor(OPSStyle.Colors.text2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -117,10 +120,11 @@ struct LedgerDetailSheet: View {
             sectionHeader("// FASTENERS")
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text("SCHEDULE")
-                    .font(OPSStyle.Typography.category)
+                    .font(OPSStyle.Typography.fieldCategory)
                     .foregroundColor(OPSStyle.Colors.text3)
                 TextField("—", text: $fastenerScheduleText)
-                    .font(OPSStyle.Typography.dataValue)
+                    .font(OPSStyle.Typography.fieldDataValue)
+                    .monospacedDigit()
                     .foregroundColor(OPSStyle.Colors.text)
                     .textInputAutocapitalization(.characters)
                     .padding(.horizontal, OPSStyle.Layout.spacing2_5)
@@ -144,8 +148,8 @@ struct LedgerDetailSheet: View {
     }
 
     private var advisorySection: some View {
-        Text("ENGINEER REVIEW REQUIRED. OPS FLAGS ATTACHMENT RISK ONLY. HAVE PLANS REVIEWED BY A LICENSED ENGINEER BEFORE PERMIT OR BUILD.")
-            .font(OPSStyle.Typography.metadata)
+        Text(DeckHouseComplianceCopy.engineerReviewNotice)
+            .font(OPSStyle.Typography.fieldMetadata)
             .foregroundColor(OPSStyle.Colors.text3)
             .fixedSize(horizontal: false, vertical: true)
             .padding(OPSStyle.Layout.spacing3)
@@ -160,7 +164,7 @@ struct LedgerDetailSheet: View {
                 Image(systemName: "checkmark")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                 Text("COMMIT LEDGER")
-                    .font(OPSStyle.Typography.buttonLabel)
+                    .font(OPSStyle.Typography.fieldButtonLabel)
             }
             .foregroundColor(commitDisabled ? OPSStyle.Colors.textMute : OPSStyle.Colors.invertedText)
             .frame(maxWidth: .infinity)
@@ -178,7 +182,7 @@ struct LedgerDetailSheet: View {
 
     private var noHouseEdges: some View {
         Text("MARK ONE EDGE AS HOUSE EDGE BEFORE RESOLVING LEDGER DETAIL.")
-            .font(OPSStyle.Typography.metadata)
+            .font(OPSStyle.Typography.fieldMetadata)
             .foregroundColor(OPSStyle.Colors.tanTextM)
             .fixedSize(horizontal: false, vertical: true)
             .padding(OPSStyle.Layout.spacing3)
@@ -240,8 +244,8 @@ struct LedgerDetailSheet: View {
 
     private func strategyDetail(_ strategy: LedgerStrategyEngine.Strategy) -> String {
         switch strategy {
-        case let .attach(detail):
-            return "\(detail.cladding.displayName) accepts ledger attachment in this model."
+        case .attach:
+            return DeckHouseComplianceCopy.attachedLedgerDetail
         case let .freestanding(_, fallback):
             return fallback.rationale
         }
@@ -274,20 +278,25 @@ struct LedgerDetailSheet: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    private func lightImpact() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(OPSStyle.Typography.panelTitle)
+            .font(OPSStyle.Typography.fieldPanelTitle)
             .foregroundColor(OPSStyle.Colors.text3)
     }
 
     private func labeledValue(_ label: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
             Text(label.uppercased())
-                .font(OPSStyle.Typography.category)
+                .font(OPSStyle.Typography.fieldCategory)
                 .foregroundColor(OPSStyle.Colors.text3)
             Spacer()
             Text(value)
-                .font(OPSStyle.Typography.dataValue)
+                .font(OPSStyle.Typography.fieldDataValue)
+                .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.text)
                 .multilineTextAlignment(.trailing)
         }
@@ -295,7 +304,7 @@ struct LedgerDetailSheet: View {
 
     private func emptyLine(_ text: String) -> some View {
         Text(text)
-            .font(OPSStyle.Typography.metadata)
+            .font(OPSStyle.Typography.fieldMetadata)
             .foregroundColor(OPSStyle.Colors.text3)
             .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin, alignment: .leading)
     }

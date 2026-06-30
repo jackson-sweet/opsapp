@@ -749,11 +749,11 @@ Each intent: lazily creates `drawingData.house` if nil (FULL only), validates vi
 - `test_setStoryHeights_persists()` — set `[9,8]`; assert round-trips through `toJSON`/`fromJSON`.
 - `test_intents_noop_or_unavailable_in_light()` — when `capabilities` lacks `.houseOpenings`, the intents are not reachable (the surfaces are hidden); assert at minimum that a LIGHT-configured VM does not expose the house-editing entry (see T14) — here, assert the VM guards `house` creation behind capability so a misuse can't silently write a FULL block in LIGHT.
 
-- [ ] **Step 1 — Write intent tests; run, expect FAIL.**
-- [ ] **Step 2 — Implement the intents** on the ViewModel (guard `.houseOpenings`; lazy-create `house`; validate+clamp; write through `drawingData`).
-- [ ] **Step 3 — Build the three SwiftUI sheets** against the intents, all `OPSStyle`-tokenized, 44pt+ touch targets, mono numbers. `WallOpeningEditorView` shows a live 2D wall strip with the cutout (reuse T3's `cutoutRect2D`) and surfaces validation results inline. `LedgerDetailSheet` shows the strategy result + the §6.2 disclaimer text (via `ops-copywriter`) + fastener/lateral-connector fields. Copy for ALL labels/empty-states via `ops-copywriter`.
-- [ ] **Step 4 — Run intent tests, expect `TEST SUCCEEDED`; build device target.**
-- [ ] **Step 5 — Commit** (`feat(decks-p5): house/opening/ledger editor surfaces + viewmodel intents`).
+- [x] **Step 1 — Write intent tests; run, expect FAIL.**
+- [x] **Step 2 — Implement the intents** on the ViewModel (guard `.houseOpenings`; lazy-create `house`; validate+clamp; write through `drawingData`).
+- [x] **Step 3 — Build the three SwiftUI sheets** against the intents, all `OPSStyle`-tokenized, 44pt+ touch targets, mono numbers. `WallOpeningEditorView` shows a live 2D wall strip with the cutout (reuse T3's `cutoutRect2D`) and surfaces validation results inline. `LedgerDetailSheet` shows the strategy result + the §6.2 disclaimer text (via `ops-copywriter`) + fastener/lateral-connector fields. Copy for ALL labels/empty-states via `ops-copywriter`.
+- [x] **Step 4 — Run intent tests, expect `TEST SUCCEEDED`; build device target.**
+- [x] **Step 5 — Commit** (`feat(decks-p5): house/opening/ledger editor surfaces + viewmodel intents`).
 
 **Dependencies:** T1, T3, T5; existing `DeckBuilderViewModel` + `drawingData` setter; P1 `CapabilityProvider`; `ops-copywriter` + `ops-design`/`mobile-ux-design` skills for the UI.
 **References:** `DeckBuilderViewModel.swift`, `DeckDesign.swift:53-62`; contract §4 (capability gating), §6.2 (ledger disclaimer); CLAUDE.md field-first (44pt, 16pt+ text, haptics on commit).

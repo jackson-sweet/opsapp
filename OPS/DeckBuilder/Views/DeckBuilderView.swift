@@ -320,6 +320,9 @@ struct DeckBuilderView: View {
         .sheet(isPresented: $viewModel.showingPropertySheet) {
             PropertySheetView(viewModel: viewModel)
         }
+        .sheet(isPresented: $viewModel.showingHouseModelSheet) {
+            HouseModelSheet(viewModel: viewModel)
+        }
         .sheet(isPresented: $viewModel.showingLevelConnectionSheet) {
             LevelConnectionSheet(viewModel: viewModel)
         }

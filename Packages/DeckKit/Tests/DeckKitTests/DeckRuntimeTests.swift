@@ -163,6 +163,7 @@ final class DeckRuntimeTests: XCTestCase {
         XCTAssertFalse(DeckCapabilities.light.contains(.plausibleFrame))
         XCTAssertFalse(DeckCapabilities.light.contains(.groundCover))
         XCTAssertFalse(DeckCapabilities.light.contains(.codeCompliance))
+        XCTAssertFalse(DeckCapabilities.light.contains(.houseOpenings))
         XCTAssertEqual(DeckCapabilities.forSurface(.ops), .light)
     }
 
@@ -171,6 +172,7 @@ final class DeckRuntimeTests: XCTestCase {
         XCTAssertTrue(DeckCapabilities.full.contains(.plausibleFrame))
         XCTAssertTrue(DeckCapabilities.full.contains(.groundCover))
         XCTAssertTrue(DeckCapabilities.full.contains(.codeCompliance))
+        XCTAssertTrue(DeckCapabilities.full.contains(.houseOpenings))
         XCTAssertEqual(DeckCapabilities.forSurface(.opsDecks), .full)
     }
 }

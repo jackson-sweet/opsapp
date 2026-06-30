@@ -62,6 +62,10 @@ public final class DeckDrawingEditorModel: ObservableObject {
         capabilities.contains(.codeCompliance) && codeProfile != nil
     }
 
+    public var canEditHouseOpenings: Bool {
+        capabilities.contains(.houseOpenings)
+    }
+
     public var visibleCodeFindings: [DeckCodeFinding] {
         guard codeCheckSettings == .enabled else { return [] }
         return codeReport?.findings ?? []
@@ -180,6 +184,103 @@ public final class DeckDrawingEditorModel: ObservableObject {
         }
         drawingData.terrain = terrain
         persistDrawingData()
+    }
+
+    @discardableResult
+    public func setFloorLine(feet: Double?) -> Bool {
+        guard HouseEditingIntentEngine.setFloorLine(
+            feet: feet,
+            in: &drawingData,
+            capabilities: capabilities
+        ) else { return false }
+        persistDrawingData()
+        return true
+    }
+
+    @discardableResult
+    public func setStoryHeights(_ feet: [Double]) -> Bool {
+        guard HouseEditingIntentEngine.setStoryHeights(
+            feet,
+            in: &drawingData,
+            capabilities: capabilities
+        ) else { return false }
+        persistDrawingData()
+        return true
+    }
+
+    @discardableResult
+    public func addOpening(
+        _ kind: OpeningKind,
+        onEdge edgeId: String,
+        widthInches: Double,
+        heightInches: Double,
+        sillHeightInches: Double,
+        offsetAlongEdgeInches: Double
+    ) -> HouseOpeningMutationResult {
+        let result = HouseEditingIntentEngine.addOpening(
+            kind,
+            onEdge: edgeId,
+            widthInches: widthInches,
+            heightInches: heightInches,
+            sillHeightInches: sillHeightInches,
+            offsetAlongEdgeInches: offsetAlongEdgeInches,
+            in: &drawingData,
+            capabilities: capabilities
+        )
+        if result.didMutate {
+            persistDrawingData()
+        }
+        return result
+    }
+
+    @discardableResult
+    public func updateOpening(_ opening: WallOpening) -> HouseOpeningMutationResult {
+        let result = HouseEditingIntentEngine.updateOpening(
+            opening,
+            in: &drawingData,
+            capabilities: capabilities
+        )
+        if result.didMutate {
+            persistDrawingData()
+        }
+        return result
+    }
+
+    @discardableResult
+    public func removeOpening(id: String) -> Bool {
+        guard HouseEditingIntentEngine.removeOpening(
+            id: id,
+            in: &drawingData,
+            capabilities: capabilities
+        ) else { return false }
+        persistDrawingData()
+        return true
+    }
+
+    @discardableResult
+    public func resolveLedger(
+        forEdge edgeId: String,
+        houseSideBeamSpanInches: Double
+    ) -> LedgerStrategyEngine.Strategy? {
+        guard let strategy = HouseEditingIntentEngine.resolveLedger(
+            forEdge: edgeId,
+            houseSideBeamSpanInches: houseSideBeamSpanInches,
+            in: &drawingData,
+            capabilities: capabilities
+        ) else { return nil }
+        persistDrawingData()
+        return strategy
+    }
+
+    @discardableResult
+    public func setLedgerDetail(_ detail: LedgerDetail) -> Bool {
+        guard HouseEditingIntentEngine.setLedgerDetail(
+            detail,
+            in: &drawingData,
+            capabilities: capabilities
+        ) else { return false }
+        persistDrawingData()
+        return true
     }
 
     public func clear() {

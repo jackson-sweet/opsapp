@@ -82,6 +82,7 @@ class DeckBuilderViewModel: ObservableObject {
     /// the type of siding on a house edge"); now reachable from a
     /// "Properties" button on every selection toolbar.
     @Published var showingPropertySheet: Bool = false
+    @Published var showingHouseModelSheet: Bool = false
     var taskTypes: [TaskType] = []
     @Published var showingSettings: Bool = false
     @Published var showingClearConfirm: Bool = false
@@ -118,6 +119,10 @@ class DeckBuilderViewModel: ObservableObject {
     var canViewInAR: Bool { can3DMode }
     var canFrame: Bool { capabilities.contains(.plausibleFrame) }
     var canPickGround: Bool { capabilities.contains(.groundCover) }
+    var canEditHouseOpenings: Bool { capabilities.contains(.houseOpenings) }
+    var houseEdges: [DeckEdge] {
+        drawingData.allEdges.filter { $0.edgeType == .houseEdge }
+    }
     var selectedGroundCover: GroundCover {
         drawingData.terrain?.groundCover.first?.cover ?? .grass
     }
@@ -3038,6 +3043,150 @@ class DeckBuilderViewModel: ObservableObject {
         drawingData.terrain = terrain
         save()
         hapticLight()
+    }
+
+    // MARK: - House Model / Openings / Ledger
+
+    @discardableResult
+    func setFloorLine(feet: Double?) -> Bool {
+        var copy = drawingData
+        guard HouseEditingIntentEngine.setFloorLine(
+            feet: feet,
+            in: &copy,
+            capabilities: capabilities
+        ) else { return false }
+
+        pushUndo("set house floor line")
+        drawingData = copy
+        save()
+        hapticLight()
+        return true
+    }
+
+    @discardableResult
+    func setStoryHeights(_ feet: [Double]) -> Bool {
+        var copy = drawingData
+        guard HouseEditingIntentEngine.setStoryHeights(
+            feet,
+            in: &copy,
+            capabilities: capabilities
+        ) else { return false }
+
+        pushUndo("set house story heights")
+        drawingData = copy
+        save()
+        hapticLight()
+        return true
+    }
+
+    @discardableResult
+    func addOpening(
+        _ kind: OpeningKind,
+        onEdge edgeId: String,
+        widthInches: Double,
+        heightInches: Double,
+        sillHeightInches: Double,
+        offsetAlongEdgeInches: Double
+    ) -> HouseOpeningMutationResult {
+        var copy = drawingData
+        let result = HouseEditingIntentEngine.addOpening(
+            kind,
+            onEdge: edgeId,
+            widthInches: widthInches,
+            heightInches: heightInches,
+            sillHeightInches: sillHeightInches,
+            offsetAlongEdgeInches: offsetAlongEdgeInches,
+            in: &copy,
+            capabilities: capabilities
+        )
+        guard result.didMutate else { return result }
+
+        pushUndo("add wall opening")
+        drawingData = copy
+        save()
+        hapticSuccess()
+        return result
+    }
+
+    @discardableResult
+    func updateOpening(_ opening: WallOpening) -> HouseOpeningMutationResult {
+        var copy = drawingData
+        let result = HouseEditingIntentEngine.updateOpening(
+            opening,
+            in: &copy,
+            capabilities: capabilities
+        )
+        guard result.didMutate else { return result }
+
+        pushUndo("update wall opening")
+        drawingData = copy
+        save()
+        hapticLight()
+        return result
+    }
+
+    @discardableResult
+    func removeOpening(id: String) -> Bool {
+        var copy = drawingData
+        guard HouseEditingIntentEngine.removeOpening(
+            id: id,
+            in: &copy,
+            capabilities: capabilities
+        ) else { return false }
+
+        pushUndo("remove wall opening")
+        drawingData = copy
+        save()
+        hapticMedium()
+        return true
+    }
+
+    @discardableResult
+    func resolveLedger(
+        forEdge edgeId: String,
+        houseSideBeamSpanInches: Double,
+        fastenerSchedule: String? = nil,
+        lateralConnectors: Int? = nil
+    ) -> LedgerStrategyEngine.Strategy? {
+        var copy = drawingData
+        guard let strategy = HouseEditingIntentEngine.resolveLedger(
+            forEdge: edgeId,
+            houseSideBeamSpanInches: houseSideBeamSpanInches,
+            in: &copy,
+            capabilities: capabilities
+        ) else { return nil }
+
+        if var detail = copy.house?.ledger {
+            detail.fastenerSchedule = fastenerSchedule
+            detail.lateralConnectors = lateralConnectors
+            _ = HouseEditingIntentEngine.setLedgerDetail(
+                detail,
+                in: &copy,
+                capabilities: capabilities
+            )
+        }
+
+        pushUndo("resolve ledger strategy")
+        drawingData = copy
+        save()
+        hapticLight()
+        return strategy
+    }
+
+    @discardableResult
+    func setLedgerDetail(_ detail: LedgerDetail) -> Bool {
+        var copy = drawingData
+        guard HouseEditingIntentEngine.setLedgerDetail(
+            detail,
+            in: &copy,
+            capabilities: capabilities
+        ) else { return false }
+
+        pushUndo("set ledger detail")
+        drawingData = copy
+        save()
+        hapticLight()
+        return true
     }
 
     // MARK: - Persistence

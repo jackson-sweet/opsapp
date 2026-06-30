@@ -181,6 +181,28 @@ struct DeckSettingsSheet: View {
                     Text("DISPLAY")
                 }
 
+                if viewModel.canEditHouseOpenings {
+                    Section {
+                        Button {
+                            dismiss()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + OPSStyle.Animation.durationPanel) {
+                                viewModel.showingHouseModelSheet = true
+                            }
+                        } label: {
+                            Label("HOUSE MODEL", systemImage: "house.and.flag")
+                                .font(OPSStyle.Typography.buttonLabel)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        }
+                        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                    } header: {
+                        Text("HOUSE")
+                    } footer: {
+                        Text("DOORS, WINDOWS, WALL HEIGHTS, LEDGER DETAIL.")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+
                 Section {
                     Picker("Vinyl product", selection: Binding(
                         get: { viewModel.drawingData.config.vinylCatalogItemId ?? "" },

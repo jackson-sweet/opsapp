@@ -39,6 +39,12 @@ public enum ComponentEmitter {
             for connection in data.levelConnections {
                 if let row = emitConnectionStair(connection: connection, data: data) {
                     rows.append(row)
+                    rows.append(stairDetailRow(
+                        stair: connection.stairConfig,
+                        edgeId: nil,
+                        levelId: connection.upperLevelId,
+                        connectionId: connection.id
+                    ))
                 }
             }
         } else {
@@ -68,6 +74,8 @@ public enum ComponentEmitter {
         }
 
         rows.append(contentsOf: emitHouseComponents(data))
+        rows.append(contentsOf: emitSurfaceFeatureComponents(data))
+        rows.append(contentsOf: emitOverheadComponents(data))
 
         return rows
     }
@@ -159,6 +167,13 @@ public enum ComponentEmitter {
                 if let levelId = levelId { postMeta["level_id"] = AnyCodable(levelId) }
                 rows.append(DesignComponentRow(componentType: "post_set", metadata: postMeta))
             }
+
+            rows.append(contentsOf: emitRailingPartComponents(
+                railing: railing,
+                edgeLengthInches: netLengthInches,
+                edgeId: edge.id,
+                levelId: levelId
+            ))
         }
 
         // Stair set (per-edge stairs — distinct from level connection stairs)
@@ -191,6 +206,12 @@ public enum ComponentEmitter {
             ]
             if let levelId = levelId { meta["level_id"] = AnyCodable(levelId) }
             rows.append(DesignComponentRow(componentType: "stair_set", metadata: meta))
+            rows.append(stairDetailRow(
+                stair: stair,
+                edgeId: edge.id,
+                levelId: levelId,
+                connectionId: nil
+            ))
         }
 
         // Gates — one component per gate-flagged AssignedItem on this edge.
@@ -332,6 +353,25 @@ public enum ComponentEmitter {
             "connection_id": AnyCodable(connection.id),
         ]
         return DesignComponentRow(componentType: "stair_set", metadata: meta)
+    }
+
+    private static func stairDetailRow(
+        stair: StairConfig,
+        edgeId: String?,
+        levelId: String?,
+        connectionId: String?
+    ) -> DesignComponentRow {
+        var meta: [String: AnyCodable] = [
+            "width": AnyCodable(stair.width),
+            "stringer_style": AnyCodable(stair.stringerStyle.rawValue),
+            "stringer_material": AnyCodable(stair.stringerMaterial.rawValue),
+            "tread_material": AnyCodable(stair.treadMaterial.rawValue),
+            "mount_type": AnyCodable(stair.mountType),
+        ]
+        if let edgeId { meta["edge_id"] = AnyCodable(edgeId) }
+        if let levelId { meta["level_id"] = AnyCodable(levelId) }
+        if let connectionId { meta["connection_id"] = AnyCodable(connectionId) }
+        return DesignComponentRow(componentType: "stair_detail", metadata: meta)
     }
 
     // MARK: - Framing components
@@ -482,6 +522,184 @@ public enum ComponentEmitter {
             return false
         }
     }
+
+    // MARK: - Phase 6 surface/overhead components
+
+    private static func emitSurfaceFeatureComponents(_ data: DeckDrawingData) -> [DesignComponentRow] {
+        guard let features = data.surfaceFeatures else { return [] }
+
+        var rows: [DesignComponentRow] = []
+        let surfaceLevels = surfaceLevelLookup(data)
+
+        for pattern in features.patterns {
+            var meta: [String: AnyCodable] = [
+                "surface_id": AnyCodable(pattern.surfaceId),
+                "pattern": AnyCodable(pattern.pattern.rawValue),
+                "board_angle_degrees": AnyCodable(pattern.boardAngleDegrees),
+                "picture_frame_courses": AnyCodable(pattern.pictureFrameCourses),
+            ]
+            if let levelId = surfaceLevels[pattern.surfaceId] {
+                meta["level_id"] = AnyCodable(levelId)
+            }
+            rows.append(DesignComponentRow(componentType: "decking_pattern", metadata: meta))
+        }
+
+        if features.fascia {
+            rows.append(DesignComponentRow(
+                componentType: "fascia",
+                metadata: [
+                    "linear_feet": AnyCodable(roundToTwo(perimeterFeet(data))),
+                    "count": AnyCodable(1),
+                ]
+            ))
+        }
+
+        if let skirting = features.skirting {
+            rows.append(DesignComponentRow(
+                componentType: "skirting",
+                metadata: [
+                    "linear_feet": AnyCodable(roundToTwo(perimeterFeet(data))),
+                    "material": AnyCodable(skirting.material),
+                    "ventilated": AnyCodable(skirting.ventilated),
+                ]
+            ))
+        }
+
+        for builtIn in features.builtIns {
+            rows.append(DesignComponentRow(
+                componentType: "built_in",
+                metadata: [
+                    "built_in_id": AnyCodable(builtIn.id),
+                    "kind": AnyCodable(builtIn.kind.rawValue),
+                    "height_inches": AnyCodable(builtIn.heightInches),
+                    "count": AnyCodable(1),
+                ]
+            ))
+        }
+
+        if let lighting = features.lighting {
+            if !lighting.fixtures.isEmpty || !lighting.receptacles.isEmpty {
+                rows.append(DesignComponentRow(
+                    componentType: "lighting_fixture",
+                    metadata: [
+                        "fixture_count": AnyCodable(lighting.fixtures.count),
+                        "receptacle_count": AnyCodable(lighting.receptacles.count),
+                    ]
+                ))
+            }
+            if let transformerWatts = lighting.transformerWatts {
+                rows.append(DesignComponentRow(
+                    componentType: "transformer",
+                    metadata: [
+                        "watts": AnyCodable(transformerWatts),
+                        "count": AnyCodable(1),
+                    ]
+                ))
+            }
+        }
+
+        if let fastenerSystem = features.fastenerSystem {
+            rows.append(DesignComponentRow(
+                componentType: "fastener",
+                metadata: [
+                    "system": AnyCodable(fastenerSystem.rawValue),
+                    "basis": AnyCodable("surface_feature_plan"),
+                ]
+            ))
+        }
+
+        for finish in features.finishes {
+            rows.append(DesignComponentRow(
+                componentType: "finish",
+                metadata: [
+                    "kind": AnyCodable(finish.kind),
+                    "coats": AnyCodable(finish.coats),
+                ]
+            ))
+        }
+
+        return rows
+    }
+
+    private static func emitRailingPartComponents(
+        railing: RailingConfig,
+        edgeLengthInches: Double,
+        edgeId: String,
+        levelId: String?
+    ) -> [DesignComponentRow] {
+        guard railing.railingType != .parapetWall else { return [] }
+
+        let family = railingFamily(for: railing)
+        return RailingComponentBreakdown.parts(
+            railing: railing,
+            edgeLengthInches: edgeLengthInches,
+            family: family
+        ).map { part in
+            var meta: [String: AnyCodable] = [
+                "part": AnyCodable(part.part),
+                "quantity": AnyCodable(part.quantity),
+                "unit": AnyCodable(part.unit),
+                "family": AnyCodable(part.family.rawValue),
+                "edge_id": AnyCodable(edgeId),
+                "frame_style": AnyCodable(railing.frameStyle.rawValue),
+                "mount_placement": AnyCodable(railing.mountPlacement.rawValue),
+                "color": AnyCodable(railing.color),
+            ]
+            if let levelId { meta["level_id"] = AnyCodable(levelId) }
+            return DesignComponentRow(componentType: "railing_part", metadata: meta)
+        }
+    }
+
+    private static func emitOverheadComponents(_ data: DeckDrawingData) -> [DesignComponentRow] {
+        guard let overhead = data.overhead else { return [] }
+
+        return overhead.structures.flatMap { structure in
+            structure.framing.map { member in
+                DesignComponentRow(
+                    componentType: "overhead_member",
+                    metadata: [
+                        "structure_id": AnyCodable(structure.id),
+                        "kind": AnyCodable(structure.kind.rawValue),
+                        "member_id": AnyCodable(member.id),
+                        "role": AnyCodable(member.role.rawValue),
+                        "linear_feet": AnyCodable(roundToTwo(SnapEngine.distance(member.start, member.end) / 12)),
+                        "nominal_size": nullableString(member.nominalSize?.rawValue),
+                        "ply_count": AnyCodable(max(1, member.plyCount)),
+                    ]
+                )
+            }
+        }
+    }
+
+    private static func surfaceLevelLookup(_ data: DeckDrawingData) -> [String: String] {
+        var lookup: [String: String] = [:]
+        for level in data.levels {
+            for surface in level.surfaces {
+                lookup[surface.id] = level.id
+            }
+        }
+        return lookup
+    }
+
+    private static func perimeterFeet(_ data: DeckDrawingData) -> Double {
+        let edges = data.isMultiLevel ? data.allEdges : data.edges
+        return edges.reduce(0.0) { $0 + (($1.dimension ?? 0) / 12) }
+    }
+
+    private static func railingFamily(for railing: RailingConfig) -> RailingMaterialFamily {
+        switch railing.railingType {
+        case .glass:
+            return .glass
+        case .cable:
+            return .cable
+        case .wood:
+            return .wood
+        case .picket, .horizontal:
+            return .aluminum
+        case .parapetWall:
+            return .wood
+        }
+    }
 }
 
 /// One row in `DeckDrawingData.components` — the projection
@@ -489,8 +707,10 @@ public enum ComponentEmitter {
 /// catalog's `DesignComponentType` raw values (`railing`, `deck_board`,
 /// `stair_set`, `gate`, `post_set`) plus additive structural rows (`joist`,
 /// `beam`, `post`, `rim_joist`, `blocking`) and additive house rows (`door`,
-/// `window`, `ledger`, `freestanding_beam_line`). Adding component_type
-/// strings is fine; renaming is a contract break.
+/// `window`, `ledger`, `freestanding_beam_line`). Phase 6 adds surface,
+/// railing-part, stair-detail, lighting, finish, built-in, fascia/skirting,
+/// and overhead rows. Adding component_type strings is fine; renaming is a
+/// contract break.
 public struct DesignComponentRow: Codable, Equatable {
     public let componentType: String
     public let metadata: [String: AnyCodable]

@@ -3,6 +3,10 @@
 import Foundation
 
 public struct EstimateGeneratorService {
+    private static let defaultDeckBoardWidthInches = 5.5
+    private static let defaultDeckBoardLengthInches = 192.0
+    private static let defaultDeckBoardGapInches = 0.1875
+    private static let defaultFinishCoverageSqFtPerUnit = 250.0
 
     public enum DeckEstimateLineType: String, Codable, CaseIterable {
         case labor = "LABOR"
@@ -116,8 +120,14 @@ public struct EstimateGeneratorService {
             ).items
         }
 
-        return appendFramingLineItems(
+        let withFraming = appendFramingLineItems(
             to: baseItems,
+            drawingData: drawingData,
+            waste: resolvedWaste
+        )
+
+        return appendPhase6LineItems(
+            to: withFraming,
             drawingData: drawingData,
             waste: resolvedWaste
         )
@@ -550,6 +560,309 @@ public struct EstimateGeneratorService {
         return items
     }
 
+    private static func appendPhase6LineItems(
+        to baseItems: [GeneratedLineItem],
+        drawingData: DeckDrawingData,
+        waste: WasteSettings
+    ) -> [GeneratedLineItem] {
+        var items = baseItems
+        var sortOrder = (items.map(\.sortOrder).max() ?? -1) + 1
+
+        if let features = drawingData.surfaceFeatures {
+            let surfaceLookup = detectedSurfaceLookup(drawingData)
+            var patternLayouts: [(SurfacePatternSpec, DeckingLayoutResult, [CGPoint])] = []
+
+            for spec in features.patterns {
+                guard let surface = surfaceLookup[spec.surfaceId] else { continue }
+                let layout = DeckingPatternEngine.layout(
+                    surfacePolygon: surface,
+                    scaleFactor: drawingData.effectiveScaleFactor,
+                    spec: spec,
+                    boardWidthInches: defaultDeckBoardWidthInches,
+                    boardLengthInches: defaultDeckBoardLengthInches,
+                    gapInches: defaultDeckBoardGapInches
+                )
+                guard layout.boardCount > 0 else { continue }
+                patternLayouts.append((spec, layout, surface))
+
+                items.append(GeneratedLineItem(
+                    name: "\(patternDisplayName(spec.pattern)) Decking Boards",
+                    description: "Surface \(spec.surfaceId)",
+                    type: .material,
+                    quantity: boardQuantityWithWaste(boardCount: layout.boardCount, pattern: spec.pattern, waste: waste),
+                    unit: "each",
+                    unitPrice: 0,
+                    productId: nil,
+                    taskTypeId: nil,
+                    category: "Decking",
+                    sortOrder: sortOrder,
+                    isOptional: false
+                ))
+                sortOrder += 1
+            }
+
+            if let fastenerSystem = features.fastenerSystem,
+               !patternLayouts.isEmpty {
+                let quantity = patternLayouts.reduce(0) { total, layout in
+                    let takeoff = FastenerFinishTakeoff.fasteners(
+                        system: fastenerSystem,
+                        boards: layout.1.boards,
+                        joistSpacingInchesOC: joistSpacingInchesOC(from: drawingData),
+                        surfacePolygon: layout.2,
+                        scaleFactor: drawingData.effectiveScaleFactor
+                    )
+                    return total + (fastenerSystem == .hiddenClip ? takeoff.clipCount : takeoff.screwCount)
+                }
+                if quantity > 0 {
+                    items.append(GeneratedLineItem(
+                        name: fastenerSystem == .hiddenClip ? "Hidden Clip Fasteners" : "Face Screw Fasteners",
+                        description: joistSpacingInchesOC(from: drawingData) > 0
+                            ? FastenerTakeoffBasis.layoutDerived.rawValue
+                            : FastenerTakeoffBasis.estimateGrade.rawValue,
+                        type: .material,
+                        quantity: Double(quantity),
+                        unit: "each",
+                        unitPrice: 0,
+                        productId: nil,
+                        taskTypeId: nil,
+                        category: "Fasteners",
+                        sortOrder: sortOrder,
+                        isOptional: false
+                    ))
+                    sortOrder += 1
+                }
+            }
+
+            let coatedArea = calculateAreaSqFt(drawingData: drawingData)
+            for finish in FastenerFinishTakeoff.finishes(
+                specs: features.finishes,
+                coatedAreaSqFt: coatedArea,
+                coveragePerUnitSqFt: defaultFinishCoverageSqFtPerUnit
+            ) where finish.unitsRequired > 0 {
+                items.append(GeneratedLineItem(
+                    name: "\(titleCased(finish.kind)) Finish",
+                    description: "\(finish.coats) coats",
+                    type: .material,
+                    quantity: roundToTwo(finish.unitsRequired),
+                    unit: "unit",
+                    unitPrice: 0,
+                    productId: nil,
+                    taskTypeId: nil,
+                    category: "Finishes",
+                    sortOrder: sortOrder,
+                    isOptional: false
+                ))
+                sortOrder += 1
+            }
+
+            let perimeter = calculatePerimeterFt(drawingData: drawingData)
+            if features.fascia, perimeter > 0 {
+                items.append(GeneratedLineItem(
+                    name: "Fascia",
+                    description: nil,
+                    type: .material,
+                    quantity: roundToTwo(perimeter),
+                    unit: "linear ft",
+                    unitPrice: 0,
+                    productId: nil,
+                    taskTypeId: nil,
+                    category: "Fascia/Skirting",
+                    sortOrder: sortOrder,
+                    isOptional: false
+                ))
+                sortOrder += 1
+            }
+
+            if let skirting = features.skirting, perimeter > 0 {
+                items.append(GeneratedLineItem(
+                    name: "\(titleCased(skirting.material)) Skirting",
+                    description: skirting.ventilated ? "Ventilated" : nil,
+                    type: .material,
+                    quantity: roundToTwo(perimeter),
+                    unit: "linear ft",
+                    unitPrice: 0,
+                    productId: nil,
+                    taskTypeId: nil,
+                    category: "Fascia/Skirting",
+                    sortOrder: sortOrder,
+                    isOptional: false
+                ))
+                sortOrder += 1
+            }
+
+            for builtIn in features.builtIns {
+                items.append(GeneratedLineItem(
+                    name: "\(builtInDisplayName(builtIn.kind)) Built-In",
+                    description: "\(DimensionEngine.formatImperial(builtIn.heightInches)) high",
+                    type: .material,
+                    quantity: 1,
+                    unit: "each",
+                    unitPrice: 0,
+                    productId: nil,
+                    taskTypeId: nil,
+                    category: "Built-Ins",
+                    sortOrder: sortOrder,
+                    isOptional: false
+                ))
+                sortOrder += 1
+            }
+
+            if let lighting = features.lighting {
+                if !lighting.fixtures.isEmpty {
+                    items.append(GeneratedLineItem(
+                        name: "Low-Voltage Lighting Fixtures",
+                        description: nil,
+                        type: .material,
+                        quantity: Double(lighting.fixtures.count),
+                        unit: "each",
+                        unitPrice: 0,
+                        productId: nil,
+                        taskTypeId: nil,
+                        category: "Lighting/Electrical",
+                        sortOrder: sortOrder,
+                        isOptional: false
+                    ))
+                    sortOrder += 1
+                }
+                if let transformerWatts = lighting.transformerWatts {
+                    items.append(GeneratedLineItem(
+                        name: "Low-Voltage Transformer",
+                        description: "\(Int(transformerWatts.rounded())) W",
+                        type: .material,
+                        quantity: 1,
+                        unit: "each",
+                        unitPrice: 0,
+                        productId: nil,
+                        taskTypeId: nil,
+                        category: "Lighting/Electrical",
+                        sortOrder: sortOrder,
+                        isOptional: false
+                    ))
+                    sortOrder += 1
+                }
+            }
+        }
+
+        if let overhead = drawingData.overhead {
+            for structure in overhead.structures {
+                for member in structure.framing {
+                    let lengthFeet = SnapEngine.distance(member.start, member.end) / 12
+                    items.append(GeneratedLineItem(
+                        name: "\(overheadKindDisplayName(structure.kind)) \(framingRoleDisplayName(member.role))",
+                        description: member.nominalSize?.rawValue,
+                        type: .material,
+                        quantity: member.role == .post ? 1 : roundToTwo(lengthFeet),
+                        unit: member.role == .post ? "each" : "linear ft",
+                        unitPrice: 0,
+                        productId: nil,
+                        taskTypeId: nil,
+                        category: "Overhead",
+                        sortOrder: sortOrder,
+                        isOptional: false
+                    ))
+                    sortOrder += 1
+                }
+            }
+        }
+
+        return items
+    }
+
+    private static func detectedSurfaceLookup(_ drawingData: DeckDrawingData) -> [String: [CGPoint]] {
+        var lookup: [String: [CGPoint]] = [:]
+
+        if drawingData.isMultiLevel {
+            for level in drawingData.levels {
+                let detectedByVertexSet = Dictionary(
+                    uniqueKeysWithValues: level.detectedSurfaces.map { (Set($0.vertexIds), $0.positions) }
+                )
+                for surface in level.surfaces {
+                    if let positions = detectedByVertexSet[surface.vertexIds] {
+                        lookup[surface.id] = positions
+                    }
+                }
+            }
+        } else {
+            let detectedByVertexSet = Dictionary(
+                uniqueKeysWithValues: drawingData.detectedSurfaces.map { (Set($0.vertexIds), $0.positions) }
+            )
+            for surface in drawingData.surfaces {
+                if let positions = detectedByVertexSet[surface.vertexIds] {
+                    lookup[surface.id] = positions
+                }
+            }
+        }
+
+        return lookup
+    }
+
+    private static func boardQuantityWithWaste(
+        boardCount: Int,
+        pattern: DeckingPattern,
+        waste: WasteSettings
+    ) -> Double {
+        let wastePercent = waste.perPatternWastePercent[pattern.rawValue] ?? waste.defaultWastePercent
+        return roundToTwo(Double(max(0, boardCount)) * (1 + max(0, wastePercent) / 100))
+    }
+
+    private static func joistSpacingInchesOC(from drawingData: DeckDrawingData) -> Double {
+        drawingData.framing?.members
+            .flatMap(\.members)
+            .first(where: { $0.role == .joist && ($0.spacingInchesOC ?? 0) > 0 })?
+            .spacingInchesOC ?? 0
+    }
+
+    private static func patternDisplayName(_ pattern: DeckingPattern) -> String {
+        switch pattern {
+        case .parallel:
+            return "Parallel"
+        case .diagonal:
+            return "Diagonal"
+        case .pictureFrame:
+            return "Picture Frame"
+        case .herringbone:
+            return "Herringbone"
+        case .chevron:
+            return "Chevron"
+        }
+    }
+
+    private static func titleCased(_ value: String) -> String {
+        value
+            .split(separator: "_")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
+    }
+
+    private static func builtInDisplayName(_ kind: BuiltInKind) -> String {
+        switch kind {
+        case .bench:
+            return "Bench"
+        case .planter:
+            return "Planter"
+        case .privacyWall:
+            return "Privacy Wall"
+        }
+    }
+
+    private static func overheadKindDisplayName(_ kind: OverheadKind) -> String {
+        switch kind {
+        case .pergola:
+            return "Pergola"
+        case .louveredRoof:
+            return "Louvered Roof"
+        case .solidRoof:
+            return "Solid Roof"
+        }
+    }
+
+    private static func hasLightingContent(_ lighting: LightingPlan?) -> Bool {
+        guard let lighting else { return false }
+        return !lighting.fixtures.isEmpty
+            || !lighting.receptacles.isEmpty
+            || lighting.transformerWatts != nil
+    }
+
     private static func framingLumberLineItem(
         _ row: FramingTakeoff.LumberRow,
         sortOrder: Int
@@ -643,7 +956,21 @@ public struct EstimateGeneratorService {
         var lines: [String] = ["Deck Estimate Summary", String(repeating: "\u{2500}", count: 30)]
 
         let grouped = Dictionary(grouping: items, by: { $0.category })
-        let categoryOrder = ["Surface", "Substructure", "Framing", "Railing", "Stairs", "Other"]
+        let categoryOrder = [
+            "Surface",
+            "Decking",
+            "Substructure",
+            "Framing",
+            "Fasteners",
+            "Finishes",
+            "Fascia/Skirting",
+            "Railing",
+            "Stairs",
+            "Built-Ins",
+            "Lighting/Electrical",
+            "Overhead",
+            "Other",
+        ]
 
         for category in categoryOrder {
             guard let categoryItems = grouped[category], !categoryItems.isEmpty else { continue }
@@ -671,6 +998,17 @@ public struct EstimateGeneratorService {
     /// Check if the drawing has any assignments (estimate-able content)
     public static func hasAssignments(_ drawingData: DeckDrawingData) -> Bool {
         if drawingData.framing?.members.contains(where: { !$0.members.isEmpty }) == true { return true }
+        if let features = drawingData.surfaceFeatures,
+           !features.patterns.isEmpty
+            || features.fastenerSystem != nil
+            || !features.finishes.isEmpty
+            || features.fascia
+            || features.skirting != nil
+            || !features.builtIns.isEmpty
+            || hasLightingContent(features.lighting) {
+            return true
+        }
+        if drawingData.overhead?.structures.isEmpty == false { return true }
         if drawingData.isMultiLevel {
             for level in drawingData.levels {
                 if !level.footprint.assignedItems.isEmpty { return true }

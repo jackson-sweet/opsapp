@@ -468,7 +468,8 @@ final class ComponentEmitterTests: XCTestCase {
         let rows = ComponentEmitter.emit(data)
         let types = Set(rows.map(\.componentType))
 
-        XCTAssertEqual(types, Set(["railing", "post_set", "deck_board"]))
+        XCTAssertTrue(types.isSuperset(of: ["railing", "post_set", "deck_board"]))
+        XCTAssertTrue(types.contains("railing_part"))
         XCTAssertFalse(types.contains("joist"))
         XCTAssertFalse(types.contains("beam"))
         XCTAssertFalse(types.contains("post"))

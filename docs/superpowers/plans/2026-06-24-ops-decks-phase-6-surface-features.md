@@ -614,6 +614,10 @@ Key assertions: additive `component_type` rows, **zero renames** of shipped type
 
 **Risks:** The `AnyCodable` in `ComponentEmitter.swift` is **scalar-only today** (lines 343–390) and C§1.4 says it's extended in P1 to carry nested object/array values. If a Phase-6 component row needs a nested metadata value (e.g. a list of picture-frame courses), it depends on the P1 `AnyCodable` extension being in place — otherwise keep Phase-6 component metadata **scalar** (flatten lists into counts + separate rows) to avoid relying on an unverified extension. Per the outbound-field-allowlist memory (`ios-outbound-field-allowlist-drift`): new component types feeding line items must not trip a column allowlist on the outbound sync — verify the estimate line-item write path tolerates the new categories.
 
+**Implementation status (2026-06-30):** Complete. Added `Engine/RailingComponentBreakdown.swift`, additive Phase-6 component rows in `ComponentEmitter`, and Phase-6 estimate categories in `EstimateGeneratorService`. Existing component types are preserved. Per-pattern waste is applied in the estimate layer after raw `DeckingPatternEngine` board counts. Component metadata stays scalar to respect the current `AnyCodable` limits.
+
+**Verification (2026-06-30):** `swift test --package-path Packages/DeckKit --filter ComponentEmitterPhase6Tests` (5 tests), `swift test --package-path Packages/DeckKit --filter ComponentEmitter` (25 tests), `swift test --package-path Packages/DeckKit` (450 tests), `scripts/verify-ops-decks-style-tokens.sh .`, `git diff --check`, and `xcodebuild -project OPS.xcodeproj -scheme OPSDecks -destination generic/platform=iOS -derivedDataPath /private/tmp/ops-decks-p6-task9-OPSDecks-dd CODE_SIGNING_ALLOWED=NO build` all passed.
+
 ---
 
 ### Task 10 — 3D render: pattern mesh + overhead nodes behind a layer toggle

@@ -31,7 +31,9 @@ struct BooksCommandGrid: View {
 
     var body: some View {
         Group {
-            if !viewModel.hasEverLoaded {
+            // Skeleton only during the very first load — once any data (even
+            // zeros) is in hand, show the real grid rather than a placeholder.
+            if viewModel.isLoading && !viewModel.hasEverLoaded {
                 skeleton
             } else {
                 grid

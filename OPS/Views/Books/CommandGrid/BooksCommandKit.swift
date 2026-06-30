@@ -50,23 +50,29 @@ extension View {
 private struct BooksCardIn: ViewModifier {
     let index: Int
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var appeared = false
+    // nil until the entrance runs; `isShown` defaults to true so a static render
+    // (ImageRenderer snapshot, reduce-motion, first frame) shows the final state
+    // rather than an invisible (opacity-0) tile.
+    @State private var entered: Bool? = nil
+
+    private var isShown: Bool { entered ?? true }
 
     func body(content: Content) -> some View {
         content
-            .opacity(appeared ? 1 : 0)
-            .offset(y: appeared ? 0 : 9)
+            .opacity(isShown ? 1 : 0)
+            .offset(y: isShown ? 0 : 9)
             .onAppear {
-                guard !appeared else { return }
+                guard entered == nil else { return }
                 if reduceMotion {
-                    appeared = true
+                    entered = true
                     return
                 }
+                entered = false
                 withAnimation(
                     .timingCurve(0.22, 1, 0.36, 1, duration: OPSStyle.Animation.durationPanel)
                         .delay(min(Double(index) * 0.04, 0.28))
                 ) {
-                    appeared = true
+                    entered = true
                 }
             }
     }
@@ -120,49 +126,24 @@ enum BooksFormat {
 
 // MARK: - Count-up hero number
 
-/// A hero number that counts up from 0 to `target` on appear, and animates
-/// between values when `target` changes (period switch). Honors Reduce Motion
-/// by snapping to the final value with no interpolation. The single OPS easing
-/// curve at the 800ms count-up duration (DESIGN.md §8).
+/// A large hero number. Renders the formatted value directly (always correct —
+/// in the app, in reduce-motion, and in static ImageRenderer snapshots) and
+/// uses a numeric content transition so the digits roll when the value changes
+/// (e.g. a period switch). Entrance motion is carried by the card's `cardIn`
+/// stagger, not a 0→target count-up — an `Animatable` count-up renders at frame
+/// 0 under ImageRenderer, which is why it's deliberately avoided here.
 struct CountUpText: View {
     let target: Double
     var format: (Double) -> String = BooksFormat.currency
     var font: Font
     var color: Color = OPSStyle.Colors.text
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var shown: Double = 0
-
     var body: some View {
-        _CountUpNumber(value: shown, format: format)
+        Text(format(target))
             .font(font)
             .foregroundColor(color)
             .monospacedDigit()
-            .onAppear {
-                withAnimation(reduceMotion ? nil : .timingCurve(0.22, 1, 0.36, 1, duration: OPSStyle.Animation.durationCountUp)) {
-                    shown = target
-                }
-            }
-            .onChange(of: target) { _, newValue in
-                withAnimation(reduceMotion ? nil : .timingCurve(0.22, 1, 0.36, 1, duration: OPSStyle.Animation.durationCountUp)) {
-                    shown = newValue
-                }
-            }
-    }
-}
-
-/// Drives the per-frame interpolation. `animatableData` lets SwiftUI tween the
-/// underlying Double; `body` reformats each interpolated frame.
-private struct _CountUpNumber: View, Animatable {
-    var value: Double
-    let format: (Double) -> String
-
-    var animatableData: Double {
-        get { value }
-        set { value = newValue }
-    }
-
-    var body: some View {
-        Text(format(value))
+            .contentTransition(.numericText())
+            .animation(OPSStyle.Animation.panel, value: target)
     }
 }

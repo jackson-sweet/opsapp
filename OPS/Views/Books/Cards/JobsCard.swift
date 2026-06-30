@@ -77,9 +77,7 @@ struct JobsCard: View {
         if isSkeleton {
             CondensedHeroCard<EmptyView, EmptyView>.skeleton()
         } else if viewModel.cardError(.jobs) {
-            BooksCardError(onRetry: { Task { await viewModel.retry(.jobs) } })
-                .frame(height: BooksCondensedMetrics.cardHeight)
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            BooksCardError(onRetry: { Task { await viewModel.retry(.jobs) } }, inCard: true)
         } else {
             CondensedHeroCard(
                 caption: "AVG MARGIN",

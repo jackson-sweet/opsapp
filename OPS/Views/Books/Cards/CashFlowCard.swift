@@ -93,9 +93,7 @@ struct CashFlowCard: View {
         if isSkeleton {
             CondensedHeroCard<EmptyView, EmptyView>.skeleton()
         } else if viewModel.cardError(.cashFlow) {
-            BooksCardError(onRetry: { Task { await viewModel.retry(.cashFlow) } })
-                .frame(height: BooksCondensedMetrics.cardHeight)
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            BooksCardError(onRetry: { Task { await viewModel.retry(.cashFlow) } }, inCard: true)
         } else {
             CondensedHeroCard(
                 caption: isEmpty ? "NET CASH" : "NET CASH · \(weeks.count)W",

@@ -113,14 +113,7 @@ struct CondensedHeroCard<Viz: View, SubStat: View>: View {
         .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .frame(height: BooksCondensedMetrics.cardHeight, alignment: .topLeading)
         .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius)
-                .fill(OPSStyle.Colors.surfaceInput)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius)
-                .strokeBorder(OPSStyle.Colors.surfaceActive, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .booksL2Surface()
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .accessibilityHidden(true)
     }
@@ -138,15 +131,7 @@ private struct CondensedCardButtonStyle: ButtonStyle {
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .frame(height: BooksCondensedMetrics.cardHeight, alignment: .topLeading)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius)
-                    .fill(pressed ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius)
-                    .strokeBorder(pressed ? Color.white.opacity(0.18) : OPSStyle.Colors.surfaceActive,
-                                  lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .booksL2Surface(pressed: pressed)
             .animation(reduceMotion ? nil : OPSStyle.Animation.hover, value: pressed)
     }
 }
@@ -158,7 +143,7 @@ private struct CondensedCardButtonStyle: ButtonStyle {
 struct CondensedMeter: View {
     let fraction: Double          // 0…1, clamped by caller
     var fill: Color = OPSStyle.Colors.olive
-    var track: Color = OPSStyle.Colors.warningStatus.opacity(0.30)
+    var track: Color = OPSStyle.Colors.tanLine
 
     var body: some View {
         GeometryReader { geo in

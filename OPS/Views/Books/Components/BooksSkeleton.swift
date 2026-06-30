@@ -78,14 +78,7 @@ private struct SkeletonTile: View {
         }
         .padding(OPSStyle.Layout.spacing2_5)
         .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius)
-                .fill(OPSStyle.Colors.surfaceInput)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius)
-                .strokeBorder(OPSStyle.Colors.surfaceActive, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+        .booksL2Surface()
         .accessibilityHidden(true)
     }
 }

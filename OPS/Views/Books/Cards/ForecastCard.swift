@@ -72,9 +72,7 @@ struct ForecastCard: View {
         if isSkeleton {
             CondensedHeroCard<EmptyView, EmptyView>.skeleton()
         } else if viewModel.cardError(.forecast) {
-            BooksCardError(onRetry: { Task { await viewModel.retry(.forecast) } })
-                .frame(height: BooksCondensedMetrics.cardHeight)
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            BooksCardError(onRetry: { Task { await viewModel.retry(.forecast) } }, inCard: true)
         } else {
             CondensedHeroCard(
                 caption: "WEIGHTED FORECAST",

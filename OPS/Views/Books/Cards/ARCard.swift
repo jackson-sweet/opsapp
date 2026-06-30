@@ -122,9 +122,7 @@ struct ARCard: View {
         if isSkeleton {
             CondensedHeroCard<EmptyView, EmptyView>.skeleton()
         } else if viewModel.cardError(.ar) {
-            BooksCardError(onRetry: { Task { await viewModel.retry(.ar) } })
-                .frame(height: BooksCondensedMetrics.cardHeight)
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            BooksCardError(onRetry: { Task { await viewModel.retry(.ar) } }, inCard: true)
         } else {
             CondensedHeroCard(
                 caption: "TOTAL OUTSTANDING",
@@ -385,19 +383,10 @@ private struct TopChaseButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed
-        let bg: Color = pressed ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput
-        let border: Color = pressed ? Color.white.opacity(0.18) : OPSStyle.Colors.surfaceActive
         return configuration.label
             .padding(OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius)
-                    .fill(bg)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius)
-                    .strokeBorder(border, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .booksL2Surface(pressed: pressed)
             .animation(reduceMotion ? nil : OPSStyle.Animation.hover, value: pressed)
     }
 }

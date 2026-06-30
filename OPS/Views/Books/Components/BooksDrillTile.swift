@@ -104,33 +104,65 @@ extension View {
     }
 }
 
+// MARK: - Shared L2 surface
+
+/// The single canonical L2 nested-card surface for every Books tile — the
+/// carousel condensed card, drill tile, A/R chase tile, skeletons, and errored
+/// card all route through here. Traces straight to the elevation ladder
+/// (MOBILE.md §3): `cardRadius` (6) + `nestedBorder` (white@0.08) over a
+/// `surfaceInput` (white@0.04) fill. The pressed/accent edge tints are the ONLY
+/// place the raw-opacity values live, so L2 retunes in one spot — not the four
+/// hand-rolled copies this replaces.
+struct BooksL2Surface: ViewModifier {
+    var pressed: Bool = false
+    var accent: Bool = false
+
+    /// Pressed-state edge — brighter than the resting nested border.
+    static let pressedBorder = Color.white.opacity(0.18)
+    /// Accent (active) tile edge.
+    static let accentBorder = Color.white.opacity(0.25)
+    /// Accent (active) tile fill — soft steel-blue wash.
+    static let accentFill = OPSStyle.Colors.primaryAccent.opacity(0.15)
+
+    private var fill: Color {
+        if pressed { return OPSStyle.Colors.surfaceActive }
+        return accent ? Self.accentFill : OPSStyle.Colors.surfaceInput
+    }
+    private var border: Color {
+        if pressed { return Self.pressedBorder }
+        return accent ? Self.accentBorder : OPSStyle.Colors.nestedBorder
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
+                    .fill(fill)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
+                    .strokeBorder(border, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+    }
+}
+
+extension View {
+    /// Apply the canonical Books L2 nested-card surface (fill + hairline + 6pt radius).
+    func booksL2Surface(pressed: Bool = false, accent: Bool = false) -> some View {
+        modifier(BooksL2Surface(pressed: pressed, accent: accent))
+    }
+}
+
 private struct BooksDrillTileChrome: ViewModifier {
     let accent: Bool
     let isPressed: Bool
     let reduceMotion: Bool
 
-    private var bg: Color {
-        if isPressed { return OPSStyle.Colors.surfaceActive }
-        return accent ? OPSStyle.Colors.primaryAccent.opacity(0.15) : OPSStyle.Colors.surfaceInput
-    }
-
-    private var border: Color {
-        if isPressed { return Color.white.opacity(0.18) }
-        return accent ? Color.white.opacity(0.25) : OPSStyle.Colors.surfaceActive
-    }
-
     func body(content: Content) -> some View {
         content
             .padding(OPSStyle.Layout.spacing2_5)
             .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius)
-                    .fill(bg)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius)
-                    .strokeBorder(border, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .booksL2Surface(pressed: isPressed, accent: accent)
             .animation(reduceMotion ? nil : OPSStyle.Animation.hover, value: isPressed)
     }
 }

@@ -100,9 +100,7 @@ struct PLCard: View {
         if isSkeleton {
             CondensedHeroCard<EmptyView, EmptyView>.skeleton()
         } else if viewModel.cardError(.pl) {
-            BooksCardError(onRetry: { Task { await viewModel.retry(.pl) } })
-                .frame(height: BooksCondensedMetrics.cardHeight)
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            BooksCardError(onRetry: { Task { await viewModel.retry(.pl) } }, inCard: true)
         } else {
             CondensedHeroCard(
                 caption: "NET CASH",
@@ -196,7 +194,7 @@ struct PLCard: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                    .fill(OPSStyle.Colors.warningStatus.opacity(0.30))  // tan-soft track per § 5.1
+                    .fill(OPSStyle.Colors.tanLine)  // tan-soft track per § 5.1
                     .frame(height: 6)
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                     .fill(OPSStyle.Colors.olive)

@@ -726,6 +726,16 @@ struct MainTabView: View {
             }
         }
 
+        // Open Settings from the notifications-menu gear. Settings now lives off
+        // the right edge of the scroll tab bar, so the gear selects it — and
+        // CustomTabBar reveals the peek in response to the selection change.
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenSettings"))) { _ in
+            print("[PUSH_NAVIGATION] Opening settings")
+            withAnimation(OPSStyle.Animation.fast) {
+                selectedTab = settingsTabIndex
+            }
+        }
+
         // Bug 8ed0d2ed — Open expenses from notification rail / push.
         // Switch to the BOOKS tab (where Expenses lives), then ask BooksTabView
         // to select the expenses segment. For users without books access (rare,

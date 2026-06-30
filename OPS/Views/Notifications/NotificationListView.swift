@@ -281,17 +281,22 @@ struct NotificationListView: View {
 
                     Spacer()
 
-                    if !notifications.isEmpty {
-                        Button(action: { markAllAsRead() }) {
-                            Text("READ ALL")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    // Settings access — the Settings tab now lives off the right
+                    // edge of the scroll tab bar, so the notifications menu carries
+                    // a direct entry point. Dismiss first, then ask MainTabView to
+                    // select Settings (which reveals the tab-bar peek).
+                    Button(action: {
+                        dismiss()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            NotificationCenter.default.post(name: Notification.Name("OpenSettings"), object: nil)
                         }
-                        .frame(height: OPSStyle.Layout.touchTargetMin)
-                    } else {
-                        Spacer()
-                            .frame(width: OPSStyle.Layout.touchTargetMin)
+                    }) {
+                        Image(systemName: OPSStyle.Icons.gearshape)
+                            .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                     }
+                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                    .accessibilityLabel("Settings")
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.top, OPSStyle.Layout.spacing2_5)
@@ -541,30 +546,46 @@ struct NotificationListView: View {
 
     private var notificationListContent: some View {
         let grouped = groupedNotifications
+        // READ ALL rides the first rendered section header. TODAY wins when it
+        // exists; otherwise it falls through to the first non-empty bucket so the
+        // action is never lost.
+        let readAllOnThisWeek = grouped.today.isEmpty
+        let readAllOnLastWeek = grouped.today.isEmpty && grouped.thisWeek.isEmpty
+        let readAllOnOlderOnly = grouped.today.isEmpty && grouped.thisWeek.isEmpty && grouped.lastWeek.isEmpty
         return LazyVStack(spacing: 0) {
             if !grouped.today.isEmpty {
-                sectionHeader("TODAY", count: grouped.today.count)
+                sectionHeader("TODAY", count: grouped.today.count, showReadAll: true)
                 sectionRows(grouped.today)
             }
 
             if !grouped.thisWeek.isEmpty {
-                sectionHeader("THIS WEEK", count: grouped.thisWeek.count)
+                sectionHeader("THIS WEEK", count: grouped.thisWeek.count, showReadAll: readAllOnThisWeek)
                 sectionRows(grouped.thisWeek)
             }
 
             if !grouped.lastWeek.isEmpty {
-                sectionHeader("LAST WEEK", count: grouped.lastWeek.count)
+                sectionHeader("LAST WEEK", count: grouped.lastWeek.count, showReadAll: readAllOnLastWeek)
                 sectionRows(grouped.lastWeek)
             }
 
             if !grouped.older.isEmpty {
+                // Older-only edge: the older section renders as a CTA (not a plain
+                // header), so give READ ALL a clean home just above it.
+                if readAllOnOlderOnly {
+                    HStack {
+                        Spacer()
+                        readAllButton
+                    }
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.top, OPSStyle.Layout.spacing2)
+                }
                 collapsibleOlderSection(grouped.older)
             }
         }
         .padding(.bottom, OPSStyle.Layout.spacing3)
     }
 
-    private func sectionHeader(_ title: String, count: Int) -> some View {
+    private func sectionHeader(_ title: String, count: Int, showReadAll: Bool = false) -> some View {
         // Section labels above grouped content use the canonical OPS pattern:
         // microLabel (Kosugi 11pt) + secondaryText, matching PersonalEventSheet.sectionLabel
         // and the explicit purpose comment in Fonts.swift for `microLabel`.
@@ -578,10 +599,28 @@ struct NotificationListView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             Spacer()
+
+            // Mark-all-read rides the first section header (relocated from the
+            // menu header, which now hosts the Settings gear).
+            if showReadAll {
+                readAllButton
+            }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.top, OPSStyle.Layout.spacing3_5)
         .padding(.bottom, OPSStyle.Layout.spacing2)
+    }
+
+    /// Right-aligned "READ ALL" action. Compact tap target so the section header
+    /// stays tight; only shown when there are notifications to clear.
+    private var readAllButton: some View {
+        Button(action: { markAllAsRead() }) {
+            Text("READ ALL")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
+                .contentShape(Rectangle())
+        }
     }
 
     private func sectionRows(_ items: [NotificationDTO]) -> some View {

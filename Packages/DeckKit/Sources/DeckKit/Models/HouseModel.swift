@@ -1,7 +1,7 @@
 import Foundation
 
 public struct HouseModel: Codable, Equatable {
-    /// Floor-line datum (feet) the deck attaches to; story heights for elevation views.
+    /// Floor-line datum (feet) the deck attaches to; story heights are feet for elevation views.
     public var floorLineFeet: Double?
     public var storyHeights: [Double]
     /// Openings (doors/windows) placed on house edges. Drives wall cutouts,
@@ -44,6 +44,7 @@ public struct WallOpening: Codable, Equatable, Identifiable {
     public var kind: OpeningKind
     public var widthInches: Double
     public var heightInches: Double
+    /// Height above the modeled floor line. Floor-level doors use 0.
     public var sillHeightInches: Double
     public var offsetAlongEdgeInches: Double
 

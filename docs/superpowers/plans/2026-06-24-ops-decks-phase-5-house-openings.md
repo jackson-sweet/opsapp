@@ -367,11 +367,11 @@ public enum HouseElevationProjector {
 - `test_storyLines_for_multistory()` — two storyHeights produce two `storyLines` y-values (deckSurface, deckSurface+story1).
 - `test_callout_tags_match_schedule()` — projected openings carry the same `calloutTag` `HouseOpeningSchedule` assigns (cross-engine consistency; depends on T7 — order this test after T7 lands or stub the tag input).
 
-- [ ] **Step 1 — Write tests** (geometry literals; no dates).
-- [ ] **Step 2 — Run, expect FAIL.**
-- [ ] **Step 3 — Implement projector.** Pull wall length from `WallOpeningGeometry.wallLengthInches` (T3 reuse — DRY). Datum precedence: `house.floorLineFeet` → level `elevation` → `overallElevation` → 0, all ×12 to inches.
-- [ ] **Step 4 — Run, expect `TEST SUCCEEDED`.**
-- [ ] **Step 5 — Commit** (`feat(decks-p5): house elevation orthographic projector`).
+- [x] **Step 1 — Write tests** (geometry literals; no dates).
+- [x] **Step 2 — Run, expect FAIL.**
+- [x] **Step 3 — Implement projector.** Pull wall length from `WallOpeningGeometry.wallLengthInches` (T3 reuse — DRY). Datum precedence: `house.floorLineFeet` → level `elevation` → `overallElevation` → 0, all ×12 to inches.
+- [x] **Step 4 — Run, expect `TEST SUCCEEDED`.**
+- [x] **Step 5 — Commit** (`feat(decks-p5): house elevation orthographic projector`).
 
 **Dependencies:** T1, T3; baseline `DeckLevel.elevation`/`DeckDrawingData.overallElevation`. T7 for the callout-tag cross-check.
 **References:** contract §3, §5.1; roadmap §2.4 "Elevation (front-on) drawing view" + §2.8 "Elevation drawings (front/rear/side to scale)".

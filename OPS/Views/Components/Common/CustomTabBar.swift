@@ -11,11 +11,6 @@ struct CustomTabBar: View {
     @Binding var selectedTab: Int
     let tabs: [TabItem]
 
-    @State private var selectedIndicatorOffset: CGFloat = 0
-    @State private var tabWidth: CGFloat = 0
-    @State private var iconWidth: CGFloat = 28 // SF Symbols 28pt size
-    @State private var tabCount: Int = 0
-
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Tutorial mode support
@@ -66,57 +61,12 @@ struct CustomTabBar: View {
                     .frame(height: 1)
             }
 
-
-            VStack(spacing: 0) {
-                // Sliding indicator bar - sized to match icon width
-                HStack {
-                    Rectangle()
-                        .fill(indicatorColor)
-                        .frame(width: iconWidth, height: 2)
-                        .cornerRadius(OPSStyle.Layout.smallCornerRadius)
-                        .offset(x: selectedIndicatorOffset)
-                        .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: selectedIndicatorOffset)
-
-                    Spacer()
-                }
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-
-                // Tab items
-                HStack(spacing: 0) {
-                    ForEach(Array(tabs.enumerated()), id: \.element.id) { index, tab in
-                        TabBarItem(
-                            tab: tab,
-                            isSelected: selectedTab == index,
-                            action: {
-                                withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
-                                    selectedTab = index
-                                    updateIndicatorPosition(for: index)
-                                }
-                            }
-                        )
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            GeometryReader { geometry in
-                                Color.clear
-                                    .onAppear {
-                                        if tabWidth == 0 {
-                                            tabWidth = geometry.size.width
-                                            updateIndicatorPosition(for: selectedTab)
-                                        }
-                                    }
-                                    .onChange(of: geometry.size) { _, newSize in
-                                        tabWidth = newSize.width
-                                        updateIndicatorPosition(for: selectedTab)
-                                    }
-                            }
-                        )
-                    }
-                }
-                .id("tabbar_\(tabs.count)") // Force recreation when tab count changes
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .padding(.bottom, OPSStyle.Layout.spacing3)
+            // Tab lane — horizontally scrollable, with the last tab (Settings)
+            // parked just off the right edge as the single "peek" tab.
+            GeometryReader { geo in
+                tabLane(laneWidth: geo.size.width)
             }
-            .padding(.top, OPSStyle.Layout.spacing3)
+            .frame(height: 100)
 
             // Black overlay during tutorial drag step
             if isDisabledForTutorial {
@@ -126,49 +76,77 @@ struct CustomTabBar: View {
             }
         }
         .allowsHitTesting(!isDisabledForTutorial)
+    }
 
+    /// The scrollable tab lane. Every tab but the last is sized to exactly fill
+    /// the width, so the LAST tab (Settings) overflows by precisely one tab —
+    /// making it the sole off-screen "peek" tab. Because the overflow is exactly
+    /// one tab, `.viewAligned` resolves to a clean two-state snap: Settings hidden
+    /// (lane rests at the leading edge) or revealed (lane rests one tab over).
+    /// Settings is also reachable from the notifications-menu gear, which selects
+    /// it and reveals the peek here via `snapLane`.
+    @ViewBuilder
+    private func tabLane(laneWidth: CGFloat) -> some View {
+        let n = max(tabs.count, 1)
+        let tabWidth = n > 1 ? laneWidth / CGFloat(n - 1) : laneWidth
+        let canPeek = n > 1
 
-        .onAppear {
-            // Set initial position after a brief delay to ensure layout is complete
-            tabCount = tabs.count
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                updateIndicatorPosition(for: selectedTab)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                ZStack(alignment: .topLeading) {
+                    HStack(spacing: 0) {
+                        ForEach(Array(tabs.enumerated()), id: \.element.id) { index, tab in
+                            TabBarItem(
+                                tab: tab,
+                                isSelected: selectedTab == index,
+                                action: {
+                                    withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
+                                        selectedTab = index
+                                    }
+                                }
+                            )
+                            .frame(width: tabWidth)
+                            .id(index)
+                        }
+                    }
+                    .scrollTargetLayout()
+
+                    // Active-tab underline — rides inside the lane so it scrolls
+                    // with the tabs and always sits under the selected icon.
+                    Rectangle()
+                        .fill(indicatorColor)
+                        .frame(width: OPSStyle.Layout.tabBarIconSize, height: 2)
+                        .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+                        .offset(x: CGFloat(selectedTab) * tabWidth + (tabWidth - OPSStyle.Layout.tabBarIconSize) / 2)
+                        .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: selectedTab)
+                }
+                .padding(.top, OPSStyle.Layout.spacing3)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
             }
-        }
-        .onChange(of: tabs.count) { _, newCount in
-            print("[TAB_BAR] Tab count changed from \(tabCount) to \(newCount)")
-
-            // When tab count changes, reset tabWidth to force recalculation
-            tabCount = newCount
-            tabWidth = 0
-
-            // Force immediate recalculation with multiple attempts to ensure geometry is updated
-            DispatchQueue.main.async {
-                updateIndicatorPosition(for: selectedTab)
+            .scrollDisabled(!canPeek)
+            .scrollTargetBehavior(.viewAligned)
+            .onChange(of: selectedTab) { _, newValue in
+                snapLane(proxy: proxy, selected: newValue, count: n)
             }
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                updateIndicatorPosition(for: selectedTab)
-            }
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                updateIndicatorPosition(for: selectedTab)
-                print("[TAB_BAR] Final indicator position updated after tab count change")
-            }
-        }
-        .onChange(of: selectedTab) { _, _ in
-            // Also recalculate when selected tab changes, in case geometry has shifted
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                updateIndicatorPosition(for: selectedTab)
+            .onChange(of: tabs.count) { _, newCount in
+                // Permissions changed the tab set — re-align to the selected tab.
+                snapLane(proxy: proxy, selected: selectedTab, count: max(newCount, 1))
             }
         }
     }
 
-    private func updateIndicatorPosition(for index: Int) {
-        // Center the indicator under the icon
-        let tabCenter = CGFloat(index) * tabWidth + (tabWidth / 2)
-        let indicatorCenter = iconWidth / 2
-        selectedIndicatorOffset = tabCenter - indicatorCenter
+    /// Aligns the lane to the selected tab: the last tab (Settings) reveals the
+    /// peek; any primary tab returns the lane to its default (Settings-hidden)
+    /// position. Honors Reduce Motion.
+    private func snapLane(proxy: ScrollViewProxy, selected: Int, count: Int) {
+        guard count > 1 else { return }
+        withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
+            if selected == count - 1 {
+                proxy.scrollTo(count - 1, anchor: .trailing)
+            } else {
+                proxy.scrollTo(0, anchor: .leading)
+            }
+        }
     }
 }
 
@@ -234,10 +212,10 @@ struct CustomTabBar_Previews: PreviewProvider {
         ZStack {
             OPSStyle.Colors.background
                 .ignoresSafeArea()
-            
+
             VStack {
                 Spacer()
-                
+
                 CustomTabBar(
                     selectedTab: .constant(0),
                     tabs: [

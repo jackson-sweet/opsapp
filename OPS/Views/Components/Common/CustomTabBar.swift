@@ -45,13 +45,26 @@ struct CustomTabBar: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            // Tab bar background with dark blur and overlay
-
-            ZStack {
-                BlurView(style: .systemUltraThinMaterialDark)
-                OPSStyle.Colors.cardBackgroundDark.opacity(0.4)
-            }
+            // Tab bar background — a vertical gradient from the elevated surface
+            // at the top edge fading into the app background (#000) at the base,
+            // so the bar reads as solid, high-contrast ground (legible in
+            // sunlight) that settles into the canvas instead of floating as a
+            // light translucent slab. Crowned with a hairline per the design
+            // system's "glass + hairlines" language.
+            LinearGradient(
+                colors: [
+                    OPSStyle.Colors.cardBackground,
+                    OPSStyle.Colors.background
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
             .frame(height: 100)
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(OPSStyle.Colors.separator)
+                    .frame(height: 1)
+            }
 
 
             VStack(spacing: 0) {

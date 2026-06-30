@@ -240,7 +240,7 @@ struct MainTabView: View {
 
         // Add BOOKS tab for users with any of the three financial-area perms
         if hasBooksAccess {
-            baseTabs.append(TabItem(iconName: "nav-finance", accessibilityLabel: "Books", wizardStepId: "welcome_books"))
+            baseTabs.append(TabItem(iconName: "nav-pulse", accessibilityLabel: "Books", wizardStepId: "welcome_books"))
         }
 
         // Add Job Board tab for all users (admin, office crew, and field crew)

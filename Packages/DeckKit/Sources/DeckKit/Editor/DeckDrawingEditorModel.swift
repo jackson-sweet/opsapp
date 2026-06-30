@@ -27,14 +27,31 @@ public final class DeckDrawingEditorModel: ObservableObject {
     public let codeProfile: DeckCodeProfile?
 
     private let onPersist: (DeckDrawingData) -> Void
+    private let surfaceEngineRunner: DeckSurfaceEditorEngineRunner
     private var activeLineStartVertexId: String?
     private var activeLineStartPosition: CGPoint?
 
-    public init(
+    public convenience init(
         drawingData: DeckDrawingData,
         capabilities: DeckCapabilities,
         codeProfile: DeckCodeProfile? = nil,
         onPersist: @escaping (DeckDrawingData) -> Void = { _ in }
+    ) {
+        self.init(
+            drawingData: drawingData,
+            capabilities: capabilities,
+            codeProfile: codeProfile,
+            onPersist: onPersist,
+            surfaceEngineRunner: .live
+        )
+    }
+
+    init(
+        drawingData: DeckDrawingData,
+        capabilities: DeckCapabilities,
+        codeProfile: DeckCodeProfile? = nil,
+        onPersist: @escaping (DeckDrawingData) -> Void = { _ in },
+        surfaceEngineRunner: DeckSurfaceEditorEngineRunner
     ) {
         let loaded = DeckSchemaMigration.stampFramingVersion(drawingData)
         self.drawingData = loaded
@@ -43,6 +60,7 @@ public final class DeckDrawingEditorModel: ObservableObject {
         self.selectedLoadPreset = loaded.framing?.loadPreset ?? LoadPreset()
         self.codeCheckSettings = capabilities.contains(.codeCompliance) && codeProfile != nil ? .enabled : .disabled
         self.onPersist = onPersist
+        self.surfaceEngineRunner = surfaceEngineRunner
         reconcileSurfaces()
         refreshCodeReport()
     }
@@ -64,6 +82,10 @@ public final class DeckDrawingEditorModel: ObservableObject {
 
     public var canEditHouseOpenings: Bool {
         capabilities.contains(.houseOpenings)
+    }
+
+    var surfaceEditorEntries: [DeckSurfaceEditorEntry] {
+        DeckSurfaceEditorToolbarModel.entries(for: capabilities)
     }
 
     public var visibleCodeFindings: [DeckCodeFinding] {
@@ -184,6 +206,139 @@ public final class DeckDrawingEditorModel: ObservableObject {
         }
         drawingData.terrain = terrain
         persistDrawingData()
+    }
+
+    @discardableResult
+    func setSurfacePattern(
+        _ pattern: DeckingPattern,
+        forSurfaceId surfaceId: String,
+        boardAngleDegrees: Double? = nil,
+        pictureFrameCourses: Int? = nil
+    ) -> Bool {
+        guard capabilities.contains(.surfacePatterns),
+              !surfaceId.isEmpty else { return false }
+
+        var features = drawingData.surfaceFeatures ?? SurfaceFeaturePlan()
+        let spec = SurfacePatternSpec(
+            surfaceId: surfaceId,
+            pattern: pattern,
+            boardAngleDegrees: boardAngleDegrees ?? pattern.defaultBoardAngleDegrees,
+            pictureFrameCourses: pictureFrameCourses ?? pattern.defaultPictureFrameCourses
+        )
+
+        if let index = features.patterns.firstIndex(where: { $0.surfaceId == surfaceId }) {
+            features.patterns[index] = spec
+        } else {
+            features.patterns.append(spec)
+        }
+
+        drawingData.surfaceFeatures = features
+        persistDrawingData()
+        return true
+    }
+
+    @discardableResult
+    func setSurfaceFeatures(
+        fastenerSystem: FastenerSystem?,
+        fascia: Bool,
+        skirting: SkirtingSpec?,
+        finish: FinishSpec?,
+        builtIn: BuiltInFeature? = nil,
+        lighting: LightingPlan? = nil
+    ) -> Bool {
+        guard capabilities.contains(.surfaceFeatures) else { return false }
+
+        var features = drawingData.surfaceFeatures ?? SurfaceFeaturePlan()
+        features.fastenerSystem = fastenerSystem
+        features.fascia = fascia
+        features.skirting = skirting
+        if let finish {
+            if let index = features.finishes.firstIndex(where: { $0.kind == finish.kind }) {
+                features.finishes[index] = finish
+            } else {
+                features.finishes.append(finish)
+            }
+        }
+        if let builtIn {
+            if let index = features.builtIns.firstIndex(where: { $0.kind == builtIn.kind }) {
+                features.builtIns[index] = builtIn
+            } else {
+                features.builtIns.append(builtIn)
+            }
+        }
+        features.lighting = lighting
+
+        drawingData.surfaceFeatures = features
+        persistDrawingData()
+        return true
+    }
+
+    @discardableResult
+    func configureStairDetail(
+        edgeId: String,
+        config: StairConfig,
+        package: CodePackage?
+    ) -> StairDetailResult? {
+        guard capabilities.contains(.stairDetails),
+              let edgeIndex = drawingData.edges.firstIndex(where: { $0.id == edgeId }) else {
+            return nil
+        }
+
+        drawingData.edges[edgeIndex].stairConfig = config
+        let result = package.flatMap { package -> StairDetailResult? in
+            guard let totalRise = config.totalRiseInches,
+                  totalRise > 0,
+                  config.width > 0 else { return nil }
+
+            let base = StairCalculator.calculate(
+                totalRise: totalRise,
+                width: config.width,
+                risePerStep: config.risePerStep,
+                runPerTread: config.runPerTread,
+                treadCountOverride: config.treadCount
+            )
+            return surfaceEngineRunner.stairDetail(
+                base,
+                config.editorTreadType,
+                config.treadMaterial.editorTitle,
+                config.editorStringerSpacingInchesOC,
+                selectedLoadPreset.species,
+                selectedLoadPreset.grade,
+                package,
+                config.editorStringerType
+            )
+        }
+
+        persistDrawingData()
+        return result
+    }
+
+    @discardableResult
+    func upsertOverheadStructure(
+        _ structure: OverheadStructure,
+        package: CodePackage?
+    ) -> Bool {
+        guard capabilities.contains(.overheadStructures) else { return false }
+
+        let resolvedStructure: OverheadStructure
+        if let package {
+            resolvedStructure = surfaceEngineRunner
+                .overheadSize(structure, selectedLoadPreset, package)
+                .structure
+        } else {
+            resolvedStructure = structure
+        }
+
+        var plan = drawingData.overhead ?? OverheadStructurePlan()
+        if let index = plan.structures.firstIndex(where: { $0.id == resolvedStructure.id }) {
+            plan.structures[index] = resolvedStructure
+        } else {
+            plan.structures.append(resolvedStructure)
+        }
+
+        drawingData.overhead = plan
+        persistDrawingData()
+        return true
     }
 
     @discardableResult

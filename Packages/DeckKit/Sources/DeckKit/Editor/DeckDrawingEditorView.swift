@@ -13,10 +13,20 @@ private enum DeckDrawingEditorCopy {
     static let emptyArea = String(localized: "—")
 }
 
+private enum DeckSurfaceEditorSheet: String, Identifiable {
+    case surfacePattern
+    case stairDetail
+    case surfaceFeatures
+    case overheadStructure
+
+    var id: String { rawValue }
+}
+
 public struct DeckDrawingEditorView: View {
     @StateObject private var model: DeckDrawingEditorModel
     @State private var layerVisibility: FramingLayer = .all
     @State private var isDraggingLine = false
+    @State private var activeSurfaceEditorSheet: DeckSurfaceEditorSheet?
 
     public init(
         drawingData: DeckDrawingData,
@@ -36,6 +46,8 @@ public struct DeckDrawingEditorView: View {
     public var body: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             statusBar
+
+            surfaceEditorBar
 
             GeometryReader { geometry in
                 drawingCanvas(size: geometry.size)
@@ -70,6 +82,9 @@ public struct DeckDrawingEditorView: View {
                 )
             }
         }
+        .sheet(item: $activeSurfaceEditorSheet) { sheet in
+            sheetView(for: sheet)
+        }
     }
 
     private var statusBar: some View {
@@ -97,6 +112,87 @@ public struct DeckDrawingEditorView: View {
                 )
             }
             .frame(minWidth: 0, maxWidth: .infinity)
+        }
+    }
+
+    private var surfaceEditorBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                ForEach(model.surfaceEditorEntries) { entry in
+                    if entry.isUpsell {
+                        surfaceEditorUpsell(entry)
+                    } else {
+                        Button {
+                            activeSurfaceEditorSheet = sheetDestination(for: entry.kind)
+                        } label: {
+                            surfaceEditorTile(entry)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func surfaceEditorUpsell(_ entry: DeckSurfaceEditorEntry) -> some View {
+        surfaceEditorTile(entry)
+            .accessibilityLabel(entry.title)
+            .accessibilityValue(entry.subtitle)
+    }
+
+    private func surfaceEditorTile(_ entry: DeckSurfaceEditorEntry) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Image(systemName: entry.systemImage)
+                .font(OPSStyle.Typography.fieldMetadata)
+                .foregroundStyle(entry.isUpsell ? OPSStyle.Colors.text3 : OPSStyle.Colors.text2)
+
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                Text(entry.title.uppercased())
+                    .font(OPSStyle.Typography.fieldButtonLabel)
+                    .foregroundStyle(entry.isUpsell ? OPSStyle.Colors.text3 : OPSStyle.Colors.text)
+                Text(entry.subtitle)
+                    .font(OPSStyle.Typography.fieldMetadata)
+                    .foregroundStyle(OPSStyle.Colors.text2)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+        .background(entry.isUpsell ? OPSStyle.Colors.fillNeutralDim : OPSStyle.Colors.surfaceInput)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                .stroke(entry.isUpsell ? OPSStyle.Colors.nestedBorder : OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
+    }
+
+    private func sheetDestination(for kind: DeckSurfaceEditorEntryKind) -> DeckSurfaceEditorSheet? {
+        switch kind {
+        case .surfacePattern:
+            return .surfacePattern
+        case .stairDetail:
+            return .stairDetail
+        case .surfaceFeatures:
+            return .surfaceFeatures
+        case .overheadStructure:
+            return .overheadStructure
+        case .opsDecksProUpsell:
+            return nil
+        }
+    }
+
+    @ViewBuilder
+    private func sheetView(for sheet: DeckSurfaceEditorSheet) -> some View {
+        switch sheet {
+        case .surfacePattern:
+            SurfacePatternSheet(model: model)
+        case .stairDetail:
+            StairDetailSheet(model: model)
+        case .surfaceFeatures:
+            SurfaceFeaturesSheet(model: model)
+        case .overheadStructure:
+            OverheadStructureSheet(model: model)
         }
     }
 

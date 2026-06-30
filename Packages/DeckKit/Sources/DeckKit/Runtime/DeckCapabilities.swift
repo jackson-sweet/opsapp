@@ -10,6 +10,10 @@ public struct DeckCapabilities: OptionSet, Hashable, Sendable {
     public static let groundCover = DeckCapabilities(rawValue: 1 << 2)
     public static let codeCompliance = DeckCapabilities(rawValue: 1 << 3)
     public static let houseOpenings = DeckCapabilities(rawValue: 1 << 4)
+    public static let surfacePatterns = DeckCapabilities(rawValue: 1 << 5)
+    public static let stairDetails = DeckCapabilities(rawValue: 1 << 6)
+    public static let surfaceFeatures = DeckCapabilities(rawValue: 1 << 7)
+    public static let overheadStructures = DeckCapabilities(rawValue: 1 << 8)
 
     public static let light: DeckCapabilities = [
         .materials,
@@ -21,6 +25,10 @@ public struct DeckCapabilities: OptionSet, Hashable, Sendable {
         .groundCover,
         .codeCompliance,
         .houseOpenings,
+        .surfacePatterns,
+        .stairDetails,
+        .surfaceFeatures,
+        .overheadStructures,
     ]
 
     public static func forSurface(_ surface: DeckAppSurface) -> DeckCapabilities {

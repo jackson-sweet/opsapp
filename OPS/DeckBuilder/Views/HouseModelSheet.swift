@@ -23,6 +23,10 @@ struct HouseModelSheet: View {
         viewModel.houseEdges.first?.id
     }
 
+    private var houseCapabilities: DeckCapabilities {
+        viewModel.canEditHouseOpenings ? .full : .light
+    }
+
     var body: some View {
         NavigationView {
             ScrollView {
@@ -31,6 +35,8 @@ struct HouseModelSheet: View {
                     datumSection
                     houseEdgesSection
                     openingsSection
+                    elevationSection
+                    scheduleSection
                     ledgerSection
                     advisorySection
                 }
@@ -207,6 +213,20 @@ struct HouseModelSheet: View {
         .glassSurface()
     }
 
+    private var elevationSection: some View {
+        HouseElevationView(
+            data: viewModel.drawingData,
+            capabilities: houseCapabilities
+        )
+    }
+
+    private var scheduleSection: some View {
+        HouseOpeningScheduleView(
+            data: viewModel.drawingData,
+            capabilities: houseCapabilities
+        )
+    }
+
     private var advisorySection: some View {
         Text("ENGINEER REVIEW REQUIRED. OPS FLAGS ATTACHMENT RISK ONLY. HAVE PLANS REVIEWED BY A LICENSED ENGINEER BEFORE PERMIT OR BUILD.")
             .font(OPSStyle.Typography.metadata)
@@ -361,7 +381,7 @@ struct HouseModelSheet: View {
 
     private func buttonBorder(isPrimary: Bool, isDisabled: Bool) -> Color {
         if isDisabled { return OPSStyle.Colors.nestedBorder }
-        return isPrimary ? Color.clear : OPSStyle.Colors.line
+        return isPrimary ? OPSStyle.Colors.line.opacity(0) : OPSStyle.Colors.line
     }
 
     private func syncFields() {

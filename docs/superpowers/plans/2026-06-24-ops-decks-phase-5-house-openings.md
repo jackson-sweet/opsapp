@@ -788,10 +788,10 @@ public struct HouseOpeningScheduleView: View {
 - `test_schedule_view_empty_state()` — empty rows → renders the `—` empty state (assert via a testable `isEmpty` branch).
 - Snapshot attachments of the elevation page + schedule table.
 
-- [ ] **Step 1 — Thin VM/array tests; run, expect FAIL.**
-- [ ] **Step 2 — Build the two views** (paged `TabView` of `HouseElevationRenderer.render` images; schedule as a tokenized table). `ops-copywriter` for headers ("DOOR/WINDOW SCHEDULE", uppercase authority), mono numbers, `—` empty state.
-- [ ] **Step 3 — Run tests; inspect snapshots; build device target.**
-- [ ] **Step 4 — Commit** (`feat(decks-p5): elevation + door/window schedule screens`).
+- [x] **Step 1 — Thin VM/array tests; run, expect FAIL.**
+- [x] **Step 2 — Build the two views** (paged `TabView` of `HouseElevationRenderer.render` images; schedule as a tokenized table). `ops-copywriter` for headers ("DOOR/WINDOW SCHEDULE", uppercase authority), mono numbers, `—` empty state.
+- [x] **Step 3 — Run tests; inspect snapshots; build device target.**
+- [x] **Step 4 — Commit** (`feat(decks-p5): elevation + door/window schedule screens`).
 
 **Dependencies:** T4, T7, T9; `ops-copywriter`, `ops-design`.
 **References:** contract §5.1 (mono/tabular numbers, `—` empty state); roadmap §2.4/§2.8.

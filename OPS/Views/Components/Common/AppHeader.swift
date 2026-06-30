@@ -68,6 +68,8 @@ struct AppHeader: View {
     var isScopeAll: Bool = true
     var hasActiveFilters: Bool = false
     var filterCount: Int = 0
+    /// Leads tab — the add-lead action (`+`), shown left of universal search.
+    var onAddLead: (() -> Void)? = nil
     
     private var title: String {
         switch headerType {
@@ -469,6 +471,23 @@ struct AppHeader: View {
                                 .clipShape(Circle())
                         }
                         .buttonStyle(PlainButtonStyle())
+                    }
+
+                    // Add-lead button (leads only) — sits just left of search.
+                    if headerType == .leads, let onAddLead {
+                        Button(action: {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            onAddLead()
+                        }) {
+                            Image(systemName: "plus")
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .frame(width: 44, height: 44)
+                                .background(OPSStyle.Colors.fillNeutral)
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .accessibilityLabel("New lead")
                     }
 
                     // Universal search button — rightmost in the trailing

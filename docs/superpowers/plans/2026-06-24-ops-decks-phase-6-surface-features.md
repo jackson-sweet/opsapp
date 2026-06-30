@@ -172,6 +172,10 @@ Key assertions: missing-key tolerance, default application, round-trip stability
 
 **Risks:** `CGPoint` already has a retroactive `Codable` conformance in `DeckGeometry.swift` (lines 1241–1258) — `BuiltInFeature.polygon: [CGPoint]` and `LightingPlan.fixtures: [CGPoint]` reuse it; do **not** redeclare it (would be a duplicate-conformance error). The `pictureFrame` raw value is `"picture_frame"` (snake_case multi-word, C§5.1) — must match exactly or web/other readers drift.
 
+**Implementation status (2026-06-30):** Complete. Added `Models/SurfaceFeaturePlan.swift`, wired `DeckDrawingData.surfaceFeatures`, bumped `DeckSchemaMigration.currentSchemaVersion` to 6, and covered missing-key tolerance, defaulted pattern specs, stable round-trip, LIGHT preservation, malformed lighting isolation, and version-6 stamping in `SurfaceFeaturePlanCodableTests`.
+
+**Verification (2026-06-30):** `swift test --package-path Packages/DeckKit --filter SurfaceFeaturePlanCodableTests` (6 tests), `swift test --package-path Packages/DeckKit` (401 tests), `scripts/verify-ops-decks-style-tokens.sh .`, `git diff --check`, and `xcodebuild -project OPS.xcodeproj -scheme OPSDecks -destination generic/platform=iOS -derivedDataPath /private/tmp/ops-decks-p6-task1-OPSDecks-dd CODE_SIGNING_ALLOWED=NO build` all passed.
+
 ---
 
 ### Task 2 — `OverheadStructurePlan` schema block + round-trip

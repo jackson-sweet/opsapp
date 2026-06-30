@@ -109,7 +109,7 @@ final class HousePhase5IntegrationTests: XCTestCase {
         let decoded = try XCTUnwrap(DeckDrawingData.fromJSON(lightModel.drawingData.toJSON()))
         XCTAssertEqual(decoded.house, full.house)
         XCTAssertEqual(decoded.framing?.members, full.framing?.members)
-        XCTAssertEqual(decoded.framing?.generatedAtSchemaVersion, DeckSchemaMigration.currentSchemaVersion)
+        XCTAssertEqual(decoded.framing?.generatedAtSchemaVersion, DeckSchemaMigration.houseSchemaVersion)
         XCTAssertEqual(decoded.footings, full.footings)
         XCTAssertTrue(persisted.isEmpty)
     }

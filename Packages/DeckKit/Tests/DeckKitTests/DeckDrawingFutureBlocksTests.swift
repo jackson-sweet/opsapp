@@ -147,7 +147,9 @@ final class DeckDrawingFutureBlocksTests: XCTestCase {
             "levelConnections",
             "framing",
             "terrain",
+            "footings",
             "house",
+            "surfaceFeatures",
             "wasteSettings",
             "components",
         ]

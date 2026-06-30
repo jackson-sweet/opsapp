@@ -282,6 +282,10 @@ Key assertions: board count math, miter angles, blocking-requirement flag + cite
 
 **Risks:** Herringbone/chevron board-count on a non-rectangular polygon is genuinely hard (tiling a concave face) — scope the v1 to convex/rectilinear faces and `blockingRequirement` flags; flag non-rectilinear herringbone as a known approximation with a confidence note rather than asserting an exact count. The blocking requirement is a *requirement*, never a *pass* — keep it data the P2/P7 layer reasons about, never a §6 claim here.
 
+**Implementation status (2026-06-30):** Complete. Added `Engine/DeckingPatternEngine.swift` with `DeckingLayoutResult`, `DeckBoardCut`, `PictureFrameCourse`, `BlockingRequirement`, and typed `DeckingLayoutWarning` metadata for non-rectilinear herringbone/chevron approximation confidence. Covered raw board-count math, diagonal blocking requirements, picture-frame courses/perimeter blocking, herringbone/chevron miter axes, and no-waste inflation in `DeckingPatternEngineTests`.
+
+**Verification (2026-06-30):** `swift test --package-path Packages/DeckKit --filter DeckingPatternEngineTests` (6 tests), `swift test --package-path Packages/DeckKit` (414 tests), `scripts/verify-ops-decks-style-tokens.sh .`, `git diff --check`, and `xcodebuild -project OPS.xcodeproj -scheme OPSDecks -destination generic/platform=iOS -derivedDataPath /private/tmp/ops-decks-p6-task3-OPSDecks-dd CODE_SIGNING_ALLOWED=NO build` all passed.
+
 ---
 
 ### Task 4 — `BoardNestingEngine` (generalize `VinylCutListEngine`)

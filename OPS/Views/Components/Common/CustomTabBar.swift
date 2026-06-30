@@ -40,26 +40,21 @@ struct CustomTabBar: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            // Tab bar background — a vertical gradient from the elevated surface
-            // at the top edge fading into the app background (#000) at the base,
-            // so the bar reads as solid, high-contrast ground (legible in
-            // sunlight) that settles into the canvas instead of floating as a
-            // light translucent slab. Crowned with a hairline per the design
-            // system's "glass + hairlines" language.
+            // Tab bar background — a black scrim. Pure app-background black
+            // varying only in opacity: fully transparent at the top edge, ramped
+            // to solid by the time it reaches the icons, then held black to the
+            // base. No fill, no tint, no border — the bar melts into whatever is
+            // behind it at the top and grounds into the canvas at the bottom.
             LinearGradient(
-                colors: [
-                    OPSStyle.Colors.cardBackground,
-                    OPSStyle.Colors.background
-                ],
+                gradient: Gradient(stops: [
+                    Gradient.Stop(color: OPSStyle.Colors.background.opacity(0), location: 0.0),
+                    Gradient.Stop(color: OPSStyle.Colors.background, location: 0.3),
+                    Gradient.Stop(color: OPSStyle.Colors.background, location: 1.0)
+                ]),
                 startPoint: .top,
                 endPoint: .bottom
             )
             .frame(height: 100)
-            .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(OPSStyle.Colors.separator)
-                    .frame(height: 1)
-            }
 
             // Tab lane — horizontally scrollable, with the last tab (Settings)
             // parked just off the right edge as the single "peek" tab.

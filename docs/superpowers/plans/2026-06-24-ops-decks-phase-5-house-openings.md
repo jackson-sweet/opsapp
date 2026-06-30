@@ -289,7 +289,7 @@ public enum WallOpeningGeometry {
 
 **TEST STRATEGY (table-driven; no dates, geometry literals only):**
 
-- `test_wallLength_uses_effectiveScaleFactor()` — a `houseEdge` with `dimension == nil` falls back to canvas length × `effectiveScaleFactor`; one with `dimension == 96` returns `96`. Assert both. (Mirrors the baseline `effectiveScaleFactor` semantics at `DeckGeometry.swift:977`.)
+- `test_wallLength_uses_effectiveScaleFactor()` — a `houseEdge` with `dimension == nil` falls back to canvas length ÷ `effectiveScaleFactor`; one with `dimension == 96` returns `96`. Assert both. (Mirrors the live `DeckDrawingData` convention where `effectiveScaleFactor` is canvas points per real-world inch.)
 - `test_validate_ok_when_fits()` — width 36, offset 24, wall 120, story 96, head (sill 0 + height 80) ≤ 96 → `.ok`.
 - `test_validate_clamps_when_offset_pushes_past_wall_end()` — width 48, offset 90, wall 120 (90+48 = 138 > 120) → `.clampedToWall(adjustedOffsetInches: 72)` (120 − 48). Assert exact adjusted value.
 - `test_validate_detects_overlap()` — existing opening at offset 24 width 36 (24..60); new at offset 50 width 30 (50..80) overlaps → `.overlapsOpening(otherId:)` naming the existing id.
@@ -300,11 +300,11 @@ public enum WallOpeningGeometry {
 - `test_cutoutRect2D_window_floats_at_sill()` — window sill 30 height 48 → rect `origin.y == 30`, `height == 48`, `origin.x == offsetAlongEdgeInches`.
 - `test_cutoutProfile3D_nil_for_zero_size()` — width 0 → nil.
 
-- [ ] **Step 1 — Write all tests above** with literal inputs/expected structs.
-- [ ] **Step 2 — Run, expect FAIL** ("WallOpeningGeometry not found"). Run the `-only-testing:DeckKitTests/WallOpeningGeometryTests` invocation; grep for `TEST FAILED`.
-- [ ] **Step 3 — Implement `WallOpeningGeometry`** to make tests pass. Overlap = interval-intersection on `[offset, offset+width]`. Clamp = `min(offset, wallLength − width)` floored at 0.
-- [ ] **Step 4 — Run, expect `TEST SUCCEEDED`.**
-- [ ] **Step 5 — Commit** (`feat(decks-p5): wall-opening placement/validation/cutout geometry engine`).
+- [x] **Step 1 — Write all tests above** with literal inputs/expected structs.
+- [x] **Step 2 — Run, expect FAIL** ("WallOpeningGeometry not found"). Run the `-only-testing:DeckKitTests/WallOpeningGeometryTests` invocation; grep for `TEST FAILED`.
+- [x] **Step 3 — Implement `WallOpeningGeometry`** to make tests pass. Overlap = interval-intersection on `[offset, offset+width]`. Clamp = `min(offset, wallLength − width)` floored at 0.
+- [x] **Step 4 — Run, expect `TEST SUCCEEDED`.**
+- [x] **Step 5 — Commit** (`feat(decks-p5): wall-opening placement/validation/cutout geometry engine`).
 
 **Dependencies:** T1; baseline `DeckEdge`/`DeckDrawingData.effectiveScaleFactor`.
 **References:** contract §3 (pure-engine convention), §5.1 (units inches). IRC R311.7 is *not* invoked here — this is geometry, not code-check; code-checking openings (egress sizing) is out of P5 scope and belongs to P7 if ever.

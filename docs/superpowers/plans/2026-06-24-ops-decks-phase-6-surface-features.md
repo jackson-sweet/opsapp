@@ -347,6 +347,10 @@ Key assertions: kerf-correct packing, family isolation, offcut banking/reuse acr
 
 **Risks:** **Do not refactor `VinylCutListEngine`'s public surface** — it has a battery of tests (`VinylCutListEngineTests`, `VinylOffcutInventoryTests`, `VinylOrderSelectionTests`, `VinylPreviewAnnotationPlannerTests`) and a documented dual-path sync trap (memory `vinyl-offcut-inventory-shipped`). Lift the *private* lane/scanline logic into a shared internal helper, leave the vinyl public API and its area-based (roll-width) model exactly as-is. 1D linear nesting (boards) is a *simpler* problem than vinyl's 2D roll-width packing — extract the 1D first-fit-decreasing + offcut-banking core, not the 2D rectangle-tiling.
 
+**Implementation status (2026-06-30):** Complete. Added `Engine/BoardNestingEngine.swift` with `BoardCutRequirement`, `BoardFamily`, `BoardStock`, `BoardOffcut`, `BoardNestingPlan`, source-aware `BoardStockPiece`, and `BoardCutPlacement` metadata. The new 1D planner handles kerf-correct longest-first packing, stock-length selection, on-hand offcut reuse before new stock, family isolation, grain-locked non-flipped placement, produced offcut banking, unplaced cut reporting, and waste linear feet. `VinylCutListEngine.swift` was not modified.
+
+**Verification (2026-06-30):** `swift test --package-path Packages/DeckKit --filter BoardNestingEngineTests` (6 tests), `swift test --package-path Packages/DeckKit` (420 tests, including `VinylCutListEngineTests`), `scripts/verify-ops-decks-style-tokens.sh .`, `git diff --check`, and `xcodebuild -project OPS.xcodeproj -scheme OPSDecks -destination generic/platform=iOS -derivedDataPath /private/tmp/ops-decks-p6-task4-final-OPSDecks-dd CODE_SIGNING_ALLOWED=NO build` all passed.
+
 ---
 
 ### Task 5 — `StairDetailEngine` (tread types, stringers, landings, winders, handrail)

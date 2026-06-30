@@ -560,11 +560,15 @@ public struct OverheadSizingOutcome: Codable, Equatable {
 
 Key assertions: delegation to P3 (no parallel sizing), App-H solid-roof hard-stop, louvered-product no-self-certify, assumptions surfaced.
 
-**Dependencies:** `OverheadStructure`/`OverheadKind`/`RoofShape` (Task 2); `StructuralSizingEngine.beamSizing`/`postSizing`/`sizeAll` + `EngineOutcome`/`EngineCitation`/`EngineAssumptions` **[P3, C§3.1, C§3]**; `CodePackage` beam/post tables + `EnvelopeLimits` **[P3, C§3.4]**; `LoadPreset` **[P2, C§2.4]**.
+**Dependencies:** `OverheadStructure`/`OverheadKind`/`RoofShape` (Task 2); `StructuralSizingEngine.beamSizing`/`postSizing`/`sizeAll` + `EngineOutcome`/`EngineCitation`/`EngineAssumptions` (implemented here as the package-backed overhead slice because the broader P3 structural package is not present in this worktree); `CodePackage.beamSpanTable`/`postHeightTable` + `EnvelopeLimits` (empty by default on legacy packages); `LoadPreset` **[P2, C§2.4]**.
 
 **References:** C§3.6 (overhead reuses `StructuralSizingEngine`), C§6.5 (out-of-envelope hard-stop), **C§6.8 (App-H unverified → no roof-cover compliance claim)**; roadmap §2.3 (overhead via shared structural engine; App. H paywalled).
 
 **Risks:** This is the single highest-liability task in Phase 6. The temptation is to "just size the roof rafters" — but snow-on-roof + App-H rules are *unverified* (roadmap §8). The safe default is **hard-stop solid/louvered roofs to PE** and only fully size pergolas (open shade, no accumulated roof load). Do not emit any roof-cover code claim. Reusing P3's engine is mandatory — any parallel sizing path violates C§3.4/§8.3.
+
+**Implementation status (2026-06-30):** Complete. Added `Engine/OverheadSizingCoordinator.swift`, expanded `StructuralSizingEngine` with package-backed `beamSizing`, `postSizing`, and `sizeAll`, and added `CodePackage` beam/post table rows plus `EnvelopeLimits`. Pergolas size beams/rafter-mode `.joist` members/posts only from package rows; solid roofs and louvered roofs hard-stop before any member sizing is emitted. Zero-length posts hard-stop as missing height instead of assuming a default.
+
+**Verification (2026-06-30):** `swift test --package-path Packages/DeckKit --filter OverheadSizingCoordinatorTests` (7 tests), `swift test --package-path Packages/DeckKit` (445 tests), `scripts/verify-ops-decks-style-tokens.sh .`, `git diff --check`, and `xcodebuild -project OPS.xcodeproj -scheme OPSDecks -destination generic/platform=iOS -derivedDataPath /private/tmp/ops-decks-p6-task8-OPSDecks-dd CODE_SIGNING_ALLOWED=NO build` all passed.
 
 ---
 

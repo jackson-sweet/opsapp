@@ -6,6 +6,9 @@ public struct CodePackage: Codable, Equatable {
     public var publishedDate: Date
     public var unitSystem: PackageUnits
     public var stairRules: StairRules
+    public var beamSpanTable: [BeamSpanSizingRow]
+    public var postHeightTable: [PostHeightSizingRow]
+    public var envelopeLimits: EnvelopeLimits
 
     private enum CodingKeys: String, CodingKey {
         case jurisdictionId
@@ -13,6 +16,9 @@ public struct CodePackage: Codable, Equatable {
         case publishedDate
         case unitSystem
         case stairRules
+        case beamSpanTable
+        case postHeightTable
+        case envelopeLimits
     }
 
     public init(
@@ -20,13 +26,19 @@ public struct CodePackage: Codable, Equatable {
         edition: String? = nil,
         publishedDate: Date = Date(timeIntervalSince1970: 0),
         unitSystem: PackageUnits = .imperial,
-        stairRules: StairRules = StairRules()
+        stairRules: StairRules = StairRules(),
+        beamSpanTable: [BeamSpanSizingRow] = [],
+        postHeightTable: [PostHeightSizingRow] = [],
+        envelopeLimits: EnvelopeLimits = EnvelopeLimits()
     ) {
         self.jurisdictionId = jurisdictionId
         self.edition = edition
         self.publishedDate = publishedDate
         self.unitSystem = unitSystem
         self.stairRules = stairRules
+        self.beamSpanTable = beamSpanTable
+        self.postHeightTable = postHeightTable
+        self.envelopeLimits = envelopeLimits
     }
 
     public init(from decoder: Decoder) throws {
@@ -37,6 +49,10 @@ public struct CodePackage: Codable, Equatable {
             ?? Date(timeIntervalSince1970: 0)
         self.unitSystem = try c.decodeIfPresent(PackageUnits.self, forKey: .unitSystem) ?? .imperial
         self.stairRules = try c.decodeIfPresent(StairRules.self, forKey: .stairRules) ?? StairRules()
+        self.beamSpanTable = try c.decodeIfPresent([BeamSpanSizingRow].self, forKey: .beamSpanTable) ?? []
+        self.postHeightTable = try c.decodeIfPresent([PostHeightSizingRow].self, forKey: .postHeightTable) ?? []
+        self.envelopeLimits = try c.decodeIfPresent(EnvelopeLimits.self, forKey: .envelopeLimits)
+            ?? EnvelopeLimits()
     }
 }
 
@@ -49,6 +65,141 @@ public enum StairStringerType: String, Codable, CaseIterable {
     case notchedWoodOpen = "notched_wood_open"
     case closedWood = "closed_wood"
     case steel
+}
+
+public struct EnvelopeLimits: Codable, Equatable {
+    public var maxMemberSpanFeet: Double?
+    public var maxPostHeightFeet: Double?
+
+    private enum CodingKeys: String, CodingKey {
+        case maxMemberSpanFeet
+        case maxPostHeightFeet
+    }
+
+    public init(
+        maxMemberSpanFeet: Double? = nil,
+        maxPostHeightFeet: Double? = nil
+    ) {
+        self.maxMemberSpanFeet = maxMemberSpanFeet
+        self.maxPostHeightFeet = maxPostHeightFeet
+    }
+}
+
+public struct BeamSpanSizingRow: Codable, Equatable {
+    public var role: FramingRole
+    public var size: LumberSize
+    public var plyCount: Int
+    public var species: WoodSpecies
+    public var grade: LumberGrade
+    public var maxSpanFeet: Double
+    public var codeSection: String
+    public var limitingCheck: String
+    public var maxLiveLoadPSF: Double?
+    public var maxDeadLoadPSF: Double?
+    public var maxSnowLoadPSF: Double?
+
+    private enum CodingKeys: String, CodingKey {
+        case role
+        case size
+        case plyCount
+        case species
+        case grade
+        case maxSpanFeet
+        case codeSection
+        case limitingCheck
+        case maxLiveLoadPSF
+        case maxDeadLoadPSF
+        case maxSnowLoadPSF
+    }
+
+    public init(
+        role: FramingRole,
+        size: LumberSize,
+        plyCount: Int,
+        species: WoodSpecies,
+        grade: LumberGrade,
+        maxSpanFeet: Double,
+        codeSection: String,
+        limitingCheck: String,
+        maxLiveLoadPSF: Double? = nil,
+        maxDeadLoadPSF: Double? = nil,
+        maxSnowLoadPSF: Double? = nil
+    ) {
+        self.role = role
+        self.size = size
+        self.plyCount = plyCount
+        self.species = species
+        self.grade = grade
+        self.maxSpanFeet = maxSpanFeet
+        self.codeSection = codeSection
+        self.limitingCheck = limitingCheck
+        self.maxLiveLoadPSF = maxLiveLoadPSF
+        self.maxDeadLoadPSF = maxDeadLoadPSF
+        self.maxSnowLoadPSF = maxSnowLoadPSF
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.role = try c.decodeIfPresent(FramingRole.self, forKey: .role) ?? .beam
+        self.size = try c.decodeIfPresent(LumberSize.self, forKey: .size) ?? .twoByTen
+        self.plyCount = try c.decodeIfPresent(Int.self, forKey: .plyCount) ?? 1
+        self.species = try c.decodeIfPresent(WoodSpecies.self, forKey: .species) ?? .sprucePineFir
+        self.grade = try c.decodeIfPresent(LumberGrade.self, forKey: .grade) ?? .no2
+        self.maxSpanFeet = try c.decodeIfPresent(Double.self, forKey: .maxSpanFeet) ?? 0
+        self.codeSection = try c.decodeIfPresent(String.self, forKey: .codeSection)
+            ?? "Package beam span table"
+        self.limitingCheck = try c.decodeIfPresent(String.self, forKey: .limitingCheck)
+            ?? "beam span table"
+        self.maxLiveLoadPSF = try c.decodeIfPresent(Double.self, forKey: .maxLiveLoadPSF)
+        self.maxDeadLoadPSF = try c.decodeIfPresent(Double.self, forKey: .maxDeadLoadPSF)
+        self.maxSnowLoadPSF = try c.decodeIfPresent(Double.self, forKey: .maxSnowLoadPSF)
+    }
+}
+
+public struct PostHeightSizingRow: Codable, Equatable {
+    public var size: LumberSize
+    public var species: WoodSpecies
+    public var grade: LumberGrade
+    public var maxHeightFeet: Double
+    public var codeSection: String
+    public var limitingCheck: String
+
+    private enum CodingKeys: String, CodingKey {
+        case size
+        case species
+        case grade
+        case maxHeightFeet
+        case codeSection
+        case limitingCheck
+    }
+
+    public init(
+        size: LumberSize,
+        species: WoodSpecies,
+        grade: LumberGrade,
+        maxHeightFeet: Double,
+        codeSection: String,
+        limitingCheck: String
+    ) {
+        self.size = size
+        self.species = species
+        self.grade = grade
+        self.maxHeightFeet = maxHeightFeet
+        self.codeSection = codeSection
+        self.limitingCheck = limitingCheck
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.size = try c.decodeIfPresent(LumberSize.self, forKey: .size) ?? .sixBySix
+        self.species = try c.decodeIfPresent(WoodSpecies.self, forKey: .species) ?? .sprucePineFir
+        self.grade = try c.decodeIfPresent(LumberGrade.self, forKey: .grade) ?? .no2
+        self.maxHeightFeet = try c.decodeIfPresent(Double.self, forKey: .maxHeightFeet) ?? 0
+        self.codeSection = try c.decodeIfPresent(String.self, forKey: .codeSection)
+            ?? "IRC R507.4 / package post table"
+        self.limitingCheck = try c.decodeIfPresent(String.self, forKey: .limitingCheck)
+            ?? "post height table"
+    }
 }
 
 public struct StairRules: Codable, Equatable {

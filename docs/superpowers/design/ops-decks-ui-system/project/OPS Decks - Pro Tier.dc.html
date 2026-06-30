@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Mohave:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+@font-face{font-family:"Cake Mono";src:url("./fonts/CakeMono-Light.woff2") format("woff2"),url("./fonts/CakeMono-Light.woff") format("woff");font-weight:300;font-style:normal;font-display:swap;}
+:root{
+ --font-mohave:"Mohave",system-ui,sans-serif; --font-mono:"JetBrains Mono",ui-monospace,Menlo,monospace; --font-cakemono:"Cake Mono","Mohave",system-ui,sans-serif;
+ --bg:#000000; --text:#EDEDED; --text-2:#B5B5B5; --text-3:#8A8A8A; --text-mute:#6A6A6A;
+ --ops-accent:#6F94B0; --tan:#C4A868; --olive:#9DB582; --rose:#B58289;
+ --glass:rgba(10,10,10,0.70); --glass-dense:rgba(10,10,10,0.85); --glass-border:rgba(255,255,255,0.08);
+ --surface-input:rgba(255,255,255,0.04); --surface-hover:rgba(255,255,255,0.05); --surface-active:rgba(255,255,255,0.08);
+ --line:rgba(255,255,255,0.10); --fill-dim:rgba(255,255,255,0.06);
+ --r-panel:5px; --r-btn:2.5px; --r-chip:2.5px;
+ --ease:cubic-bezier(0.22,1,0.36,1);
+ /* Pro option palettes */
+ --pro-a:#6F94B0; --pro-a-soft:rgba(111,148,176,0.14); --pro-a-line:rgba(111,148,176,0.55); --pro-a-glow:rgba(111,148,176,0.22);
+ --pro-b:#DDB95E; --pro-b-soft:rgba(221,185,94,0.13); --pro-b-line:rgba(221,185,94,0.55); --pro-b-glow:rgba(221,185,94,0.20);
+ --pro-c:#5DB3A8; --pro-c-soft:rgba(93,179,168,0.13); --pro-c-line:rgba(93,179,168,0.55); --pro-c-glow:rgba(93,179,168,0.22);
+ --pro-d:#7E885F; --pro-d-soft:rgba(126,136,95,0.13); --pro-d-line:rgba(126,136,95,0.60); --pro-d-glow:rgba(126,136,95,0.22);
+ --mil-a:#8FB36B; --mil-a-soft:rgba(143,179,107,0.12); --mil-a-line:rgba(143,179,107,0.55); --mil-a-glow:rgba(143,179,107,0.32);
+ --mil-b:#9C7E55; --mil-b-soft:rgba(156,126,85,0.13); --mil-b-line:rgba(156,126,85,0.62); --mil-b-glow:rgba(156,126,85,0.22);
+ --mil-c:#727C5E; --mil-c-soft:rgba(114,124,94,0.12); --mil-c-line:rgba(114,124,94,0.50);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--font-mohave);-webkit-font-smoothing:antialiased;}
+::-webkit-scrollbar{width:10px;height:10px;}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.10);border-radius:5px;border:2px solid #000;}
+@keyframes prosheen{0%,100%{opacity:0.5;}50%{opacity:1;}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:0.001ms!important;transition-duration:120ms!important;}}
+</style>
+</helmet>
+<section style="padding:48px 44px 30px;border-bottom:1px solid var(--line);position:relative;overflow:hidden;">
+  <div style="position:absolute;inset:0;background:radial-gradient(620px 360px at 88% -10%,rgba(111,148,176,0.07),transparent 60%);pointer-events:none;"></div>
+  <div style="position:relative;">
+    <div style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.2em;color:var(--text-3);margin-bottom:18px;"><span style="color:var(--text-mute);">// </span>OPS DECKS · PRO TIER — UI UPGRADE OPTIONS</div>
+    <h1 style="font-family:var(--font-cakemono);font-weight:300;font-size:46px;line-height:1.0;letter-spacing:0.01em;color:var(--text);margin:0;">MAKE PRO FELT</h1>
+    <p style="font-family:var(--font-mohave);font-weight:300;font-size:17px;line-height:1.5;color:var(--text-2);max-width:680px;margin:18px 0 0;">Several ways to give Pro a color identity and a visible “supercharge” moment, without breaking the OPS rules — accent stays for CTAs, earth tones stay semantic, lavender stays reserved for AI. Flip the preview to feel the upgrade. Reference an option by its id (1a–1d · 2a–2c).</p>
+    <div style="display:flex;align-items:center;gap:14px;margin-top:24px;">
+      <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.16em;color:var(--text-3);">PREVIEW</span>
+      <div style="display:inline-flex;border:1px solid var(--line);border-radius:var(--r-panel);padding:3px;background:rgba(255,255,255,0.03);">
+        <sc-if value="{{ free }}" hint-placeholder-val="{{ true }}"><button onClick="{{ toggle }}" style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.14em;color:var(--text);background:var(--surface-active);border:1px solid rgba(255,255,255,0.18);border-radius:3px;padding:7px 18px;cursor:pointer;">FREE</button></sc-if>
+        <sc-if value="{{ pro }}"><button onClick="{{ toggle }}" style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.14em;color:var(--text-3);background:transparent;border:1px solid transparent;border-radius:3px;padding:7px 18px;cursor:pointer;">FREE</button></sc-if>
+        <sc-if value="{{ pro }}" hint-placeholder-val="{{ true }}"><button onClick="{{ toggle }}" style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.14em;color:var(--text);background:var(--surface-active);border:1px solid rgba(255,255,255,0.18);border-radius:3px;padding:7px 18px;cursor:pointer;">PRO</button></sc-if>
+        <sc-if value="{{ free }}"><button onClick="{{ toggle }}" style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.14em;color:var(--text-3);background:transparent;border:1px solid transparent;border-radius:3px;padding:7px 18px;cursor:pointer;">PRO</button></sc-if>
+      </div>
+      <span style="font-family:var(--font-mohave);font-size:13px;color:var(--text-3);">— toggle to see the chrome level up</span>
+    </div>
+  </div>
+</section>
+
+<section style="padding:30px 44px;border-bottom:1px solid var(--line);">
+  <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:6px;"><span style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.18em;color:var(--text-mute);">// TURN 2</span><span style="font-family:var(--font-cakemono);font-weight:300;font-size:22px;letter-spacing:0.02em;color:var(--text);">MILITARY VARIATIONS</span></div>
+  <p style="font-family:var(--font-mohave);font-size:14px;line-height:1.5;color:var(--text-3);max-width:680px;margin:0 0 22px;">Three more operator directions, loud → issued → quiet. The FREE↔PRO toggle drives these too.</p>
+  <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:stretch;">
+
+    <!-- ===== 2A · NIGHT VISION ===== -->
+    <div id="2a" style="flex:1;min-width:372px;display:flex;flex-direction:column;gap:14px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--r-panel);padding:22px;">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;"><span style="font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:0.1em;color:#000;background:var(--mil-a);border-radius:var(--r-chip);padding:3px 8px;">2A</span><span style="font-family:var(--font-cakemono);font-weight:300;font-size:20px;letter-spacing:0.02em;color:var(--text);">NIGHT VISION</span></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:11px;"><span style="width:14px;height:14px;border-radius:3px;background:var(--mil-a);"></span><span style="font-family:var(--font-mono);font-size:11px;color:var(--text-2);">--deck-pro · #8FB36B · NEW</span></div>
+        <p style="font-family:var(--font-mohave);font-size:13px;line-height:1.5;color:var(--text-2);margin:11px 0 0;">Optics powered on. A <span style="color:var(--text);">phosphor green</span> with a faint scanline + reticle — Pro reads as switching to a better sensor.</p>
+        <p style="font-family:var(--font-mohave);font-size:11.5px;line-height:1.45;color:var(--text-3);margin:9px 0 0;">Tradeoff — brightest, most “gamer/NV”; greenest of the set, so scope tightly vs olive-success.</p>
+      </div>
+      <div style="height:1px;background:var(--line);"></div>
+      <div style="display:flex;align-items:center;gap:9px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--mil-a)" stroke-width="1.5"><circle cx="12" cy="12" r="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg><span style="font-family:var(--font-mono);font-size:12px;letter-spacing:0.16em;color:var(--mil-a);">NV // PRO</span></div>
+      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;color:var(--text-mute);">SUPERCHARGE — WORKSPACE CHROME</div>
+      <sc-if value="{{ pro }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;border:1px solid var(--mil-a-line);border-top:2px solid var(--mil-a);border-radius:var(--r-panel);background:#070b07;overflow:hidden;box-shadow:0 0 24px -8px var(--mil-a-glow);">
+          <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent 0 2px,rgba(143,179,107,0.06) 2px 3px);pointer-events:none;"></div>
+          <div style="position:relative;display:flex;align-items:center;justify-content:space-between;padding:9px 13px;border-bottom:1px solid var(--mil-a-line);"><span style="font-family:var(--font-cakemono);font-weight:300;font-size:11px;letter-spacing:0.06em;color:var(--mil-a);">OPS DECKS <span style="font-family:var(--font-mono);font-size:8px;">// PRO</span></span><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.14em;color:var(--mil-a);">OPTICS ONLINE</span></div>
+          <div style="position:relative;display:flex;align-items:center;gap:6px;padding:11px 13px;"><span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--mil-a-line);display:flex;align-items:center;justify-content:center;color:var(--mil-a);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4l13 6-5 2-2 5z"/></svg></span><span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--mil-a-line);display:flex;align-items:center;justify-content:center;color:var(--mil-a);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 3v18"/></svg></span><span style="margin-left:auto;font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.1em;color:var(--mil-a);">RENDER · AR // ONLINE</span></div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ free }}">
+        <div style="border:1px solid var(--line);border-radius:var(--r-panel);background:var(--bg);overflow:hidden;"><div style="display:flex;align-items:center;justify-content:space-between;padding:9px 13px;border-bottom:1px solid var(--line);background:var(--glass-dense);"><span style="font-family:var(--font-cakemono);font-weight:300;font-size:11px;letter-spacing:0.06em;color:var(--text-2);">OPS DECKS</span><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.14em;color:var(--text-mute);">FREE · 1 DECK</span></div><div style="display:flex;align-items:center;gap:6px;padding:11px 13px;"><span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-3);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4l13 6-5 2-2 5z"/></svg></span><span style="width:26px;height:26px;border-radius:5px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-mute);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span><span style="margin-left:auto;font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.1em;color:var(--text-mute);">FEED OFFLINE</span></div></div>
+      </sc-if>
+      <button style="width:100%;height:44px;background:var(--mil-a);color:#000;border:none;border-radius:var(--r-btn);font-family:var(--font-cakemono);font-weight:300;font-size:14px;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;">ENGAGE PRO · $109/YR</button>
+    </div>
+
+    <!-- ===== 2B · MIL-SPEC PLACARD ===== -->
+    <div id="2b" style="flex:1;min-width:372px;display:flex;flex-direction:column;gap:14px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--r-panel);padding:22px;">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;"><span style="font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:0.1em;color:#000;background:var(--mil-b);border-radius:var(--r-chip);padding:3px 8px;">2B</span><span style="font-family:var(--font-cakemono);font-weight:300;font-size:20px;letter-spacing:0.02em;color:var(--text);">MIL-SPEC PLACARD</span></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:11px;"><span style="width:14px;height:14px;border-radius:3px;background:var(--mil-b);"></span><span style="font-family:var(--font-mono);font-size:11px;color:var(--text-2);">--deck-pro · #9C7E55 · FDE · NEW</span></div>
+        <p style="font-family:var(--font-mohave);font-size:13px;line-height:1.5;color:var(--text-2);margin:11px 0 0;">Pro as <span style="color:var(--text);">issued equipment</span> — a stamped flat-dark-earth data plate with corner screws and an NSN-style code. Industrial, durable, unmistakably kit.</p>
+        <p style="font-family:var(--font-mohave);font-size:11.5px;line-height:1.45;color:var(--text-3);margin:9px 0 0;">Tradeoff — FDE is earth-family; darker/browner than tan and used as plate stroke, so it stays clear of attention-tan.</p>
+      </div>
+      <div style="height:1px;background:var(--line);"></div>
+      <div style="position:relative;border:1px solid var(--mil-b-line);border-radius:3px;padding:9px 12px;display:flex;align-items:center;justify-content:space-between;background:var(--mil-b-soft);"><span style="position:absolute;top:4px;left:4px;width:4px;height:4px;border-radius:50%;background:var(--mil-b-line);"></span><span style="position:absolute;top:4px;right:4px;width:4px;height:4px;border-radius:50%;background:var(--mil-b-line);"></span><span style="position:absolute;bottom:4px;left:4px;width:4px;height:4px;border-radius:50%;background:var(--mil-b-line);"></span><span style="position:absolute;bottom:4px;right:4px;width:4px;height:4px;border-radius:50%;background:var(--mil-b-line);"></span><span style="font-family:var(--font-mono);font-size:12px;letter-spacing:0.18em;color:var(--mil-b);">MIL-SPEC // PRO</span><span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.08em;color:var(--text-3);">5340-01-PRO-II</span></div>
+      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;color:var(--text-mute);">SUPERCHARGE — WORKSPACE CHROME</div>
+      <sc-if value="{{ pro }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;border:1px solid var(--mil-b-line);border-radius:var(--r-panel);background:var(--bg);overflow:hidden;box-shadow:0 0 22px -8px var(--mil-b-glow);"><span style="position:absolute;top:5px;left:5px;width:4px;height:4px;border-radius:50%;background:var(--mil-b-line);"></span><span style="position:absolute;top:5px;right:5px;width:4px;height:4px;border-radius:50%;background:var(--mil-b-line);"></span><div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--mil-b-line);background:var(--glass-dense);"><span style="font-family:var(--font-cakemono);font-weight:300;font-size:11px;letter-spacing:0.06em;color:var(--text);">OPS DECKS <span style="font-family:var(--font-mono);font-size:8px;color:var(--mil-b);">// PRO</span></span><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.14em;color:var(--mil-b);">ISSUE: UNLIMITED</span></div><div style="display:flex;align-items:center;gap:6px;padding:11px 14px;"><span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-2);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4l13 6-5 2-2 5z"/></svg></span><span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--mil-b-line);display:flex;align-items:center;justify-content:center;color:var(--mil-b);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 3v18"/></svg></span><span style="margin-left:auto;font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.1em;color:var(--mil-b);">RENDER · AR // ISSUED</span></div></div>
+      </sc-if>
+      <sc-if value="{{ free }}">
+        <div style="border:1px solid var(--line);border-radius:var(--r-panel);background:var(--bg);overflow:hidden;"><div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--glass-dense);"><span style="font-family:var(--font-cakemono);font-weight:300;font-size:11px;letter-spacing:0.06em;color:var(--text-2);">OPS DECKS</span><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.14em;color:var(--text-mute);">FREE · 1 DECK</span></div><div style="display:flex;align-items:center;gap:6px;padding:11px 14px;"><span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-3);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4l13 6-5 2-2 5z"/></svg></span><span style="width:26px;height:26px;border-radius:5px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-mute);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span><span style="margin-left:auto;font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.1em;color:var(--text-mute);">RENDER // NOT ISSUED</span></div></div>
+      </sc-if>
+      <button style="width:100%;height:44px;background:var(--mil-b);color:#000;border:none;border-radius:var(--r-btn);font-family:var(--font-cakemono);font-weight:300;font-size:14px;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;">ISSUE PRO · $109/YR</button>
+    </div>
+
+    <!-- ===== 2C · QUIET PROFESSIONAL ===== -->
+    <div id="2c" style="flex:1;min-width:372px;display:flex;flex-direction:column;gap:14px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--r-panel);padding:22px;">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;"><span style="font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:0.1em;color:var(--text-2);border:1px solid var(--mil-c-line);border-radius:var(--r-chip);padding:3px 8px;">2C</span><span style="font-family:var(--font-cakemono);font-weight:300;font-size:20px;letter-spacing:0.02em;color:var(--text);">QUIET PROFESSIONAL</span></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:11px;"><span style="width:14px;height:14px;border-radius:3px;background:var(--mil-c);"></span><span style="font-family:var(--font-mono);font-size:11px;color:var(--text-2);">--deck-pro · #727C5E · LOW-VIS</span></div>
+        <p style="font-family:var(--font-mohave);font-size:13px;line-height:1.5;color:var(--text-2);margin:11px 0 0;">Real operators don’t advertise. Pro is felt in <span style="color:var(--text);">capability</span> + a whispered drab mark — a low-vis patch, not a loud hue. Most restrained; closest to base OPS.</p>
+        <p style="font-family:var(--font-mohave);font-size:11.5px;line-height:1.45;color:var(--text-3);margin:9px 0 0;">Tradeoff — subtle to the point a user may not notice they upgraded; leans on capability changes to sell it.</p>
+      </div>
+      <div style="height:1px;background:var(--line);"></div>
+      <div style="display:flex;align-items:center;gap:9px;"><span style="font-family:var(--font-mono);font-size:12px;letter-spacing:0.2em;color:var(--text-2);border-left:2px solid var(--mil-c);padding-left:9px;">PRO</span><span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;color:var(--text-mute);">// OPERATOR</span></div>
+      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;color:var(--text-mute);">SUPERCHARGE — WORKSPACE CHROME</div>
+      <sc-if value="{{ pro }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid var(--line);border-left:2px solid var(--mil-c);border-radius:var(--r-panel);background:var(--bg);overflow:hidden;"><div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--glass-dense);"><span style="font-family:var(--font-cakemono);font-weight:300;font-size:11px;letter-spacing:0.06em;color:var(--text);">OPS DECKS <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-3);">PRO</span></span><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.14em;color:var(--text-3);">UNLIMITED</span></div><div style="display:flex;align-items:center;gap:6px;padding:11px 14px;"><span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-2);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4l13 6-5 2-2 5z"/></svg></span><span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-2);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 3v18"/></svg></span><span style="margin-left:auto;font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.1em;color:var(--text-3);">RENDER · AR</span></div></div>
+      </sc-if>
+      <sc-if value="{{ free }}">
+        <div style="border:1px solid var(--line);border-radius:var(--r-panel);background:var(--bg);overflow:hidden;"><div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--glass-dense);"><span style="font-family:var(--font-cakemono);font-weight:300;font-size:11px;letter-spacing:0.06em;color:var(--text-2);">OPS DECKS</span><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.14em;color:var(--text-mute);">FREE · 1 DECK</span></div><div style="display:flex;align-items:center;gap:6px;padding:11px 14px;"><span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-3);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4l13 6-5 2-2 5z"/></svg></span><span style="width:26px;height:26px;border-radius:5px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-mute);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span><span style="margin-left:auto;font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.1em;color:var(--text-mute);">RENDER LOCKED</span></div></div>
+      </sc-if>
+      <button style="width:100%;height:44px;background:transparent;color:var(--text);border:1px solid var(--mil-c-line);border-left:2px solid var(--mil-c);border-radius:var(--r-btn);font-family:var(--font-cakemono);font-weight:300;font-size:14px;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;">GO PRO · $109/YR</button>
+    </div>
+
+  </div>
+</section>
+
+<section style="padding:34px 44px 70px;">
+  <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:stretch;">
+  <!-- ========== 1A · STEEL PRO ========== -->
+  <div id="1a" style="flex:1;min-width:372px;display:flex;flex-direction:column;gap:15px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--r-panel);padding:22px;">
+    <div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:0.1em;color:#000;background:var(--pro-a);border-radius:var(--r-chip);padding:3px 8px;">1A</span>
+        <span style="font-family:var(--font-cakemono);font-weight:300;font-size:20px;letter-spacing:0.02em;color:var(--text);">STEEL PRO</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:11px;"><span style="width:14px;height:14px;border-radius:3px;background:var(--pro-a);"></span><span style="font-family:var(--font-mono);font-size:11px;color:var(--text-2);">--deck-pro → --ops-accent · #6F94B0</span></div>
+      <p style="font-family:var(--font-mohave);font-size:13px;line-height:1.5;color:var(--text-2);margin:11px 0 0;">Pro <span style="color:var(--text);">owns the steel accent</span>. Upgrading is the app’s top conversion, so the one accent becomes the badge of membership — the chrome you already trust simply lights up.</p>
+      <p style="font-family:var(--font-mohave);font-size:11.5px;line-height:1.45;color:var(--text-3);margin:9px 0 0;">Tradeoff — accent now means “primary action <span style="color:var(--text-2);">and</span> Pro”. Cleanest, zero new hue; least differentiated.</p>
+    </div>
+    <div style="height:1px;background:var(--line);"></div>
+
+    <!-- identity -->
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <span style="display:inline-flex;align-items:center;gap:6px;font-family:var(--font-cakemono);font-weight:300;font-size:13px;letter-spacing:0.06em;color:#000;background:var(--pro-a);border-radius:var(--r-chip);padding:5px 11px;">PRO</span>
+      <div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--text);width:17px;height:17px;display:flex;"><svg viewBox="0 0 2400 2400" fill="currentColor" style="width:100%;height:100%;"><path d="M1624.48,1228.51v-563.59l-375.6-187.86-281.73,140.87.16.08,469.34,234.72v469.62l187.78-93.89Z"></path><path d="M1432.95,1775.53v-.1l-469.49-234.8-.13-469.56-187.37,93.85-.48,563.47.15.08,375.54,187.82,281.74-140.75Z"></path></svg></span><span style="font-family:var(--font-cakemono);font-weight:300;font-size:15px;letter-spacing:0.03em;color:var(--text);">OPS DECKS</span><span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:var(--pro-a);border:1px solid var(--pro-a-line);border-radius:var(--r-chip);padding:2px 5px;">PRO</span></div>
+    </div>
+
+    <!-- upgrade moment -->
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;color:var(--text-mute);">SUPERCHARGE — WORKSPACE CHROME</div>
+    <sc-if value="{{ pro }}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid var(--pro-a-line);border-top:2px solid var(--pro-a);border-radius:var(--r-panel);background:var(--bg);overflow:hidden;box-shadow:0 0 22px -8px var(--pro-a-glow);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--glass-dense);"><div style="display:flex;align-items:center;gap:7px;"><span style="color:var(--text);width:14px;height:14px;display:flex;"><svg viewBox="0 0 2400 2400" fill="currentColor" style="width:100%;height:100%;"><path d="M1624.48,1228.51v-563.59l-375.6-187.86-281.73,140.87.16.08,469.34,234.72v469.62l187.78-93.89Z"></path><path d="M1432.95,1775.53v-.1l-469.49-234.8-.13-469.56-187.37,93.85-.48,563.47.15.08,375.54,187.82,281.74-140.75Z"></path></svg></span><span style="font-family:var(--font-cakemono);font-weight:300;font-size:11px;letter-spacing:0.03em;color:var(--text);">OPS DECKS</span><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.1em;color:var(--pro-a);border:1px solid var(--pro-a-line);border-radius:2px;padding:2px 4px;">PRO</span></div><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.1em;color:var(--text-3);">UNLIMITED</span></div>
+        <div style="display:flex;align-items:center;gap:6px;padding:11px 12px;">
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-2);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4l13 6-5 2-2 5z"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-2);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12h16M4 9v6M20 9v6"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--pro-a-line);background:var(--pro-a-soft);display:flex;align-items:center;justify-content:center;color:var(--pro-a);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 3v18"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--pro-a-line);background:var(--pro-a-soft);display:flex;align-items:center;justify-content:center;color:var(--pro-a);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8V5a2 2 0 0 1 2-2h3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M21 16v3a2 2 0 0 1-2 2h-3"/></svg></span>
+          <span style="margin-left:auto;font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.08em;color:var(--pro-a);">+ RENDER · AR</span>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ free }}">
+      <div style="border:1px solid var(--line);border-radius:var(--r-panel);background:var(--bg);overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--glass-dense);"><div style="display:flex;align-items:center;gap:7px;"><span style="color:var(--text-2);width:14px;height:14px;display:flex;"><svg viewBox="0 0 2400 2400" fill="currentColor" style="width:100%;height:100%;"><path d="M1624.48,1228.51v-563.59l-375.6-187.86-281.73,140.87.16.08,469.34,234.72v469.62l187.78-93.89Z"></path><path d="M1432.95,1775.53v-.1l-469.49-234.8-.13-469.56-187.37,93.85-.48,563.47.15.08,375.54,187.82,281.74-140.75Z"></path></svg></span><span style="font-family:var(--font-cakemono);font-weight:300;font-size:11px;letter-spacing:0.03em;color:var(--text-2);">OPS DECKS</span></div><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.1em;color:var(--text-mute);">FREE · 1 DECK</span></div>
+        <div style="display:flex;align-items:center;gap:6px;padding:11px 12px;">
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-3);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4l13 6-5 2-2 5z"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-3);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12h16M4 9v6M20 9v6"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-mute);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
+          <span style="margin-left:auto;font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.08em;color:var(--text-mute);">RENDER LOCKED</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- paywall card + cta -->
+    <div style="border:1.5px solid var(--pro-a);border-radius:var(--r-panel);background:var(--pro-a-soft);padding:13px 14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-family:var(--font-mono);font-size:9.5px;letter-spacing:0.12em;color:var(--text-2);">ANNUAL</span><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.08em;color:var(--pro-a);">SAVE 39%</span></div>
+      <div style="font-family:var(--font-mono);font-size:23px;color:var(--text);margin-top:5px;">$109<span style="font-size:11px;color:var(--text-3);"> /yr</span></div>
+    </div>
+    <button style="width:100%;height:44px;background:var(--pro-a);color:#000;border:none;border-radius:var(--r-btn);font-family:var(--font-cakemono);font-weight:300;font-size:14px;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;">START PRO</button>
+  </div>
+  <!-- ========== 1B · BRASS PRO ========== -->
+  <div id="1b" style="flex:1;min-width:372px;display:flex;flex-direction:column;gap:15px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--r-panel);padding:22px;">
+    <div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:0.1em;color:#000;background:var(--pro-b);border-radius:var(--r-chip);padding:3px 8px;">1B</span>
+        <span style="font-family:var(--font-cakemono);font-weight:300;font-size:20px;letter-spacing:0.02em;color:var(--text);">BRASS PRO</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:11px;"><span style="width:14px;height:14px;border-radius:3px;background:var(--pro-b);"></span><span style="font-family:var(--font-mono);font-size:11px;color:var(--text-2);">--deck-pro · #DDB95E · NEW</span></div>
+      <p style="font-family:var(--font-mohave);font-size:13px;line-height:1.5;color:var(--text-2);margin:11px 0 0;">A new <span style="color:var(--text);">brass</span> token — the universal “premium” cue. Scoped to tier identity only: badges, the Pro lockup, the upgrade. It never lands on a member or status row.</p>
+      <p style="font-family:var(--font-mohave);font-size:11.5px;line-height:1.45;color:var(--text-3);margin:9px 0 0;">Tradeoff — sits near tan (attention). Kept apart by context (brass = identity, tan = state) and runs brighter / more saturated.</p>
+    </div>
+    <div style="height:1px;background:var(--line);"></div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <span style="display:inline-flex;align-items:center;gap:6px;font-family:var(--font-cakemono);font-weight:300;font-size:13px;letter-spacing:0.06em;color:#000;background:var(--pro-b);border-radius:var(--r-chip);padding:5px 11px;">PRO</span>
+      <div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--text);width:17px;height:17px;display:flex;"><svg viewBox="0 0 2400 2400" fill="currentColor" style="width:100%;height:100%;"><path d="M1624.48,1228.51v-563.59l-375.6-187.86-281.73,140.87.16.08,469.34,234.72v469.62l187.78-93.89Z"></path><path d="M1432.95,1775.53v-.1l-469.49-234.8-.13-469.56-187.37,93.85-.48,563.47.15.08,375.54,187.82,281.74-140.75Z"></path></svg></span><span style="font-family:var(--font-cakemono);font-weight:300;font-size:15px;letter-spacing:0.03em;color:var(--text);">OPS DECKS</span><span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:var(--pro-b);border:1px solid var(--pro-b-line);border-radius:var(--r-chip);padding:2px 5px;">PRO</span></div>
+    </div>
+
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;color:var(--text-mute);">SUPERCHARGE — WORKSPACE CHROME</div>
+    <sc-if value="{{ pro }}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid var(--pro-b-line);border-top:2px solid var(--pro-b);border-radius:var(--r-panel);background:var(--bg);overflow:hidden;box-shadow:0 0 22px -8px var(--pro-b-glow);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--glass-dense);"><div style="display:flex;align-items:center;gap:7px;"><span style="color:var(--text);width:14px;height:14px;display:flex;"><svg viewBox="0 0 2400 2400" fill="currentColor" style="width:100%;height:100%;"><path d="M1624.48,1228.51v-563.59l-375.6-187.86-281.73,140.87.16.08,469.34,234.72v469.62l187.78-93.89Z"></path><path d="M1432.95,1775.53v-.1l-469.49-234.8-.13-469.56-187.37,93.85-.48,563.47.15.08,375.54,187.82,281.74-140.75Z"></path></svg></span><span style="font-family:var(--font-cakemono);font-weight:300;font-size:11px;letter-spacing:0.03em;color:var(--text);">OPS DECKS</span><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.1em;color:var(--pro-b);border:1px solid var(--pro-b-line);border-radius:2px;padding:2px 4px;">PRO</span></div><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.1em;color:var(--text-3);">UNLIMITED</span></div>
+        <div style="display:flex;align-items:center;gap:6px;padding:11px 12px;">
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-2);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4l13 6-5 2-2 5z"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-2);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12h16M4 9v6M20 9v6"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--pro-b-line);background:var(--pro-b-soft);display:flex;align-items:center;justify-content:center;color:var(--pro-b);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 3v18"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--pro-b-line);background:var(--pro-b-soft);display:flex;align-items:center;justify-content:center;color:var(--pro-b);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8V5a2 2 0 0 1 2-2h3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M21 16v3a2 2 0 0 1-2 2h-3"/></svg></span>
+          <span style="margin-left:auto;font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.08em;color:var(--pro-b);">+ RENDER · AR</span>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ free }}">
+      <div style="border:1px solid var(--line);border-radius:var(--r-panel);background:var(--bg);overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--glass-dense);"><div style="display:flex;align-items:center;gap:7px;"><span style="color:var(--text-2);width:14px;height:14px;display:flex;"><svg viewBox="0 0 2400 2400" fill="currentColor" style="width:100%;height:100%;"><path d="M1624.48,1228.51v-563.59l-375.6-187.86-281.73,140.87.16.08,469.34,234.72v469.62l187.78-93.89Z"></path><path d="M1432.95,1775.53v-.1l-469.49-234.8-.13-469.56-187.37,93.85-.48,563.47.15.08,375.54,187.82,281.74-140.75Z"></path></svg></span><span style="font-family:var(--font-cakemono);font-weight:300;font-size:11px;letter-spacing:0.03em;color:var(--text-2);">OPS DECKS</span></div><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.1em;color:var(--text-mute);">FREE · 1 DECK</span></div>
+        <div style="display:flex;align-items:center;gap:6px;padding:11px 12px;">
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-3);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4l13 6-5 2-2 5z"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-3);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12h16M4 9v6M20 9v6"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-mute);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
+          <span style="margin-left:auto;font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.08em;color:var(--text-mute);">RENDER LOCKED</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <div style="border:1.5px solid var(--pro-b);border-radius:var(--r-panel);background:var(--pro-b-soft);padding:13px 14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-family:var(--font-mono);font-size:9.5px;letter-spacing:0.12em;color:var(--text-2);">ANNUAL</span><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.08em;color:var(--pro-b);">SAVE 39%</span></div>
+      <div style="font-family:var(--font-mono);font-size:23px;color:var(--text);margin-top:5px;">$109<span style="font-size:11px;color:var(--text-3);"> /yr</span></div>
+    </div>
+    <button style="width:100%;height:44px;background:var(--pro-b);color:#000;border:none;border-radius:var(--r-btn);font-family:var(--font-cakemono);font-weight:300;font-size:14px;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;">START PRO</button>
+  </div>
+  <!-- ========== 1C · CHARGED TEAL ========== -->
+  <div id="1c" style="flex:1;min-width:372px;display:flex;flex-direction:column;gap:15px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--r-panel);padding:22px;">
+    <div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:0.1em;color:#000;background:var(--pro-c);border-radius:var(--r-chip);padding:3px 8px;">1C</span>
+        <span style="font-family:var(--font-cakemono);font-weight:300;font-size:20px;letter-spacing:0.02em;color:var(--text);">CHARGED TEAL</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:11px;"><span style="width:14px;height:14px;border-radius:3px;background:var(--pro-c);"></span><span style="font-family:var(--font-mono);font-size:11px;color:var(--text-2);">--deck-pro · #5DB3A8 · NEW</span></div>
+      <p style="font-family:var(--font-mohave);font-size:13px;line-height:1.5;color:var(--text-2);margin:11px 0 0;">A new cool teal that reads <span style="color:var(--text);">energized / powered-up</span> — the strongest “supercharge” signal, and far from every reserved hue (steel, earth tones, lavender).</p>
+      <p style="font-family:var(--font-mohave);font-size:11.5px;line-height:1.45;color:var(--text-3);margin:9px 0 0;">Tradeoff — no prior basis in OPS. The most expressive, the least “inherited”; needs the tightest scoping to not feel like a different product.</p>
+    </div>
+    <div style="height:1px;background:var(--line);"></div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <span style="display:inline-flex;align-items:center;gap:6px;font-family:var(--font-cakemono);font-weight:300;font-size:13px;letter-spacing:0.06em;color:#000;background:var(--pro-c);border-radius:var(--r-chip);padding:5px 11px;">PRO</span>
+      <div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--text);width:17px;height:17px;display:flex;"><svg viewBox="0 0 2400 2400" fill="currentColor" style="width:100%;height:100%;"><path d="M1624.48,1228.51v-563.59l-375.6-187.86-281.73,140.87.16.08,469.34,234.72v469.62l187.78-93.89Z"></path><path d="M1432.95,1775.53v-.1l-469.49-234.8-.13-469.56-187.37,93.85-.48,563.47.15.08,375.54,187.82,281.74-140.75Z"></path></svg></span><span style="font-family:var(--font-cakemono);font-weight:300;font-size:15px;letter-spacing:0.03em;color:var(--text);">OPS DECKS</span><span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:var(--pro-c);border:1px solid var(--pro-c-line);border-radius:var(--r-chip);padding:2px 5px;">PRO</span></div>
+    </div>
+
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;color:var(--text-mute);">SUPERCHARGE — WORKSPACE CHROME</div>
+    <sc-if value="{{ pro }}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid var(--pro-c-line);border-top:2px solid var(--pro-c);border-radius:var(--r-panel);background:var(--bg);overflow:hidden;box-shadow:0 0 22px -8px var(--pro-c-glow);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--glass-dense);"><div style="display:flex;align-items:center;gap:7px;"><span style="color:var(--text);width:14px;height:14px;display:flex;"><svg viewBox="0 0 2400 2400" fill="currentColor" style="width:100%;height:100%;"><path d="M1624.48,1228.51v-563.59l-375.6-187.86-281.73,140.87.16.08,469.34,234.72v469.62l187.78-93.89Z"></path><path d="M1432.95,1775.53v-.1l-469.49-234.8-.13-469.56-187.37,93.85-.48,563.47.15.08,375.54,187.82,281.74-140.75Z"></path></svg></span><span style="font-family:var(--font-cakemono);font-weight:300;font-size:11px;letter-spacing:0.03em;color:var(--text);">OPS DECKS</span><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.1em;color:var(--pro-c);border:1px solid var(--pro-c-line);border-radius:2px;padding:2px 4px;">PRO</span></div><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.1em;color:var(--text-3);">UNLIMITED</span></div>
+        <div style="display:flex;align-items:center;gap:6px;padding:11px 12px;">
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-2);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4l13 6-5 2-2 5z"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-2);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12h16M4 9v6M20 9v6"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--pro-c-line);background:var(--pro-c-soft);display:flex;align-items:center;justify-content:center;color:var(--pro-c);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 3v18"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--pro-c-line);background:var(--pro-c-soft);display:flex;align-items:center;justify-content:center;color:var(--pro-c);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8V5a2 2 0 0 1 2-2h3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M21 16v3a2 2 0 0 1-2 2h-3"/></svg></span>
+          <span style="margin-left:auto;font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.08em;color:var(--pro-c);">+ RENDER · AR</span>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ free }}">
+      <div style="border:1px solid var(--line);border-radius:var(--r-panel);background:var(--bg);overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--glass-dense);"><div style="display:flex;align-items:center;gap:7px;"><span style="color:var(--text-2);width:14px;height:14px;display:flex;"><svg viewBox="0 0 2400 2400" fill="currentColor" style="width:100%;height:100%;"><path d="M1624.48,1228.51v-563.59l-375.6-187.86-281.73,140.87.16.08,469.34,234.72v469.62l187.78-93.89Z"></path><path d="M1432.95,1775.53v-.1l-469.49-234.8-.13-469.56-187.37,93.85-.48,563.47.15.08,375.54,187.82,281.74-140.75Z"></path></svg></span><span style="font-family:var(--font-cakemono);font-weight:300;font-size:11px;letter-spacing:0.03em;color:var(--text-2);">OPS DECKS</span></div><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.1em;color:var(--text-mute);">FREE · 1 DECK</span></div>
+        <div style="display:flex;align-items:center;gap:6px;padding:11px 12px;">
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-3);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4l13 6-5 2-2 5z"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-3);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12h16M4 9v6M20 9v6"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-mute);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
+          <span style="margin-left:auto;font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.08em;color:var(--text-mute);">RENDER LOCKED</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <div style="border:1.5px solid var(--pro-c);border-radius:var(--r-panel);background:var(--pro-c-soft);padding:13px 14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-family:var(--font-mono);font-size:9.5px;letter-spacing:0.12em;color:var(--text-2);">ANNUAL</span><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.08em;color:var(--pro-c);">SAVE 39%</span></div>
+      <div style="font-family:var(--font-mono);font-size:23px;color:var(--text);margin-top:5px;">$109<span style="font-size:11px;color:var(--text-3);"> /yr</span></div>
+    </div>
+    <button style="width:100%;height:44px;background:var(--pro-c);color:#000;border:none;border-radius:var(--r-btn);font-family:var(--font-cakemono);font-weight:300;font-size:14px;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;">START PRO</button>
+  </div>
+
+  <!-- ========== 1D · OPERATOR CLEARANCE ========== -->
+  <div id="1d" style="flex:1;min-width:372px;display:flex;flex-direction:column;gap:15px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--r-panel);padding:22px;">
+    <div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:0.1em;color:#000;background:var(--pro-d);border-radius:var(--r-chip);padding:3px 8px;">1D</span>
+        <span style="font-family:var(--font-cakemono);font-weight:300;font-size:20px;letter-spacing:0.02em;color:var(--text);">OPERATOR CLEARANCE</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:11px;"><span style="width:14px;height:14px;border-radius:3px;background:var(--pro-d);"></span><span style="font-family:var(--font-mono);font-size:11px;color:var(--text-2);">--deck-pro · #7E885F · NEW</span></div>
+      <p style="font-family:var(--font-mohave);font-size:13px;line-height:1.5;color:var(--text-2);margin:11px 0 0;">Leans all the way into OPS’s command-deck DNA. Pro isn’t a color you buy — it’s a <span style="color:var(--text);">clearance you’re issued</span>: a stenciled patch, rank chevrons, corner ticks, and a low-vis field green that lives as <span style="color:var(--text);">stroke + insignia</span>, never a fill.</p>
+      <p style="font-family:var(--font-mohave);font-size:11.5px;line-height:1.45;color:var(--text-3);margin:9px 0 0;">Tradeoff — field green is olive-adjacent; kept off status (success stays sage soft-fill, clearance is drab stroke + stencil). Most characterful; most copy to maintain.</p>
+    </div>
+    <div style="height:1px;background:var(--line);"></div>
+
+    <!-- identity -->
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <span style="display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:12px;letter-spacing:0.18em;color:var(--pro-d);border:1px solid var(--pro-d-line);border-radius:2px;padding:5px 9px;"><span style="color:var(--text-mute);">[</span>PRO<span style="color:var(--text-mute);">]</span></span>
+      <div style="display:flex;align-items:center;gap:8px;"><svg width="24" height="11" viewBox="0 0 24 11" fill="none" stroke="var(--pro-d)" stroke-width="1.5"><path d="M2 9 L7 4 L12 9"/><path d="M12 9 L17 4 L22 9"/></svg><span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;color:var(--text-3);">TIER II</span></div>
+    </div>
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.16em;color:var(--text-mute);">// CLEARANCE :: PRO · FIELD OPERATOR</div>
+
+    <!-- upgrade moment -->
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;color:var(--text-mute);">SUPERCHARGE — WORKSPACE CHROME</div>
+    <sc-if value="{{ pro }}" hint-placeholder-val="{{ true }}">
+      <div style="position:relative;border:1px solid var(--pro-d-line);border-top:2px solid var(--pro-d);border-radius:var(--r-panel);background:var(--bg);overflow:hidden;box-shadow:0 0 22px -8px var(--pro-d-glow);">
+        <span style="position:absolute;top:6px;left:6px;width:9px;height:9px;border-top:1.5px solid var(--pro-d);border-left:1.5px solid var(--pro-d);"></span><span style="position:absolute;top:6px;right:6px;width:9px;height:9px;border-top:1.5px solid var(--pro-d);border-right:1.5px solid var(--pro-d);"></span><span style="position:absolute;bottom:6px;left:6px;width:9px;height:9px;border-bottom:1.5px solid var(--pro-d);border-left:1.5px solid var(--pro-d);"></span><span style="position:absolute;bottom:6px;right:6px;width:9px;height:9px;border-bottom:1.5px solid var(--pro-d);border-right:1.5px solid var(--pro-d);"></span>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--glass-dense);"><div style="display:flex;align-items:center;gap:7px;"><span style="color:var(--text);width:14px;height:14px;display:flex;"><svg viewBox="0 0 2400 2400" fill="currentColor" style="width:100%;height:100%;"><path d="M1624.48,1228.51v-563.59l-375.6-187.86-281.73,140.87.16.08,469.34,234.72v469.62l187.78-93.89Z"></path><path d="M1432.95,1775.53v-.1l-469.49-234.8-.13-469.56-187.37,93.85-.48,563.47.15.08,375.54,187.82,281.74-140.75Z"></path></svg></span><span style="font-family:var(--font-cakemono);font-weight:300;font-size:11px;letter-spacing:0.06em;color:var(--text);">OPS DECKS</span><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.16em;color:var(--pro-d);">// PRO</span></div><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.14em;color:var(--text-3);">CLEARED · UNLIMITED</span></div>
+        <div style="display:flex;align-items:center;gap:6px;padding:11px 14px;">
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-2);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4l13 6-5 2-2 5z"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-2);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12h16M4 9v6M20 9v6"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--pro-d-line);display:flex;align-items:center;justify-content:center;color:var(--pro-d);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 3v18"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--pro-d-line);display:flex;align-items:center;justify-content:center;color:var(--pro-d);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8V5a2 2 0 0 1 2-2h3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M21 16v3a2 2 0 0 1-2 2h-3"/></svg></span>
+          <span style="margin-left:auto;font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.1em;color:var(--pro-d);">RENDER · AR // UNLOCKED</span>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ free }}">
+      <div style="border:1px solid var(--line);border-radius:var(--r-panel);background:var(--bg);overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--glass-dense);"><div style="display:flex;align-items:center;gap:7px;"><span style="color:var(--text-2);width:14px;height:14px;display:flex;"><svg viewBox="0 0 2400 2400" fill="currentColor" style="width:100%;height:100%;"><path d="M1624.48,1228.51v-563.59l-375.6-187.86-281.73,140.87.16.08,469.34,234.72v469.62l187.78-93.89Z"></path><path d="M1432.95,1775.53v-.1l-469.49-234.8-.13-469.56-187.37,93.85-.48,563.47.15.08,375.54,187.82,281.74-140.75Z"></path></svg></span><span style="font-family:var(--font-cakemono);font-weight:300;font-size:11px;letter-spacing:0.06em;color:var(--text-2);">OPS DECKS</span></div><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.14em;color:var(--text-mute);">FREE · 1 DECK</span></div>
+        <div style="display:flex;align-items:center;gap:6px;padding:11px 14px;">
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-3);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4l13 6-5 2-2 5z"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-3);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12h16M4 9v6M20 9v6"/></svg></span>
+          <span style="width:26px;height:26px;border-radius:5px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;color:var(--text-mute);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
+          <span style="margin-left:auto;font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.1em;color:var(--text-mute);">RENDER // RESTRICTED</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- paywall card + cta -->
+    <div style="position:relative;border:1px solid var(--pro-d-line);border-radius:var(--r-panel);background:transparent;padding:13px 14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-family:var(--font-mono);font-size:9.5px;letter-spacing:0.14em;color:var(--text-2);">ANNUAL</span><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.1em;color:var(--pro-d);">SAVE 39%</span></div>
+      <div style="font-family:var(--font-mono);font-size:23px;color:var(--text);margin-top:5px;">$109<span style="font-size:11px;color:var(--text-3);"> /yr</span></div>
+    </div>
+    <button style="width:100%;height:44px;background:var(--pro-d);color:#000;border:none;border-radius:var(--r-btn);font-family:var(--font-cakemono);font-weight:300;font-size:14px;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;">REQUEST CLEARANCE</button>
+  </div>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = { pro: true };
+  renderVals() {
+    return { pro: this.state.pro, free: !this.state.pro, toggle: () => this.setState(s => ({ pro: !s.pro })) };
+  }
+}
+</script>
+</body>
+</html>

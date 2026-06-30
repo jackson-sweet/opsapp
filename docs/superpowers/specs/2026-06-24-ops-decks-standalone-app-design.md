@@ -5,6 +5,8 @@
 **Surface:** New standalone iOS app ("OPS Decks") + extraction of the existing deck designer into a shared module + backend (Supabase) reuse
 **Related:** `docs/superpowers/specs/2026-06-23-deck-designer-overhaul-design.md` §8 (Future direction); memory `deck-designer-standalone-spinoff`
 
+**UI source of truth:** `docs/superpowers/design/ops-decks-ui-system/` is the canonical OPS Decks UI handoff. The primary system is `project/OPS Decks System.dc.html`; Pro-tier treatment is explored in `project/OPS Decks - Pro Tier.dc.html`. All production UI must map visual values through named OPS/OPS Decks tokens or Swift equivalents, including `--deck-*` semantics for canvas, framing, code, zoning, materials, AR/3D, status, and Pro states. No hardcoded styling values are acceptable.
+
 ---
 
 ## 1. Context & goal

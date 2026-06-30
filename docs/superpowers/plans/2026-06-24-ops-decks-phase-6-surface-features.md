@@ -487,10 +487,13 @@ Key assertions: crossing math from joist spacing, clip-vs-screw exclusivity, fin
 **Interface (new):**
 ```swift
 public enum LightingTakeoffEngine {
+    public static let defaultStandardTransformerWatts: [Double]
+
     public static func size(
         plan: LightingPlan,
         fixtureWatts: Double,
-        scaleFactor: Double
+        scaleFactor: Double,
+        standardTransformerWatts: [Double] = defaultStandardTransformerWatts
     ) -> LightingTakeoffResult
 }
 public struct LightingTakeoffResult: Codable, Equatable {
@@ -510,13 +513,17 @@ public struct LightingTakeoffResult: Codable, Equatable {
 - `testReceptacleCount_fromPlan` — `plan.receptacles.count` echoed; `electricalNote` contains the GFCI advisory and **never** the word "compliant"/"safe" (assert the string is advisory-framed, C§6.1).
 - `testEmptyPlan_zeroes` — no fixtures → zero watts, no transformer recommendation, note still advisory.
 
-Key assertions: 80%-load transformer sizing snapped to standard sizes, wire-run estimate, GFCI note is advisory (no positive code claim).
+Key assertions: 80%-load transformer sizing snapped to standard sizes, configurable catalog ladder, wire-run estimate, GFCI note is advisory (no positive code claim).
 
-**Dependencies:** `LightingPlan` (Task 1); `PolygonMath` for wire-run distance (existing).
+**Dependencies:** `LightingPlan` (Task 1); `SnapEngine.distance` for wire-run distance (existing).
 
 **References:** roadmap §2.6 (lighting low-voltage + transformer sizing; basic electrical receptacle + GFCI note); NEC Art. 411, 210.52(E), 210.8(A)(3); C§6.1 (objective-negative — the GFCI line is a note, not a pass).
 
 **Risks:** Transformer "standard sizes" are product-dependent — keep the standard-size ladder a parameter/constant set, documented, not hardcoded as a code value. The GFCI note must be advisory only; electrical is out of the deck code packages' scope — never imply the app verified electrical code.
+
+**Implementation status (2026-06-30):** Complete. Added `Engine/LightingTakeoffEngine.swift` with 80% transformer-load sizing, a documented default transformer ladder that callers can replace with catalog sizes, nearest-neighbor fixture wire-run estimation, receptacle-count echoing, and an advisory-only NEC/GFCI note. The engine emits quantities only and makes no positive electrical/code/safety claim.
+
+**Verification (2026-06-30):** `swift test --package-path Packages/DeckKit --filter LightingTakeoffEngineTests` (5 tests), `swift test --package-path Packages/DeckKit` (438 tests), `scripts/verify-ops-decks-style-tokens.sh .`, `git diff --check`, and `xcodebuild -project OPS.xcodeproj -scheme OPSDecks -destination generic/platform=iOS -derivedDataPath /private/tmp/ops-decks-p6-task7-OPSDecks-dd CODE_SIGNING_ALLOWED=NO build` all passed.
 
 ---
 

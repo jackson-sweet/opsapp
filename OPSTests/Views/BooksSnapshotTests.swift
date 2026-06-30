@@ -87,8 +87,15 @@ final class BooksSnapshotTests: XCTestCase {
         snapshot("condensed_jobs") {
             JobsCard(viewModel: vm, style: .condensed).padding(.vertical, OPSStyle.Layout.spacing3)
         }
+        // Folded-in RUNWAY (cash-flow forecast) lens — here in its empty /
+        // no-balance state, which still exercises the shared L2 tile shell.
+        snapshot("condensed_runway") {
+            CashForecastCard(viewModel: CashflowForecastViewModel())
+                .padding(.vertical, OPSStyle.Layout.spacing3)
+        }
 
-        // All five stacked — proves uniform height + consistent design language.
+        // All six stacked — proves uniform height + consistent design language
+        // (incl. the folded-in RUNWAY lens).
         snapshot("condensed_strip") {
             VStack(spacing: OPSStyle.Layout.spacing3) {
                 PLCard(viewModel: vm, style: .condensed, onTapOutstanding: {}, onTapForecast: {})
@@ -96,6 +103,7 @@ final class BooksSnapshotTests: XCTestCase {
                 ARCard(viewModel: vm, style: .condensed, onTapTopChase: {})
                 ForecastCard(viewModel: vm, style: .condensed)
                 JobsCard(viewModel: vm, style: .condensed)
+                CashForecastCard(viewModel: CashflowForecastViewModel())
             }
             .padding(.vertical, OPSStyle.Layout.spacing4)
         }

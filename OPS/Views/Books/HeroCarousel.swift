@@ -18,6 +18,9 @@ import SwiftUI
 
 struct HeroCarousel: View {
     @ObservedObject var viewModel: MoneyDashboardViewModel
+    /// Drives the folded-in RUNWAY (cash-flow forecast) lens. Separate VM from
+    /// the dashboard — the forecast engine owns its own load + balance state.
+    @ObservedObject var cashflowVM: CashflowForecastViewModel
     @EnvironmentObject private var permissionStore: PermissionStore
     @EnvironmentObject private var dataController: DataController
 
@@ -32,14 +35,15 @@ struct HeroCarousel: View {
     var onDrillForecast: () -> Void
 
     enum CardID: String, CaseIterable, Identifiable {
-        case pl, cashFlow, ar, forecast, jobs
+        case pl, cashFlow, cashForecast, ar, forecast, jobs
         var id: String { rawValue }
 
-        /// Permission gate. Cards 1/2/3/5 require `finances.view`; Card 4 requires `pipeline.view`.
+        /// Permission gate. The finance lenses require `finances.view`; the
+        /// pipeline FORECAST lens requires `pipeline.view`.
         var permission: String {
             switch self {
-            case .pl, .cashFlow, .ar, .jobs: return "finances.view"
-            case .forecast:                  return "pipeline.view"
+            case .pl, .cashFlow, .cashForecast, .ar, .jobs: return "finances.view"
+            case .forecast:                                 return "pipeline.view"
             }
         }
     }
@@ -56,19 +60,24 @@ struct HeroCarousel: View {
                 inlineHeader
 
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: OPSStyle.Layout.spacing3) {
+                    HStack(spacing: 0) {
                         ForEach(visibleCards) { card in
                             cardView(for: card)
-                                // Paging width must account for the inter-card
-                                // gap, otherwise every page accumulates a
-                                // `spacing3` rightward drift (P6 bleed fix).
-                                .containerRelativeFrame(.horizontal, count: 1, span: 1, spacing: OPSStyle.Layout.spacing3)
+                                // Each card spans the full container width; with a
+                                // zero inter-card gap the pages are contiguous, so
+                                // `.viewAligned` snaps to every card's true leading
+                                // edge with no accumulating drift. (The old
+                                // `.paging` + 16pt HStack gap bled +16pt per swipe;
+                                // the `containerRelativeFrame(spacing:)` meant to
+                                // fix it was a no-op at count:1.) The card's own
+                                // 20pt inset is the side margin — one card at a time.
+                                .containerRelativeFrame(.horizontal)
                                 .id(card)
                         }
                     }
                     .scrollTargetLayout()
                 }
-                .scrollTargetBehavior(.paging)
+                .scrollTargetBehavior(.viewAligned)
                 .scrollPosition(id: $scrollPosition)
                 .onChange(of: scrollPosition) { _, new in
                     if let new {
@@ -143,6 +152,7 @@ struct HeroCarousel: View {
         switch card {
         case .pl:       return "P&L"
         case .cashFlow: return "CASH FLOW"
+        case .cashForecast: return "RUNWAY"
         case .ar:       return "A/R"
         case .forecast: return "FORECAST"
         case .jobs:     return "JOBS"
@@ -166,6 +176,10 @@ struct HeroCarousel: View {
                    onTapOutstanding: onDrillOutstanding, onTapForecast: onDrillForecast)
         case .cashFlow:
             CashFlowCard(viewModel: viewModel, style: .condensed, onExpand: expand)
+        case .cashForecast:
+            // Self-contained lens: owns its own deep-link to the full forecast
+            // screen, so it ignores the shared expand-to-sheet machinery.
+            CashForecastCard(viewModel: cashflowVM)
         case .ar:
             ARCard(viewModel: viewModel, style: .condensed, onExpand: expand, onTapTopChase: {})
         case .forecast:
@@ -176,7 +190,7 @@ struct HeroCarousel: View {
     }
 
     private var dots: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             ForEach(Array(visibleCards.enumerated()), id: \.element) { index, card in
                 let isActive = scrollPosition == card
                 Capsule()
@@ -203,6 +217,7 @@ struct HeroCarousel: View {
 #Preview("HeroCarousel — Owner (all 5 cards)") {
     HeroCarousel(
         viewModel: .previewStub(),
+        cashflowVM: CashflowForecastViewModel(),
         onDrillOutstanding: {}, onDrillForecast: {}
     )
     .environmentObject(PermissionStore.previewOwner())
@@ -215,6 +230,7 @@ struct HeroCarousel: View {
 #Preview("HeroCarousel — empty data") {
     HeroCarousel(
         viewModel: .previewEmpty(),
+        cashflowVM: CashflowForecastViewModel(),
         onDrillOutstanding: {}, onDrillForecast: {}
     )
     .environmentObject(PermissionStore.previewOwner())

@@ -12,6 +12,7 @@ import SwiftUI
 
 struct CollapsedCarouselStrip: View {
     @ObservedObject var viewModel: MoneyDashboardViewModel
+    @ObservedObject var cashflowVM: CashflowForecastViewModel
     var activeCard: HeroCarousel.CardID
     var visibleCards: [HeroCarousel.CardID]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -20,6 +21,7 @@ struct CollapsedCarouselStrip: View {
         switch activeCard {
         case .pl:        return "NET · \(viewModel.selectedPeriod.shortLabel)"
         case .cashFlow:  return "FLOW · \(viewModel.selectedPeriod.shortLabel)"
+        case .cashForecast: return "RUNWAY"
         case .ar:        return "A/R OPEN"
         case .forecast:  return "FORECAST"
         case .jobs:      return "JOBS NET"
@@ -30,6 +32,7 @@ struct CollapsedCarouselStrip: View {
         switch activeCard {
         case .pl:        return viewModel.netCash
         case .cashFlow:  return viewModel.netCash
+        case .cashForecast: return cashflowVM.result?.endingBalance ?? 0
         case .ar:        return viewModel.outstandingInvoiceBreakdown.reduce(0) { $0 + $1.amount }
         case .forecast:  return viewModel.weightedForecastValue
         case .jobs:      return viewModel.topProjectsByNet.reduce(0) { $0 + $1.net }
@@ -82,6 +85,7 @@ struct CollapsedCarouselStrip: View {
 #Preview("CollapsedCarouselStrip — P&L active") {
     CollapsedCarouselStrip(
         viewModel: .previewStub(),
+        cashflowVM: CashflowForecastViewModel(),
         activeCard: .pl,
         visibleCards: HeroCarousel.CardID.allCases
     )
@@ -92,6 +96,7 @@ struct CollapsedCarouselStrip: View {
 #Preview("CollapsedCarouselStrip — A/R active") {
     CollapsedCarouselStrip(
         viewModel: .previewStub(),
+        cashflowVM: CashflowForecastViewModel(),
         activeCard: .ar,
         visibleCards: HeroCarousel.CardID.allCases
     )

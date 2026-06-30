@@ -2,127 +2,96 @@
 //  CashflowForecastCard.swift
 //  OPS
 //
-//  Compact preview card. Lives on the Books surface (below MoneyDashboardHeader
-//  while the parent carousel work is still pending). Tap → CashflowForecastScreen.
+//  Books — RUNWAY lens. The condensed cash-flow forecast face that rides in the
+//  hero carousel (folded in 2026-06-29, replacing the standalone below-carousel
+//  card so the carousel stays the single top-level KPI surface). Headline =
+//  projected ending balance, signature viz = the runway sparkline, sub-stat =
+//  the low-water point. Tap expands to the full CashflowForecastScreen.
 //
 
 import SwiftUI
 
-struct CashflowForecastCard: View {
+struct CashForecastCard: View {
     @ObservedObject var viewModel: CashflowForecastViewModel
     @State private var presentFull = false
 
-    var body: some View {
-        Button(action: { presentFull = true }) {
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                header
-                heroNumber
-                sparkline
-                footer
-            }
-            .padding(OPSStyle.Layout.spacing3)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .glassSurface(cornerRadius: OPSStyle.Layout.smallCornerRadius, borderColor: borderColor)
-        }
-        .buttonStyle(.plain)
-        .fullScreenCover(isPresented: $presentFull) {
-            CashflowForecastScreen(viewModel: viewModel)
-        }
-        .task { if viewModel.result == nil { await viewModel.load() } }
-    }
-
     private var state: ForecastState { viewModel.result?.state ?? .healthy }
+
+    /// Hero number color tracks forecast health — white when on track, amber on
+    /// a low-water watch, rose when a week dips below zero.
+    private var heroColor: Color {
+        switch state {
+        case .healthy:  return OPSStyle.Colors.primaryText
+        case .lowWater: return OPSStyle.Colors.tanMobile
+        case .danger:   return OPSStyle.Colors.rose
+        }
+    }
 
     private var lineColor: Color {
         switch state {
         case .healthy:  return OPSStyle.Colors.primaryAccent
-        case .lowWater: return OPSStyle.Colors.warningStatus
-        case .danger:   return OPSStyle.Colors.errorStatus
+        case .lowWater: return OPSStyle.Colors.tanMobile
+        case .danger:   return OPSStyle.Colors.rose
         }
     }
 
-    private var borderColor: Color {
-        state == .danger ? OPSStyle.Colors.errorStatus : Color.clear
-    }
-
-    private var header: some View {
-        HStack {
-            Text("// CASH FORECAST · \(viewModel.result?.weeks.count ?? 13)W")
-                .font(OPSStyle.Typography.microLabel)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-            Spacer()
-            stateBadge
+    var body: some View {
+        CondensedHeroCard(
+            caption: "RUNWAY",
+            heroText: heroText,
+            heroColor: heroColor,
+            onExpand: { presentFull = true },
+            viz: { vizContent },
+            subStat: { subStatContent }
+        )
+        .fullScreenCover(isPresented: $presentFull) {
+            CashflowForecastScreen(viewModel: viewModel)
         }
+        .task { if viewModel.result == nil { await viewModel.load() } }
+        .accessibilityLabel(accessibilityLabel)
     }
 
     @ViewBuilder
-    private var heroNumber: some View {
-        if let r = viewModel.result {
-            Text(formatCurrency(r.endingBalance))
-                .font(OPSStyle.Typography.dataValueLg)
-                .monospacedDigit()
-                .foregroundColor(state == .danger ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryText)
-        } else if viewModel.isLoading {
-            Text("—")
-                .font(OPSStyle.Typography.dataValueLg)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-        } else {
-            Text("TAP TO SET CURRENT BALANCE")
-                .font(OPSStyle.Typography.microLabel)
-                .foregroundColor(OPSStyle.Colors.warningStatus)
-        }
-    }
-
-    @ViewBuilder
-    private var sparkline: some View {
+    private var vizContent: some View {
         if let r = viewModel.result {
             CashflowSparkline(weeks: r.weeks, lineColor: lineColor, threshold: r.lowWaterThreshold)
-                .frame(height: 32)
         } else {
-            Rectangle().fill(Color.clear).frame(height: 32)
+            Rectangle().fill(Color.clear)
         }
     }
 
-    private var footer: some View {
-        HStack {
-            if let r = viewModel.result {
-                Text("LOWEST \(formatCurrency(r.lowestBalance)) · WK \(r.lowestWeekIndex + 1)")
-                    .font(OPSStyle.Typography.microLabel)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-            Spacer()
-            Text("TAP TO DRILL →")
-                .font(OPSStyle.Typography.microLabel)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
+    @ViewBuilder
+    private var subStatContent: some View {
+        if let r = viewModel.result {
+            Text("LOW \(currency(r.lowestBalance)) · WK \(r.lowestWeekIndex + 1)")
+                .font(.custom("JetBrainsMono-Medium", size: 11))
+                .tracking(0.44)
+                .foregroundColor(state == .danger ? OPSStyle.Colors.rose : OPSStyle.Colors.secondaryText)
+                .monospacedDigit()
+                .lineLimit(1)
+        } else {
+            Text("// TAP TO SET BALANCE")
+                .font(.custom("JetBrainsMono-Medium", size: 11))
+                .tracking(1.76)
+                .foregroundColor(OPSStyle.Colors.inactiveText)
+                .lineLimit(1)
         }
     }
 
-    private var stateBadge: some View {
-        Text(badgeLabel)
-            .font(OPSStyle.Typography.microLabel)
-            .padding(.horizontal, OPSStyle.Layout.spacing1 + 2)
-            .padding(.vertical, 2)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                    .stroke(lineColor, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .foregroundColor(lineColor)
+    private var heroText: String {
+        guard let r = viewModel.result else { return "—" }
+        return currency(r.endingBalance)
     }
 
-    private var badgeLabel: String {
-        switch state {
-        case .healthy:  return "ON TRACK"
-        case .lowWater: return "WATCH"
-        case .danger:   return "DIP DETECTED"
+    private var accessibilityLabel: String {
+        guard let r = viewModel.result else {
+            return "Cash runway. Tap to set current balance."
         }
+        return "Cash runway. Projected balance \(currency(r.endingBalance)). Low point \(currency(r.lowestBalance)) in week \(r.lowestWeekIndex + 1)."
     }
 
-    private func formatCurrency(_ amount: Double) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = "USD"
-        f.maximumFractionDigits = 0
-        return f.string(from: NSNumber(value: amount)) ?? "$0"
+    private func currency(_ amount: Double) -> String {
+        amount.formatted(.currency(code: "USD").precision(.fractionLength(0)))
     }
 }
 
@@ -158,3 +127,12 @@ struct CashflowSparkline: View {
         }
     }
 }
+
+#if DEBUG
+#Preview("CashForecastCard — RUNWAY lens") {
+    CashForecastCard(viewModel: CashflowForecastViewModel())
+        .padding(.vertical, OPSStyle.Layout.spacing4)
+        .background(OPSStyle.Colors.background)
+        .preferredColorScheme(.dark)
+}
+#endif

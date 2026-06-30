@@ -139,7 +139,7 @@ struct BooksTabView: View {
                             : nil
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                    .padding(.top, OPSStyle.Layout.spacing2)
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
                     .transition(.opacity)
                 }
 
@@ -155,6 +155,7 @@ struct BooksTabView: View {
                         if carouselVisible {
                             HeroCarousel(
                                 viewModel: dashboardVM,
+                                cashflowVM: cashflowVM,
                                 onDrillOutstanding: {
                                     selectedSegmentRaw = BooksSection.invoices.rawValue
                                     invoiceVM.selectedFilter = .overdue
@@ -175,16 +176,6 @@ struct BooksTabView: View {
                                     )
                                 }
                             )
-                        }
-
-                        // Cashflow forecast preview card — gated on finances.view.
-                        // Sits below the dashboard header until the Books carousel
-                        // reconstruction lands (see spec §13 coordination notes).
-                        if hasFinances {
-                            CashflowForecastCard(viewModel: cashflowVM)
-                                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                                .padding(.top, OPSStyle.Layout.spacing2)
-                                .padding(.bottom, OPSStyle.Layout.spacing3)
                         }
 
                         // Pinned section: the picker + drill chip + section label
@@ -230,6 +221,13 @@ struct BooksTabView: View {
                 // indicator is deferred to a future polish phase (spec § 7.5).
                 .refreshable {
                     await dashboardVM.loadData()
+                }
+                // Clear the 100pt CustomTabBar overlay so the last list row / card
+                // isn't hidden behind it — matches the app's primary-tab convention
+                // (JobBoard pads 120). safeAreaInset keeps pull-to-refresh and the
+                // pinned-header collapse math correct.
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear.frame(height: 120)
                 }
             }
             // Fade the sync banner / drill filter chip in and out on the
@@ -357,6 +355,7 @@ struct BooksTabView: View {
             if headerCollapsed && carouselVisible {
                 CollapsedCarouselStrip(
                     viewModel: dashboardVM,
+                    cashflowVM: cashflowVM,
                     activeCard: activeCarouselCard,
                     visibleCards: visibleCarouselCards
                 )

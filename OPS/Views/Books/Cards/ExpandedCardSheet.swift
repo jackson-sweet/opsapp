@@ -63,6 +63,8 @@ struct ExpandedCardSheet: View {
             )
         case .cashFlow:
             CashFlowCard(viewModel: viewModel, style: .full)
+        case .cashForecast:
+            EmptyView()  // RUNWAY lens deep-links to its own full screen, never this sheet
         case .ar:
             EmptyView()  // handled by ARDetailSheet above
         case .forecast:
@@ -76,6 +78,7 @@ struct ExpandedCardSheet: View {
         switch card {
         case .pl:       return "P&L"
         case .cashFlow: return "CASH FLOW"
+        case .cashForecast: return "RUNWAY"
         case .ar:       return "A/R"
         case .forecast: return "FORECAST"
         case .jobs:     return "JOBS"

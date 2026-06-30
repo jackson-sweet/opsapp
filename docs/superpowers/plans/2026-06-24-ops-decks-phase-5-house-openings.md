@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **Execution status - 2026-06-29:** Phase 5 has started with the schema/storage foundation. `HouseModel`, `WallOpening`, `OpeningKind`, and `LedgerDetail` now live in DeckKit; `DeckDrawingData.house` round-trips as a schema-version-5 additive block; malformed house payloads drop only the house block; and new `DeckDesign` rows default to the current deck schema version. `WallOpeningGeometry`, `HouseElevationProjector`, `LedgerStrategyEngine`, `StairsToGradeEngine`, `HouseOpeningSchedule`, and the 3D house-wall opening cutout path are now implemented. The ledger fallback also landed the minimal P4 `FootingPlan` contract types so freestanding house-side beam geometry can emit real unsized footing anchors. The editor UI, elevation rendering, and component emission remain pending tasks.
+> **Execution status - 2026-06-29:** Phase 5 has started with the schema/storage foundation. `HouseModel`, `WallOpening`, `OpeningKind`, and `LedgerDetail` now live in DeckKit; `DeckDrawingData.house` round-trips as a schema-version-5 additive block; malformed house payloads drop only the house block; and new `DeckDesign` rows default to the current deck schema version. `WallOpeningGeometry`, `HouseElevationProjector`, `LedgerStrategyEngine`, `StairsToGradeEngine`, `HouseOpeningSchedule`, the 3D house-wall opening cutout path, and the 2D front-on `HouseElevationRenderer` are now implemented. The ledger fallback also landed the minimal P4 `FootingPlan` contract types so freestanding house-side beam geometry can emit real unsized footing anchors. The editor UI, component emission, and elevation/schedule screens remain pending tasks.
 
 > **HEADER NOTE — read first.** This plan is authored **before its predecessor phases (P1–P4) exist in code.** It therefore decomposes Phase 5 into the exact files, public types, and engine contracts mandated by the Architecture Contract (`docs/superpowers/plans/2026-06-24-ops-decks-architecture-contract.md`), but **the bite-sized TDD steps with literal, runnable Swift are finalized at phase start once predecessors exist.** Where the contract pins a type or signature, it is reproduced **verbatim** below and is binding. Where a step depends on a P1–P4 type whose *body* is not yet written (e.g. `DeckKit`'s `unknownBlocks` passthrough, `CapabilityProvider` injection point, the elevation/terrain datum from P4), the step states the dependency and the assertion it must satisfy, and leaves the literal call site to be filled at execution time against the real predecessor signature. **Do not fabricate predecessor signatures beyond what the contract fixes.**
 
@@ -632,11 +632,11 @@ public enum HouseElevationRenderer {
 - `test_callout_tags_drawn_for_each_opening()` — assert `layout` returns one callout anchor per opening with the tag from T7.
 - Attach the rendered image via `XCTAttachment` for human review.
 
-- [ ] **Step 1 — Extract a pure `layout(_:size:)`** (projector inch-space → canvas points + callout anchors) and unit-test it (no drawing).
-- [ ] **Step 2 — Write the snapshot test + layout asserts; run, expect FAIL.**
-- [ ] **Step 3 — Implement `layout` then `render`** (CG strokes/fills with `OPSStyle` tokens — hairline strokes, mono dimension text; grade as a hatched ground line). No hardcoded colors — pull from `OPSStyle`/`OPSDesignKit`.
-- [ ] **Step 4 — Run, expect `TEST SUCCEEDED`; inspect the attachment.**
-- [ ] **Step 5 — Commit** (`feat(decks-p5): 2D front-on elevation renderer`).
+- [x] **Step 1 — Extract a pure `layout(_:size:)`** (projector inch-space → canvas points + callout anchors) and unit-test it (no drawing).
+- [x] **Step 2 — Write the snapshot test + layout asserts; run, expect FAIL.**
+- [x] **Step 3 — Implement `layout` then `render`** (CG strokes/fills with `OPSStyle` tokens — hairline strokes, mono dimension text; grade as a hatched ground line). No hardcoded colors — pull from `OPSStyle`/`OPSDesignKit`.
+- [x] **Step 4 — Run, expect `TEST SUCCEEDED`; inspect the attachment.**
+- [x] **Step 5 — Commit** (`feat(decks-p5): 2D front-on elevation renderer`).
 
 **Dependencies:** T4 (projector), T7 (callout tags); `OPSStyle` tokens; existing `DeckRenderer` as the CG style reference.
 **References:** `Rendering/DeckRenderer.swift:13`; contract §5.1 (numbers mono/tabular, empty state `—`), §5.2 (snapshot harness); roadmap §2.8 "Elevation drawings (front/rear/side to scale)". **Note:** this is a standalone elevation surface — it does **not** extend `DeckShareRenderer` (the LIGHT marketing artifact stays separate, contract §3.5 / roadmap §6). The eventual P7 `PlanSetEngine.renderSheet(.elevation, …)` will consume this renderer's layout, not re-implement it.

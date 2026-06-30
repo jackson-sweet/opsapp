@@ -7,9 +7,9 @@
 //  per the spec table:
 //
 //    Warm-up         → `// INITIALIZING …`
-//    Idle (no plane) → `// AIM AT OPENING`
-//    Searching       → `// SEARCHING`
-//    Wall detected   → `// WALL DETECTED`
+//    Idle (no plane) → `// AIM AT WALL`
+//    Searching       → `// AIM · CAPTURE`
+//    Wall detected   → `// WALL READY`
 //    Opening locked  → `// OPENING LOCKED`
 //    Calibration     → `// CALIBRATE · PLACE CARD ON SURFACE`
 //    Post-capture    → `// CAPTURED · 0.07s`   (driven by parent flash flag)
@@ -78,13 +78,14 @@ extension HelperTextOverlay {
 
         public var id: String { rawValue }
 
-        /// The literal copy from the spec — DO NOT paraphrase; the spec table is canonical.
+        /// Terse field copy. Keep this actionable: the operator should know
+        /// whether to aim, capture, or wait without reading a tutorial wall.
         public var copy: String {
             switch self {
             case .initializing:    return "INITIALIZING …"
-            case .aimAtOpening:    return "AIM AT OPENING"
-            case .searching:       return "SEARCHING"
-            case .wallDetected:    return "WALL DETECTED"
+            case .aimAtOpening:    return "AIM AT WALL"
+            case .searching:       return "AIM · CAPTURE"
+            case .wallDetected:    return "WALL READY"
             case .openingLocked:   return "OPENING LOCKED"
             case .calibration:     return "CALIBRATE · PLACE CARD ON SURFACE"
             case .capturedFlash:   return "CAPTURED · 0.07S"

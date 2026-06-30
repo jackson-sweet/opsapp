@@ -262,12 +262,21 @@ public struct DimensionedCaptureView: View {
             ARCaptureViewRepresentable(coordinator: coordinator, meshVisible: $meshVisible)
                 .ignoresSafeArea()
 
-            // Center overlays — reticle pulses only on opening lock, level
-            // hairline floats through the middle of the viewfinder.
+            // Center overlays — the stable reticle is the primary capture
+            // target. The rolling level line stays hidden until an opening is
+            // locked so it does not read as an off-center aim point.
             ZStack {
-                LevelIndicatorOverlay(isEnabled: levelIndicatorEnabled)
-                    .ignoresSafeArea(edges: .top) // hairline can extend full-width
-                ReticleOverlay(isLocked: coordinator.state == .openingLocked)
+                if DimensionedCaptureWorkflow.showsLevelIndicator(
+                    for: coordinator.state,
+                    userEnabled: levelIndicatorEnabled
+                ) {
+                    LevelIndicatorOverlay(isEnabled: true)
+                        .ignoresSafeArea(edges: .top) // hairline can extend full-width
+                }
+                ReticleOverlay(
+                    isLocked: coordinator.state == .openingLocked,
+                    isVisible: DimensionedCaptureWorkflow.showsCenterReticle(for: coordinator.state)
+                )
             }
 
             // Chrome
@@ -393,7 +402,7 @@ public struct DimensionedCaptureView: View {
 
             ShutterButton(
                 action: { Task { await fireShutter(coordinator: coordinator) } },
-                isEnabled: shutterEnabled(for: coordinator.state)
+                isEnabled: DimensionedCaptureWorkflow.shutterEnabled(for: coordinator.state)
             )
 
             Spacer()
@@ -440,13 +449,6 @@ public struct DimensionedCaptureView: View {
     }
 
     // MARK: - Shutter
-
-    private func shutterEnabled(for state: LiDARCaptureCoordinator.CaptureState) -> Bool {
-        switch state {
-        case .ready, .wallDetected, .openingLocked: return true
-        default: return false
-        }
-    }
 
     private func fireShutter(coordinator: LiDARCaptureCoordinator) async {
         await MainActor.run {

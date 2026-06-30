@@ -23,6 +23,13 @@ Release builds hide the entry while the flag is off. Debug builds keep a field
 test path visible for AR-capable devices and show
 `// DEV FLAG OVERRIDE · FLAG OFF` inside capture.
 
+During live aim, the centered corner reticle is the capture target. Once AR
+tracking reaches `.ready` or `.searching`, the shutter is enabled so the
+operator can take a manual point-to-point measurement without waiting for a wall
+or opening classifier lock. Wall/opening detection improves confidence and can
+unlock AUTO after capture, but it does not block the manual path. The rolling
+level line stays hidden during normal aim and appears only after an opening lock.
+
 LiDAR devices get the full depth path. AUTO appears only when the shutter
 handoff contains real depth/mesh data and a measured opening. Non-LiDAR ARKit
 devices use visual capture: calibrate against a credit card or OPS marker, keep
@@ -53,8 +60,8 @@ await coordinator.capture()  // resolves to .captured(CapturedAssets) or .failed
 ```
 .idle                       coordinator constructed, no AR session yet
 .warmingUp                  startLiveAim() called; AR session initializing (~800 ms)
-.ready                      AR tracking achieved
-.searching                  Plane detection running
+.ready                      AR tracking achieved — capture allowed
+.searching                  Plane detection running — capture allowed
 .wallDetected               Vertical plane detected — capture allowed
 .openingLocked              Phase C: classifier promoted to a rectangular opening
 .capturing                  Shutter pressed; ARKit→AVCapture handoff in progress

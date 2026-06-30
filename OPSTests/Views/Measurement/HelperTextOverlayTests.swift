@@ -23,15 +23,15 @@ final class HelperTextOverlayTests: XCTestCase {
     }
 
     func test_aim_at_opening_copy_matches_spec() {
-        XCTAssertEqual(S.aimAtOpening.copy, "AIM AT OPENING")
+        XCTAssertEqual(S.aimAtOpening.copy, "AIM AT WALL")
     }
 
     func test_searching_copy_matches_spec() {
-        XCTAssertEqual(S.searching.copy, "SEARCHING")
+        XCTAssertEqual(S.searching.copy, "AIM · CAPTURE")
     }
 
     func test_wall_detected_copy_matches_spec() {
-        XCTAssertEqual(S.wallDetected.copy, "WALL DETECTED")
+        XCTAssertEqual(S.wallDetected.copy, "WALL READY")
     }
 
     func test_opening_locked_copy_matches_spec() {

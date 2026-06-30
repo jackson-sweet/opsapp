@@ -2,8 +2,9 @@
 //  ReticleOverlay.swift
 //  OPS
 //
-//  Pulsing reticle drawn over the AR preview when the live mesh classifier
-//  reports `.openingLocked` (spec §5.1, animation row 2 of §5.3).
+//  Stable reticle drawn over the AR preview. It is visible during normal aim
+//  and promotes to the locked pulse when the live mesh classifier reports
+//  `.openingLocked` (spec §5.1, animation row 2 of §5.3).
 //
 //  Visual: steel-blue stroke, 1.5 px, no fill, ~96 pt frame.
 //  Motion (full): 1.6 s loop, scale 0.92→1.0→0.92 + opacity 60%→100%→60%, OPS curve.
@@ -16,6 +17,12 @@ import SwiftUI
 struct ReticleOverlay: View {
     /// True when an opening has been classified — drives both visibility and the pulse.
     let isLocked: Bool
+    let isVisible: Bool
+
+    init(isLocked: Bool, isVisible: Bool = true) {
+        self.isLocked = isLocked
+        self.isVisible = isVisible
+    }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulse = false
@@ -31,6 +38,7 @@ struct ReticleOverlay: View {
         .allowsHitTesting(false)
         .onAppear { syncAnimation() }
         .onChange(of: isLocked) { _, _ in syncAnimation() }
+        .onChange(of: isVisible) { _, _ in syncAnimation() }
     }
 
     // MARK: - Drawing
@@ -61,7 +69,7 @@ struct ReticleOverlay: View {
             path.addLine(to: CGPoint(x: w - inset, y: h - inset - arm))
             ctx.stroke(
                 path,
-                with: .color(OPSStyle.Colors.opsAccent),
+                with: .color(strokeColor),
                 style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
             )
         }
@@ -70,22 +78,31 @@ struct ReticleOverlay: View {
     // MARK: - State plumbing
 
     /// Computed opacity. When locked: pulse 60%→100% (or 100% in reduced motion).
-    /// When unlocked: hidden.
+    /// When unlocked: stable center target at secondary opacity.
     private var reticleOpacity: Double {
-        guard isLocked, visible else { return 0 }
+        guard isVisible, visible else { return 0 }
+        guard isLocked else { return 0.72 }
         if reduceMotion { return 1.0 }
         return pulse ? 1.0 : 0.6
     }
 
+    private var strokeColor: Color {
+        return isLocked ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.text3
+    }
+
     private func syncAnimation() {
-        guard isLocked else {
-            // Stop the loop and clear visibility — architect Never-list #8 (no orphaned animations).
+        guard isVisible else {
             withAnimation(.opsCurve200) { visible = false }
             pulse = false
             return
         }
-        // First reveal: 200 ms fade-in matching the §5.3 reduced-motion fallback timing.
         withAnimation(.opsCurve200) { visible = true }
+        guard isLocked else {
+            // Stop the loop and keep the stable aim reticle visible.
+            pulse = false
+            return
+        }
+        // First reveal: 200 ms fade-in matching the §5.3 reduced-motion fallback timing.
         guard !reduceMotion else { return }
         // Start the pulse — 0.8 s each direction, autoreverse → 1.6 s loop.
         withAnimation(

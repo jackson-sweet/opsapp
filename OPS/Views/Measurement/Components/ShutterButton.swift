@@ -20,7 +20,8 @@ struct ShutterButton: View {
 
     /// True when capture is allowed — disables the button + drops opacity per
     /// the AR perimeter pattern. Mapped from `LiDARCaptureCoordinator.state`
-    /// by the parent (only `.wallDetected` / `.openingLocked` / `.ready` allow).
+    /// by the parent. AR tracking gates the shutter; wall/opening detection
+    /// improves confidence but does not block manual measurement.
     let isEnabled: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -47,7 +48,7 @@ struct ShutterButton: View {
         .opacity(isEnabled ? 1.0 : 0.4)
         .gesture(pressGesture)
         .accessibilityLabel(Text("Capture"))
-        .accessibilityHint(Text(isEnabled ? "Captures a dimensioned photo" : "Waiting for wall detection"))
+        .accessibilityHint(Text(isEnabled ? "Captures a dimensioned photo" : "Waiting for AR tracking"))
         .accessibilityAddTraits(.isButton)
     }
 

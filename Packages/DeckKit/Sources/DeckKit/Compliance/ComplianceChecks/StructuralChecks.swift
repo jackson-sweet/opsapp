@@ -7,7 +7,7 @@ enum StructuralChecks {
         package: CodePackage
     ) -> [ComplianceFinding] {
         framingFindings(data.framing, mode: mode, package: package)
-            + footingFindings(data.footings, mode: mode, package: package)
+            + footingFindings(data, mode: mode, package: package)
     }
 
     private static func framingFindings(
@@ -80,11 +80,16 @@ enum StructuralChecks {
     }
 
     private static func footingFindings(
-        _ footings: FootingPlan?,
+        _ data: DeckDrawingData,
         mode: ComplianceEngine.Mode,
         package: CodePackage
     ) -> [ComplianceFinding] {
-        guard let footings else { return [] }
+        guard let footings = data.footings,
+              !footings.footings.isEmpty else {
+            guard mode == .asBuilt,
+                  hasFootprintGeometry(data) else { return [] }
+            return [missingFootingsFinding(package: package)]
+        }
 
         return footings.footings.compactMap { footing in
             guard footing.sizing == nil else { return nil }
@@ -103,6 +108,28 @@ enum StructuralChecks {
                 source: .notAssessable
             )
         }
+    }
+
+    private static func missingFootingsFinding(package: CodePackage) -> ComplianceFinding {
+        ComplianceFinding(
+            id: "structural:footings:missing",
+            item: "Footings",
+            severity: .notAssessable,
+            currentValue: nil,
+            targetValue: nil,
+            codeSection: package.edition ?? package.jurisdictionId,
+            fix: "Verify footing size and depth on site.",
+            confidence: .low,
+            evidence: nil,
+            source: .notAssessable
+        )
+    }
+
+    private static func hasFootprintGeometry(_ data: DeckDrawingData) -> Bool {
+        if data.isMultiLevel {
+            return data.levels.contains { $0.vertices.count >= 3 || !$0.detectedSurfaces.isEmpty }
+        }
+        return data.vertices.count >= 3 || !data.detectedSurfaces.isEmpty
     }
 
     private static func source(for mode: ComplianceEngine.Mode) -> FindingSource {

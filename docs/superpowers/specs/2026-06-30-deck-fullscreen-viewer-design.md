@@ -47,28 +47,34 @@ before it **snaps back** (natural scroll rubber-band).
 
 **Mechanics:**
 - Active only when `viewModel.selectedTab == .deck` AND `deckDesign.hasRenderableGeometry`.
-- Measure overscroll via a `GeometryReader` probe on the top of the scroll content
-  reporting `minY` in a named coordinate space (`"projectDetailsScroll"`) through a
-  `PreferenceKey`. `pullDistance = max(0, minY − restMinY)`.
+- Measure overscroll via a zero-height `GeometryReader` probe as the first child of
+  the scroll content, reporting `minY` in a named coordinate space
+  (`"projectDetailsDeckScroll"`) through a `PreferenceKey`. `pullDistance = max(0, minY)`.
 - `expandProgress = min(1, pullDistance / commitThreshold)`, `commitThreshold = 120pt`.
-- **Live feedback:** the pull cue (up-chevron + `PULL TO EXPAND`) fades in and its
-  chevron brightens with `expandProgress`; the inline canvas scales subtly
-  `1.0 → 1.03` (transform only) as a preview. Reduced Motion: no scale preview; cue
-  still appears (opacity only).
+- **Live feedback:** the pull cue (up-chevron + `PULL TO EXPAND`) fades in over the
+  map with `expandProgress` (opacity `min(1, progress×1.4)`); chevron + label brighten
+  to the accent once committed. Rendered in `ProjectDetailsView` at the top — the
+  inline canvas is below the map fold during overscroll, so the cue (not the canvas)
+  carries the feedback.
 - **Threshold crossing:** on `expandProgress` crossing `1.0` (guarded so it fires
   once per crossing), fire `UIImpactFeedbackGenerator(style: .medium)` and flip the
   cue label to `RELEASE TO EXPAND`.
 - **Release detection:** a simultaneous zero-distance `DragGesture` on the scroll
   content (`.onEnded`) reads the latest `expandProgress`; `>= 1` → commit, else the
   rubber-band returns naturally and the cue fades.
-- **Commit:** `withAnimation(OPSStyle.Animation.standard)` sets `isDeckFullscreen = true`.
-  The canvas grows from its inline frame to fullscreen via
-  `matchedGeometryEffect(id: "deckCanvas", in: deckNamespace)`. Reduced Motion:
-  opacity crossfade instead of the geometry grow (150ms).
+- **Commit:** on finger-up, a simultaneous zero-distance `DragGesture.onEnded` checks
+  the tracked pull; `>= 120pt` → `withAnimation(OPSStyle.Animation.standard)` sets
+  `isDeckFullscreen = true`. The fullscreen layer enters with a `scale(0.92)+opacity`
+  transition — an expand "grow" from ~92% that reads as the canvas blowing up to fill
+  the screen. (A shared-element `matchedGeometryEffect` was considered and dropped:
+  during a top-overscroll the inline canvas sits below the map fold so a shared-element
+  origin isn't visible — and this avoids a SceneKit rebuild flash.) Reduced Motion:
+  opacity-only crossfade (no scale).
 
-**Accessibility:** the pull cue is a VoiceOver element exposing a custom action
-"Expand deck to fullscreen" that commits directly — VoiceOver users get an operable
-path without a visually prominent button that would contradict the pure-scroll intent.
+**Accessibility:** the pull cue itself is non-interactive (`allowsHitTesting(false)`).
+The operable VoiceOver path is a custom action "Expand deck to fullscreen" on the
+inline deck canvas (`DeckTabView`) — the overscroll gesture isn't operable under
+VoiceOver, and Jackson wanted no visible expand button.
 
 ## Interaction — Exit fullscreen
 
@@ -144,45 +150,47 @@ exclusion). `dimensions`, `isolate`, `fit` are independent.
 
 ## Inline changes (`DeckTabView`)
 
-1. **Remove the in-square tool buttons.** Measuring in a thumbnail is frustrating;
-   the tools move to fullscreen. Inline keeps: `3D/2D` toggle, EDIT DESIGN, the
-   floating level chips, and the canvas.
-2. **Add the pull cue** at the top of the deck tab content (visible only near the top
-   overscroll region, driven by `expandProgress`).
-3. **Wire the shared namespace** (`matchedGeometryEffect` id `deckCanvas`) so the
-   inline canvas is the transition source.
-4. Inline canvas continues to render read-only (dimensions always on inline; isolate
-   / fit / measure are fullscreen-only).
+1. **Tools gone from the inline square.** They lived inside `DeckTab2DView`'s overlay;
+   now gated behind `showsTools` (false inline). Inline keeps: `3D/2D` toggle,
+   EDIT DESIGN, the floating level chips, and the canvas.
+2. **Shared `viewMode` binding** so fullscreen opens in the same mode, plus a
+   never-mutated inline `DeckViewerToolState` passed with `showsTools: false`.
+3. **`onRequestFullscreen`** — a VoiceOver custom action on the canvas (the accessible
+   expand path). The visible pull cue lives in `ProjectDetailsView`, not here.
+4. Inline renders read-only: dimensions always on, no isolation/selection/measure.
 
 ---
 
 ## Architecture
 
 - **New:** `DeckFullscreenViewer.swift` (`Views/Components/Project/Tabs/`) — the
-  fullscreen chrome (top bar, tool rail, peek sheet) hosting the shared canvas views.
-- **New:** `DeckViewerToolState` — an `ObservableObject` bag (`measurementMode`,
-  `selectionMode`, `showDimensions`, `isolatedLevelId`, `fitTrigger`, selection sets)
-  owned by the viewer, passed into the canvas so tool chrome lives in the viewer while
-  drawing stays in the canvas.
-- **Refactor:** `DeckTab2DView` accepts `toolState: DeckViewerToolState` +
-  `showsChrome: Bool` (false inline → hides internal tool buttons/readouts; the draw
-  passes honor `showDimensions` / `isolatedLevelId` / `fitTrigger`). Existing measure
-  + select logic is preserved, just driven by the shared state.
-- **Refactor:** `DeckTab3DView` unchanged behaviorally; hosted full-bleed in the
-  viewer with no tool chrome.
-- **Host:** `ProjectDetailsView` gains `@Namespace deckNamespace`,
-  `@State isDeckFullscreen`, the scroll-offset `PreferenceKey` + coordinate space, and
-  a new top ZStack layer (zIndex > nav's 20) presenting `DeckFullscreenViewer` with
-  `.hidesGlobalTabBar()`.
+  fullscreen chrome (top bar, tool rail, peek sheet). Inputs narrowed to
+  `title: String` + `drawingData: DeckDrawingData` (not the `Project`/`DeckDesign`
+  models), so it stays decoupled and is headlessly renderable for snapshot proofs.
+- **New:** `DeckViewerToolState` — a `@MainActor ObservableObject` bag: `mode`
+  (`.none/.measure/.select`, mutually exclusive), `showDimensions`, `isolatedLevelId`,
+  `fitTrigger`, plus the measurement points + selection sets. Owned by the fullscreen
+  viewer (with an inert inline instance).
+- **New:** `DeckSelectionReadout` — a pure reducer (`drawingData` + selection sets →
+  totals by type), extracted from `DeckTab2DView` so the viewer's peek sheet renders
+  the same breakdown without owning the canvas.
+- **Refactor:** `DeckTab2DView` accepts `toolState` + `showsTools: Bool` (false inline
+  → tap gesture + measurement inert and tool state ignored; the draw honors
+  `showDimensions` / `isolatedLevelId` / `fitTrigger` only when `showsTools`). Existing
+  measure + select logic preserved; its own tool overlay/readout removed (to the viewer).
+- **Refactor:** `DeckTab3DView` unchanged; hosted full-bleed in the viewer, no tools.
+- **Host:** `ProjectDetailsView` gains `deckToolState` + `deckViewMode` +
+  `isDeckFullscreen` + `deckPull`, a scroll `PreferenceKey`/coordinate space, the pull
+  cue, and a top ZStack layer (zIndex 30, above nav) presenting `DeckFullscreenViewer`
+  with `.hidesGlobalTabBar()` and a `scale(0.92)+opacity` transition.
 
-**SceneKit transition note:** `matchedGeometryEffect` animates the container frame;
-the same `DeckTab3DView`/`DeckTab2DView` instance is reused across inline↔fullscreen
-where possible to avoid a rebuild flash. If SceneKit re-instantiation flickers on the
-grow, cover the 3D case with a 120ms crossfade during the transition only.
+**Transition note:** the fullscreen layer is a separate view presented over the page
+with a `scale(0.92)+opacity` transition — no shared element, so the 3D SceneKit scene
+builds once inside the viewer with no rebuild flash.
 
 ## Motion (animation-architect brief → ios-animations)
 
-- **Beat:** Transition (inline → focus). Spatial continuity via shared-element grow.
+- **Beat:** Transition (inline → focus). An expand "grow" — `scale 0.92 → 1` + fade.
 - **Curve:** OPS canonical `cubic-bezier(0.22, 1, 0.36, 1)` (`OPSStyle.Animation.standard`).
   **No spring, no bounce.**
 - **Durations:** grow/shrink 300ms; chrome dim 200ms; cue fade 200ms.

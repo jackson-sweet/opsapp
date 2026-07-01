@@ -49,8 +49,14 @@ final class TabBarSnapshotTests: XCTestCase {
         ]
     }
 
-    /// The off-screen overflow that reveals the Settings peek (one tab width).
-    private var revealOffset: CGFloat { deviceWidth / CGFloat(adminTabs.count - 1) }
+    /// The off-screen overflow that reveals the Settings peek (one tap cell +
+    /// divider), matching CustomTabBar's even-spacing geometry.
+    private var revealOffset: CGFloat {
+        let iconW: CGFloat = 28
+        let p = CGFloat(adminTabs.count - 1)
+        let gap = max((deviceWidth - p * iconW) / (p + 1), 8)
+        return (iconW + gap) + 1 + gap / 2 // cell + dividerWidth + trailing gap/2
+    }
 
     private var outDir: URL {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -89,7 +95,8 @@ final class TabBarSnapshotTests: XCTestCase {
         if scrollOffsetX != 0, let scrollView = findScrollView(host.view) {
             scrollView.setContentOffset(CGPoint(x: scrollOffsetX, y: 0), animated: false)
             host.view.layoutIfNeeded()
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+            // Let the scroll-offset preference propagate to the divider fade.
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
         }
 
         let renderer = UIGraphicsImageRenderer(size: size)

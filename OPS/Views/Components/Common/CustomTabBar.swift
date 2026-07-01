@@ -18,6 +18,9 @@ struct CustomTabBar: View {
     @Environment(\.tutorialPhase) private var tutorialPhase
     @Environment(\.wizardStateManager) private var wizardStateManager
 
+    private let iconSize = OPSStyle.Layout.tabBarIconSize   // 28
+    private let dividerWidth: CGFloat = 1
+
     /// Whether tab bar should be disabled during tutorial drag step
     private var isDisabledForTutorial: Bool {
         tutorialMode && tutorialPhase == .dragToAccepted
@@ -56,8 +59,8 @@ struct CustomTabBar: View {
             )
             .frame(height: 100)
 
-            // Tab lane — horizontally scrollable, with the last tab (Settings)
-            // parked just off the right edge as the single "peek" tab.
+            // Tab lane — horizontally scrollable, evenly spaced, with the last
+            // tab (Settings) parked just off the right edge as the single peek.
             GeometryReader { geo in
                 tabLane(laneWidth: geo.size.width)
             }
@@ -73,75 +76,127 @@ struct CustomTabBar: View {
         .allowsHitTesting(!isDisabledForTutorial)
     }
 
-    /// The scrollable tab lane. Every tab but the last is sized to exactly fill
-    /// the width, so the LAST tab (Settings) overflows by precisely one tab —
-    /// making it the sole off-screen "peek" tab. Because the overflow is exactly
-    /// one tab, `.viewAligned` resolves to a clean two-state snap: Settings hidden
-    /// (lane rests at the leading edge) or revealed (lane rests one tab over).
-    /// Settings is also reachable from the notifications-menu gear, which selects
-    /// it and reveals the peek here via `snapLane`.
+    // MARK: - Lane
+
+    /// Even gap so the screen-edge padding equals the inter-icon spacing
+    /// (space-evenly across the visible primary tabs).
+    private func evenGap(laneWidth: CGFloat, primaryCount: Int) -> CGFloat {
+        let p = CGFloat(max(primaryCount, 1))
+        return max((laneWidth - p * iconSize) / (p + 1), 8)
+    }
+
+    /// The scrollable tab lane. The primary tabs are evenly spaced to fill the
+    /// width exactly (edge padding == inter-icon gap); the last tab (Settings)
+    /// sits in a trailing group that begins right at the screen edge, so both
+    /// the divider and Settings are genuinely off-screen at rest and simply
+    /// slide in when swiped. A custom two-state snap settles the lane to exactly
+    /// hidden or revealed. Tap cells stay generous (icon + a full gap) for field
+    /// use even though the icons read as evenly spaced.
     @ViewBuilder
     private func tabLane(laneWidth: CGFloat) -> some View {
         let n = max(tabs.count, 1)
-        let tabWidth = n > 1 ? laneWidth / CGFloat(n - 1) : laneWidth
-        let canPeek = n > 1
+        let lastIndex = n - 1
+        let primaryCount = max(n - 1, 1)
+        let gap = evenGap(laneWidth: laneWidth, primaryCount: primaryCount)
+        let cell = iconSize + gap
+        let revealDistance = n > 1 ? cell + dividerWidth + gap / 2 : 0
+
+        // Underline sits under the selected icon, in lane content coords. The
+        // primary tabs start after the group's leading gap/2; Settings lives in
+        // the trailing group that begins at laneWidth.
+        let indicatorOffset: CGFloat = selectedTab == lastIndex && n > 1
+            ? laneWidth + dividerWidth + gap / 2
+            : gap + CGFloat(selectedTab) * cell
 
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 ZStack(alignment: .topLeading) {
                     HStack(spacing: 0) {
-                        ForEach(Array(tabs.enumerated()), id: \.element.id) { index, tab in
-                            TabBarItem(
-                                tab: tab,
-                                isSelected: selectedTab == index,
-                                action: {
-                                    withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
-                                        selectedTab = index
-                                    }
-                                }
-                            )
-                            .frame(width: tabWidth)
-                            .id(index)
+                        // Primary tabs — evenly spaced, filling the lane width.
+                        HStack(spacing: 0) {
+                            ForEach(Array(tabs.enumerated().prefix(primaryCount)), id: \.element.id) { index, tab in
+                                tabButton(tab: tab, index: index)
+                                    .frame(width: cell)
+                                    .id(index)
+                            }
+                        }
+                        .padding(.horizontal, gap / 2)
+
+                        // Trailing reveal group — begins at the right edge, so the
+                        // minimal divider + Settings are hidden until swiped in.
+                        if n > 1 {
+                            RoundedRectangle(cornerRadius: dividerWidth / 2)
+                                .fill(OPSStyle.Colors.tertiaryText)
+                                .frame(width: dividerWidth, height: iconSize * 0.85)
+                                .frame(height: 50)
+
+                            tabButton(tab: tabs[lastIndex], index: lastIndex)
+                                .frame(width: cell)
+                                .id(lastIndex)
+
+                            // Trailing margin so Settings keeps its edge padding
+                            // once fully revealed.
+                            Color.clear.frame(width: gap / 2)
                         }
                     }
-                    .scrollTargetLayout()
 
                     // Active-tab underline — rides inside the lane so it scrolls
                     // with the tabs and always sits under the selected icon.
                     Rectangle()
                         .fill(indicatorColor)
-                        .frame(width: OPSStyle.Layout.tabBarIconSize, height: 2)
+                        .frame(width: iconSize, height: 2)
                         .cornerRadius(OPSStyle.Layout.smallCornerRadius)
-                        .offset(x: CGFloat(selectedTab) * tabWidth + (tabWidth - OPSStyle.Layout.tabBarIconSize) / 2)
+                        .offset(x: indicatorOffset)
                         .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: selectedTab)
                 }
                 .padding(.top, OPSStyle.Layout.spacing3)
                 .padding(.bottom, OPSStyle.Layout.spacing3)
             }
-            .scrollDisabled(!canPeek)
-            .scrollTargetBehavior(.viewAligned)
+            .scrollDisabled(revealDistance <= 0)
+            .scrollTargetBehavior(PeekSnapBehavior(revealDistance: revealDistance))
             .onChange(of: selectedTab) { _, newValue in
-                snapLane(proxy: proxy, selected: newValue, count: n)
-            }
-            .onChange(of: tabs.count) { _, newCount in
-                // Permissions changed the tab set — re-align to the selected tab.
-                snapLane(proxy: proxy, selected: selectedTab, count: max(newCount, 1))
+                revealOrHide(proxy: proxy, selected: newValue, lastIndex: lastIndex)
             }
         }
     }
 
+    private func tabButton(tab: TabItem, index: Int) -> some View {
+        TabBarItem(
+            tab: tab,
+            isSelected: selectedTab == index,
+            action: {
+                withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
+                    selectedTab = index
+                }
+            }
+        )
+    }
+
     /// Aligns the lane to the selected tab: the last tab (Settings) reveals the
-    /// peek; any primary tab returns the lane to its default (Settings-hidden)
-    /// position. Honors Reduce Motion.
-    private func snapLane(proxy: ScrollViewProxy, selected: Int, count: Int) {
-        guard count > 1 else { return }
+    /// peek; any primary tab returns the lane to its default position.
+    private func revealOrHide(proxy: ScrollViewProxy, selected: Int, lastIndex: Int) {
+        guard lastIndex > 0 else { return }
         withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
-            if selected == count - 1 {
-                proxy.scrollTo(count - 1, anchor: .trailing)
+            if selected == lastIndex {
+                proxy.scrollTo(lastIndex, anchor: .trailing)
             } else {
                 proxy.scrollTo(0, anchor: .leading)
             }
         }
+    }
+}
+
+/// Two-state snap: the lane rests either fully hidden (0) or fully revealed
+/// (revealDistance), never in between — respecting the even edge padding that
+/// `.viewAligned` would otherwise scroll away.
+private struct PeekSnapBehavior: ScrollTargetBehavior {
+    let revealDistance: CGFloat
+    func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
+        guard revealDistance > 0 else {
+            target.rect.origin.x = 0
+            return
+        }
+        target.rect.origin.x = target.rect.minX >= revealDistance / 2 ? revealDistance : 0
     }
 }
 

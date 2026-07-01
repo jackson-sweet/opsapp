@@ -87,11 +87,13 @@ struct LeadsWonChooserSheet: View {
     }
 }
 
-// MARK: - Row (private)
+// MARK: - Row
 
 /// One unconverted-win row — olive check, contact + won-age/source subline,
 /// value, and a chevron affordance. 56pt min height per MOBILE.md §7.1.
-private struct WonChooserRow: View {
+/// Internal (not private) so the snapshot harness can render the row list
+/// directly — ImageRenderer does not resolve content inside a ScrollView.
+struct WonChooserRow: View {
     let lead: Opportunity
     let action: () -> Void
 

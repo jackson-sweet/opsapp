@@ -2,25 +2,16 @@
 //  LeadsTabView.swift
 //  OPS
 //
-//  Root of the LEADS tab — triage queue surface. Replaces the Phase 1 hero
-//  carousel + ball-in-court + stage strip + paged TabView design with a
-//  single forecast hero + WonConvert carousel + chip-filtered lead queue +
-//  pipeline-by-stage footer.
-//
-//  Implementation phase: P2 of the 2026-05-19 rebuild.
-//  Plan:  docs/superpowers/plans/2026-05-19-leads-tab-rebuild.md §6
-//  Intent: docs/superpowers/specs/2026-05-19-leads-tab-design-intent.md
+//  Root of the LEADS tab — the chase-queue surface.
+//  Money & Leads redesign (2026-06-30) — design direction "2a · TRIAGE LEADS".
 //
 //  Top-to-bottom layout:
-//
-//      [meta row]                 // TUE · MAY 19              [+]
-//      [title row]                LEADS              OPERATOR :: JACKSON
-//      [hero widget]              forecast hero + 3 sub-metric
-//      [won·convert carousel]     conditional — only when unconverted wins
-//      [section header]           // QUEUE              SORTED — STALE FIRST
-//      [filter chip row]          ALL · OVERDUE · DUE TODAY · ...
-//      [queue]                    LeadActionCard rows, 8pt gaps
-//      [pipeline footer]          // BY STAGE — 6-stage drill panel
+//      [AppHeader]                LEADS                         [+] [search]
+//      [summary]                  weighted forecast + stage bar + triage tiles
+//      [by-stage row]             // PIPELINE BY STAGE (horizontal)
+//      [won nudge]                conditional — unconverted wins → convert
+//      [sticky chips]             ALL · OVERDUE · DUE TODAY · WAITING ON YOU · …
+//      [queue]                    LeadTriageCard rows, grouped by urgency
 //
 
 import SwiftUI
@@ -47,6 +38,22 @@ enum LeadsSheet: Identifiable {
     }
 }
 
+// MARK: - Queue item
+
+/// A flattened queue entry — either an urgency-group header or a lead — so the
+/// grouped queue renders as one lazy list with cheap diffable ids.
+private enum LeadQueueItem: Identifiable {
+    case header(PipelineViewModel.TriageBucket, Int)
+    case lead(Opportunity, PipelineViewModel.TriageBucket)
+
+    var id: String {
+        switch self {
+        case .header(let b, _): return "h-\(b.rawValue)"
+        case .lead(let l, _):   return "l-\(l.id)"
+        }
+    }
+}
+
 // MARK: - Root
 
 struct LeadsTabView: View {
@@ -58,7 +65,6 @@ struct LeadsTabView: View {
     @State private var selectedBucket: PipelineViewModel.TriageBucket?
     @State private var detailLead: Opportunity?
     @State private var activeSheet: LeadsSheet?
-    @State private var moreForLead: Opportunity?
     @State private var footerStage: PipelineStage?
     @State private var activeSiteVisitLead: Opportunity?
 
@@ -72,24 +78,20 @@ struct LeadsTabView: View {
 
     private var buckets: PipelineViewModel.TriageBuckets { viewModel.triageBuckets }
     private var canManage: Bool { permissionStore.can("pipeline.manage") }
-    private var bucket: PipelineViewModel.TriageBucket {
-        // Fall back rather than strand the operator on an empty, non-tappable
-        // chip: if the selected bucket has emptied (e.g. they just cleared the
-        // last overdue item) drop the stale selection. When the whole pipeline
-        // is empty, anchor on .all so the empty copy reads "— NO OPEN LEADS"
-        // instead of a misleading per-bucket message. (review W-14, W-15)
-        let b = buckets
-        if let selected = selectedBucket, !b.leads(for: selected).isEmpty {
+
+    /// The default view is ALL, grouped by urgency. A specific chip flattens to
+    /// that bucket; if it empties (last item cleared) we drop back to ALL rather
+    /// than strand the operator on an empty, non-tappable chip.
+    private var effectiveBucket: PipelineViewModel.TriageBucket {
+        if let selected = selectedBucket, selected != .all, !buckets.leads(for: selected).isEmpty {
             return selected
         }
-        if b.all.isEmpty { return .all }
-        return viewModel.defaultBucket
+        return .all
     }
-    private var stageCounts: [PipelineStage: Int] {
-        Dictionary(uniqueKeysWithValues: PipelineStage.allCases.map {
-            ($0, viewModel.count(in: $0))
-        })
-    }
+
+    private static let groupOrder: [PipelineViewModel.TriageBucket] = [
+        .overdue, .dueToday, .waitingOnYou, .waitingOnThem, .fresh
+    ]
 
     var body: some View {
         NavigationStack {
@@ -97,61 +99,43 @@ struct LeadsTabView: View {
                 OPSStyle.Colors.background.ignoresSafeArea()
                 Atmosphere(tone: atmosphereTone)
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        metaRow
-                        titleRow
+                VStack(spacing: 0) {
+                    AppHeader(
+                        headerType: .leads,
+                        onAddLead: canManage ? { activeSheet = .add } : nil
+                    )
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
 
-                        HeroWidget(
-                            forecastValue: viewModel.weightedForecastValue,
-                            forecastDeltaPct: viewModel.forecastDeltaPct,
-                            overdueCount: buckets.overdue.count,
-                            dueTodayCount: buckets.dueToday.count,
-                            openLeadCount: viewModel.openLeadCount,
-                            waitingCount: viewModel.waitingCount,
-                            avgVelocityDays: viewModel.avgVelocityDays()
-                        )
-                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                        .padding(.top, OPSStyle.Layout.spacing1)
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                            LeadsSummary(viewModel: viewModel)
+                                .padding(.top, OPSStyle.Layout.spacing1)
 
-                        // Carousel CONVERT → ConvertToProjectSheet mutates
-                        // (marks won, creates a project) and its onDisappear
-                        // silently commits, so gate the whole surface on
-                        // pipeline.manage. (review C-9)
-                        if canManage && !buckets.unconvertedWon.isEmpty {
-                            WonConvertCarousel(
-                                leads: buckets.unconvertedWon,
-                                onConvert: { activeSheet = .convert($0) },
-                                onLater:   { detailLead = $0 }
-                            )
-                            .padding(.top, 18)
+                            LeadsByStageRow(viewModel: viewModel, onStageTap: { footerStage = $0 })
+                                .padding(.top, 22)
+
+                            if canManage && !buckets.unconvertedWon.isEmpty {
+                                LeadsWonNudge(
+                                    count: buckets.unconvertedWon.count,
+                                    totalValue: unconvertedWonValue,
+                                    onTap: { presentWonConvert() }
+                                )
+                                .padding(.top, OPSStyle.Layout.spacing3)
+                            }
+
+                            Section {
+                                queueBody
+                                    .padding(.top, OPSStyle.Layout.spacing2_5)
+                            } header: {
+                                queueBand
+                            }
                         }
-
-                        queueHeader
-                            .padding(.top, 22)
-                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-
-                        FilterChipRow(
-                            selectedId: filterBinding,
-                            chips: bucketChips
-                        )
-                        .padding(.top, OPSStyle.Layout.spacing2)
-
-                        queueList
-                            .padding(.top, OPSStyle.Layout.spacing1)
-                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-
-                        PipelineFooter(
-                            counts: stageCounts,
-                            onStageTap: { footerStage = $0 },
-                            onBoardTap: { openBoard() }
-                        )
-                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                        .padding(.top, 28)
-                        .padding(.bottom, 100)
+                    }
+                    .scrollIndicators(.hidden)
+                    .safeAreaInset(edge: .bottom) {
+                        Color.clear.frame(height: 120)
                     }
                 }
-                .scrollIndicators(.hidden)
             }
             .navigationBarHidden(true)
             .navigationDestination(item: $detailLead) { lead in
@@ -192,26 +176,6 @@ struct LeadsTabView: View {
                 )
                 .environmentObject(dataController)
             }
-            .confirmationDialog(
-                "Actions",
-                isPresented: moreSheetPresented,
-                presenting: moreForLead
-            ) { lead in
-                if canManage {
-                    Button("MARK WON →") { activeSheet = .convert(lead) }
-                    Button("MARK LOST", role: .destructive) { activeSheet = .lost(lead) }
-                    Button("EDIT") { activeSheet = .edit(lead) }
-                    Button("ARCHIVE") {
-                        Task {
-                            do {
-                                try await viewModel.archive(opportunityId: lead.id)
-                                ToastCenter.shared.present(Feedback.Lead.archived)
-                            } catch {}
-                        }
-                    }
-                }
-                Button("CANCEL", role: .cancel) {}
-            }
         }
         .trackScreen("Leads")
         .task {
@@ -219,12 +183,8 @@ struct LeadsTabView: View {
                 viewModel.setup(companyId: companyId, currentUserId: dataController.currentUser?.id)
                 await viewModel.loadData()
             }
-            // Drain a pending lead deep link once the pipeline data is in hand.
             await resolvePendingLeadDeepLinkIfNeeded()
         }
-        // A deep link can arrive AFTER the tab has already loaded (rail tap from
-        // another tab, second push while LEADS is foregrounded). Drain on change
-        // too so those land without requiring a reload.
         .onChange(of: appState.pendingLeadDeepLinkId) { _, newValue in
             guard newValue != nil else { return }
             Task { await resolvePendingLeadDeepLinkIfNeeded() }
@@ -258,105 +218,32 @@ struct LeadsTabView: View {
         }
     }
 
-    // MARK: - Top rows
+    // MARK: - Sticky chip band
 
-    private var metaRow: some View {
-        HStack(alignment: .firstTextBaseline) {
-            HStack(spacing: 0) {
-                Text("// ")
-                    .foregroundColor(OPSStyle.Colors.textMute)
-                Text(dateText)
-                    .foregroundColor(OPSStyle.Colors.text3)
-            }
-            .font(OPSStyle.Typography.metadata)
-            .kerning(0.8)
-            .textCase(.uppercase)
-
-            Spacer()
-
-            // Create new lead. No filter icon (plan §2.1 Q4 = delete entirely).
-            // Gated on pipeline.manage — read-only operators get no create
-            // affordance, matching the FAB's gating and design-intent §14 #11.
-            // (review C-8 / W-12)
-            if canManage {
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    activeSheet = .add
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 18, weight: .regular))
-                        .foregroundColor(OPSStyle.Colors.text2)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(PlainButtonStyle())
-                .accessibilityLabel("New lead")
-            }
-
-            // Universal search — rightmost trailing action, identical on every
-            // tab via the shared UniversalSearchButton. LEADS previously relied
-            // on the global MainTabView search overlay (Bug 706a4d32); that
-            // overlay was removed, so the tab now owns its own search control.
-            UniversalSearchButton {
-                appState.showingUniversalSearch = true
-            }
+    private var queueBand: some View {
+        VStack(spacing: 0) {
+            TacticalChipRow(chips: bucketChips, selectedId: filterBinding)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            Rectangle()
+                .fill(OPSStyle.Colors.line)
+                .frame(height: 1)
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-        .padding(.top, OPSStyle.Layout.spacing1)
+        .background(OPSStyle.Colors.background)
     }
 
-    private var titleRow: some View {
-        HStack(alignment: .lastTextBaseline) {
-            Text("LEADS")
-                .font(OPSStyle.Typography.screenTitle(for: "LEADS"))
-                .foregroundColor(OPSStyle.Colors.text)
-                .textCase(.uppercase)
-            Spacer()
-            if let user = dataController.currentUser {
-                Text("OPERATOR :: \(user.firstName.uppercased())")
-                    .font(.custom("JetBrainsMono-Regular", size: 9.5))
-                    .foregroundColor(OPSStyle.Colors.text3)
-                    .kerning(0.8)
-                    .textCase(.uppercase)
-            }
-        }
-        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-        .padding(.top, OPSStyle.Layout.spacing2_5)
-        .padding(.bottom, 14)
-    }
-
-    // MARK: - Queue
-
-    private var queueHeader: some View {
-        HStack {
-            PanelSectionHeader(label: "QUEUE")
-            Spacer()
-            Text("SORTED — STALE FIRST")
-                .font(OPSStyle.Typography.metadata)
-                .kerning(1.4)
-                .foregroundColor(OPSStyle.Colors.textMute)
-                .textCase(.uppercase)
-        }
-    }
-
-    private var bucketChips: [FilterChipModel] {
+    private var bucketChips: [TacticalChip] {
         let order: [PipelineViewModel.TriageBucket] = [
             .all, .overdue, .dueToday, .waitingOnYou, .fresh, .waitingOnThem
         ]
         return order.map { b in
-            let count: Int = (b == .all) ? buckets.all.count : buckets.leads(for: b).count
-            return FilterChipModel(
-                id: b.rawValue,
-                label: b.label,
-                count: count,
-                dotColor: dotColor(for: b)
-            )
+            let count = (b == .all) ? buckets.all.count : buckets.leads(for: b).count
+            return TacticalChip(id: b.rawValue, label: chipLabel(b), count: count, tone: bucketTone(b))
         }
     }
 
     private var filterBinding: Binding<String> {
         Binding(
-            get: { bucket.rawValue },
+            get: { effectiveBucket.rawValue },
             set: { newValue in
                 if let b = PipelineViewModel.TriageBucket(rawValue: newValue) {
                     selectedBucket = b
@@ -365,40 +252,125 @@ struct LeadsTabView: View {
         )
     }
 
-    private func dotColor(for b: PipelineViewModel.TriageBucket) -> Color {
+    private func chipLabel(_ b: PipelineViewModel.TriageBucket) -> String {
         switch b {
-        case .all:           return OPSStyle.Colors.text
+        case .all:           return "ALL"
+        case .overdue:       return "OVERDUE"
+        case .dueToday:      return "DUE TODAY"
+        case .waitingOnYou:  return "WAITING ON YOU"
+        case .fresh:         return "FRESH"
+        case .waitingOnThem: return "WAITING ON THEM"
+        }
+    }
+
+    private func bucketTone(_ b: PipelineViewModel.TriageBucket) -> Color? {
+        switch b {
+        case .all:           return nil
         case .overdue:       return OPSStyle.Colors.rose
         case .dueToday:      return OPSStyle.Colors.tan
         case .waitingOnYou:  return OPSStyle.Colors.opsAccent
-        case .fresh:         return OPSStyle.Colors.text2
+        case .fresh:         return OPSStyle.Colors.olive
         case .waitingOnThem: return OPSStyle.Colors.textMute
         }
     }
 
+    // MARK: - Queue body
+
     @ViewBuilder
-    private var queueList: some View {
-        let leads = buckets.leads(for: bucket)
-        if leads.isEmpty {
-            BucketEmpty(bucket: bucket)
-                .padding(.vertical, 28)
-                .frame(maxWidth: .infinity)
-        } else {
-            LazyVStack(spacing: OPSStyle.Layout.spacing2) {
-                ForEach(leads) { lead in
-                    LeadActionCard(
-                        opportunity: lead,
-                        verb: viewModel.verbFor(lead, bucket: bucket),
-                        tone: viewModel.toneFor(bucket, lead: lead),
-                        showsLog: canManage,
-                        showsMore: canManage,
-                        showsAdvance: canManage,
-                        onTap:     { detailLead = lead },
-                        onLog:     { activeSheet = .log(lead) },
-                        onMore:    { moreForLead = lead },
-                        onAdvance: { advance(lead) }
-                    )
+    private var queueBody: some View {
+        if effectiveBucket == .all {
+            if buckets.all.isEmpty {
+                LeadsCaughtUp(title: "ALL CAUGHT UP", label: "NO FOLLOW-UPS DUE", hint: caughtUpHint)
+            } else {
+                LazyVStack(spacing: OPSStyle.Layout.spacing2) {
+                    ForEach(groupedItems) { item in
+                        switch item {
+                        case .header(let b, let count):
+                            queueSectionHeader(b, count: count)
+                        case .lead(let lead, let b):
+                            cardFor(lead, bucket: b)
+                        }
+                    }
                 }
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            }
+        } else {
+            let leads = buckets.leads(for: effectiveBucket)
+            if leads.isEmpty {
+                LeadsCaughtUp(title: "NONE HERE", label: "NO LEADS IN THIS FILTER", hint: "SWITCH FILTER TO SEE MORE")
+            } else {
+                LazyVStack(spacing: OPSStyle.Layout.spacing2) {
+                    ForEach(leads) { lead in
+                        cardFor(lead, bucket: effectiveBucket)
+                    }
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            }
+        }
+    }
+
+    private var groupedItems: [LeadQueueItem] {
+        var items: [LeadQueueItem] = []
+        for b in Self.groupOrder {
+            let leads = buckets.leads(for: b)
+            guard !leads.isEmpty else { continue }
+            items.append(.header(b, leads.count))
+            items.append(contentsOf: leads.map { .lead($0, b) })
+        }
+        return items
+    }
+
+    private func queueSectionHeader(_ b: PipelineViewModel.TriageBucket, count: Int) -> some View {
+        let color = bucketTone(b) ?? OPSStyle.Colors.text2
+        return HStack(spacing: OPSStyle.Layout.spacing2_5) {
+            Text(groupHeaderLabel(b))
+                .font(.custom("JetBrainsMono-Medium", size: 9.5))
+                .tracking(1.4)
+                .textCase(.uppercase)
+                .foregroundColor(color)
+            Rectangle().fill(OPSStyle.Colors.line).frame(height: 1)
+            Text("\(count)")
+                .font(.custom("JetBrainsMono-Medium", size: 9.5))
+                .foregroundColor(color)
+                .monospacedDigit()
+        }
+        .padding(.top, OPSStyle.Layout.spacing1)
+    }
+
+    private func groupHeaderLabel(_ b: PipelineViewModel.TriageBucket) -> String {
+        switch b {
+        case .overdue:       return "OVERDUE · CHASE NOW"
+        case .dueToday:      return "DUE TODAY"
+        case .waitingOnYou:  return "WAITING ON YOU"
+        case .waitingOnThem: return "WAITING ON THEM"
+        case .fresh:         return "FRESH"
+        case .all:           return "ALL"
+        }
+    }
+
+    private func cardFor(_ lead: Opportunity, bucket: PipelineViewModel.TriageBucket) -> some View {
+        LeadTriageCard(
+            lead: lead,
+            viewModel: viewModel,
+            bucket: bucket,
+            canManage: canManage,
+            onTap:     { detailLead = lead },
+            onLog:     { activeSheet = .log(lead) },
+            onAdvance: { advance(lead) },
+            onWon:     { activeSheet = .convert(lead) },
+            onLost:    { activeSheet = .lost(lead) }
+        )
+        .contextMenu {
+            if canManage {
+                Button { activeSheet = .edit(lead) } label: { Label("Edit", systemImage: "pencil") }
+                Button {
+                    Task {
+                        do {
+                            try await viewModel.archive(opportunityId: lead.id)
+                            ToastCenter.shared.present(Feedback.Lead.archived)
+                        } catch {}
+                    }
+                } label: { Label("Archive", systemImage: "archivebox") }
             }
         }
     }
@@ -432,32 +404,19 @@ struct LeadsTabView: View {
 
     // MARK: - Deep link
 
-    /// Resolve `appState.pendingLeadDeepLinkId` to an `Opportunity` and present
-    /// its `LeadDetailView`. Looks in the already-loaded pipeline first; if the
-    /// lead isn't present locally (sync lag, or a lead just outside the current
-    /// fetch window) it fetches the single row directly. The id is always
-    /// cleared so a stale baton can't re-fire. When the lead can't be resolved
-    /// (deleted, or not in this company) we surface the access-denied rail
-    /// rather than stranding the operator on a silent no-op.
     @MainActor
     private func resolvePendingLeadDeepLinkIfNeeded() async {
         guard let leadId = appState.pendingLeadDeepLinkId, !leadId.isEmpty else { return }
         guard !isResolvingDeepLink else { return }
         isResolvingDeepLink = true
-        // Clear immediately so a re-entrant change or a later tab appear can't
-        // double-open the same lead.
         appState.pendingLeadDeepLinkId = nil
         defer { isResolvingDeepLink = false }
 
-        // Already in hand?
         if let lead = viewModel.allOpportunities.first(where: { $0.id == leadId }) {
             presentDeepLinkedLead(lead)
             return
         }
 
-        // Not loaded locally — fetch the single opportunity directly. Mirrors
-        // the project/task deep-link handlers in MainTabView that hydrate a
-        // single record on a cold tap rather than forcing a full reload.
         guard let companyId = dataController.currentUser?.companyId else {
             appState.presentAccessDenied(message: "This lead is no longer available.")
             return
@@ -466,7 +425,6 @@ struct LeadsTabView: View {
         do {
             let dto = try await repo.fetchOne(leadId)
             let lead = dto.toModel()
-            // A soft-deleted lead is no longer actionable; treat as unavailable.
             guard !lead.isDeleted else {
                 appState.presentAccessDenied(message: "This lead is no longer available.")
                 return
@@ -478,9 +436,6 @@ struct LeadsTabView: View {
         }
     }
 
-    /// Present the resolved lead. Light impact mirrors the in-list row-tap
-    /// arrival; if a detail is already up for a different lead we swap after a
-    /// beat so the navigation push doesn't race the prior one.
     @MainActor
     private func presentDeepLinkedLead(_ lead: Opportunity) {
         if let current = detailLead, current.id != lead.id {
@@ -497,25 +452,24 @@ struct LeadsTabView: View {
     // MARK: - Helpers
 
     private var atmosphereTone: Atmosphere.Tone {
-        // Adapts subtly to current urgency profile. Defaults to steel when
-        // the queue is calm.
         if buckets.overdue.count > 0 { return .rose }
         if buckets.dueToday.count > 0 { return .tan }
         if !buckets.unconvertedWon.isEmpty { return .olive }
         return .steel
     }
 
-    private var dateText: String {
-        let f = DateFormatter()
-        f.dateFormat = "EEE · MMM d"
-        return f.string(from: Date()).uppercased()
+    private var unconvertedWonValue: Double {
+        buckets.unconvertedWon.reduce(0) { $0 + ($1.actualValue ?? $1.estimatedValue ?? 0) }
     }
 
-    private var moreSheetPresented: Binding<Bool> {
-        Binding(
-            get: { moreForLead != nil },
-            set: { if !$0 { moreForLead = nil } }
-        )
+    private var caughtUpHint: String {
+        "\(viewModel.openLeadCount) OPEN · PIPELINE \(BooksFormat.compact(viewModel.weightedForecastValue))"
+    }
+
+    private func presentWonConvert() {
+        if let first = buckets.unconvertedWon.first {
+            activeSheet = .convert(first)
+        }
     }
 
     private func advance(_ lead: Opportunity) {
@@ -531,50 +485,6 @@ struct LeadsTabView: View {
             } catch {}
         }
     }
-
-    /// "OPEN STAGE BOARD →" — routes to the first open stage that has leads,
-    /// falling back to NEW LEAD (per PipelineFooter's onBoardTap contract).
-    private func openBoard() {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        let openOrder: [PipelineStage] = [
-            .newLead, .qualifying, .quoting, .quoted, .followUp, .negotiation
-        ]
-        footerStage = openOrder.first { (stageCounts[$0] ?? 0) > 0 } ?? .newLead
-    }
-}
-
-// MARK: - Bucket empty state
-
-private struct BucketEmpty: View {
-    let bucket: PipelineViewModel.TriageBucket
-
-    var body: some View {
-        VStack(spacing: 10) {
-            Text("00")
-                .font(.custom("Mohave-Light", size: 32))
-                .foregroundColor(OPSStyle.Colors.text3)
-            HStack(spacing: 0) {
-                Text("// ")
-                    .foregroundColor(OPSStyle.Colors.textMute)
-                Text(message)
-                    .foregroundColor(OPSStyle.Colors.textMute)
-            }
-            .font(OPSStyle.Typography.metadata)
-            .kerning(1.8)
-            .textCase(.uppercase)
-        }
-    }
-
-    private var message: String {
-        switch bucket {
-        case .all:           return "— NO OPEN LEADS"
-        case .overdue:       return "— NO OVERDUE FOLLOW-UPS"
-        case .dueToday:      return "— NOTHING DUE TODAY"
-        case .waitingOnYou:  return "— NO REPLIES OUTSTANDING"
-        case .fresh:         return "— NO NEW LEADS"
-        case .waitingOnThem: return "— NOT WAITING ON ANYONE"
-        }
-    }
 }
 
 // MARK: - Previews
@@ -583,10 +493,12 @@ private struct BucketEmpty: View {
 #Preview("LeadsTabView / loaded") {
     LeadsTabView(viewModel: .previewLoaded())
         .leadsPreviewEnvironment()
+        .environmentObject(SubscriptionManager.shared)
 }
 
 #Preview("LeadsTabView / empty") {
     LeadsTabView(viewModel: .previewLoaded(opportunities: []))
         .leadsPreviewEnvironment()
+        .environmentObject(SubscriptionManager.shared)
 }
 #endif

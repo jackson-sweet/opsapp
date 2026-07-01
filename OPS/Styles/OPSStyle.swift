@@ -204,6 +204,14 @@ enum OPSStyle {
         static let surfaceHover   = Color.white.opacity(0.05)  // Interactive row / button hover
         static let surfaceActive  = Color.white.opacity(0.08)  // Active toggle, pressed state
 
+        // Solid raised command surface — #141416. The Money/Leads command cards
+        // (NET PROFIT hero, job profitability, lead triage cards) sit on this
+        // opaque L1 fill rather than the translucent glass surface: over the
+        // pure-black canvas a solid panel reads crisper in outdoor glare and
+        // avoids stacking blur passes (MOBILE.md §3 depth rules). Paired with
+        // `glassBorder` (white@0.09) + `panelRadius` (10) via `.commandCard()`.
+        static let surfaceRaised  = Color(red: 20/255, green: 20/255, blue: 22/255)
+
         // Borders & neutral fills
         static let line           = Color.white.opacity(0.10)  // Standard hairline — panels, inputs, L1 dividers
         static let glassBorder    = Color.white.opacity(0.09)  // L1 glass panel edge (MOBILE.md §3)

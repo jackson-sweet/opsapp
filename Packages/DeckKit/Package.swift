@@ -22,7 +22,10 @@ let package = Package(
         .testTarget(
             name: "DeckKitTests",
             dependencies: ["DeckKit"],
-            path: "Tests/DeckKitTests"
+            path: "Tests/DeckKitTests",
+            resources: [
+                .process("Fixtures")
+            ]
         ),
     ]
 )

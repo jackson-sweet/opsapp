@@ -1,0 +1,38 @@
+{
+  "_fixtureScope": "Known subset for DeckKit engine tests; not a complete jurisdiction package.",
+  "_sourceUrls": [
+    "https://www2.gov.bc.ca/gov/content/industry/construction-industry/building-codes-standards/bc-codes/2024-bc-codes"
+  ],
+  "_sourceNotes": [
+    "BCBC 2024 Division B Table 9.8.4.1: private stair maximum rise is 200 mm.",
+    "BCBC 2024 Division B Table 9.8.4.2: private stair minimum run is 255 mm.",
+    "BCBC 2024 Division B 9.8.8.1: guards are required where the walking surface is more than 600 mm above the adjacent surface within 1.2 m.",
+    "BCBC 2024 Division B 9.8.8.3: exterior guards serving not more than one dwelling unit are not less than 900 mm high when the walking surface is not more than 1 800 mm above finished ground.",
+    "BCBC 2024 Division B 9.8.8.5: guard openings prevent passage of a 100 mm sphere.",
+    "BCBC 2024 Division B 9.8.9.4 has wooden stair stringer rules, but this fixture leaves notchedStringerSizing empty because the current DeckKit row shape requires a max length cell not represented by this source-backed subset."
+  ],
+  "jurisdictionId": "CA-BC",
+  "edition": "BCBC 2024 Part 9 known subset",
+  "publishedDate": 0,
+  "guardRules": {
+    "minGuardHeightInches": 35.4330708661,
+    "guardRequiredHeightInches": 23.6220472441,
+    "maxOpeningInches": 3.937007874,
+    "codeSection": "BCBC 2024 9.8.8.1 / 9.8.8.3 / 9.8.8.5"
+  },
+  "ledgerRules": {
+    "minLateralConnectors": 0,
+    "codeSection": "BCBC 2024 Part 9 ledger fixture not represented"
+  },
+  "unitSystem": "metric",
+  "stairRules": {
+    "maxRiserHeightInches": 7.874015748,
+    "minTreadRunInches": 10.0393700787,
+    "stairCodeSection": "BCBC 2024 9.8.4.1 / 9.8.4.2",
+    "handrailCodeSection": "BCBC 2024 9.8.7",
+    "notchedStringerSizing": []
+  },
+  "beamSpanTable": [],
+  "postHeightTable": [],
+  "envelopeLimits": {}
+}

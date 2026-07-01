@@ -1,0 +1,96 @@
+{
+  "_fixtureScope": "Known subset for DeckKit engine tests; not a complete jurisdiction package.",
+  "_sourceUrls": [
+    "https://awc.org/wp-content/uploads/2022/02/AWC-DCA62015-DeckGuide-1804.pdf"
+  ],
+  "_sourceNotes": [
+    "AWC DCA6-15 Table 2: 2x8 Spruce-Pine-Fir No. 2 joist at 16 in. o.c. spans 11 ft 1 in. under 40 psf live load and 10 psf dead load.",
+    "AWC DCA6-15 Table 3A: 2-2x10 Spruce-Pine-Fir No. 2 beam supporting a 10 ft joist span spans 6 ft 3 in.",
+    "AWC DCA6-15 Table 4: 6x6 Spruce-Pine-Fir No. 2 post at 6 ft beam span and joist span up to 10 ft has a 14 ft maximum post height.",
+    "AWC DCA6-15 guard section references the IRC R312 30 in. trigger and 36 in. required guard height.",
+    "AWC DCA6-15 stair section references IRC R311.7, 36 in. minimum stair width, 4-riser handrail trigger, and 34-38 in. handrail height."
+  ],
+  "jurisdictionId": "US-IRC",
+  "edition": "IRC 2021 / AWC DCA6-15 known subset",
+  "publishedDate": 0,
+  "guardRules": {
+    "minGuardHeightInches": 36,
+    "guardRequiredHeightInches": 30,
+    "maxOpeningInches": 4,
+    "codeSection": "IRC R312.1 / AWC DCA6-15 Guards"
+  },
+  "ledgerRules": {
+    "minLateralConnectors": 2,
+    "codeSection": "IRC R507.2.4 / AWC DCA6-15 lateral load connection"
+  },
+  "unitSystem": "imperial",
+  "stairRules": {
+    "maxRiserHeightInches": 7.75,
+    "minTreadRunInches": 10,
+    "stairCodeSection": "IRC R311.7 / AWC DCA6-15 Stair Requirements",
+    "maxSingleFlightRiseInches": 144,
+    "minLandingDepthInches": 36,
+    "handrailRequiredRiserCount": 4,
+    "handrailCodeSection": "IRC R311.7.8 / AWC DCA6-15 Stair handrail requirements",
+    "closedRiserNosingMinInches": 0.75,
+    "closedRiserNosingMaxInches": 1.25,
+    "defaultClosedRiserNosingInches": 1,
+    "openRiserNosingInches": 0,
+    "winderMinInnerRunInches": 6,
+    "winderMinWalklineRunInches": 10,
+    "winderWalklineOffsetInches": 12,
+    "notchedStringerSizing": []
+  },
+  "beamSpanTable": [
+    {
+      "role": "joist",
+      "size": "2x8",
+      "plyCount": 1,
+      "species": "spf",
+      "grade": "no2",
+      "maxSpanFeet": 11.0833333333,
+      "codeSection": "AWC DCA6-15 Table 2",
+      "limitingCheck": "2x8 SPF #2 joist span at 16 in. o.c.",
+      "maxLiveLoadPSF": 40,
+      "maxDeadLoadPSF": 10
+    },
+    {
+      "role": "joist",
+      "size": "2x10",
+      "plyCount": 1,
+      "species": "spf",
+      "grade": "no2",
+      "maxSpanFeet": 13.5833333333,
+      "codeSection": "AWC DCA6-15 Table 2",
+      "limitingCheck": "2x10 SPF #2 joist span at 16 in. o.c.",
+      "maxLiveLoadPSF": 40,
+      "maxDeadLoadPSF": 10
+    },
+    {
+      "role": "beam",
+      "size": "2x10",
+      "plyCount": 2,
+      "species": "spf",
+      "grade": "no2",
+      "maxSpanFeet": 6.25,
+      "codeSection": "AWC DCA6-15 Table 3A",
+      "limitingCheck": "2-2x10 SPF #2 beam span supporting 10 ft joists",
+      "maxLiveLoadPSF": 40,
+      "maxDeadLoadPSF": 10
+    }
+  ],
+  "postHeightTable": [
+    {
+      "size": "6x6",
+      "species": "spf",
+      "grade": "no2",
+      "maxHeightFeet": 14,
+      "codeSection": "AWC DCA6-15 Table 4",
+      "limitingCheck": "6x6 SPF #2 post at 6 ft beam span and <=10 ft joist span"
+    }
+  ],
+  "envelopeLimits": {
+    "maxMemberSpanFeet": 18,
+    "maxPostHeightFeet": 14
+  }
+}

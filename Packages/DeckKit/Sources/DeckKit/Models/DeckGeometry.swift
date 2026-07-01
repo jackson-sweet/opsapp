@@ -57,7 +57,7 @@ public enum MeasurementSystem: String, Codable {
     case metric
 }
 
-public struct DrawingConfig: Codable {
+public struct DrawingConfig: Codable, Equatable {
     public var measurementSystem: MeasurementSystem = .imperial
     public var angleSnapIncrement: Double = 15.0      // degrees
     public var lengthSnapIncrement: Double = 6.0      // inches (or cm if metric)
@@ -830,7 +830,7 @@ public struct PEStampRequest: Codable, Equatable {
 
 // MARK: - Complete Drawing Data
 
-public struct DeckDrawingData: Codable {
+public struct DeckDrawingData: Codable, Equatable {
     public var schemaVersion: Int? = nil
     public var vertices: [DeckVertex] = []
     public var edges: [DeckEdge] = []
@@ -869,6 +869,7 @@ public struct DeckDrawingData: Codable {
     // MARK: - Permit / Compliance Blocks
 
     public var permitMeta: PermitMeta? = nil
+    public var asBuiltAudit: AsBuiltAuditOverlay? = nil
 
     // MARK: - Estimate Settings
 
@@ -909,6 +910,7 @@ public struct DeckDrawingData: Codable {
         case surfaceFeatures
         case overhead
         case permitMeta
+        case asBuiltAudit
         case wasteSettings
         case components
     }
@@ -936,6 +938,7 @@ public struct DeckDrawingData: Codable {
         self.surfaceFeatures = try? c.decodeIfPresent(SurfaceFeaturePlan.self, forKey: .surfaceFeatures)
         self.overhead = try? c.decodeIfPresent(OverheadStructurePlan.self, forKey: .overhead)
         self.permitMeta = try? c.decodeIfPresent(PermitMeta.self, forKey: .permitMeta)
+        self.asBuiltAudit = try? c.decodeIfPresent(AsBuiltAuditOverlay.self, forKey: .asBuiltAudit)
         self.wasteSettings = try c.decodeIfPresent(WasteSettings.self, forKey: .wasteSettings)
         self.components = try c.decodeIfPresent([DesignComponentRow].self, forKey: .components)
         self.futureBlocks = [:]
@@ -962,6 +965,7 @@ public struct DeckDrawingData: Codable {
         try c.encodeIfPresent(surfaceFeatures, forKey: .surfaceFeatures)
         try c.encodeIfPresent(overhead, forKey: .overhead)
         try c.encodeIfPresent(permitMeta, forKey: .permitMeta)
+        try c.encodeIfPresent(asBuiltAudit, forKey: .asBuiltAudit)
         try c.encodeIfPresent(wasteSettings, forKey: .wasteSettings)
         try c.encodeIfPresent(components, forKey: .components)
     }

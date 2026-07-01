@@ -22,6 +22,7 @@ public final class DeckDrawingEditorModel: ObservableObject {
     @Published public private(set) var selectedLoadPreset: LoadPreset
     @Published public private(set) var codeCheckSettings: DeckCodeCheckSettings
     @Published public private(set) var codeReport: DeckCodeReport?
+    @Published public private(set) var isAsBuiltAuditWizardPresented = false
 
     public let capabilities: DeckCapabilities
     public let codeProfile: DeckCodeProfile?
@@ -84,6 +85,32 @@ public final class DeckDrawingEditorModel: ObservableObject {
         capabilities.contains(.houseOpenings)
     }
 
+    public var canRunPermitCompliance: Bool {
+        capabilities.contains(.compliance)
+    }
+
+    public var canOpenAsBuiltAudit: Bool {
+        capabilities.contains(.compliance)
+    }
+
+    public var canGeneratePermitPlanSet: Bool {
+        capabilities.contains(.permitPlanSet)
+    }
+
+    public var canRequestPEStamp: Bool {
+        capabilities.contains(.peStamp)
+    }
+
+    public var cachedComplianceReport: ComplianceReport? {
+        drawingData.permitMeta?.lastComplianceResult
+    }
+
+    public var shouldSurfacePEStampRequest: Bool {
+        cachedComplianceReport?.findings.contains { finding in
+            finding.fix?.localizedCaseInsensitiveContains("licensed engineer") == true
+        } ?? false
+    }
+
     var surfaceEditorEntries: [DeckSurfaceEditorEntry] {
         DeckSurfaceEditorToolbarModel.entries(for: capabilities)
     }
@@ -96,6 +123,119 @@ public final class DeckDrawingEditorModel: ObservableObject {
     public func setCodeChecksEnabled(_ isEnabled: Bool) {
         codeCheckSettings = isEnabled && canRunCodeChecks ? .enabled : .disabled
         refreshCodeReport()
+    }
+
+    public func requiresComplianceDisclaimer(for package: CodePackage) -> Bool {
+        guard canRunPermitCompliance || canGeneratePermitPlanSet else { return false }
+        guard let permitMeta = drawingData.permitMeta,
+              permitMeta.disclaimerAcknowledgedAt != nil else {
+            return true
+        }
+        return permitMeta.jurisdictionId != package.jurisdictionId
+            || permitMeta.codeEdition != packageEdition(package)
+    }
+
+    @discardableResult
+    public func acknowledgeComplianceDisclaimer(
+        for package: CodePackage,
+        at acknowledgedAt: Date = Date()
+    ) -> Bool {
+        guard canRunPermitCompliance || canGeneratePermitPlanSet else { return false }
+        let edition = packageEdition(package)
+        var permitMeta = drawingData.permitMeta ?? PermitMeta()
+        permitMeta.jurisdictionId = package.jurisdictionId
+        permitMeta.codeEdition = edition
+        permitMeta.disclaimerAcknowledgedAt = acknowledgedAt
+        if permitMeta.lastComplianceResult?.packageEdition != edition {
+            permitMeta.lastComplianceRunAt = nil
+            permitMeta.lastComplianceResult = nil
+        }
+        drawingData.permitMeta = permitMeta
+        persistDrawingData()
+        return true
+    }
+
+    @discardableResult
+    public func runCompliance(
+        mode: ComplianceEngine.Mode,
+        package: CodePackage
+    ) -> ComplianceReport? {
+        guard canRunPermitCompliance,
+              !requiresComplianceDisclaimer(for: package) else {
+            return nil
+        }
+
+        let report = ComplianceEngine.evaluate(drawingData, mode: mode, package: package)
+        var permitMeta = drawingData.permitMeta ?? PermitMeta()
+        permitMeta.jurisdictionId = package.jurisdictionId
+        permitMeta.codeEdition = packageEdition(package)
+        permitMeta.lastComplianceRunAt = report.generatedAt
+        permitMeta.lastComplianceResult = report
+        drawingData.permitMeta = permitMeta
+        persistDrawingData()
+        return report
+    }
+
+    public func generatePermitSet(
+        sheets: [PlanSheetKind],
+        titleBlock: TitleBlock,
+        package: CodePackage
+    ) -> Data? {
+        guard canGeneratePermitPlanSet,
+              !requiresComplianceDisclaimer(for: package) else {
+            return nil
+        }
+
+        let edition = packageEdition(package)
+        let report: ComplianceReport
+        if let cached = cachedComplianceReport,
+           cached.packageEdition == edition {
+            report = cached
+        } else if let generated = runCompliance(mode: .design, package: package) {
+            report = generated
+        } else {
+            return nil
+        }
+
+        var resolvedTitleBlock = titleBlock
+        resolvedTitleBlock.packageEdition = edition
+        resolvedTitleBlock.disclaimer = ComplianceStrings.disclaimer
+        resolvedTitleBlock.peStamp = drawingData.permitMeta?.peStampRequest ?? titleBlock.peStamp
+        return PlanSetEngine.renderPermitSet(
+            drawingData,
+            compliance: report,
+            sheets: sheets,
+            titleBlock: resolvedTitleBlock,
+            package: package
+        )
+    }
+
+    @discardableResult
+    public func openAsBuiltWizard() -> Bool {
+        guard canOpenAsBuiltAudit else { return false }
+        isAsBuiltAuditWizardPresented = true
+        return true
+    }
+
+    public func closeAsBuiltWizard() {
+        isAsBuiltAuditWizardPresented = false
+    }
+
+    @discardableResult
+    public func requestPEStamp(
+        reason: String?,
+        requestedAt: Date = Date()
+    ) -> Bool {
+        guard canRequestPEStamp else { return false }
+        var permitMeta = drawingData.permitMeta ?? PermitMeta()
+        permitMeta.peStampRequest = PEStampRequest(
+            requested: true,
+            reason: reason,
+            requestedAt: requestedAt
+        )
+        drawingData.permitMeta = permitMeta
+        persistDrawingData()
+        return true
     }
 
     public func beginLine(at rawPoint: CGPoint) {
@@ -509,6 +649,10 @@ public final class DeckDrawingEditorModel: ObservableObject {
         drawingData.components = ComponentEmitter.emit(drawingData)
         refreshCodeReport()
         onPersist(drawingData)
+    }
+
+    private func packageEdition(_ package: CodePackage) -> String {
+        package.edition ?? package.jurisdictionId
     }
 
     private func refreshCodeReport() {

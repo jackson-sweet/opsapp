@@ -62,10 +62,16 @@ public struct DeckRuntime {
     public let codeProfile: DeckCodeProfile?
     public let codeProfileRequest: DeckCodeProfileRequest?
     public let codeProfileResolution: DeckCodeProfileResolution?
+    public let codePackage: CodePackage?
 
     public var activeCodeProfile: DeckCodeProfile? {
         guard context.appSurface == .opsDecks else { return nil }
         return codeProfileResolution?.profile ?? codeProfile
+    }
+
+    public var activeCodePackage: CodePackage? {
+        guard context.appSurface == .opsDecks else { return nil }
+        return codePackage
     }
 
     @MainActor
@@ -77,7 +83,8 @@ public struct DeckRuntime {
         ocrService: DeckOCRService = NoopDeckOCRService(),
         codeProfile: DeckCodeProfile? = nil,
         codeProfileRequest: DeckCodeProfileRequest? = nil,
-        codeProfileResolution: DeckCodeProfileResolution? = nil
+        codeProfileResolution: DeckCodeProfileResolution? = nil,
+        codePackage: CodePackage? = nil
     ) {
         self.context = context
         self.store = store
@@ -87,5 +94,6 @@ public struct DeckRuntime {
         self.codeProfile = codeProfile
         self.codeProfileRequest = codeProfileRequest
         self.codeProfileResolution = codeProfileResolution
+        self.codePackage = codePackage
     }
 }

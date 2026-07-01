@@ -66,6 +66,8 @@ final class DeckRuntimeTests: XCTestCase {
         XCTAssertNil(runtime.codeProfileRequest)
         XCTAssertNil(runtime.codeProfileResolution)
         XCTAssertNil(runtime.activeCodeProfile)
+        XCTAssertNil(runtime.codePackage)
+        XCTAssertNil(runtime.activeCodePackage)
     }
 
     func testRuntimeCarriesInjectedCodeProfileForStandaloneDesigner() {
@@ -156,6 +158,38 @@ final class DeckRuntimeTests: XCTestCase {
         XCTAssertEqual(runtime.codeProfile, profile)
         XCTAssertEqual(runtime.codeProfileResolution, resolution)
         XCTAssertNil(runtime.activeCodeProfile)
+    }
+
+    func testRuntimeCarriesActiveCodePackageForStandaloneDesignerOnly() {
+        let package = CodePackage(
+            jurisdictionId: "US-IRC",
+            edition: "IRC 2021 / DCA6-12"
+        )
+        let standalone = DeckRuntime(
+            context: DeckRuntimeContext(
+                companyId: "company-1",
+                projectId: "project-1",
+                projectName: "Alpha",
+                appSurface: .opsDecks
+            ),
+            store: nil,
+            codePackage: package
+        )
+        let embedded = DeckRuntime(
+            context: DeckRuntimeContext(
+                companyId: "company-1",
+                projectId: "project-1",
+                projectName: "Alpha",
+                appSurface: .ops
+            ),
+            store: nil,
+            codePackage: package
+        )
+
+        XCTAssertEqual(standalone.codePackage, package)
+        XCTAssertEqual(standalone.activeCodePackage, package)
+        XCTAssertEqual(embedded.codePackage, package)
+        XCTAssertNil(embedded.activeCodePackage)
     }
 
     func testLightCapabilitiesAreViewerOnlyForEmbeddedOPS() {

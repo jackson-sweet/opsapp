@@ -22,17 +22,32 @@ private enum DeckSurfaceEditorSheet: String, Identifiable {
     var id: String { rawValue }
 }
 
+private enum DeckComplianceEditorSheet: String, Identifiable {
+    case complianceReport
+    case asBuiltAudit
+    case permitPlanSet
+    case peStamp
+
+    var id: String { rawValue }
+}
+
 public struct DeckDrawingEditorView: View {
     @StateObject private var model: DeckDrawingEditorModel
     @State private var layerVisibility: FramingLayer = .all
     @State private var isDraggingLine = false
     @State private var activeSurfaceEditorSheet: DeckSurfaceEditorSheet?
+    @State private var activeComplianceEditorSheet: DeckComplianceEditorSheet?
+
+    private let codePackage: CodePackage?
+    private let projectName: String?
 
     public init(
         drawingData: DeckDrawingData,
         runtime: DeckRuntime,
         onPersist: @escaping (DeckDrawingData) -> Void
     ) {
+        self.codePackage = runtime.activeCodePackage
+        self.projectName = runtime.context.projectName
         _model = StateObject(
             wrappedValue: DeckDrawingEditorModel(
                 drawingData: drawingData,
@@ -48,6 +63,8 @@ public struct DeckDrawingEditorView: View {
             statusBar
 
             surfaceEditorBar
+
+            complianceEditorBar
 
             GeometryReader { geometry in
                 drawingCanvas(size: geometry.size)
@@ -84,6 +101,9 @@ public struct DeckDrawingEditorView: View {
         }
         .sheet(item: $activeSurfaceEditorSheet) { sheet in
             sheetView(for: sheet)
+        }
+        .sheet(item: $activeComplianceEditorSheet) { sheet in
+            complianceSheetView(for: sheet)
         }
     }
 
@@ -135,6 +155,26 @@ public struct DeckDrawingEditorView: View {
         }
     }
 
+    private var complianceEditorBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                ForEach(DeckComplianceToolbarModel.entries(for: model.capabilities)) { entry in
+                    if entry.isUpsell {
+                        complianceEditorUpsell(entry)
+                    } else {
+                        Button {
+                            activeComplianceEditorSheet = complianceSheetDestination(for: entry.kind)
+                        } label: {
+                            complianceEditorTile(entry)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     private func surfaceEditorUpsell(_ entry: DeckSurfaceEditorEntry) -> some View {
         surfaceEditorTile(entry)
             .accessibilityLabel(entry.title)
@@ -167,6 +207,57 @@ public struct DeckDrawingEditorView: View {
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
     }
 
+    private func complianceEditorUpsell(_ entry: DeckComplianceEditorEntry) -> some View {
+        complianceEditorTile(entry)
+            .accessibilityLabel(entry.title)
+            .accessibilityValue(entry.subtitle)
+    }
+
+    private func complianceEditorTile(_ entry: DeckComplianceEditorEntry) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Image(systemName: entry.systemImage)
+                .font(OPSStyle.Typography.fieldMetadata)
+                .foregroundStyle(entry.isUpsell ? OPSStyle.Colors.text3 : complianceTileIconColor(entry))
+
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                Text(entry.title.uppercased())
+                    .font(OPSStyle.Typography.fieldButtonLabel)
+                    .foregroundStyle(entry.isUpsell ? OPSStyle.Colors.text3 : OPSStyle.Colors.text)
+                Text(entry.subtitle)
+                    .font(OPSStyle.Typography.fieldMetadata)
+                    .foregroundStyle(OPSStyle.Colors.text2)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+        .background(entry.isUpsell ? OPSStyle.Colors.fillNeutralDim : OPSStyle.Colors.surfaceInput)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                .stroke(complianceTileLineColor(entry), lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
+    }
+
+    private func complianceTileIconColor(_ entry: DeckComplianceEditorEntry) -> Color {
+        guard entry.kind == .peStamp,
+              model.shouldSurfacePEStampRequest else {
+            return OPSStyle.Colors.text2
+        }
+        return OPSStyle.Colors.tanTextM
+    }
+
+    private func complianceTileLineColor(_ entry: DeckComplianceEditorEntry) -> Color {
+        if entry.isUpsell {
+            return OPSStyle.Colors.nestedBorder
+        }
+        guard entry.kind == .peStamp,
+              model.shouldSurfacePEStampRequest else {
+            return OPSStyle.Colors.line
+        }
+        return OPSStyle.Colors.tanLineM
+    }
+
     private func sheetDestination(for kind: DeckSurfaceEditorEntryKind) -> DeckSurfaceEditorSheet? {
         switch kind {
         case .surfacePattern:
@@ -177,6 +268,21 @@ public struct DeckDrawingEditorView: View {
             return .surfaceFeatures
         case .overheadStructure:
             return .overheadStructure
+        case .opsDecksProUpsell:
+            return nil
+        }
+    }
+
+    private func complianceSheetDestination(for kind: DeckComplianceEditorEntryKind) -> DeckComplianceEditorSheet? {
+        switch kind {
+        case .complianceReport:
+            return .complianceReport
+        case .asBuiltAudit:
+            return .asBuiltAudit
+        case .permitPlanSet:
+            return .permitPlanSet
+        case .peStamp:
+            return .peStamp
         case .opsDecksProUpsell:
             return nil
         }
@@ -193,6 +299,20 @@ public struct DeckDrawingEditorView: View {
             SurfaceFeaturesSheet(model: model)
         case .overheadStructure:
             OverheadStructureSheet(model: model)
+        }
+    }
+
+    @ViewBuilder
+    private func complianceSheetView(for sheet: DeckComplianceEditorSheet) -> some View {
+        switch sheet {
+        case .complianceReport:
+            ComplianceReportSheet(model: model, package: codePackage)
+        case .asBuiltAudit:
+            AsBuiltAuditWizardSheet(model: model, package: codePackage)
+        case .permitPlanSet:
+            PermitPlanSetSheet(model: model, package: codePackage, projectName: projectName)
+        case .peStamp:
+            PEStampRequestSheet(model: model)
         }
     }
 

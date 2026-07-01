@@ -466,7 +466,7 @@ private enum LightingDefaults {
     static let transformerWatts = 60.0
 }
 
-private struct DeckSurfaceEditorShell<Content: View>: View {
+struct DeckSurfaceEditorShell<Content: View>: View {
     let title: String
     let subtitle: String
     @ViewBuilder var content: Content
@@ -492,7 +492,7 @@ private struct DeckSurfaceEditorShell<Content: View>: View {
     }
 }
 
-private struct DeckSurfaceEditorPanel<Content: View>: View {
+struct DeckSurfaceEditorPanel<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -509,7 +509,7 @@ private struct DeckSurfaceEditorPanel<Content: View>: View {
     }
 }
 
-private struct DeckSurfaceEditorSectionHeader: View {
+struct DeckSurfaceEditorSectionHeader: View {
     let title: String
 
     init(_ title: String) {
@@ -524,7 +524,7 @@ private struct DeckSurfaceEditorSectionHeader: View {
     }
 }
 
-private struct DeckSurfaceEditorChip: View {
+struct DeckSurfaceEditorChip: View {
     let title: String
     let value: String
     let isActive: Bool
@@ -553,7 +553,7 @@ private struct DeckSurfaceEditorChip: View {
     }
 }
 
-private struct DeckSurfaceEditorOptionMenu<Content: View>: View {
+struct DeckSurfaceEditorOptionMenu<Content: View>: View {
     let title: String
     let value: String
     @ViewBuilder var content: Content
@@ -588,7 +588,7 @@ private struct DeckSurfaceEditorOptionMenu<Content: View>: View {
     }
 }
 
-private struct DeckSurfaceEditorPickerRow<Option: Hashable>: View {
+struct DeckSurfaceEditorPickerRow<Option: Hashable>: View {
     let title: String
     let options: [Option]
     @Binding var selection: Option
@@ -617,7 +617,7 @@ private struct DeckSurfaceEditorPickerRow<Option: Hashable>: View {
     }
 }
 
-private struct DeckSurfaceEditorPrimaryLabel: View {
+struct DeckSurfaceEditorPrimaryLabel: View {
     let title: String
 
     init(_ title: String) {
@@ -635,7 +635,7 @@ private struct DeckSurfaceEditorPrimaryLabel: View {
     }
 }
 
-private struct DeckSurfaceEditorStatusMark: View {
+struct DeckSurfaceEditorStatusMark: View {
     let isActive: Bool
 
     var body: some View {
@@ -653,7 +653,7 @@ private struct DeckSurfaceEditorStatusMark: View {
     }
 }
 
-private struct DeckSurfaceEditorEmptyState: View {
+struct DeckSurfaceEditorEmptyState: View {
     let title: String
     let message: String
 

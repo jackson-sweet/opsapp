@@ -8,13 +8,15 @@
 //
 
 import SwiftUI
-import MapKit
+import CoreLocation
 
 struct ProjectMapHeader: View {
     let project: Project
     let taskColorHexes: [String]
     let pinLabel: String
-    let nearbyProjects: [NearbyProjectPin]
+    /// Operator's current location — drives the "you are here" dot, shown only
+    /// when they're standing inside the framed area. Nil → no dot.
+    var userCoordinate: CLLocationCoordinate2D?
     let onMapTap: () -> Void
 
     static let mapHeight: CGFloat = 320
@@ -43,15 +45,13 @@ struct ProjectMapHeader: View {
     private var mapView: some View {
         Group {
             if let coordinate = project.coordinate {
-                ProjectLocationMapView(
+                ProjectLocationSnapshotView(
                     coordinate: coordinate,
                     projectName: pinLabel,
                     status: project.status,
                     taskColorHexes: taskColorHexes,
-                    isInteractive: false,
-                    zoomLevel: 13.0,
-                    nearbyProjects: nearbyProjects,
-                    showUserLocation: true
+                    userCoordinate: userCoordinate,
+                    zoomLevel: 13.0
                 )
                 .frame(height: Self.mapHeight)
                 .contentShape(Rectangle())

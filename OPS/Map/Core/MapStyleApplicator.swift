@@ -18,35 +18,40 @@ enum MapStyleApplicator {
 
     // MARK: - Public
 
-    /// Apply an OPS map style profile to the given MapView.
+    /// Apply an OPS map style profile to the given style host.
     /// Must be called AFTER the base Mapbox style has fully loaded.
-    static func apply(_ style: OPSMapStyle, to mapView: MapView, show3DBuildings: Bool = true) {
+    ///
+    /// Takes a `StyleManager` rather than a `MapView` so BOTH the live map
+    /// (`mapView.mapboxMap`) and the static header `Snapshotter` — which are
+    /// each `StyleManager` subclasses — share one identical recolor pass. That
+    /// guarantees the snapshot header looks pixel-for-pixel like the live map.
+    static func apply(_ style: OPSMapStyle, to styleManager: StyleManager, show3DBuildings: Bool = true) {
         let colors = style.colors
 
         let allLayers: [LayerInfo]
         do {
-            allLayers = try mapView.mapboxMap.allLayerIdentifiers
+            allLayers = try styleManager.allLayerIdentifiers
         } catch {
             print("[MapStyleApplicator] Could not enumerate layers: \(error)")
             return
         }
 
         for info in allLayers {
-            apply(to: info, colors: colors, mapView: mapView, show3DBuildings: show3DBuildings)
+            apply(to: info, colors: colors, styleManager: styleManager, show3DBuildings: show3DBuildings)
         }
     }
 
     /// Toggle 3D building extrusion visibility without re-applying the full style.
-    static func set3DBuildings(_ enabled: Bool, mapView: MapView) {
+    static func set3DBuildings(_ enabled: Bool, styleManager: StyleManager) {
         let allLayers: [LayerInfo]
         do {
-            allLayers = try mapView.mapboxMap.allLayerIdentifiers
+            allLayers = try styleManager.allLayerIdentifiers
         } catch { return }
 
         for info in allLayers where info.type == .fillExtrusion {
             let id = info.id.lowercased()
             guard id.contains("building") || id.contains("extrusion") else { continue }
-            try? mapView.mapboxMap.updateLayer(withId: info.id, type: FillExtrusionLayer.self) { layer in
+            try? styleManager.updateLayer(withId: info.id, type: FillExtrusionLayer.self) { layer in
                 layer.visibility = .constant(enabled ? .visible : .none)
             }
         }
@@ -57,27 +62,27 @@ enum MapStyleApplicator {
     private static func apply(
         to info: LayerInfo,
         colors: MapStyleColors,
-        mapView: MapView,
+        styleManager: StyleManager,
         show3DBuildings: Bool
     ) {
         let id = info.id.lowercased()
 
         switch info.type {
         case .background:
-            applyBackground(id: info.id, colors: colors, mapView: mapView)
+            applyBackground(id: info.id, colors: colors, styleManager: styleManager)
 
         case .fill:
-            applyFill(id: info.id, lowerId: id, colors: colors, mapView: mapView)
+            applyFill(id: info.id, lowerId: id, colors: colors, styleManager: styleManager)
 
         case .line:
-            applyLine(id: info.id, lowerId: id, colors: colors, mapView: mapView)
+            applyLine(id: info.id, lowerId: id, colors: colors, styleManager: styleManager)
 
         case .symbol:
-            applySymbol(id: info.id, lowerId: id, colors: colors, mapView: mapView)
+            applySymbol(id: info.id, lowerId: id, colors: colors, styleManager: styleManager)
 
         case .fillExtrusion:
             if id.contains("building") || id.contains("extrusion") {
-                try? mapView.mapboxMap.updateLayer(withId: info.id, type: FillExtrusionLayer.self) { layer in
+                try? styleManager.updateLayer(withId: info.id, type: FillExtrusionLayer.self) { layer in
                     layer.fillExtrusionColor = .constant(StyleColor(colors.building))
                     layer.visibility = .constant(show3DBuildings ? .visible : .none)
                 }
@@ -93,9 +98,9 @@ enum MapStyleApplicator {
     private static func applyBackground(
         id: String,
         colors: MapStyleColors,
-        mapView: MapView
+        styleManager: StyleManager
     ) {
-        try? mapView.mapboxMap.updateLayer(withId: id, type: BackgroundLayer.self) { layer in
+        try? styleManager.updateLayer(withId: id, type: BackgroundLayer.self) { layer in
             layer.backgroundColor = .constant(StyleColor(colors.land))
         }
     }
@@ -106,22 +111,22 @@ enum MapStyleApplicator {
         id: String,
         lowerId: String,
         colors: MapStyleColors,
-        mapView: MapView
+        styleManager: StyleManager
     ) {
         if lowerId.contains("water") {
-            try? mapView.mapboxMap.updateLayer(withId: id, type: FillLayer.self) { layer in
+            try? styleManager.updateLayer(withId: id, type: FillLayer.self) { layer in
                 layer.fillColor = .constant(StyleColor(colors.water))
             }
         } else if lowerId.contains("building") {
-            try? mapView.mapboxMap.updateLayer(withId: id, type: FillLayer.self) { layer in
+            try? styleManager.updateLayer(withId: id, type: FillLayer.self) { layer in
                 layer.fillColor = .constant(StyleColor(colors.building))
             }
         } else if lowerId.contains("park") || lowerId.contains("green") || lowerId.contains("vegetation") {
-            try? mapView.mapboxMap.updateLayer(withId: id, type: FillLayer.self) { layer in
+            try? styleManager.updateLayer(withId: id, type: FillLayer.self) { layer in
                 layer.fillColor = .constant(StyleColor(colors.park))
             }
         } else if lowerId.contains("land") {
-            try? mapView.mapboxMap.updateLayer(withId: id, type: FillLayer.self) { layer in
+            try? styleManager.updateLayer(withId: id, type: FillLayer.self) { layer in
                 layer.fillColor = .constant(StyleColor(colors.land))
             }
         }
@@ -133,11 +138,11 @@ enum MapStyleApplicator {
         id: String,
         lowerId: String,
         colors: MapStyleColors,
-        mapView: MapView
+        styleManager: StyleManager
     ) {
         // Road casings (outlines drawn beneath road fill)
         if lowerId.contains("case") {
-            try? mapView.mapboxMap.updateLayer(withId: id, type: LineLayer.self) { layer in
+            try? styleManager.updateLayer(withId: id, type: LineLayer.self) { layer in
                 layer.lineColor = .constant(StyleColor(colors.roadCase))
             }
             return
@@ -145,7 +150,7 @@ enum MapStyleApplicator {
 
         // Waterways (rivers, streams)
         if lowerId.contains("waterway") {
-            try? mapView.mapboxMap.updateLayer(withId: id, type: LineLayer.self) { layer in
+            try? styleManager.updateLayer(withId: id, type: LineLayer.self) { layer in
                 layer.lineColor = .constant(StyleColor(colors.waterway))
             }
             return
@@ -153,7 +158,7 @@ enum MapStyleApplicator {
 
         // Administrative boundaries
         if lowerId.contains("admin") || lowerId.contains("boundary") {
-            try? mapView.mapboxMap.updateLayer(withId: id, type: LineLayer.self) { layer in
+            try? styleManager.updateLayer(withId: id, type: LineLayer.self) { layer in
                 layer.lineColor = .constant(StyleColor(colors.boundary))
             }
             return
@@ -165,15 +170,15 @@ enum MapStyleApplicator {
         guard isRoad else { return }
 
         if lowerId.contains("motorway") || lowerId.contains("trunk") || lowerId.contains("primary") {
-            try? mapView.mapboxMap.updateLayer(withId: id, type: LineLayer.self) { layer in
+            try? styleManager.updateLayer(withId: id, type: LineLayer.self) { layer in
                 layer.lineColor = .constant(StyleColor(colors.roadPrimary))
             }
         } else if lowerId.contains("secondary") || lowerId.contains("tertiary") {
-            try? mapView.mapboxMap.updateLayer(withId: id, type: LineLayer.self) { layer in
+            try? styleManager.updateLayer(withId: id, type: LineLayer.self) { layer in
                 layer.lineColor = .constant(StyleColor(colors.roadSecondary))
             }
         } else {
-            try? mapView.mapboxMap.updateLayer(withId: id, type: LineLayer.self) { layer in
+            try? styleManager.updateLayer(withId: id, type: LineLayer.self) { layer in
                 layer.lineColor = .constant(StyleColor(colors.roadMinor))
             }
         }
@@ -185,11 +190,11 @@ enum MapStyleApplicator {
         id: String,
         lowerId: String,
         colors: MapStyleColors,
-        mapView: MapView
+        styleManager: StyleManager
     ) {
         // Hide POIs when the profile requests a clean field map
         if colors.hidePOIs && (lowerId.contains("poi") || lowerId.contains("transit")) {
-            try? mapView.mapboxMap.updateLayer(withId: id, type: SymbolLayer.self) { layer in
+            try? styleManager.updateLayer(withId: id, type: SymbolLayer.self) { layer in
                 layer.visibility = .constant(.none)
             }
             return
@@ -197,7 +202,7 @@ enum MapStyleApplicator {
 
         // Road / street labels
         if lowerId.contains("road") || lowerId.contains("street") || lowerId.contains("path") {
-            try? mapView.mapboxMap.updateLayer(withId: id, type: SymbolLayer.self) { layer in
+            try? styleManager.updateLayer(withId: id, type: SymbolLayer.self) { layer in
                 layer.textColor = .constant(StyleColor(colors.labelSecondary))
             }
             return
@@ -205,7 +210,7 @@ enum MapStyleApplicator {
 
         // Place labels (cities, neighborhoods, etc.)
         if lowerId.contains("label") || lowerId.contains("place") {
-            try? mapView.mapboxMap.updateLayer(withId: id, type: SymbolLayer.self) { layer in
+            try? styleManager.updateLayer(withId: id, type: SymbolLayer.self) { layer in
                 layer.textColor = .constant(StyleColor(colors.labelPrimary))
             }
             return
@@ -213,7 +218,7 @@ enum MapStyleApplicator {
 
         // POI labels (when not hidden)
         if lowerId.contains("poi") {
-            try? mapView.mapboxMap.updateLayer(withId: id, type: SymbolLayer.self) { layer in
+            try? styleManager.updateLayer(withId: id, type: SymbolLayer.self) { layer in
                 layer.textColor = .constant(StyleColor(colors.poi))
             }
         }

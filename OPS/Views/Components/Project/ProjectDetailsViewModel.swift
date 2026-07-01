@@ -188,44 +188,6 @@ class ProjectDetailsViewModel: ObservableObject {
         return street.isEmpty ? project.title : street
     }
 
-    /// Nearby projects for the map (excludes the current project)
-    var nearbyProjectPins: [NearbyProjectPin] {
-        guard let context = dataController?.modelContext,
-              let currentCoord = project.coordinate else { return [] }
-
-        do {
-            var descriptor = FetchDescriptor<Project>(
-                predicate: #Predicate<Project> { p in
-                    p.deletedAt == nil && p.latitude != nil && p.longitude != nil
-                }
-            )
-            descriptor.fetchLimit = 50
-            let allProjects = try context.fetch(descriptor)
-
-            return allProjects
-                .filter { $0.id != project.id }
-                .compactMap { p -> NearbyProjectPin? in
-                    guard let coord = p.coordinate else { return nil }
-                    let distance = CLLocation(latitude: currentCoord.latitude, longitude: currentCoord.longitude)
-                        .distance(from: CLLocation(latitude: coord.latitude, longitude: coord.longitude))
-                    // Show projects within ~15 km
-                    guard distance < 15_000 else { return nil }
-                    return NearbyProjectPin(
-                        id: p.id,
-                        coordinate: coord,
-                        name: p.title,
-                        status: p.status,
-                        taskColorHexes: p.tasks
-                            .filter { $0.deletedAt == nil && $0.status == .active }
-                            .map { $0.effectiveColor }
-                    )
-                }
-        } catch {
-            print("[PROJECT_DETAILS] Failed to fetch nearby projects: \(error)")
-            return []
-        }
-    }
-
     // MARK: - Expense Total
 
     var expenseTotal: Double {

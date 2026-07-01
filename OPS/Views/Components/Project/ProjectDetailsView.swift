@@ -28,6 +28,7 @@ struct ProjectDetailsView: View {
     @Environment(\.wizardStateManager) private var wizardStateManager
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var locationManager: LocationManager
 
     @StateObject private var viewModel: ProjectDetailsViewModel
     @StateObject private var notesViewModel: ProjectNotesViewModel
@@ -379,7 +380,7 @@ struct ProjectDetailsView: View {
                     project: project,
                     taskColorHexes: viewModel.projectTaskColorHexes,
                     pinLabel: viewModel.pinLabel,
-                    nearbyProjects: viewModel.nearbyProjectPins,
+                    userCoordinate: locationManager.userLocation,
                     onMapTap: { viewModel.openDirections() }
                 )
                 Spacer()

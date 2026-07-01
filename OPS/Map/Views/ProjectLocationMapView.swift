@@ -102,7 +102,7 @@ struct ProjectLocationMapView: UIViewRepresentable {
         let nearby = nearbyProjects
 
         coord.styleLoadedCancellable = mapView.mapboxMap.onStyleLoaded.observe { _ in
-            MapStyleApplicator.apply(mapStyleRef, to: mapView, show3DBuildings: show3D)
+            MapStyleApplicator.apply(mapStyleRef, to: mapView.mapboxMap, show3DBuildings: show3D)
             coord.addAnnotations(
                 to: mapView,
                 mainCoordinate: mainCoord,

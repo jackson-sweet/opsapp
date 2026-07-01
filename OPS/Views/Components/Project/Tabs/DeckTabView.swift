@@ -18,6 +18,12 @@ struct DeckTabView: View {
     let project: Project
     let onCreateDeckDesign: () -> Void
     let onEditDeckDesign: (DeckDesign) -> Void
+    /// Shared with the fullscreen viewer so 3D/2D mode persists across expand.
+    @Binding var viewMode: DeckTabViewMode
+    /// Accessibility path to fullscreen — the overscroll gesture that normally
+    /// triggers it isn't operable under VoiceOver, so the deck canvas exposes
+    /// this as a custom action.
+    var onRequestFullscreen: () -> Void = {}
 
     @EnvironmentObject private var permissionStore: PermissionStore
     @EnvironmentObject private var dataController: DataController
@@ -25,13 +31,17 @@ struct DeckTabView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var viewMode: DeckTabViewMode = .threeD
     @State private var remoteFetchAttemptedProjectId: String?
     /// `true` while the user is actively panning/zooming the visible viewport
     /// (the 3D camera OR the 2D blueprint). Drives the badge fade — badges hide
     /// during viewport movement so they don't obstruct the geometry being
     /// inspected. Reset on a view-mode switch so badges can't get stuck hidden.
     @State private var isViewportInteracting = false
+
+    /// Inline read-only tool state — never mutated (the canvas is passed
+    /// `showsTools: false`). The fullscreen viewer owns the interactive tool
+    /// state separately, so nothing the user does in fullscreen leaks here.
+    @StateObject private var toolState = DeckViewerToolState()
 
     // Bug 4 fix: use @Query so SwiftData automatically invalidates this view
     // when a DeckDesign is inserted/updated for this project — no manual
@@ -94,6 +104,8 @@ struct DeckTabView: View {
                     }
                 case .twoD:
                     DeckTab2DView(drawingData: design.drawingData,
+                                  toolState: toolState,
+                                  showsTools: false,
                                   onInteractingChange: { isViewportInteracting = $0 })
                 }
             }
@@ -120,6 +132,7 @@ struct DeckTabView: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .animation(OPSStyle.Animation.fast, value: viewMode)
+            .accessibilityAction(named: Text("Expand deck to fullscreen")) { onRequestFullscreen() }
         }
     }
 

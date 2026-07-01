@@ -317,13 +317,20 @@ enum BooksLedgerStatus {
     }
 
     static func shortDate(_ raw: String?) -> String {
-        guard let raw,
-              let date = SupabaseDate.parseDateOnly(raw) ?? SupabaseDate.parse(raw) else { return "" }
+        guard let raw else { return "" }
+        // A `date` column parses to midnight UTC — format it in UTC too, or
+        // everyone west of Greenwich reads yesterday's date. Full timestamps
+        // are real moments and format in local time as usual.
+        if let dateOnly = SupabaseDate.parseDateOnly(raw) {
+            return monthDay(dateOnly, timeZone: TimeZone(identifier: "UTC"))
+        }
+        guard let date = SupabaseDate.parse(raw) else { return "" }
         return monthDay(date)
     }
 
-    private static func monthDay(_ date: Date) -> String {
+    private static func monthDay(_ date: Date, timeZone: TimeZone? = nil) -> String {
         let f = DateFormatter(); f.dateFormat = "MMM d"
+        if let timeZone { f.timeZone = timeZone }
         return f.string(from: date).uppercased()
     }
 

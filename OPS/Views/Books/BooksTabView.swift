@@ -50,6 +50,7 @@ struct BooksTabView: View {
 
     @State private var expandedCard: HeroCarousel.CardID?
     @State private var showCashflowForecast = false
+    @State private var showBatchReview = false
 
     // MARK: - Derived state
 
@@ -65,6 +66,17 @@ struct BooksTabView: View {
     private var canPipeline: Bool { permissionStore.can("pipeline.view") }
     private var hasFinances: Bool { canFinances }
     private var gridVisible: Bool { canFinances || canPipeline }
+
+    /// Approvers get the one-tap path from Money into the batch-review hub —
+    /// same `expenses.approve` gate as the Settings entry.
+    private var canReviewBatches: Bool { permissionStore.can("expenses.approve") }
+
+    /// Envelopes waiting on the approver (pending / submitted; a filling
+    /// envelope is never review-ready). Same predicate as the hub's
+    /// NEEDS REVIEW tab, computed off the batches the Books VM already loads.
+    private var batchesNeedingReview: Int {
+        expenseVM.batches.filter { ExpenseBatchStatus(rawValue: $0.status)?.needsReview == true }.count
+    }
 
     /// Maps the dashboard VM's 4-case sync state onto `BooksSyncBanner`'s
     /// 3-case enum. `.synced` returns nil — banner hides when fully synced.
@@ -215,6 +227,9 @@ struct BooksTabView: View {
             .fullScreenCover(isPresented: $showCashflowForecast) {
                 CashflowForecastScreen(viewModel: cashflowVM)
             }
+            .navigationDestination(isPresented: $showBatchReview) {
+                ExpensesListView()
+            }
         }
         .trackScreen("Books")
         .task {
@@ -275,6 +290,11 @@ struct BooksTabView: View {
             Text("·").foregroundColor(OPSStyle.Colors.textMute)
             Text("\(currentCount)").foregroundColor(OPSStyle.Colors.secondaryText)
             Spacer()
+            if selectedSegment == .expenses && canReviewBatches {
+                BooksReviewBatchesLink(count: batchesNeedingReview) {
+                    showBatchReview = true
+                }
+            }
         }
         .font(.custom("JetBrainsMono-Medium", size: 10))
         .tracking(1.6)

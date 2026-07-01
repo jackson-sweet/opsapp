@@ -127,6 +127,42 @@ enum BooksExpenseFilter: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Review-batches link
+
+/// Discreet trailing affordance in the expenses ledger marker — one tap from
+/// Money into the admin batch-review hub. Shown only to approvers
+/// (`expenses.approve`); goes tan when envelopes are waiting on them.
+struct BooksReviewBatchesLink: View {
+    /// Batches currently needing review (pending / submitted).
+    let count: Int
+    var onTap: () -> Void
+
+    var body: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onTap()
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                Text(count > 0 ? "REVIEW BATCHES · \(count)" : "REVIEW BATCHES")
+                Text("→")
+            }
+            .font(.custom("JetBrainsMono-Medium", size: 10))
+            .tracking(1.2)
+            .textCase(.uppercase)
+            .monospacedDigit()
+            .foregroundColor(count > 0 ? OPSStyle.Colors.tan : OPSStyle.Colors.secondaryText)
+            // Keep the marker row visually compact but honor the 44pt floor —
+            // the hit region extends past the one-line label.
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, -15)
+        .accessibilityLabel(count > 0 ? "Review batches, \(count) waiting" : "Review batches")
+        .accessibilityHint("Opens the expense batch review hub")
+    }
+}
+
 // MARK: - Ledger segment control
 
 /// The inset-pill 3-segment switch (INVOICES · ESTIMATES · EXPENSES). Neutral

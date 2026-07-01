@@ -98,6 +98,100 @@ extension MoneyDashboardViewModel {
     }
 }
 
+// MARK: - Ledger row fixtures
+
+extension Invoice {
+    /// Standalone (never inserted into a container) invoice for previews and
+    /// the render-snapshot harness.
+    @MainActor
+    static func previewRow(
+        number: String,
+        status: InvoiceStatus,
+        total: Double,
+        balanceDue: Double? = nil,
+        dueInDays: Int? = nil,
+        title: String? = nil
+    ) -> Invoice {
+        let inv = Invoice(companyId: "preview-co", invoiceNumber: number, status: status)
+        inv.total = total
+        inv.balanceDue = balanceDue ?? (status.isPaid ? 0 : total)
+        inv.amountPaid = inv.total - inv.balanceDue
+        inv.title = title
+        if let dueInDays {
+            inv.dueDate = Calendar.current.date(byAdding: .day, value: dueInDays, to: Date())
+        }
+        return inv
+    }
+}
+
+extension Estimate {
+    @MainActor
+    static func previewRow(
+        number: String,
+        status: EstimateStatus,
+        total: Double,
+        title: String? = nil
+    ) -> Estimate {
+        let est = Estimate(companyId: "preview-co", estimateNumber: number, status: status)
+        est.total = total
+        est.title = title
+        return est
+    }
+}
+
+extension ExpenseDTO {
+    static func previewRow(
+        id: String = UUID().uuidString,
+        merchant: String,
+        amount: Double,
+        status: ExpenseStatus = .submitted,
+        category: String? = nil,
+        hasReceipt: Bool = true,
+        submittedBy: String = "preview-user"
+    ) -> ExpenseDTO {
+        ExpenseDTO(
+            id: id,
+            companyId: "preview-co",
+            submittedBy: submittedBy,
+            status: status.rawValue,
+            categoryId: category == nil ? nil : "cat-1",
+            merchantName: merchant,
+            description: nil,
+            amount: amount,
+            taxAmount: nil,
+            currency: "USD",
+            expenseDate: "2026-06-28",
+            paymentMethod: nil,
+            receiptImageUrl: hasReceipt ? "https://example.com/receipt.jpg" : nil,
+            receiptThumbnailUrl: hasReceipt ? "https://example.com/receipt-thumb.jpg" : nil,
+            ocrRawData: nil,
+            ocrConfidence: nil,
+            batchId: nil,
+            approvedBy: nil,
+            approvedAt: nil,
+            rejectedBy: nil,
+            rejectedAt: nil,
+            rejectionReason: nil,
+            flagComment: nil,
+            flaggedBy: nil,
+            flaggedAt: nil,
+            accountingSyncStatus: nil,
+            accountingSyncId: nil,
+            accountingSyncedAt: nil,
+            createdAt: "2026-06-28T12:00:00Z",
+            updatedAt: "2026-06-28T12:00:00Z",
+            deletedAt: nil,
+            allocations: nil,
+            category: category.map {
+                ExpenseCategoryDTO(
+                    id: "cat-1", companyId: "preview-co", name: $0,
+                    icon: nil, isActive: true, isDefault: false, sortOrder: 0, createdAt: nil
+                )
+            }
+        )
+    }
+}
+
 extension PermissionStore {
     /// Owner — every Books permission granted at "all" scope.
     @MainActor

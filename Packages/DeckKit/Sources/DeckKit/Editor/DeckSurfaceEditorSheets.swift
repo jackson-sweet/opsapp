@@ -64,12 +64,18 @@ public struct SurfacePatternSheet: View {
                         _ = model.setSurfacePattern(pattern, forSurfaceId: selectedSurfaceId)
                         dismiss()
                     } label: {
-                        HStack(spacing: OPSStyle.Layout.spacing3) {
-                            DeckPatternPreview(pattern: pattern)
-                                .frame(
-                                    width: OPSStyle.Layout.touchTargetLarge * 2,
-                                    height: OPSStyle.Layout.touchTargetLarge
-                                )
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
+                                DeckPatternPreview(pattern: pattern)
+                                    .frame(
+                                        width: OPSStyle.Layout.touchTargetLarge * 2,
+                                        height: OPSStyle.Layout.touchTargetLarge
+                                    )
+
+                                Spacer(minLength: OPSStyle.Layout.spacing2)
+
+                                DeckSurfaceEditorStatusMark(isActive: isSelected(pattern))
+                            }
 
                             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                 Text(pattern.editorTitle.uppercased())
@@ -79,10 +85,6 @@ public struct SurfacePatternSheet: View {
                                     .font(OPSStyle.Typography.fieldMetadata)
                                     .foregroundStyle(OPSStyle.Colors.text2)
                             }
-
-                            Spacer(minLength: OPSStyle.Layout.spacing2)
-
-                            DeckSurfaceEditorStatusMark(isActive: isSelected(pattern))
                         }
                         .padding(OPSStyle.Layout.spacing2)
                         .frame(minHeight: OPSStyle.Layout.touchTargetLarge)

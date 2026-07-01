@@ -258,6 +258,7 @@ public struct PostHeightSizingRow: Codable, Equatable {
 public struct StairRules: Codable, Equatable {
     public var maxRiserHeightInches: Double
     public var minTreadRunInches: Double
+    public var stairCodeSection: String
     public var maxSingleFlightRiseInches: Double
     public var minLandingDepthInches: Double
     public var handrailRequiredRiserCount: Int
@@ -274,6 +275,7 @@ public struct StairRules: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case maxRiserHeightInches
         case minTreadRunInches
+        case stairCodeSection
         case maxSingleFlightRiseInches
         case minLandingDepthInches
         case handrailRequiredRiserCount
@@ -291,6 +293,7 @@ public struct StairRules: Codable, Equatable {
     public init(
         maxRiserHeightInches: Double = 7.75,
         minTreadRunInches: Double = 10,
+        stairCodeSection: String = "IRC R311.7",
         maxSingleFlightRiseInches: Double = 147,
         minLandingDepthInches: Double = 36,
         handrailRequiredRiserCount: Int = 4,
@@ -306,6 +309,7 @@ public struct StairRules: Codable, Equatable {
     ) {
         self.maxRiserHeightInches = maxRiserHeightInches
         self.minTreadRunInches = minTreadRunInches
+        self.stairCodeSection = stairCodeSection
         self.maxSingleFlightRiseInches = maxSingleFlightRiseInches
         self.minLandingDepthInches = minLandingDepthInches
         self.handrailRequiredRiserCount = handrailRequiredRiserCount
@@ -324,6 +328,7 @@ public struct StairRules: Codable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.maxRiserHeightInches = try c.decodeIfPresent(Double.self, forKey: .maxRiserHeightInches) ?? 7.75
         self.minTreadRunInches = try c.decodeIfPresent(Double.self, forKey: .minTreadRunInches) ?? 10
+        self.stairCodeSection = try c.decodeIfPresent(String.self, forKey: .stairCodeSection) ?? "IRC R311.7"
         self.maxSingleFlightRiseInches = try c.decodeIfPresent(Double.self, forKey: .maxSingleFlightRiseInches) ?? 147
         self.minLandingDepthInches = try c.decodeIfPresent(Double.self, forKey: .minLandingDepthInches) ?? 36
         self.handrailRequiredRiserCount = try c.decodeIfPresent(Int.self, forKey: .handrailRequiredRiserCount) ?? 4

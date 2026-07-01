@@ -5,6 +5,7 @@ public struct CodePackage: Codable, Equatable {
     public var edition: String?
     public var publishedDate: Date
     public var guardRules: GuardRules
+    public var ledgerRules: LedgerRules
     public var unitSystem: PackageUnits
     public var stairRules: StairRules
     public var beamSpanTable: [BeamSpanSizingRow]
@@ -16,6 +17,7 @@ public struct CodePackage: Codable, Equatable {
         case edition
         case publishedDate
         case guardRules
+        case ledgerRules
         case unitSystem
         case stairRules
         case beamSpanTable
@@ -28,6 +30,7 @@ public struct CodePackage: Codable, Equatable {
         edition: String? = nil,
         publishedDate: Date = Date(timeIntervalSince1970: 0),
         guardRules: GuardRules = GuardRules(),
+        ledgerRules: LedgerRules = LedgerRules(),
         unitSystem: PackageUnits = .imperial,
         stairRules: StairRules = StairRules(),
         beamSpanTable: [BeamSpanSizingRow] = [],
@@ -38,6 +41,7 @@ public struct CodePackage: Codable, Equatable {
         self.edition = edition
         self.publishedDate = publishedDate
         self.guardRules = guardRules
+        self.ledgerRules = ledgerRules
         self.unitSystem = unitSystem
         self.stairRules = stairRules
         self.beamSpanTable = beamSpanTable
@@ -52,6 +56,8 @@ public struct CodePackage: Codable, Equatable {
         self.publishedDate = try c.decodeIfPresent(Date.self, forKey: .publishedDate)
             ?? Date(timeIntervalSince1970: 0)
         self.guardRules = try c.decodeIfPresent(GuardRules.self, forKey: .guardRules) ?? GuardRules()
+        self.ledgerRules = try c.decodeIfPresent(LedgerRules.self, forKey: .ledgerRules)
+            ?? LedgerRules()
         self.unitSystem = try c.decodeIfPresent(PackageUnits.self, forKey: .unitSystem) ?? .imperial
         self.stairRules = try c.decodeIfPresent(StairRules.self, forKey: .stairRules) ?? StairRules()
         self.beamSpanTable = try c.decodeIfPresent([BeamSpanSizingRow].self, forKey: .beamSpanTable) ?? []
@@ -111,6 +117,34 @@ public struct GuardRules: Codable, Equatable {
             forKey: .maxPostSpacingInches
         )
         self.codeSection = try c.decodeIfPresent(String.self, forKey: .codeSection) ?? "IRC R312"
+    }
+}
+
+public struct LedgerRules: Codable, Equatable {
+    public var minLateralConnectors: Int
+    public var codeSection: String
+
+    private enum CodingKeys: String, CodingKey {
+        case minLateralConnectors
+        case codeSection
+    }
+
+    public init(
+        minLateralConnectors: Int = 2,
+        codeSection: String = "IRC R507.9"
+    ) {
+        self.minLateralConnectors = minLateralConnectors
+        self.codeSection = codeSection
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.minLateralConnectors = try c.decodeIfPresent(
+            Int.self,
+            forKey: .minLateralConnectors
+        ) ?? 2
+        self.codeSection = try c.decodeIfPresent(String.self, forKey: .codeSection)
+            ?? "IRC R507.9"
     }
 }
 

@@ -14,6 +14,7 @@ public enum ComplianceEngine {
         let findings =
             GuardChecks.evaluate(data, mode: mode, package: package)
             + StairChecks.evaluate(data, mode: mode, package: package)
+            + LedgerChecks.evaluate(data, mode: mode, package: package)
             + StructuralChecks.evaluate(data, mode: mode, package: package)
         return ComplianceReport(
             mode: mode,

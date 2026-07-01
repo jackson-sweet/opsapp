@@ -221,7 +221,7 @@ final class OverheadStructurePlanCodableTests: XCTestCase {
 
         let stamped = DeckSchemaMigration.stampFramingVersion(data)
 
-        XCTAssertEqual(DeckSchemaMigration.currentSchemaVersion, 6)
+        XCTAssertEqual(DeckSchemaMigration.currentSchemaVersion, 7)
         XCTAssertEqual(stamped.schemaVersion, 6)
     }
 

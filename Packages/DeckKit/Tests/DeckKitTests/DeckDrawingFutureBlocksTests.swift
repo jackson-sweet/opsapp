@@ -151,6 +151,7 @@ final class DeckDrawingFutureBlocksTests: XCTestCase {
             "house",
             "surfaceFeatures",
             "overhead",
+            "permitMeta",
             "wasteSettings",
             "components",
         ]

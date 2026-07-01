@@ -1,11 +1,12 @@
 import Foundation
 
 public enum DeckSchemaMigration {
-    public static let currentSchemaVersion = 6
+    public static let currentSchemaVersion = 7
     public static let framingSchemaVersion = 2
     public static let houseSchemaVersion = 5
     public static let surfaceFeaturesSchemaVersion = 6
     public static let overheadSchemaVersion = 6
+    public static let permitSchemaVersion = 7
 
     public static func stampFramingVersion(_ data: DeckDrawingData) -> DeckDrawingData {
         var targetVersion = data.schemaVersion ?? 0
@@ -20,6 +21,9 @@ public enum DeckSchemaMigration {
         }
         if data.overhead != nil {
             targetVersion = max(targetVersion, overheadSchemaVersion)
+        }
+        if data.permitMeta != nil {
+            targetVersion = max(targetVersion, permitSchemaVersion)
         }
         guard targetVersion > (data.schemaVersion ?? 0) || data.framing != nil else { return data }
 

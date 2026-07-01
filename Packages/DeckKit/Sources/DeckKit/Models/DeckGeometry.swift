@@ -745,6 +745,89 @@ public struct DeckSurface: Identifiable, Codable, Equatable {
     }
 }
 
+// MARK: - Permit Metadata
+
+public struct PermitMeta: Codable, Equatable {
+    public var jurisdictionId: String?
+    public var codeEdition: String?
+    public var setbacks: SetbackInput?
+    public var disclaimerAcknowledgedAt: Date?
+    public var lastComplianceRunAt: Date?
+    public var lastComplianceResult: ComplianceReport?
+    public var peStampRequest: PEStampRequest?
+
+    private enum CodingKeys: String, CodingKey {
+        case jurisdictionId
+        case codeEdition
+        case setbacks
+        case disclaimerAcknowledgedAt
+        case lastComplianceRunAt
+        case lastComplianceResult
+        case peStampRequest
+    }
+
+    public init(
+        jurisdictionId: String? = nil,
+        codeEdition: String? = nil,
+        setbacks: SetbackInput? = nil,
+        disclaimerAcknowledgedAt: Date? = nil,
+        lastComplianceRunAt: Date? = nil,
+        lastComplianceResult: ComplianceReport? = nil,
+        peStampRequest: PEStampRequest? = nil
+    ) {
+        self.jurisdictionId = jurisdictionId
+        self.codeEdition = codeEdition
+        self.setbacks = setbacks
+        self.disclaimerAcknowledgedAt = disclaimerAcknowledgedAt
+        self.lastComplianceRunAt = lastComplianceRunAt
+        self.lastComplianceResult = lastComplianceResult
+        self.peStampRequest = peStampRequest
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.jurisdictionId = try c.decodeIfPresent(String.self, forKey: .jurisdictionId)
+        self.codeEdition = try c.decodeIfPresent(String.self, forKey: .codeEdition)
+        self.setbacks = try c.decodeIfPresent(SetbackInput.self, forKey: .setbacks)
+        self.disclaimerAcknowledgedAt = try c.decodeIfPresent(Date.self, forKey: .disclaimerAcknowledgedAt)
+        self.lastComplianceRunAt = try c.decodeIfPresent(Date.self, forKey: .lastComplianceRunAt)
+        self.lastComplianceResult = try c.decodeIfPresent(ComplianceReport.self, forKey: .lastComplianceResult)
+        self.peStampRequest = try c.decodeIfPresent(PEStampRequest.self, forKey: .peStampRequest)
+    }
+}
+
+public struct SetbackInput: Codable, Equatable {
+    public var propertyLines: [CGPoint]
+    public var requiredSetbackFeet: Double?
+    public var ahjVerified: Bool
+
+    public init(
+        propertyLines: [CGPoint] = [],
+        requiredSetbackFeet: Double? = nil,
+        ahjVerified: Bool = false
+    ) {
+        self.propertyLines = propertyLines
+        self.requiredSetbackFeet = requiredSetbackFeet
+        self.ahjVerified = ahjVerified
+    }
+}
+
+public struct PEStampRequest: Codable, Equatable {
+    public var requested: Bool
+    public var reason: String?
+    public var requestedAt: Date?
+
+    public init(
+        requested: Bool = false,
+        reason: String? = nil,
+        requestedAt: Date? = nil
+    ) {
+        self.requested = requested
+        self.reason = reason
+        self.requestedAt = requestedAt
+    }
+}
+
 // MARK: - Complete Drawing Data
 
 public struct DeckDrawingData: Codable {
@@ -782,6 +865,10 @@ public struct DeckDrawingData: Codable {
 
     public var surfaceFeatures: SurfaceFeaturePlan? = nil
     public var overhead: OverheadStructurePlan? = nil
+
+    // MARK: - Permit / Compliance Blocks
+
+    public var permitMeta: PermitMeta? = nil
 
     // MARK: - Estimate Settings
 
@@ -821,6 +908,7 @@ public struct DeckDrawingData: Codable {
         case house
         case surfaceFeatures
         case overhead
+        case permitMeta
         case wasteSettings
         case components
     }
@@ -847,6 +935,7 @@ public struct DeckDrawingData: Codable {
         self.house = try? c.decodeIfPresent(HouseModel.self, forKey: .house)
         self.surfaceFeatures = try? c.decodeIfPresent(SurfaceFeaturePlan.self, forKey: .surfaceFeatures)
         self.overhead = try? c.decodeIfPresent(OverheadStructurePlan.self, forKey: .overhead)
+        self.permitMeta = try? c.decodeIfPresent(PermitMeta.self, forKey: .permitMeta)
         self.wasteSettings = try c.decodeIfPresent(WasteSettings.self, forKey: .wasteSettings)
         self.components = try c.decodeIfPresent([DesignComponentRow].self, forKey: .components)
         self.futureBlocks = [:]
@@ -872,6 +961,7 @@ public struct DeckDrawingData: Codable {
         try c.encodeIfPresent(house, forKey: .house)
         try c.encodeIfPresent(surfaceFeatures, forKey: .surfaceFeatures)
         try c.encodeIfPresent(overhead, forKey: .overhead)
+        try c.encodeIfPresent(permitMeta, forKey: .permitMeta)
         try c.encodeIfPresent(wasteSettings, forKey: .wasteSettings)
         try c.encodeIfPresent(components, forKey: .components)
     }

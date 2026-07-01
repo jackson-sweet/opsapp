@@ -26,6 +26,9 @@ enum LeadsSheet: Identifiable {
     case lost(Opportunity)
     case convert(Opportunity)
     case log(Opportunity)
+    /// Picker behind the WON · CONVERT nudge when more than one win is
+    /// unconverted — pick a win, then hand it to `.convert`.
+    case wonChooser
 
     var id: String {
         switch self {
@@ -34,6 +37,7 @@ enum LeadsSheet: Identifiable {
         case .lost(let opp):      return "lost-\(opp.id)"
         case .convert(let opp):   return "convert-\(opp.id)"
         case .log(let opp):       return "log-\(opp.id)"
+        case .wonChooser:         return "won-chooser"
         }
     }
 }
@@ -399,6 +403,22 @@ struct LeadsTabView: View {
             LeadLogActivitySheet(opportunity: opp)
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
+        case .wonChooser:
+            LeadsWonChooserSheet(
+                leads: buckets.unconvertedWon,
+                onPick: { lead in
+                    // Swap chooser → convert. Drop the chooser first, then
+                    // present convert on the next runloop so a single sheet
+                    // channel never tries to show both (mirrors the site-visit
+                    // → convert hand-off).
+                    activeSheet = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        activeSheet = .convert(lead)
+                    }
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
     }
 
@@ -466,8 +486,13 @@ struct LeadsTabView: View {
         "\(viewModel.openLeadCount) OPEN · PIPELINE \(BooksFormat.compact(viewModel.weightedForecastValue))"
     }
 
+    /// One unconverted win → straight to convert. Several → a chooser first so
+    /// the operator sees every open win and picks which to turn into a job.
     private func presentWonConvert() {
-        if let first = buckets.unconvertedWon.first {
+        let wins = buckets.unconvertedWon
+        if wins.count > 1 {
+            activeSheet = .wonChooser
+        } else if let first = wins.first {
             activeSheet = .convert(first)
         }
     }

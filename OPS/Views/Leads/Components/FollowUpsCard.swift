@@ -43,7 +43,7 @@ struct FollowUpsCard: View {
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassSurface()
+            .commandCard()
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }

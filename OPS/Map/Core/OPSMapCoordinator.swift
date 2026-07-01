@@ -169,7 +169,7 @@ final class OPSMapCoordinator: ObservableObject {
         // Apply OPS style customizations after the base style finishes loading
         styleLoadedCancellable = mapView.mapboxMap.onStyleLoaded.observe { [weak self] _ in
             guard let self, let mv = self.mapView else { return }
-            MapStyleApplicator.apply(self.mapStyle, to: mv, show3DBuildings: self.show3DBuildings)
+            MapStyleApplicator.apply(self.mapStyle, to: mv.mapboxMap, show3DBuildings: self.show3DBuildings)
         }
 
         // Defer the initial camera fly-to so flyTo's @Published mutations
@@ -231,7 +231,7 @@ final class OPSMapCoordinator: ObservableObject {
         guard enabled != show3DBuildings else { return }
         show3DBuildings = enabled
         guard let mapView = mapView else { return }
-        MapStyleApplicator.set3DBuildings(enabled, mapView: mapView)
+        MapStyleApplicator.set3DBuildings(enabled, styleManager: mapView.mapboxMap)
     }
 
     /// Set the default orientation mode.

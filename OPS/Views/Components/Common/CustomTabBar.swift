@@ -20,6 +20,9 @@ struct CustomTabBar: View {
 
     private let iconSize = OPSStyle.Layout.tabBarIconSize   // 28
     private let dividerWidth: CGFloat = 1
+    /// Sentinel scroll id for the lane's trailing edge — used to fully reveal
+    /// the Settings peek when the Settings tab is selected.
+    private static let trailingEdgeID = -1
 
     /// Whether tab bar should be disabled during tutorial drag step
     private var isDisabledForTutorial: Bool {
@@ -99,13 +102,13 @@ struct CustomTabBar: View {
         let primaryCount = max(n - 1, 1)
         let gap = evenGap(laneWidth: laneWidth, primaryCount: primaryCount)
         let cell = iconSize + gap
-        let revealDistance = n > 1 ? cell + dividerWidth + gap / 2 : 0
+        let revealDistance = n > 1 ? cell + dividerWidth + gap : 0
 
         // Underline sits under the selected icon, in lane content coords. The
         // primary tabs start after the group's leading gap/2; Settings lives in
-        // the trailing group that begins at laneWidth.
+        // the trailing group (divider + a full gap) that begins at laneWidth.
         let indicatorOffset: CGFloat = selectedTab == lastIndex && n > 1
-            ? laneWidth + dividerWidth + gap / 2
+            ? laneWidth + dividerWidth + gap
             : gap + CGFloat(selectedTab) * cell
 
         ScrollViewReader { proxy in
@@ -130,13 +133,19 @@ struct CustomTabBar: View {
                                 .frame(width: dividerWidth, height: iconSize * 0.85)
                                 .frame(height: 50)
 
+                            // Gap between divider and Settings, matching the
+                            // inter-icon spacing so the divider sits in the rhythm
+                            // (a full gap on each side, not gap/2).
+                            Color.clear.frame(width: gap / 2)
+
                             tabButton(tab: tabs[lastIndex], index: lastIndex)
                                 .frame(width: cell)
                                 .id(lastIndex)
 
-                            // Trailing margin so Settings keeps its edge padding
-                            // once fully revealed.
+                            // Trailing margin (+ full-reveal scroll anchor) so
+                            // Settings keeps its edge padding once revealed.
                             Color.clear.frame(width: gap / 2)
+                                .id(Self.trailingEdgeID)
                         }
                     }
 
@@ -178,7 +187,9 @@ struct CustomTabBar: View {
         guard lastIndex > 0 else { return }
         withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
             if selected == lastIndex {
-                proxy.scrollTo(lastIndex, anchor: .trailing)
+                // Fully reveal Settings (scroll to the lane's trailing edge) so
+                // landing on the Settings tab shows it, never scrolls it back off.
+                proxy.scrollTo(Self.trailingEdgeID, anchor: .trailing)
             } else {
                 proxy.scrollTo(0, anchor: .leading)
             }

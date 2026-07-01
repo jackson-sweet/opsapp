@@ -4,6 +4,7 @@ public struct CodePackage: Codable, Equatable {
     public var jurisdictionId: String
     public var edition: String?
     public var publishedDate: Date
+    public var guardRules: GuardRules
     public var unitSystem: PackageUnits
     public var stairRules: StairRules
     public var beamSpanTable: [BeamSpanSizingRow]
@@ -14,6 +15,7 @@ public struct CodePackage: Codable, Equatable {
         case jurisdictionId
         case edition
         case publishedDate
+        case guardRules
         case unitSystem
         case stairRules
         case beamSpanTable
@@ -25,6 +27,7 @@ public struct CodePackage: Codable, Equatable {
         jurisdictionId: String = "",
         edition: String? = nil,
         publishedDate: Date = Date(timeIntervalSince1970: 0),
+        guardRules: GuardRules = GuardRules(),
         unitSystem: PackageUnits = .imperial,
         stairRules: StairRules = StairRules(),
         beamSpanTable: [BeamSpanSizingRow] = [],
@@ -34,6 +37,7 @@ public struct CodePackage: Codable, Equatable {
         self.jurisdictionId = jurisdictionId
         self.edition = edition
         self.publishedDate = publishedDate
+        self.guardRules = guardRules
         self.unitSystem = unitSystem
         self.stairRules = stairRules
         self.beamSpanTable = beamSpanTable
@@ -47,6 +51,7 @@ public struct CodePackage: Codable, Equatable {
         self.edition = try c.decodeIfPresent(String.self, forKey: .edition)
         self.publishedDate = try c.decodeIfPresent(Date.self, forKey: .publishedDate)
             ?? Date(timeIntervalSince1970: 0)
+        self.guardRules = try c.decodeIfPresent(GuardRules.self, forKey: .guardRules) ?? GuardRules()
         self.unitSystem = try c.decodeIfPresent(PackageUnits.self, forKey: .unitSystem) ?? .imperial
         self.stairRules = try c.decodeIfPresent(StairRules.self, forKey: .stairRules) ?? StairRules()
         self.beamSpanTable = try c.decodeIfPresent([BeamSpanSizingRow].self, forKey: .beamSpanTable) ?? []
@@ -59,6 +64,54 @@ public struct CodePackage: Codable, Equatable {
 public enum PackageUnits: String, Codable, Equatable {
     case imperial
     case metric
+}
+
+public struct GuardRules: Codable, Equatable {
+    public var minGuardHeightInches: Double
+    public var guardRequiredHeightInches: Double
+    public var maxOpeningInches: Double
+    public var maxPostSpacingInches: Double?
+    public var codeSection: String
+
+    private enum CodingKeys: String, CodingKey {
+        case minGuardHeightInches
+        case guardRequiredHeightInches
+        case maxOpeningInches
+        case maxPostSpacingInches
+        case codeSection
+    }
+
+    public init(
+        minGuardHeightInches: Double = 36,
+        guardRequiredHeightInches: Double = 30,
+        maxOpeningInches: Double = 4,
+        maxPostSpacingInches: Double? = nil,
+        codeSection: String = "IRC R312"
+    ) {
+        self.minGuardHeightInches = minGuardHeightInches
+        self.guardRequiredHeightInches = guardRequiredHeightInches
+        self.maxOpeningInches = maxOpeningInches
+        self.maxPostSpacingInches = maxPostSpacingInches
+        self.codeSection = codeSection
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.minGuardHeightInches = try c.decodeIfPresent(
+            Double.self,
+            forKey: .minGuardHeightInches
+        ) ?? 36
+        self.guardRequiredHeightInches = try c.decodeIfPresent(
+            Double.self,
+            forKey: .guardRequiredHeightInches
+        ) ?? 30
+        self.maxOpeningInches = try c.decodeIfPresent(Double.self, forKey: .maxOpeningInches) ?? 4
+        self.maxPostSpacingInches = try c.decodeIfPresent(
+            Double.self,
+            forKey: .maxPostSpacingInches
+        )
+        self.codeSection = try c.decodeIfPresent(String.self, forKey: .codeSection) ?? "IRC R312"
+    }
 }
 
 public enum StairStringerType: String, Codable, CaseIterable {

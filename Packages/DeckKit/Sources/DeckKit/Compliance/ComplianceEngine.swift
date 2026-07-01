@@ -11,7 +11,9 @@ public enum ComplianceEngine {
         mode: Mode,
         package: CodePackage
     ) -> ComplianceReport {
-        let findings = StructuralChecks.evaluate(data, mode: mode, package: package)
+        let findings =
+            GuardChecks.evaluate(data, mode: mode, package: package)
+            + StructuralChecks.evaluate(data, mode: mode, package: package)
         return ComplianceReport(
             mode: mode,
             packageEdition: package.edition ?? package.jurisdictionId,

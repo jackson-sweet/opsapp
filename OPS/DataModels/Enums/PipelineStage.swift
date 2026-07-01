@@ -75,4 +75,24 @@ enum PipelineStage: String, Codable, CaseIterable, Identifiable {
         case .won, .lost, .discarded:  return Int.max
         }
     }
+
+    /// Compact 3–7 char variant of `displayName` for dense captions — triage
+    /// card meta rows, stage-history chains, the by-stage strip. `displayName`
+    /// is the full uppercase name ("NEW LEAD", "QUALIFYING", …); this trims it
+    /// so a stage cell stays on one line. (Promoted here from the retired
+    /// LeadActionCard; consumed by LeadTriageCard, LeadsByStageRow, StageTimeline,
+    /// and the Books command grid.)
+    var shortLabel: String {
+        switch self {
+        case .newLead:     return "NEW"
+        case .qualifying:  return "QUAL"
+        case .quoting:     return "QUOTING"
+        case .quoted:      return "QUOTED"
+        case .followUp:    return "FOLLOW"
+        case .negotiation: return "NEGOT"
+        case .won:         return "WON"
+        case .lost:        return "LOST"
+        case .discarded:   return "DISC"
+        }
+    }
 }

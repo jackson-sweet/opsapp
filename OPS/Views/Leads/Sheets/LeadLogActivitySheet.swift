@@ -6,7 +6,7 @@
 //  the LEADS tab rebuild
 //  (docs/superpowers/plans/2026-05-19-leads-tab-rebuild.md §8.7).
 //
-//  Triggered from the LOG quick-glyph on a LeadActionCard. Lands a row in
+//  Triggered from the LOG quick action on a LeadTriageCard. Lands a row in
 //  the activities table via `LeadDetailViewModel.logActivity`. After save,
 //  posts a LeadActivityLoggedSuccess notification so LeadsTabView can reload
 //  buckets — a newly-logged activity bumps `lastActivityAt` which re-shuffles

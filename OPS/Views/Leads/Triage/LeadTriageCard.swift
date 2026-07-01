@@ -49,6 +49,7 @@ struct LeadTriageCard: View {
         return BooksFormat.currency(v)
     }
     private var stageIndex: Int { Self.openStages.firstIndex(of: lead.stage) ?? 0 }
+    private var isTerminal: Bool { lead.stage.isTerminal }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -82,8 +83,10 @@ struct LeadTriageCard: View {
             metaRow
                 .padding(.top, OPSStyle.Layout.spacing2_5)
 
-            // Quick actions
-            if canManage {
+            // Quick actions — open leads only. A closed lead has nothing to
+            // advance / win / lose; edit + archive stay reachable via the
+            // long-press context menu the parent attaches.
+            if canManage && !isTerminal {
                 quickActions
                     .padding(.top, OPSStyle.Layout.spacing2_5)
                     .padding(.top, 1)
@@ -99,12 +102,29 @@ struct LeadTriageCard: View {
             onTap()
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(lead.displayContactName), \(verb), \(dueTag.text)")
+        .accessibilityLabel(accessibilityLabelText)
+    }
+
+    private var accessibilityLabelText: String {
+        if isTerminal {
+            let tail = outcome.detail.map { ", \($0)" } ?? ""
+            return "\(lead.displayContactName), \(outcome.label)\(tail)"
+        }
+        return "\(lead.displayContactName), \(verb), \(dueTag.text)"
     }
 
     // MARK: Action strip
 
+    /// Open leads lead with the next move; closed leads state the outcome. The
+    /// triage queue only ever hands this card open leads — the terminal branch
+    /// serves the by-stage drill (PipelineStageListView), which reuses this card.
+    @ViewBuilder
     private var actionStrip: some View {
+        if isTerminal { outcomeStrip } else { followUpStrip }
+    }
+
+    /// Open-lead strip — the next move + the follow-up due tag, tinted by urgency.
+    private var followUpStrip: some View {
         HStack(spacing: OPSStyle.Layout.spacing2_5) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 Text("→")
@@ -134,6 +154,61 @@ struct LeadTriageCard: View {
         .frame(maxWidth: .infinity)
         .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius, style: .continuous).fill(toneColor.opacity(0.08)))
         .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius, style: .continuous).strokeBorder(toneColor.opacity(0.24), lineWidth: 1))
+    }
+
+    /// Terminal-lead strip — states the outcome (WON / LOST / DISCARDED) with a
+    /// compact qualifier: won → converted vs not, lost → the loss reason.
+    private var outcomeStrip: some View {
+        let color = outcome.color
+        return HStack(spacing: OPSStyle.Layout.spacing2_5) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: outcome.icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(color)
+                Text(outcome.label)
+                    .font(.custom("JetBrainsMono-Medium", size: 11))
+                    .tracking(0.9)
+                    .textCase(.uppercase)
+                    .foregroundColor(color)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: OPSStyle.Layout.spacing2)
+            if let detail = outcome.detail {
+                Text(detail)
+                    .font(.custom("JetBrainsMono-Medium", size: 8.5))
+                    .tracking(0.5)
+                    .textCase(.uppercase)
+                    .foregroundColor(color)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(RoundedRectangle(cornerRadius: 3, style: .continuous).fill(color.opacity(0.12)))
+                    .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).strokeBorder(color.opacity(0.30), lineWidth: 1))
+                    .fixedSize()
+            }
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity)
+        .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius, style: .continuous).fill(color.opacity(0.08)))
+        .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius, style: .continuous).strokeBorder(color.opacity(0.24), lineWidth: 1))
+    }
+
+    /// Resolved outcome copy for a terminal lead — label, qualifier, glyph, tone.
+    private var outcome: (label: String, detail: String?, icon: String, color: Color) {
+        switch lead.stage {
+        case .won:
+            return ("WON",
+                    lead.projectId == nil ? "NOT CONVERTED" : "PROJECT LINKED",
+                    "checkmark",
+                    OPSStyle.Colors.oliveTextM)
+        case .lost:
+            let reason = lead.lostReason?
+                .replacingOccurrences(of: "_", with: " ")
+                .uppercased()
+            return ("LOST", reason, "xmark", OPSStyle.Colors.roseTextM)
+        default:
+            return ("DISCARDED", nil, "xmark", OPSStyle.Colors.textMute)
+        }
     }
 
     // MARK: Meta row
@@ -176,6 +251,11 @@ struct LeadTriageCard: View {
     }
 
     private func segmentColor(_ idx: Int) -> Color {
+        if isTerminal {
+            // Won reads as a completed bar (all olive); lost / discarded carry no
+            // progress meaning, so the track stays neutral.
+            return lead.stage == .won ? OPSStyle.Colors.olive.opacity(0.5) : Color.white.opacity(0.10)
+        }
         if idx < stageIndex { return OPSStyle.Colors.opsAccent.opacity(0.45) }
         if idx == stageIndex { return OPSStyle.Colors.opsAccent }
         return Color.white.opacity(0.10)

@@ -11,7 +11,7 @@ public enum ComplianceEngine {
         mode: Mode,
         package: CodePackage
     ) -> ComplianceReport {
-        let findings: [ComplianceFinding] = []
+        let findings = StructuralChecks.evaluate(data, mode: mode, package: package)
         return ComplianceReport(
             mode: mode,
             packageEdition: package.edition ?? package.jurisdictionId,
@@ -23,9 +23,7 @@ public enum ComplianceEngine {
     }
 
     private static func summary(for findings: [ComplianceFinding]) -> String {
-        let concernCount = findings.filter { finding in
-            finding.severity != .notAssessable
-        }.count
+        let concernCount = findings.count
         guard concernCount > 0 else { return ComplianceStrings.noFailures }
         if concernCount == 1 { return "1 code concern identified" }
         return "\(concernCount) code concerns identified"

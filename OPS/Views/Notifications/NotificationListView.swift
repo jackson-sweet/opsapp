@@ -291,8 +291,14 @@ struct NotificationListView: View {
                             NotificationCenter.default.post(name: Notification.Name("OpenSettings"), object: nil)
                         }
                     }) {
-                        Image(systemName: OPSStyle.Icons.gearshape)
-                            .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
+                        // Match the tab bar's Settings glyph exactly — the same
+                        // nav-settings asset, template-rendered (not the SF Symbol
+                        // gear, which reads as a different icon).
+                        Image("nav-settings")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: OPSStyle.Layout.IconSize.md, height: OPSStyle.Layout.IconSize.md)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)

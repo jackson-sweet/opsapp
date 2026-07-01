@@ -226,18 +226,26 @@ struct BooksExpenseRow: View {
     @ViewBuilder
     private var receiptThumb: some View {
         if hasReceipt {
-            VStack(spacing: 3) {
-                ForEach(0..<4, id: \.self) { i in
-                    RoundedRectangle(cornerRadius: 1, style: .continuous)
-                        .fill(Color.white.opacity(i == 0 ? 0.32 : 0.22))
-                        .frame(width: i == 1 ? 18 : (i == 3 ? 13 : 22), height: 2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            // Real thumbnail — thumb URL first, full receipt as the fallback
+            // (same resolution order as the batch-review hub). While loading —
+            // and on a fetch failure — the abstract receipt block stands in:
+            // it still reads "receipt attached", which is the truth the pill
+            // logic keys off. Only a missing URL gets the rose no-receipt state.
+            if let raw = expense.receiptThumbnailUrl ?? expense.receiptImageUrl,
+               let url = URL(string: raw) {
+                AsyncImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().scaledToFill()
+                    } else {
+                        receiptPlaceholder
+                    }
                 }
+                .frame(width: 34, height: 42)
+                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
+            } else {
+                receiptPlaceholder
             }
-            .padding(.horizontal, 5).padding(.vertical, 6)
-            .frame(width: 34, height: 42)
-            .background(RoundedRectangle(cornerRadius: 3, style: .continuous).fill(Color.white.opacity(0.06)))
-            .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
         } else {
             Image(systemName: "camera")
                 .font(.system(size: 15, weight: .regular))
@@ -248,6 +256,22 @@ struct BooksExpenseRow: View {
                         .strokeBorder(OPSStyle.Colors.rose.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3]))
                 )
         }
+    }
+
+    /// Abstract receipt block — the loading / failed stand-in for an attached
+    /// receipt (never shown when the expense has no receipt at all).
+    private var receiptPlaceholder: some View {
+        VStack(spacing: 3) {
+            ForEach(0..<4, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(Color.white.opacity(i == 0 ? 0.32 : 0.22))
+                    .frame(width: i == 1 ? 18 : (i == 3 ? 13 : 22), height: 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(.horizontal, 5).padding(.vertical, 6)
+        .frame(width: 34, height: 42)
+        .background(RoundedRectangle(cornerRadius: 3, style: .continuous).fill(Color.white.opacity(0.06)))
     }
 }
 

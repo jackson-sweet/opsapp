@@ -2,14 +2,26 @@
 //  DeckTab2DView.swift
 //  OPS
 //
-//  Read-only 2D blueprint view for deck designs in project details.
-//  Renders footprint, edges, vertices, and dimension labels without editing tools.
+//  Read-only 2D blueprint view for deck designs. Renders footprint, edges,
+//  vertices, and dimension labels. Tool CHROME (rail, readouts, hints) lives in
+//  the fullscreen viewer — this view only DRAWS, driven by a shared
+//  `DeckViewerToolState`. Inline usage passes `showsTools: false` and a default
+//  tool state, so it stays a pristine read-only preview (dimensions on, no
+//  isolation, no selection) regardless of what the fullscreen tools do.
 //
 
 import SwiftUI
 
 struct DeckTab2DView: View {
     let drawingData: DeckDrawingData
+    /// Shared tool state — measurement/selection modes, dimensions toggle, level
+    /// isolation, and the fit trigger. Owned by the fullscreen viewer; inline
+    /// usage passes a default instance and never mutates it.
+    @ObservedObject var toolState: DeckViewerToolState
+    /// When false (inline), the tap gesture + measurement rendering are inert and
+    /// the canvas ignores tool state entirely — a pure read-only preview. The
+    /// fullscreen viewer sets this true and drives the tools from its rail.
+    var showsTools: Bool = false
     /// Reports `true` while the user is actively pinching/panning the blueprint
     /// so the parent can fade the floating badges (parity with the 3D viewer).
     var onInteractingChange: (Bool) -> Void = { _ in }
@@ -17,20 +29,6 @@ struct DeckTab2DView: View {
     @State private var canvasScale: CGFloat = 1.0
     @State private var canvasOffset: CGSize = .zero
     @State private var lastCenteredSize: CGSize = .zero
-
-    // Bug 033b5328 — measurement tool. User toggles ruler mode, taps two
-    // points on the drawing, and a measurement readout appears between them.
-    @State private var measurementMode: Bool = false
-    @State private var measurementStart: CGPoint?
-    @State private var measurementEnd: CGPoint?
-    // Select & measure mode. Tap edges and/or surfaces to build a selection;
-    // a live readout breaks the totals down by type — decking area by
-    // material, edge linear feet by category (deck edge / railing-by-type /
-    // house-by-cladding), and stairs (count + run). Generalizes the former
-    // single-surface inspector into additive multi-select.
-    @State private var selectionMode: Bool = false
-    @State private var selectedEdgeIds: Set<String> = []
-    @State private var selectedSurfaceIds: Set<String> = []
 
     private let canvasSize: CGFloat = 4800
 
@@ -50,9 +48,6 @@ struct DeckTab2DView: View {
                     .frame(width: canvasSize, height: canvasSize)
                     .scaleEffect(canvasScale, anchor: .topLeading)
                     .offset(canvasOffset)
-
-                // Bug 033b5328 — measurement tools UI overlay.
-                measurementToolOverlay(viewportSize: geometry.size)
             }
             .clipped()
             .contentShape(Rectangle())
@@ -64,13 +59,13 @@ struct DeckTab2DView: View {
                     onInteractingChange: onInteractingChange
                 )
             }
-            // Tap gesture for measurement / surface inspection. Only active
-            // when a tool mode is toggled on so it doesn't interfere with
-            // pan/zoom.
+            // Tap gesture for measurement / surface inspection. Only active in the
+            // fullscreen viewer (showsTools) with a tool mode toggled on, so it
+            // never interferes with inline pan/zoom.
             .simultaneousGesture(
-                (measurementMode || selectionMode)
+                (showsTools && (toolState.isMeasuring || toolState.isSelecting))
                     ? SpatialTapGesture().onEnded { value in
-                        if measurementMode {
+                        if toolState.isMeasuring {
                             recordMeasurementTap(at: value.location, in: geometry.size)
                         } else {
                             recordSelectionTap(at: value.location, in: geometry.size)
@@ -103,6 +98,14 @@ struct DeckTab2DView: View {
                 centerViewport(viewportSize: newSize)
                 lastCenteredSize = newSize
             }
+            // Fit tool — reframe the whole deck. Animated so the reset reads as a
+            // deliberate camera move, not a jump.
+            .onChange(of: toolState.fitTrigger) { _, _ in
+                guard lastCenteredSize.width > 0, lastCenteredSize.height > 0 else { return }
+                withAnimation(OPSStyle.Animation.standard) {
+                    centerViewport(viewportSize: lastCenteredSize)
+                }
+            }
         }
     }
 
@@ -123,6 +126,13 @@ struct DeckTab2DView: View {
                     drawLevelConnection(context: context, connection: connection)
                 }
                 for level in drawingData.levels {
+                    // Isolate tool (fullscreen only) — when a level is isolated,
+                    // dim the others back to their inactive footprint so the
+                    // focused level reads clearly on a busy multi-level plan.
+                    if showsTools, let isolated = toolState.isolatedLevelId, isolated != level.id {
+                        drawInactiveLevel(context: context, level: level)
+                        continue
+                    }
                     // DECK-NEW-1 — fill every detected face in this level so
                     // multi-surface levels render correctly. Material/label
                     // pulled from per-surface persisted store so each face
@@ -143,7 +153,7 @@ struct DeckTab2DView: View {
                                 positions: face.positions,
                                 assignedItems: resolved.assignedItems,
                                 label: resolved.label,
-                                selected: selectedSurfaceIds.contains(face.id)
+                                selected: showsTools && toolState.selectedSurfaceIds.contains(face.id)
                             )
                         }
                     } else if level.isClosed {
@@ -155,8 +165,11 @@ struct DeckTab2DView: View {
                     for vertex in level.vertices {
                         drawVertex(context: context, vertex: vertex)
                     }
-                    for edge in level.edges {
-                        drawDimensionLabel(context: context, edge: edge, vertexLookup: level.vertex(byId:))
+                    // Dimensions toggle (fullscreen only). Inline always shows them.
+                    if !showsTools || toolState.showDimensions {
+                        for edge in level.edges {
+                            drawDimensionLabel(context: context, edge: edge, vertexLookup: level.vertex(byId:))
+                        }
                     }
                 }
             } else {
@@ -174,7 +187,7 @@ struct DeckTab2DView: View {
                             legacyFootprint: drawingData.footprint,
                             isLegacyPrimary: face.id == primary
                         )
-                        drawSurfaceFill(context: context, positions: face.positions, assignedItems: resolved.assignedItems, label: resolved.label, selected: selectedSurfaceIds.contains(face.id))
+                        drawSurfaceFill(context: context, positions: face.positions, assignedItems: resolved.assignedItems, label: resolved.label, selected: showsTools && toolState.selectedSurfaceIds.contains(face.id))
                     }
                 } else if drawingData.isClosed {
                     drawFootprint(context: context)
@@ -189,8 +202,11 @@ struct DeckTab2DView: View {
                 for vertex in drawingData.vertices {
                     drawVertex(context: context, vertex: vertex)
                 }
-                for edge in drawingData.edges {
-                    drawDimensionLabel(context: context, edge: edge, vertexLookup: drawingData.vertex(byId:))
+                // Dimensions toggle (fullscreen only). Inline always shows them.
+                if !showsTools || toolState.showDimensions {
+                    for edge in drawingData.edges {
+                        drawDimensionLabel(context: context, edge: edge, vertexLookup: drawingData.vertex(byId:))
+                    }
                 }
             }
         }
@@ -363,8 +379,8 @@ struct DeckTab2DView: View {
         var path = Path()
         path.move(to: start.position)
         path.addLine(to: end.position)
-        // Selection halo under the edge so its type color still reads.
-        if selectedEdgeIds.contains(edge.id) {
+        // Selection halo under the edge so its type color still reads (fullscreen only).
+        if showsTools && toolState.selectedEdgeIds.contains(edge.id) {
             context.stroke(path, with: .color(OPSStyle.Colors.primaryAccent), lineWidth: lineWidth + 5)
         }
         context.stroke(path, with: .color(lineColor), lineWidth: lineWidth)
@@ -617,31 +633,7 @@ struct DeckTab2DView: View {
                        style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
     }
 
-    // MARK: - Select & Measure
-
-    /// Every edge across the design (top-level or all levels), for hit-testing.
-    private var selectableEdges: [DeckEdge] {
-        drawingData.isMultiLevel ? drawingData.levels.flatMap(\.edges) : drawingData.edges
-    }
-    /// Every vertex across the design, paired to `selectableEdges`.
-    private var selectableVertices: [DeckVertex] {
-        drawingData.isMultiLevel ? drawingData.levels.flatMap(\.vertices) : drawingData.vertices
-    }
-
-    /// Detected closed faces across the design, each carrying the persisted
-    /// store needed to resolve its material/label.
-    private func surfaceContexts() -> [(face: DetectedSurface, persisted: [DeckSurface], footprint: DeckFootprint, primaryId: String?)] {
-        if drawingData.isMultiLevel {
-            return drawingData.levels.flatMap { level -> [(DetectedSurface, [DeckSurface], DeckFootprint, String?)] in
-                let faces = level.detectedSurfaces
-                let primary = DeckSurfaceInspector.primarySurfaceId(among: faces)
-                return faces.map { ($0, level.surfaces, level.footprint, primary) }
-            }
-        }
-        let faces = drawingData.detectedSurfaces
-        let primary = DeckSurfaceInspector.primarySurfaceId(among: faces)
-        return faces.map { ($0, drawingData.surfaces, drawingData.footprint, primary) }
-    }
+    // MARK: - Select & Measure (taps write to the shared tool state)
 
     /// Toggle the edge under the tap into the selection; if no edge is in
     /// range, toggle the smallest enclosing surface. Edge hit-test wins so
@@ -649,139 +641,26 @@ struct DeckTab2DView: View {
     /// picks the surface.
     private func recordSelectionTap(at location: CGPoint, in viewportSize: CGSize) {
         let p = canvasPoint(from: location, viewportSize: viewportSize)
+        let edges = DeckSelectionReadout.edges(in: drawingData)
+        let vertices = DeckSelectionReadout.vertices(in: drawingData)
         // Threshold tracks zoom so it stays ~finger-sized at any canvas scale.
         let edgeThreshold = max(14, 28 / Double(canvasScale))
-        if let edgeId = PolygonMath.findEdgeAtPoint(p, edges: selectableEdges, vertices: selectableVertices, hitThreshold: edgeThreshold) {
-            if selectedEdgeIds.contains(edgeId) { selectedEdgeIds.remove(edgeId) } else { selectedEdgeIds.insert(edgeId) }
+        if let edgeId = PolygonMath.findEdgeAtPoint(p, edges: edges, vertices: vertices, hitThreshold: edgeThreshold) {
+            if toolState.selectedEdgeIds.contains(edgeId) { toolState.selectedEdgeIds.remove(edgeId) } else { toolState.selectedEdgeIds.insert(edgeId) }
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             return
         }
-        let enclosing = surfaceContexts()
+        let enclosing = DeckSelectionReadout.surfaceContexts(in: drawingData)
             .map(\.face)
             .filter { PolygonMath.pointInPolygon(p, vertices: $0.positions) }
             .min { PolygonMath.area(vertices: $0.positions) < PolygonMath.area(vertices: $1.positions) }
         if let face = enclosing {
-            if selectedSurfaceIds.contains(face.id) { selectedSurfaceIds.remove(face.id) } else { selectedSurfaceIds.insert(face.id) }
+            if toolState.selectedSurfaceIds.contains(face.id) { toolState.selectedSurfaceIds.remove(face.id) } else { toolState.selectedSurfaceIds.insert(face.id) }
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }
     }
 
-    // MARK: - Selection Readout (totals by type)
-
-    private struct SelectionGroup: Identifiable {
-        let id: String
-        let label: String
-        let value: String
-    }
-
-    private struct SelectionReadout {
-        let surfaceGroups: [SelectionGroup]
-        let edgeGroups: [SelectionGroup]
-        let stairGroup: SelectionGroup?
-        let totalAreaText: String?
-        let totalLengthText: String?
-        let selectionCount: Int
-    }
-
-    /// Reduce the current selection into totals broken down by type. Pure
-    /// read over in-memory geometry — recomputed synchronously on every tap
-    /// so the readout updates instantly.
-    private func buildSelectionReadout() -> SelectionReadout {
-        let system = drawingData.config.measurementSystem
-        let scale = drawingData.effectiveScaleFactor
-
-        // Surfaces → area grouped by board material.
-        var surfaceTotals: [String: Double] = [:]
-        var surfaceOrder: [String] = []
-        for ctx in surfaceContexts() where selectedSurfaceIds.contains(ctx.face.id) {
-            let payload = DeckSurfaceInspector.resolvedPayload(
-                detected: ctx.face,
-                persisted: ctx.persisted,
-                legacyFootprint: ctx.footprint,
-                isLegacyPrimary: ctx.face.id == ctx.primaryId
-            )
-            let label = surfaceMaterialLabel(payload)
-            if surfaceTotals[label] == nil { surfaceOrder.append(label) }
-            surfaceTotals[label, default: 0] += PolygonMath.realWorldArea(vertices: ctx.face.positions, scaleFactor: scale)
-        }
-        let surfaceGroups = surfaceOrder.map {
-            SelectionGroup(id: "surf-\($0)", label: $0, value: DimensionEngine.formatArea(surfaceTotals[$0] ?? 0, system: system))
-        }
-        let totalArea = surfaceTotals.values.reduce(0, +)
-
-        // Edges → linear length grouped by category; stairs aggregated apart.
-        var edgeTotals: [String: Double] = [:]
-        var edgeOrder: [String] = []
-        var stairCount = 0
-        var stairRunInches: Double = 0
-        let vertices = selectableVertices
-        for edge in selectableEdges where selectedEdgeIds.contains(edge.id) {
-            let length = edgeLengthInches(edge, vertices: vertices, scale: scale) ?? 0
-            let label = edgeCategoryLabel(edge)
-            if edgeTotals[label] == nil { edgeOrder.append(label) }
-            edgeTotals[label, default: 0] += length
-            if let stair = edge.stairConfig {
-                stairCount += 1
-                let tc = stair.treadCount ?? StairConfig.calculateTreadCount(totalRise: stair.totalRiseInches ?? 0, risePerStep: stair.risePerStep)
-                stairRunInches += Double(tc) * stair.runPerTread
-            }
-        }
-        let edgeGroups = edgeOrder.map {
-            SelectionGroup(id: "edge-\($0)", label: $0, value: DimensionEngine.format(edgeTotals[$0] ?? 0, system: system))
-        }
-        let totalLength = edgeTotals.values.reduce(0, +)
-
-        let stairGroup: SelectionGroup? = stairCount > 0
-            ? SelectionGroup(
-                id: "stairs",
-                label: stairCount == 1 ? "STAIRS" : "STAIRS ×\(stairCount)",
-                value: "RUN \(DimensionEngine.format(stairRunInches, system: system))"
-              )
-            : nil
-
-        return SelectionReadout(
-            surfaceGroups: surfaceGroups,
-            edgeGroups: edgeGroups,
-            stairGroup: stairGroup,
-            totalAreaText: totalArea > 0 ? DimensionEngine.formatArea(totalArea, system: system) : nil,
-            totalLengthText: totalLength > 0 ? DimensionEngine.format(totalLength, system: system) : nil,
-            selectionCount: selectedEdgeIds.count + selectedSurfaceIds.count
-        )
-    }
-
-    /// Category label for an edge in the by-type breakdown.
-    private func edgeCategoryLabel(_ edge: DeckEdge) -> String {
-        switch edge.edgeType {
-        case .houseEdge:
-            if let m = edge.houseEdgeMaterial { return "HOUSE · \(m.displayName.uppercased())" }
-            return "HOUSE"
-        case .deckEdge:
-            if let r = edge.railingConfig { return "RAILING · \(r.railingType.displayName.uppercased())" }
-            return "DECK EDGE"
-        }
-    }
-
-    /// Material label for a surface in the by-type breakdown — the assigned
-    /// item's name when present, else the board material.
-    private func surfaceMaterialLabel(_ payload: DeckResolvedSurfacePayload) -> String {
-        if let item = payload.assignedItems.first?.name.trimmingCharacters(in: .whitespacesAndNewlines), !item.isEmpty {
-            return item.uppercased()
-        }
-        let m = payload.boardMaterial.replacingOccurrences(of: "_", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        return m.isEmpty ? "DECKING" : m.uppercased()
-    }
-
-    /// Real-world length of an edge in inches — stored dimension when present,
-    /// else canvas length over the effective scale. Searches `vertices` for
-    /// the edge's endpoints (works across levels).
-    private func edgeLengthInches(_ edge: DeckEdge, vertices: [DeckVertex], scale: Double) -> Double? {
-        if let dim = edge.dimension, dim > 0 { return dim }
-        guard let s = vertices.first(where: { $0.id == edge.startVertexId })?.position,
-              let e = vertices.first(where: { $0.id == edge.endVertexId })?.position else { return nil }
-        return SnapEngine.distance(s, e) / scale
-    }
-
-    // MARK: - Bug 033b5328 — Measurement Tool
+    // MARK: - Measurement Tool (Bug 033b5328)
 
     /// Convert a viewport-space tap location to canvas-space coordinates.
     /// Inverse of the `.scaleEffect(canvasScale, anchor: .topLeading).offset(canvasOffset)`
@@ -803,17 +682,17 @@ struct DeckTab2DView: View {
         let rawCanvasLoc = canvasPoint(from: location, viewportSize: viewportSize)
         let snappedLoc = snapToGeometry(rawCanvasLoc)
 
-        if measurementStart == nil {
-            measurementStart = snappedLoc
-            measurementEnd = nil
-        } else if measurementEnd == nil {
+        if toolState.measurementStart == nil {
+            toolState.measurementStart = snappedLoc
+            toolState.measurementEnd = nil
+        } else if toolState.measurementEnd == nil {
             // Second tap: snap angle relative to existing edges so the
             // measurement reads true perpendicular / parallel when the
             // user is close to that intent.
-            measurementEnd = snapAngleToEdges(from: measurementStart!, candidate: snappedLoc)
+            toolState.measurementEnd = snapAngleToEdges(from: toolState.measurementStart!, candidate: snappedLoc)
         } else {
-            measurementStart = snappedLoc
-            measurementEnd = nil
+            toolState.measurementStart = snappedLoc
+            toolState.measurementEnd = nil
         }
     }
 
@@ -929,14 +808,14 @@ struct DeckTab2DView: View {
     }
 
     /// Render the in-progress measurement (anchor dots, dashed line, midpoint
-    /// distance pill) inside the Canvas pass.
+    /// distance pill) inside the Canvas pass. Fullscreen only.
     private func drawMeasurement(context: GraphicsContext) {
-        guard measurementMode else { return }
+        guard showsTools, toolState.isMeasuring else { return }
         let dotR: CGFloat = 6
         let dotStroke: CGFloat = 2
         let lineColor = OPSStyle.Colors.warningStatus
 
-        if let start = measurementStart {
+        if let start = toolState.measurementStart {
             let circle = Path(ellipseIn: CGRect(
                 x: start.x - dotR, y: start.y - dotR,
                 width: dotR * 2, height: dotR * 2
@@ -945,7 +824,7 @@ struct DeckTab2DView: View {
             context.stroke(circle, with: .color(lineColor), lineWidth: dotStroke)
         }
 
-        guard let start = measurementStart, let end = measurementEnd else { return }
+        guard let start = toolState.measurementStart, let end = toolState.measurementEnd else { return }
 
         var linePath = Path()
         linePath.move(to: start)
@@ -973,7 +852,7 @@ struct DeckTab2DView: View {
             labelText = feet > 0 ? "\(feet)' \(remInches)\"" : "\(remInches)\""
         } else {
             // No scale calibrated — show canvas units so user still gets
-            // a relative read; the warning HUD in measurementToolOverlay
+            // a relative read; the "NO SCALE CALIBRATED" hint in the viewer
             // tells them why it isn't a real measurement.
             labelText = "\(Int(canvasDistance.rounded())) pt"
         }
@@ -992,181 +871,5 @@ struct DeckTab2DView: View {
         )
         context.fill(Path(roundedRect: bgRect, cornerRadius: OPSStyle.Layout.chipRadius), with: .color(lineColor))
         context.draw(resolved, at: CGPoint(x: midX, y: midY), anchor: .center)
-    }
-
-    /// Floating ruler-mode toggle and instruction HUD pinned to the top-right
-    /// of the viewer. Disabled state shows a subtle dark pill; enabled state
-    /// switches to the warning accent so it reads as "active mode" at a glance.
-    @ViewBuilder
-    private func measurementToolOverlay(viewportSize: CGSize) -> some View {
-        VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing2) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                Button {
-                    measurementMode.toggle()
-                    if measurementMode {
-                        selectionMode = false
-                        selectedEdgeIds = []
-                        selectedSurfaceIds = []
-                    } else {
-                        measurementStart = nil
-                        measurementEnd = nil
-                    }
-                } label: {
-                    Image(systemName: "ruler")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(measurementMode ? .black : .white)
-                        .frame(width: 40, height: 40)
-                        .background(
-                            Circle().fill(
-                                measurementMode
-                                    ? OPSStyle.Colors.warningStatus
-                                    : Color.black.opacity(0.6)
-                            )
-                        )
-                        .overlay(
-                            Circle().stroke(
-                                measurementMode ? Color.clear : Color.white.opacity(0.2),
-                                lineWidth: 1
-                            )
-                        )
-                }
-                .accessibilityLabel("Measure distance")
-
-                Button {
-                    selectionMode.toggle()
-                    if selectionMode {
-                        measurementMode = false
-                        measurementStart = nil
-                        measurementEnd = nil
-                    } else {
-                        selectedEdgeIds = []
-                        selectedSurfaceIds = []
-                    }
-                } label: {
-                    Image(systemName: "hand.tap")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(selectionMode ? .black : .white)
-                        .frame(width: 40, height: 40)
-                        .background(
-                            Circle().fill(
-                                selectionMode
-                                    ? OPSStyle.Colors.primaryAccent
-                                    : Color.black.opacity(0.6)
-                            )
-                        )
-                        .overlay(
-                            Circle().stroke(
-                                selectionMode ? Color.clear : Color.white.opacity(0.2),
-                                lineWidth: 1
-                            )
-                        )
-                }
-                .accessibilityLabel("Select and measure")
-            }
-
-            if let hint = measurementHintText {
-                Text(hint)
-                    .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(OPSStyle.Colors.warningStatus)
-                    .padding(.horizontal, OPSStyle.Layout.spacing2)
-                    .padding(.vertical, OPSStyle.Layout.spacing1)
-                    .background(Color.black.opacity(0.6))
-                    .cornerRadius(OPSStyle.Layout.chipRadius)
-            }
-
-            if let hint = selectionHintText {
-                Text(hint)
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.black.opacity(0.6))
-                    .cornerRadius(4)
-            }
-
-            if selectionMode, !(selectedEdgeIds.isEmpty && selectedSurfaceIds.isEmpty) {
-                selectionReadoutCard(buildSelectionReadout())
-            }
-        }
-        .padding(.top, OPSStyle.Layout.spacing3)
-        .padding(.trailing, OPSStyle.Layout.spacing3)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-    }
-
-    private func selectionReadoutCard(_ readout: SelectionReadout) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text("SELECTED")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                Text("\(readout.selectionCount)")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                Spacer(minLength: 12)
-                Button {
-                    selectedEdgeIds = []
-                    selectedSurfaceIds = []
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                } label: {
-                    Text("CLEAR")
-                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-                .accessibilityLabel("Clear selection")
-            }
-
-            ForEach(readout.surfaceGroups) { selectionRow($0.label, $0.value) }
-            ForEach(readout.edgeGroups) { selectionRow($0.label, $0.value) }
-            if let stair = readout.stairGroup { selectionRow(stair.label, stair.value) }
-
-            if readout.totalAreaText != nil || readout.totalLengthText != nil {
-                Rectangle()
-                    .fill(OPSStyle.Colors.cardBorder.opacity(0.6))
-                    .frame(height: 0.5)
-                    .padding(.vertical, 2)
-                if let area = readout.totalAreaText { selectionRow("TOTAL AREA", area, emphasized: true) }
-                if let length = readout.totalLengthText { selectionRow("TOTAL LENGTH", length, emphasized: true) }
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: 260)
-        .background(Color.black.opacity(0.72))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.35), lineWidth: 1)
-        )
-        .cornerRadius(6)
-    }
-
-    /// One label/value line in the selection readout — dim micro-label on the
-    /// left, mono tabular value on the right; accent + bolder when a total.
-    private func selectionRow(_ label: String, _ value: String, emphasized: Bool = false) -> some View {
-        HStack(spacing: 8) {
-            Text(label)
-                .font(.system(size: emphasized ? 10 : 9, weight: .semibold, design: .monospaced))
-                .foregroundColor(emphasized ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
-                .lineLimit(1)
-            Spacer(minLength: 8)
-            Text(value)
-                .font(.system(size: emphasized ? 13 : 11, weight: emphasized ? .bold : .semibold, design: .monospaced))
-                .foregroundColor(emphasized ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
-                .lineLimit(1)
-        }
-    }
-
-    /// Hint shown beside the ruler toggle when measurement mode is on.
-    /// Pulled out of the ViewBuilder body so the if/else cascade isn't
-    /// misread as a conditional view branch.
-    private var measurementHintText: String? {
-        guard measurementMode else { return nil }
-        if measurementStart == nil { return "TAP POINT" }
-        if measurementEnd == nil { return "TAP END" }
-        if drawingData.scaleFactor == nil { return "NO SCALE CALIBRATED" }
-        return "TAP TO RESET"
-    }
-
-    private var selectionHintText: String? {
-        guard selectionMode else { return nil }
-        return (selectedEdgeIds.isEmpty && selectedSurfaceIds.isEmpty) ? "TAP EDGES OR SURFACES" : nil
     }
 }

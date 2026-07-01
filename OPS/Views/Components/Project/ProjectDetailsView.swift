@@ -9,6 +9,13 @@
 import SwiftUI
 import SwiftData
 
+/// Carries the Deck tab scroll's top-overscroll distance (content top offset in
+/// the scroll's coordinate space) up to `ProjectDetailsView`.
+private struct DeckPullKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
 struct ProjectDetailsView: View {
     @Bindable var project: Project
     var isEditMode: Bool = false
@@ -49,6 +56,16 @@ struct ProjectDetailsView: View {
     @State private var isKeyboardVisible = false
     @State private var shareSource: ProjectShareItemSource?
     @State private var isPreparingShare = false
+
+    // Deck fullscreen viewer — overscroll-to-expand focus mode.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @StateObject private var deckToolState = DeckViewerToolState()
+    @State private var deckViewMode: DeckTabViewMode = .threeD
+    @State private var isDeckFullscreen = false
+    /// Live top-overscroll distance while the Deck tab is active (points).
+    @State private var deckPull: CGFloat = 0
+    /// Guards the one-shot commit-threshold haptic so it fires once per crossing.
+    @State private var deckPullArmed = false
 
     init(project: Project, isEditMode: Bool = false, initialSelectedTask: ProjectTask? = nil) {
         self._project = Bindable(wrappedValue: project)
@@ -371,6 +388,18 @@ struct ProjectDetailsView: View {
             // Layer 2: Scrollable content that slides up over the map
             ScrollView {
                 LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                    // Deck overscroll probe — reports the content's top offset in
+                    // the scroll's coordinate space so a top-overscroll (pulling
+                    // past the top on the Deck tab) can drive the fullscreen
+                    // expand. Zero-height so it never affects layout.
+                    GeometryReader { geo in
+                        Color.clear.preference(
+                            key: DeckPullKey.self,
+                            value: geo.frame(in: .named(deckScrollSpace)).minY
+                        )
+                    }
+                    .frame(height: 0)
+
                     // Initial spacer — positions content in lower portion of map.
                     // Pulled down 40pt so the gradient starts later, revealing
                     // more map above the title (Bug a2f7e6fa).
@@ -397,6 +426,9 @@ struct ProjectDetailsView: View {
                     }
                 }
             }
+            .coordinateSpace(name: deckScrollSpace)
+            .onPreferenceChange(DeckPullKey.self) { updateDeckPull($0) }
+            .simultaneousGesture(deckReleaseGesture)
 
             // Layer 3: Task picker overlay (below nav bar)
             if showingTaskPicker {
@@ -407,6 +439,29 @@ struct ProjectDetailsView: View {
             // Layer 4: Nav bar (above everything — CANCEL badge visible over gradient)
             projectNavBar
                 .zIndex(20)
+
+            // Layer 6: Deck pull-to-expand cue — appears over the map while the
+            // user overscrolls the top of the Deck tab.
+            if isDeckOverscrolling {
+                deckPullCue
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 104)
+                    .allowsHitTesting(false)
+                    .zIndex(24)
+            }
+
+            // Layer 7: Deck fullscreen focus mode (covers nav + global tab bar).
+            if isDeckFullscreen, let design = displayedDeckDesign {
+                DeckFullscreenViewer(
+                    title: project.title,
+                    drawingData: design.drawingData,
+                    viewMode: $deckViewMode,
+                    toolState: deckToolState,
+                    onClose: { dismissDeckFullscreen() }
+                )
+                .zIndex(30)
+                .transition(reduceMotion ? .opacity : .scale(scale: 0.92).combined(with: .opacity))
+            }
 
             // Layer 5: Floating toolbar — quick actions (hidden when composing notes or keyboard visible)
             if !isNoteComposing && !isKeyboardVisible {
@@ -658,6 +713,93 @@ struct ProjectDetailsView: View {
         return tabs
     }
 
+    // MARK: - Deck Fullscreen (overscroll-to-expand)
+
+    private let deckScrollSpace = "projectDetailsDeckScroll"
+
+    /// The deck design the tab is currently showing (mirrors DeckTabView).
+    private var displayedDeckDesign: DeckDesign? {
+        DeckDesign.displayCandidate(in: allDeckDesigns, forProjectId: project.id)
+    }
+    private var hasRenderableDeck: Bool {
+        displayedDeckDesign?.hasRenderableGeometry == true
+    }
+    /// The Deck tab is at the top and being pulled past it (cue-visible window).
+    private var isDeckOverscrolling: Bool {
+        !isDeckFullscreen && viewModel.selectedTab == .deck && hasRenderableDeck && deckPull > 1
+    }
+    private var deckExpandProgress: CGFloat { DeckOverscrollMath.progress(pull: deckPull) }
+
+    /// Called on every scroll-offset change. Tracks the top-overscroll pull and
+    /// fires the one-shot commit-threshold haptic. Inert off the Deck tab.
+    private func updateDeckPull(_ minY: CGFloat) {
+        guard viewModel.selectedTab == .deck, hasRenderableDeck, !isDeckFullscreen else {
+            if deckPull != 0 { deckPull = 0 }
+            deckPullArmed = false
+            return
+        }
+        deckPull = max(0, minY)
+        if DeckOverscrollMath.isCommitted(pull: deckPull) {
+            if !deckPullArmed {
+                deckPullArmed = true
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            }
+        } else {
+            deckPullArmed = false
+        }
+    }
+
+    /// Fires on finger-up. If the pull crossed the threshold, commit to
+    /// fullscreen; otherwise the scroll rubber-bands back on its own.
+    private var deckReleaseGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onEnded { _ in
+                guard viewModel.selectedTab == .deck, hasRenderableDeck, !isDeckFullscreen else { return }
+                if DeckOverscrollMath.isCommitted(pull: deckPull) {
+                    presentDeckFullscreen()
+                }
+                deckPull = 0
+                deckPullArmed = false
+            }
+    }
+
+    private func presentDeckFullscreen() {
+        withAnimation(reduceMotion ? OPSStyle.Animation.faster : OPSStyle.Animation.standard) {
+            isDeckFullscreen = true
+        }
+    }
+
+    private func dismissDeckFullscreen() {
+        withAnimation(reduceMotion ? OPSStyle.Animation.faster : OPSStyle.Animation.standard) {
+            isDeckFullscreen = false
+        }
+        // Clean slate for the next open (invisible during the animate-out).
+        deckToolState.mode = .none
+        deckToolState.clearSelection()
+        deckToolState.isolatedLevelId = nil
+        deckToolState.showDimensions = true
+    }
+
+    /// Pull cue shown over the map during a top-overscroll on the Deck tab.
+    @ViewBuilder
+    private var deckPullCue: some View {
+        let committed = deckExpandProgress >= 1
+        VStack(spacing: OPSStyle.Layout.spacing1) {
+            Image(systemName: "chevron.up")
+                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                .foregroundColor(committed ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+            Text(committed ? "RELEASE TO EXPAND" : "PULL TO EXPAND")
+                .font(OPSStyle.Typography.metadata)
+                .tracking(1)
+                .foregroundColor(committed ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .background(Capsule().fill(Color.black.opacity(0.7)))
+        .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
+        .opacity(Double(min(1, deckExpandProgress * 1.4)))
+    }
+
     // MARK: - Tab Content
 
     @ViewBuilder
@@ -739,7 +881,9 @@ struct ProjectDetailsView: View {
             DeckTabView(
                 project: project,
                 onCreateDeckDesign: { showingDeckCreationPicker = true },
-                onEditDeckDesign: { design in deckDesignToOpen = design }
+                onEditDeckDesign: { design in deckDesignToOpen = design },
+                viewMode: $deckViewMode,
+                onRequestFullscreen: { presentDeckFullscreen() }
             )
         }
     }

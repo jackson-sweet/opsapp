@@ -9,13 +9,6 @@
 import SwiftUI
 import SwiftData
 
-/// Carries the Deck tab scroll's top-overscroll distance (content top offset in
-/// the scroll's coordinate space) up to `ProjectDetailsView`.
-private struct DeckPullKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
 struct ProjectDetailsView: View {
     @Bindable var project: Project
     var isEditMode: Bool = false
@@ -64,7 +57,7 @@ struct ProjectDetailsView: View {
     @State private var isDeckFullscreen = false
     /// Live top-overscroll distance while the Deck tab is active (points).
     @State private var deckPull: CGFloat = 0
-    /// Guards the one-shot commit-threshold haptic so it fires once per crossing.
+    /// Guards the one-shot commit so it fires once per pull.
     @State private var deckPullArmed = false
 
     init(project: Project, isEditMode: Bool = false, initialSelectedTask: ProjectTask? = nil) {
@@ -388,15 +381,15 @@ struct ProjectDetailsView: View {
             // Layer 2: Scrollable content that slides up over the map
             ScrollView {
                 LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                    // Deck overscroll probe — reports the content's top offset in
-                    // the scroll's coordinate space so a top-overscroll (pulling
-                    // past the top on the Deck tab) can drive the fullscreen
-                    // expand. Zero-height so it never affects layout.
+                    // Deck overscroll probe — a zero-height reader at the very top
+                    // of the content. `.onChange` on its minY in the scroll's
+                    // coordinate space fires reliably on every scroll (the proven
+                    // ManageTeamView pattern), driving the top-overscroll → expand.
                     GeometryReader { geo in
-                        Color.clear.preference(
-                            key: DeckPullKey.self,
-                            value: geo.frame(in: .named(deckScrollSpace)).minY
-                        )
+                        Color.clear
+                            .onChange(of: geo.frame(in: .named(deckScrollSpace)).minY) { _, newMinY in
+                                updateDeckPull(max(0, newMinY))
+                            }
                     }
                     .frame(height: 0)
 
@@ -427,8 +420,9 @@ struct ProjectDetailsView: View {
                 }
             }
             .coordinateSpace(name: deckScrollSpace)
-            .onPreferenceChange(DeckPullKey.self) { updateDeckPull($0) }
-            .simultaneousGesture(deckReleaseGesture)
+            // Force the top rubber-band even when the deck tab's content fits the
+            // viewport, so the overscroll-to-expand gesture is always available.
+            .scrollBounceBehavior(.always, axes: .vertical)
 
             // Layer 3: Task picker overlay (below nav bar)
             if showingTaskPicker {
@@ -730,37 +724,24 @@ struct ProjectDetailsView: View {
     }
     private var deckExpandProgress: CGFloat { DeckOverscrollMath.progress(pull: deckPull) }
 
-    /// Called on every scroll-offset change. Tracks the top-overscroll pull and
-    /// fires the one-shot commit-threshold haptic. Inert off the Deck tab.
-    private func updateDeckPull(_ minY: CGFloat) {
+    /// Called on every scroll change with the top-edge overscroll amount (points).
+    /// On the Deck tab, the instant the pull crosses the threshold, fire the haptic
+    /// and open fullscreen (one-shot via `deckPullArmed`); below the threshold the
+    /// scroll rubber-bands back on its own. Inert off the Deck tab.
+    private func updateDeckPull(_ pull: CGFloat) {
         guard viewModel.selectedTab == .deck, hasRenderableDeck, !isDeckFullscreen else {
             if deckPull != 0 { deckPull = 0 }
             deckPullArmed = false
             return
         }
-        deckPull = max(0, minY)
-        if DeckOverscrollMath.isCommitted(pull: deckPull) {
-            if !deckPullArmed {
-                deckPullArmed = true
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            }
-        } else {
+        deckPull = pull
+        if DeckOverscrollMath.isCommitted(pull: pull), !deckPullArmed {
+            deckPullArmed = true
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            presentDeckFullscreen()
+        } else if pull < DeckOverscrollMath.commitThreshold {
             deckPullArmed = false
         }
-    }
-
-    /// Fires on finger-up. If the pull crossed the threshold, commit to
-    /// fullscreen; otherwise the scroll rubber-bands back on its own.
-    private var deckReleaseGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onEnded { _ in
-                guard viewModel.selectedTab == .deck, hasRenderableDeck, !isDeckFullscreen else { return }
-                if DeckOverscrollMath.isCommitted(pull: deckPull) {
-                    presentDeckFullscreen()
-                }
-                deckPull = 0
-                deckPullArmed = false
-            }
     }
 
     private func presentDeckFullscreen() {

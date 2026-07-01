@@ -12,7 +12,7 @@ import AppKit
 typealias PlanSheetPlatformColor = NSColor
 #endif
 
-public enum PlanSheetKind: String, Codable, CaseIterable {
+public enum PlanSheetKind: String, Codable, CaseIterable, Hashable {
     case planView
     case framingPlan
     case elevation
@@ -504,7 +504,25 @@ enum TitleBlockRenderer {
         tokens: PlanSheetTokens,
         palette: PlanSheetPalette
     ) -> [String] {
-        let texts = titleBlockTexts(titleBlock, kind: kind)
+        draw(
+            titleBlock,
+            sheetTitle: kind.sheetTitle,
+            in: rect,
+            context: context,
+            tokens: tokens,
+            palette: palette
+        )
+    }
+
+    static func draw(
+        _ titleBlock: TitleBlock,
+        sheetTitle: String,
+        in rect: CGRect,
+        context: CGContext,
+        tokens: PlanSheetTokens,
+        palette: PlanSheetPalette
+    ) -> [String] {
+        let texts = titleBlockTexts(titleBlock, sheetTitle: sheetTitle)
 
         context.saveGState()
         context.setStrokeColor(palette.primaryStroke.cgColor)
@@ -554,10 +572,10 @@ enum TitleBlockRenderer {
         return texts
     }
 
-    private static func titleBlockTexts(_ titleBlock: TitleBlock, kind: PlanSheetKind) -> [String] {
+    private static func titleBlockTexts(_ titleBlock: TitleBlock, sheetTitle: String) -> [String] {
         var texts = [
             titleBlock.projectName,
-            kind.sheetTitle,
+            sheetTitle,
             titleBlock.packageEdition,
             PlanSheetDateFormatter.string(from: titleBlock.generatedDate),
             titleBlock.disclaimer
@@ -673,7 +691,7 @@ struct PlanSheetPalette {
     }
 }
 
-private enum PlanSheetText {
+enum PlanSheetText {
     static func draw(
         _ text: String,
         in rect: CGRect,
@@ -711,7 +729,7 @@ private enum PlanSheetText {
     }
 }
 
-private enum PlanSheetDateFormatter {
+enum PlanSheetDateFormatter {
     static func string(from date: Date) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withFullDate]

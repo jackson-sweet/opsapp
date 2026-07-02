@@ -212,6 +212,7 @@ struct DeckTab2DView: View {
             // The active tool draws LAST so the measurement always reads over
             // the plan — edges, fills, and dimension labels never occlude it.
             drawMeasurement(context: context)
+            drawSplit(context: context)
         }
     }
 
@@ -643,6 +644,34 @@ struct DeckTab2DView: View {
     /// tapping a perimeter line picks the edge while tapping the interior
     /// picks the surface.
     private func recordSelectionTap(at location: CGPoint, in viewportSize: CGSize) {
+        // Scissors armed: taps place the cut line instead of changing the
+        // selection. Points get the same geometry + angle snapping as the
+        // measure tool (perpendicular cuts across rectilinear decks are the
+        // common case); the SECOND point snaps relative to the first.
+        if toolState.isSplitting {
+            let raw = canvasPoint(from: location, viewportSize: viewportSize)
+            let snapped = snapToGeometry(raw)
+            let point = toolState.splitPoints.count == 1
+                ? snapAngleToEdges(from: toolState.splitPoints[0], candidate: snapped)
+                : snapped
+            let countBefore = toolState.splitPoints.count
+            toolState.recordSplitTap(point)
+            let countAfter = toolState.splitPoints.count
+            // Haptic doctrine: light per placed point, success only when the
+            // cut actually computes — a line that misses the face and an
+            // ignored coincident tap both stay silent.
+            if countAfter == 2 {
+                if let surface = selectedSplitSurface(),
+                   PolygonSplitter.split(polygon: surface,
+                                         lineA: toolState.splitPoints[0],
+                                         lineB: toolState.splitPoints[1]).didSplit {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
+            } else if countAfter != countBefore {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+            return
+        }
         let p = canvasPoint(from: location, viewportSize: viewportSize)
         let edges = DeckSelectionReadout.edges(in: drawingData)
         let vertices = DeckSelectionReadout.vertices(in: drawingData)
@@ -650,6 +679,7 @@ struct DeckTab2DView: View {
         let edgeThreshold = max(14, 28 / Double(canvasScale))
         if let edgeId = PolygonMath.findEdgeAtPoint(p, edges: edges, vertices: vertices, hitThreshold: edgeThreshold) {
             if toolState.selectedEdgeIds.contains(edgeId) { toolState.selectedEdgeIds.remove(edgeId) } else { toolState.selectedEdgeIds.insert(edgeId) }
+            toolState.selectionDidChange()
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             return
         }
@@ -659,6 +689,7 @@ struct DeckTab2DView: View {
             .min { PolygonMath.area(vertices: $0.positions) < PolygonMath.area(vertices: $1.positions) }
         if let face = enclosing {
             if toolState.selectedSurfaceIds.contains(face.id) { toolState.selectedSurfaceIds.remove(face.id) } else { toolState.selectedSurfaceIds.insert(face.id) }
+            toolState.selectionDidChange()
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }
     }
@@ -903,5 +934,64 @@ struct DeckTab2DView: View {
         )
         context.fill(Path(roundedRect: bgRect, cornerRadius: OPSStyle.Layout.chipRadius), with: .color(color))
         context.draw(resolved, at: point, anchor: .center)
+    }
+
+    /// Render the split inspection: tinted side fills, the cut chord(s), and
+    /// the two definition dots. Side tints match the card rows — A accent,
+    /// B amber. Drawn last, over the plan and the selection highlight.
+    private func drawSplit(context: GraphicsContext) {
+        guard showsTools, toolState.isSplitting else { return }
+        let points = toolState.splitPoints
+        guard !points.isEmpty else { return }
+        let accentA = OPSStyle.Colors.primaryAccent
+        let accentB = OPSStyle.Colors.warningStatus
+
+        // Definition dots (always visible so the first tap reads immediately).
+        let dotR: CGFloat = 6
+        for p in points {
+            let circle = Path(ellipseIn: CGRect(x: p.x - dotR, y: p.y - dotR, width: dotR * 2, height: dotR * 2))
+            context.fill(circle, with: .color(Color.white.opacity(0.25)))
+            context.stroke(circle, with: .color(Color.white), lineWidth: 2)
+        }
+        guard points.count == 2, let surface = selectedSplitSurface() else { return }
+
+        let readout = DeckSplitReadout.build(
+            surface: surface,
+            cutA: points[0], cutB: points[1],
+            scaleFactor: drawingData.effectiveScaleFactor,
+            system: drawingData.config.measurementSystem
+        )
+        guard readout.didSplit else { return }
+
+        var fillA = Path()
+        if let first = readout.sideAPolygon.first {
+            fillA.move(to: first)
+            for p in readout.sideAPolygon.dropFirst() { fillA.addLine(to: p) }
+            fillA.closeSubpath()
+            context.fill(fillA, with: .color(accentA.opacity(0.18)))
+        }
+        var fillB = Path()
+        if let first = readout.sideBPolygon.first {
+            fillB.move(to: first)
+            for p in readout.sideBPolygon.dropFirst() { fillB.addLine(to: p) }
+            fillB.closeSubpath()
+            context.fill(fillB, with: .color(accentB.opacity(0.15)))
+        }
+        for segment in readout.chordSegments {
+            var chord = Path()
+            chord.move(to: segment.start)
+            chord.addLine(to: segment.end)
+            context.stroke(chord, with: .color(Color.white), lineWidth: 2.5)
+        }
+    }
+
+    /// Positions of the single selected surface (the scissors gate guarantees
+    /// exactly one) — nil when the selection changed out from under the tool.
+    private func selectedSplitSurface() -> [CGPoint]? {
+        guard let id = toolState.selectedSurfaceIds.first,
+              toolState.selectedSurfaceIds.count == 1 else { return nil }
+        return DeckSelectionReadout.surfaceContexts(in: drawingData)
+            .first(where: { $0.face.id == id })?
+            .face.positions
     }
 }

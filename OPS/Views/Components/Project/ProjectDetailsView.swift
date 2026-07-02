@@ -60,6 +60,10 @@ struct ProjectDetailsView: View {
     @State private var deckPull: CGFloat = 0
     /// Guards the one-shot commit so it fires once per pull.
     @State private var deckPullArmed = false
+    /// Scroll viewport + content heights — used to compute bottom-overscroll
+    /// correctly whether the deck content is taller or shorter than the screen.
+    @State private var deckViewportHeight: CGFloat = 0
+    @State private var deckContentHeight: CGFloat = 0
 
     init(project: Project, isEditMode: Bool = false, initialSelectedTask: ProjectTask? = nil) {
         self._project = Bindable(wrappedValue: project)
@@ -382,18 +386,6 @@ struct ProjectDetailsView: View {
             // Layer 2: Scrollable content that slides up over the map
             ScrollView {
                 LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                    // Deck overscroll probe — a zero-height reader at the very top
-                    // of the content. `.onChange` on its minY in the scroll's
-                    // coordinate space fires reliably on every scroll (the proven
-                    // ManageTeamView pattern), driving the top-overscroll → expand.
-                    GeometryReader { geo in
-                        Color.clear
-                            .onChange(of: geo.frame(in: .named(deckScrollSpace)).minY) { _, newMinY in
-                                updateDeckPull(max(0, newMinY))
-                            }
-                    }
-                    .frame(height: 0)
-
                     // Initial spacer — positions content in lower portion of map.
                     // Pulled down 40pt so the gradient starts later, revealing
                     // more map above the title (Bug a2f7e6fa).
@@ -418,12 +410,39 @@ struct ProjectDetailsView: View {
                             .padding(.bottom, 100)
                             .background(OPSStyle.Colors.background)
                     }
+
+                    // Deck overscroll probe — a zero-height reader at the BOTTOM of
+                    // the content. Scrolling to the end and pulling UP pulls this
+                    // child above the viewport bottom; bottomOverscroll =
+                    // min(content, viewport) − its maxY. Drives pull-up-to-expand.
+                    GeometryReader { geo in
+                        Color.clear
+                            .onChange(of: geo.frame(in: .named(deckScrollSpace)).maxY) { _, maxY in
+                                let restBottom = min(deckContentHeight, deckViewportHeight)
+                                updateDeckPull(max(0, restBottom - maxY))
+                            }
+                    }
+                    .frame(height: 0)
                 }
+                .background(
+                    GeometryReader { g in
+                        Color.clear.onChange(of: g.size.height, initial: true) { _, h in
+                            deckContentHeight = h
+                        }
+                    }
+                )
             }
             .coordinateSpace(name: deckScrollSpace)
-            // Force the top rubber-band even when the deck tab's content fits the
-            // viewport, so the overscroll-to-expand gesture is always available.
+            // Force the bottom rubber-band even when the deck tab's content fits the
+            // viewport, so the pull-up-to-expand gesture is always available.
             .scrollBounceBehavior(.always, axes: .vertical)
+            .background(
+                GeometryReader { g in
+                    Color.clear.onChange(of: g.size.height, initial: true) { _, h in
+                        deckViewportHeight = h
+                    }
+                }
+            )
 
             // Layer 3: Task picker overlay (below nav bar)
             if showingTaskPicker {
@@ -439,11 +458,28 @@ struct ProjectDetailsView: View {
             // user overscrolls the top of the Deck tab.
             if isDeckOverscrolling {
                 deckPullCue
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .padding(.top, 104)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 120)
                     .allowsHitTesting(false)
                     .zIndex(24)
             }
+
+            #if DEBUG
+            // Temporary diagnostic — live overscroll readout on the Deck tab so the
+            // pull can be verified on-device. Remove once the gesture is confirmed.
+            if viewModel.selectedTab == .deck {
+                Text("DECK pull=\(Int(deckPull)) render=\(hasRenderableDeck ? "Y" : "N") vp=\(Int(deckViewportHeight)) ch=\(Int(deckContentHeight))")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(.yellow)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.85))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 180)
+                    .allowsHitTesting(false)
+                    .zIndex(60)
+            }
+            #endif
 
             // Layer 7: Deck fullscreen focus mode (covers nav + global tab bar).
             if isDeckFullscreen, let design = displayedDeckDesign {

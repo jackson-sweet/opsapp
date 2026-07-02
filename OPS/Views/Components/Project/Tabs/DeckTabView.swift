@@ -51,6 +51,26 @@ struct DeckTabView: View {
     // user navigated away and back.
     @Query private var allDesigns: [DeckDesign]
 
+    init(
+        project: Project,
+        onCreateDeckDesign: @escaping () -> Void,
+        onEditDeckDesign: @escaping (DeckDesign) -> Void,
+        viewMode: Binding<DeckTabViewMode>,
+        onRequestFullscreen: @escaping () -> Void = {}
+    ) {
+        self.project = project
+        self.onCreateDeckDesign = onCreateDeckDesign
+        self.onEditDeckDesign = onEditDeckDesign
+        self._viewMode = viewMode
+        self.onRequestFullscreen = onRequestFullscreen
+        // Scope to this project — deck_designs is realtime-subscribed, so an
+        // unfiltered @Query invalidated this tab on ANY company deck save.
+        let pid: String? = project.id
+        self._allDesigns = Query(
+            filter: #Predicate<DeckDesign> { $0.projectId == pid }
+        )
+    }
+
     /// Most-recently-updated non-deleted design for this project.
     private var deckDesign: DeckDesign? {
         DeckDesign.displayCandidate(in: allDesigns, forProjectId: project.id)

@@ -21,7 +21,6 @@ struct ProjectDetailsView: View {
     @Environment(\.wizardStateManager) private var wizardStateManager
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
-    @EnvironmentObject private var locationManager: LocationManager
 
     @StateObject private var viewModel: ProjectDetailsViewModel
     @StateObject private var notesViewModel: ProjectNotesViewModel
@@ -75,6 +74,14 @@ struct ProjectDetailsView: View {
             initialSelectedTask: initialSelectedTask
         ))
         self._notesViewModel = StateObject(wrappedValue: ProjectNotesViewModel(projectId: project.id))
+
+        // Scope to this project — deck_designs is realtime-subscribed, so an
+        // unfiltered @Query invalidated this whole container on ANY company
+        // deck save. DeckDesign.projectId is optional; compare via optional.
+        let pid: String? = project.id
+        self._allDeckDesigns = Query(
+            filter: #Predicate<DeckDesign> { $0.projectId == pid }
+        )
     }
 
     var body: some View {
@@ -373,11 +380,10 @@ struct ProjectDetailsView: View {
         ZStack(alignment: .top) {
             // Layer 1: Fixed map background (behind everything)
             VStack(spacing: 0) {
-                ProjectMapHeader(
+                ProjectMapHeaderSection(
                     project: project,
                     taskColorHexes: viewModel.projectTaskColorHexes,
                     pinLabel: viewModel.pinLabel,
-                    userCoordinate: locationManager.userLocation,
                     onMapTap: { viewModel.openDirections() }
                 )
                 Spacer()

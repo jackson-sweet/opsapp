@@ -158,3 +158,29 @@ extension ProjectTitleOverlay {
         self._editedTitle = .constant("")
     }
 }
+
+// MARK: - Location-scoped wrapper
+
+/// Owns the LocationManager observation so location/heading publishes
+/// re-render ONLY this header subtree. ProjectDetailsView previously
+/// declared the @EnvironmentObject itself, which re-evaluated the entire
+/// ~1,400-line container on every location tick (10 m cadence driving,
+/// every 5° of compass movement) — pure churn online.
+struct ProjectMapHeaderSection: View {
+    let project: Project
+    let taskColorHexes: [String]
+    let pinLabel: String
+    let onMapTap: () -> Void
+
+    @EnvironmentObject private var locationManager: LocationManager
+
+    var body: some View {
+        ProjectMapHeader(
+            project: project,
+            taskColorHexes: taskColorHexes,
+            pinLabel: pinLabel,
+            userCoordinate: locationManager.userLocation,
+            onMapTap: onMapTap
+        )
+    }
+}

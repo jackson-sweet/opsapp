@@ -95,6 +95,9 @@ class ProjectDetailsViewModel: ObservableObject {
     @Published var isLoadingExpenses = false
     @Published var expenseError: String? = nil
 
+    /// When the project-expense cache was last filled from the server.
+    private var expensesLoadedAt: Date?
+
     // MARK: - Client State
 
     @Published var isRefreshingClient = false
@@ -663,16 +666,41 @@ class ProjectDetailsViewModel: ObservableObject {
 
     // MARK: - Expenses
 
+    /// Staleness rule for tab visits. Pure + static so it is unit-testable
+    /// (pattern: RealtimeProcessor.subscribeRetryDelay).
+    nonisolated static func isExpenseCacheFresh(
+        loadedAt: Date?, hasData: Bool, now: Date, maxAge: TimeInterval
+    ) -> Bool {
+        guard hasData, let loadedAt else { return false }
+        return now.timeIntervalSince(loadedAt) < maxAge
+    }
+
+    /// Tab-visit entry point: render the cached list instantly and hit the
+    /// network only when the cache is empty or older than `maxAge`. The
+    /// container's `.opsExpensesDidChange` observer still calls
+    /// `loadExpenses()` directly, so any expense change (local or realtime)
+    /// force-refreshes regardless of age.
+    func loadExpensesIfStale(maxAge: TimeInterval = 300) async {
+        if Self.isExpenseCacheFresh(
+            loadedAt: expensesLoadedAt,
+            hasData: !projectExpenses.isEmpty,
+            now: Date(),
+            maxAge: maxAge
+        ) { return }
+        await loadExpenses()
+    }
+
     func loadExpenses() async {
         guard let dc = dataController,
               let companyId = dc.currentUser?.companyId else { return }
 
-        isLoadingExpenses = true
+        isLoadingExpenses = projectExpenses.isEmpty
         expenseError = nil
 
         do {
             let repo = ExpenseRepository(companyId: companyId)
             projectExpenses = try await repo.fetchByProject(project.id)
+            expensesLoadedAt = Date()
             isLoadingExpenses = false
         } catch {
             expenseError = error.localizedDescription

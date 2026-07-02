@@ -55,7 +55,7 @@ struct ProjectExpensesTabView: View {
         }
         .padding(.top, OPSStyle.Layout.spacing3)
         .task {
-            await viewModel.loadExpenses()
+            await viewModel.loadExpensesIfStale()
         }
     }
 

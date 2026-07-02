@@ -85,25 +85,7 @@ class ProjectNotesViewModel: ObservableObject {
             let dtos = try await repo.fetchForProject(projectId)
             // Upsert into SwiftData
             if let context = modelContext {
-                for dto in dtos {
-                    let model = dto.toModel()
-                    model.lastSyncedAt = Date()
-                    model.needsSync = false
-                    let noteId = dto.id
-                    let descriptor = FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == noteId })
-                    if let existing = try? context.fetch(descriptor).first {
-                        existing.content = model.content
-                        existing.attachmentsJSON = model.attachmentsJSON
-                        existing.mentionedUserIdsString = model.mentionedUserIdsString
-                        existing.photoURL = model.photoURL
-                        existing.updatedAt = model.updatedAt
-                        existing.deletedAt = model.deletedAt
-                        existing.lastSyncedAt = Date()
-                    } else {
-                        context.insert(model)
-                    }
-                }
-                try? context.save()
+                Self.mergeFetchedNotes(dtos, projectId: projectId, context: context)
             }
             loadNotesFromLocal()
         } catch {
@@ -113,6 +95,40 @@ class ProjectNotesViewModel: ObservableObject {
             // Fall back to local data
             loadNotesFromLocal()
         }
+    }
+
+    /// Merge fetched note DTOs into SwiftData with ONE project-scoped fetch
+    /// instead of a per-note FetchDescriptor — N store round-trips on the
+    /// main actor was a measured screen-open cost. Static so it is testable
+    /// against an in-memory container.
+    static func mergeFetchedNotes(
+        _ dtos: [ProjectNoteDTO], projectId: String, context: ModelContext
+    ) {
+        let pid = projectId
+        let descriptor = FetchDescriptor<ProjectNote>(
+            predicate: #Predicate { $0.projectId == pid }
+        )
+        let existingById = Dictionary(
+            ((try? context.fetch(descriptor)) ?? []).map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for dto in dtos {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            if let existing = existingById[dto.id] {
+                existing.content = model.content
+                existing.attachmentsJSON = model.attachmentsJSON
+                existing.mentionedUserIdsString = model.mentionedUserIdsString
+                existing.photoURL = model.photoURL
+                existing.updatedAt = model.updatedAt
+                existing.deletedAt = model.deletedAt
+                existing.lastSyncedAt = Date()
+            } else {
+                context.insert(model)
+            }
+        }
+        try? context.save()
     }
 
     private func loadNotesFromLocal() {

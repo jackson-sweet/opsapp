@@ -95,6 +95,33 @@ final class OPSMapCoordinator: ObservableObject {
     /// Raw reference to the Mapbox MapView — set once via `setupMapView(_:)`.
     private(set) var mapView: MapView?
 
+    // MARK: - Covered-by-sheet pause
+
+    /// Restored puck configuration for resume.
+    private var pausedPuckType: PuckType?
+    private var isRenderingPaused = false
+
+    /// Pause/resume map work while the project-details sheet covers the map.
+    /// Removing the puck stops location/course-driven repaints (the dominant
+    /// online-only cost while covered); hiding the view drops it from
+    /// compositing. Camera, style, and annotations are untouched so resume
+    /// is instant with no reload.
+    func setRenderingPaused(_ paused: Bool) {
+        guard paused != isRenderingPaused, let mapView else { return }
+        isRenderingPaused = paused
+        if paused {
+            pausedPuckType = mapView.location.options.puckType
+            mapView.location.options.puckType = nil
+            mapView.isHidden = true
+        } else {
+            if let pausedPuckType {
+                mapView.location.options.puckType = pausedPuckType
+            }
+            pausedPuckType = nil
+            mapView.isHidden = false
+        }
+    }
+
     /// Annotation managers — created after the map view is available.
     private var projectAnnotationManager: PointAnnotationManager?
     private var crewAnnotationManager: PointAnnotationManager?

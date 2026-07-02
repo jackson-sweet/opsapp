@@ -324,6 +324,7 @@ struct ProjectDetailsView: View {
                     }
                     .onAppear { handleOnAppear() }
                     .onDisappear {
+                        NotificationCenter.default.post(name: .projectDetailsDidDisappear, object: nil)
                         // Wizard system: notify that project details was closed
                         NotificationCenter.default.post(
                             name: Notification.Name("WizardScreenDismissed"),
@@ -1312,6 +1313,7 @@ struct ProjectDetailsView: View {
     }
 
     private func handleOnAppear() {
+        NotificationCenter.default.post(name: .projectDetailsDidAppear, object: nil)
         // Inject dependencies
         viewModel.dataController = dataController
         viewModel.appState = appState
@@ -1396,3 +1398,13 @@ struct ProjectDetailsView: View {
     }
 }
 
+
+// MARK: - Presentation notifications
+
+extension Notification.Name {
+    /// Posted on appear/disappear of the project-details screen. The
+    /// workspace map (still mapped behind the details .sheet on the home
+    /// tab) observes these to pause its puck + drawing while covered.
+    static let projectDetailsDidAppear = Notification.Name("projectDetailsDidAppear")
+    static let projectDetailsDidDisappear = Notification.Name("projectDetailsDidDisappear")
+}

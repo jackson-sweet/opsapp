@@ -687,6 +687,12 @@ struct OPSMapContainer: View {
                 isManeuverExpanded = false
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .projectDetailsDidAppear)) { _ in
+            coordinator.setRenderingPaused(true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .projectDetailsDidDisappear)) { _ in
+            coordinator.setRenderingPaused(false)
+        }
     }
 
     // ──────────────────────────────────────────────

@@ -94,10 +94,15 @@ struct DeckFullscreenViewer: View {
             Spacer(minLength: 0)
             if viewMode == .twoD {
                 HStack(alignment: .bottom, spacing: 0) {
-                    // Readouts anchored bottom-left: the selection peek sheet in
-                    // select mode, the measure card in measure mode. Mutually
-                    // exclusive by mode — one grammar, data left / tools right.
-                    if toolState.isSelecting, toolState.hasSelection {
+                    // Readouts anchored bottom-left: the split card while a
+                    // valid cut exists (the selection readout is stale context
+                    // once the user is cutting), else the selection peek sheet
+                    // in select mode, else the measure card in measure mode.
+                    // One grammar — data left / tools right.
+                    if toolState.isSplitting, splitReadout.didSplit {
+                        splitSheet
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    } else if toolState.isSelecting, toolState.hasSelection {
                         peekSheet
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     } else if toolState.isMeasuring, showsMeasureCard {
@@ -138,6 +143,18 @@ struct DeckFullscreenViewer: View {
                                 .transition(.opacity)
                             }
                         }
+                        if toolState.isSelecting, toolState.canSplit {
+                            toolButton(
+                                icon: "scissors",
+                                isActive: toolState.isSplitting,
+                                activeColor: OPSStyle.Colors.primaryAccent,
+                                label: toolState.isSplitting ? "Stop splitting" : "Split surface"
+                            ) {
+                                toolState.toggleSplitting()
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                            .transition(.opacity)
+                        }
                         toolRail
                     }
                 }
@@ -145,6 +162,9 @@ struct DeckFullscreenViewer: View {
                 .padding(.bottom, OPSStyle.Layout.spacing4)
                 .animation(reduceMotion ? nil : OPSStyle.Animation.fast, value: toolState.measurementPoints.count)
                 .animation(reduceMotion ? nil : OPSStyle.Animation.fast, value: toolState.measurementPhase)
+                .animation(reduceMotion ? nil : OPSStyle.Animation.fast, value: toolState.canSplit)
+                .animation(reduceMotion ? nil : OPSStyle.Animation.fast, value: toolState.isSplitting)
+                .animation(reduceMotion ? nil : OPSStyle.Animation.fast, value: toolState.splitPoints.count)
             }
         }
     }
@@ -410,6 +430,64 @@ struct DeckFullscreenViewer: View {
         .cornerRadius(6)
     }
 
+    // MARK: - Split Card (cut readout)
+
+    /// Split readout — recomputed on every cut change. Empty until two points.
+    private var splitReadout: DeckSplitReadout.Result {
+        guard toolState.isSplitting, toolState.splitPoints.count == 2,
+              let id = toolState.selectedSurfaceIds.first,
+              toolState.selectedSurfaceIds.count == 1,
+              let surface = DeckSelectionReadout.surfaceContexts(in: drawingData)
+                  .first(where: { $0.face.id == id })?.face.positions
+        else { return DeckSplitReadout.empty }
+        return DeckSplitReadout.build(
+            surface: surface,
+            cutA: toolState.splitPoints[0], cutB: toolState.splitPoints[1],
+            scaleFactor: drawingData.effectiveScaleFactor,
+            system: drawingData.config.measurementSystem
+        )
+    }
+
+    /// Split card — the peek-sheet pattern with side rows tinted to match
+    /// the canvas fills (A accent, B amber).
+    private var splitSheet: some View {
+        let readout = splitReadout
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("SPLIT")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Spacer(minLength: 12)
+                Button {
+                    toolState.clearSplit()
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Text("CLEAR")
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                .accessibilityLabel("Clear split")
+            }
+            if let a = readout.sideAText {
+                selectionRow("SIDE A", a.uppercased(), emphasized: true, accent: OPSStyle.Colors.primaryAccent)
+            }
+            if let b = readout.sideBText {
+                selectionRow("SIDE B", b.uppercased(), emphasized: true, accent: OPSStyle.Colors.warningStatus)
+            }
+            if let cut = readout.cutLengthText {
+                selectionRow("CUT", cut)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: 260, alignment: .leading)
+        .background(Color.black.opacity(0.72))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.35), lineWidth: 1)
+        )
+        .cornerRadius(6)
+    }
+
     // MARK: - Derived
 
     private var summaryReadout: String {
@@ -419,10 +497,17 @@ struct DeckFullscreenViewer: View {
         return "\(levelCount) LVL · \(areaText)"
     }
 
-    /// Live instruction for measure mode. Each state teaches only the newly
-    /// unlocked, non-obvious action — continuing the run is self-evident after
-    /// two taps, so the hint always promotes the next capability instead.
+    /// Live instruction for the active tool. Split hints take over while the
+    /// scissors are armed; measure hints otherwise. Each state teaches only
+    /// the newly unlocked, non-obvious action.
     private var measurementHint: String? {
+        if toolState.isSplitting {
+            switch toolState.splitPoints.count {
+            case 0: return "TAP POINT"
+            case 1: return "TAP ACROSS"
+            default: return splitReadout.didSplit ? "TAP TO RE-CUT" : "DRAW ACROSS THE FACE"
+            }
+        }
         guard toolState.isMeasuring else { return nil }
         switch toolState.measurementPhase {
         case .finished, .closed:

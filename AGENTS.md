@@ -1,3 +1,5 @@
+<!-- GENERATED from CLAUDE.md — edit CLAUDE.md, then run scripts/sync-agent-docs.sh -->
+
 # OPS iOS — Development Standards
 
 Self-contained CLAUDE.md for the `ops-ios` sub-project. Universal OPS rules (kept in sync across every OPS sub-project) come first; iOS-specific rules come after the divider.

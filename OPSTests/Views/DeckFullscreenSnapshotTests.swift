@@ -93,11 +93,12 @@ final class DeckFullscreenSnapshotTests: XCTestCase {
         snapshot("02-single-select-readout", toolState: selecting,
                  drawingData: Self.centeredSingleLevel(), title: "MERIDIAN DECK")
 
-        // 3. Single-level, measure mode — measure button active + hint pill.
+        // 3. Single-level, measure mode — the degenerate two-point run: one
+        //    dashed segment + its length pill, undo/finish rail buttons.
         let measuring = DeckViewerToolState()
         measuring.toggleMeasure()
-        measuring.measurementStart = CGPoint(x: 76, y: 296)
-        measuring.measurementEnd = CGPoint(x: 316, y: 296)
+        measuring.recordMeasureTap(raw: CGPoint(x: 76, y: 296), closeThreshold: 12)
+        measuring.recordMeasureTap(raw: CGPoint(x: 316, y: 296), closeThreshold: 12)
         snapshot("03-single-measure", toolState: measuring,
                  drawingData: Self.centeredSingleLevel(), title: "MERIDIAN DECK")
 
@@ -111,6 +112,29 @@ final class DeckFullscreenSnapshotTests: XCTestCase {
         isolating.isolatedLevelId = isolatedData.levels.last?.id
         snapshot("05-multi-isolate", toolState: isolating,
                  drawingData: isolatedData, title: "HILLSIDE TWO-TIER")
+
+        // 6. Measure polyline mid-draw — per-segment pills, first-dot close
+        //    halo + faint close preview, measure card with running total,
+        //    undo/finish rail buttons, "TAP FIRST TO CLOSE" hint.
+        let polyline = DeckViewerToolState()
+        polyline.toggleMeasure()
+        polyline.recordMeasureTap(raw: CGPoint(x: 76, y: 276), closeThreshold: 12)
+        polyline.recordMeasureTap(raw: CGPoint(x: 316, y: 276), closeThreshold: 12)
+        polyline.recordMeasureTap(raw: CGPoint(x: 316, y: 444), closeThreshold: 12)
+        snapshot("06-measure-polyline", toolState: polyline,
+                 drawingData: Self.centeredSingleLevel(), title: "MERIDIAN DECK")
+
+        // 7. Measure loop closed around the deck — amber fill, centroid area
+        //    pill, AREA + PERIMETER card, "TAP TO RESET" hint.
+        let closedLoop = DeckViewerToolState()
+        closedLoop.toggleMeasure()
+        closedLoop.recordMeasureTap(raw: CGPoint(x: 76, y: 276), closeThreshold: 12)
+        closedLoop.recordMeasureTap(raw: CGPoint(x: 316, y: 276), closeThreshold: 12)
+        closedLoop.recordMeasureTap(raw: CGPoint(x: 316, y: 444), closeThreshold: 12)
+        closedLoop.recordMeasureTap(raw: CGPoint(x: 76, y: 444), closeThreshold: 12)
+        closedLoop.recordMeasureTap(raw: CGPoint(x: 78, y: 278), closeThreshold: 12) // close on first dot
+        snapshot("07-measure-closed", toolState: closedLoop,
+                 drawingData: Self.centeredSingleLevel(), title: "MERIDIAN DECK")
     }
 
     // MARK: - Viewport-centered fixtures (≈ centered in a 393×852 pt canvas)

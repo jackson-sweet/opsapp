@@ -94,22 +94,57 @@ struct DeckFullscreenViewer: View {
             Spacer(minLength: 0)
             if viewMode == .twoD {
                 HStack(alignment: .bottom, spacing: 0) {
-                    // Peek sheet (selection readout) anchored bottom-left.
+                    // Readouts anchored bottom-left: the selection peek sheet in
+                    // select mode, the measure card in measure mode. Mutually
+                    // exclusive by mode — one grammar, data left / tools right.
                     if toolState.isSelecting, toolState.hasSelection {
                         peekSheet
                             .transition(.move(edge: .bottom).combined(with: .opacity))
+                    } else if toolState.isMeasuring, showsMeasureCard {
+                        measureSheet
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                     Spacer(minLength: OPSStyle.Layout.spacing3)
-                    // Tool rail anchored bottom-right, thumb reachable.
+                    // Tool rail anchored bottom-right, thumb reachable. Measure
+                    // mode slides in its contextual actions (undo / finish)
+                    // above the rail in the same circular-button language.
                     VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing2_5) {
                         if let hint = measurementHint {
                             hintPill(hint)
+                        }
+                        if toolState.isMeasuring {
+                            if toolState.canUndoMeasurement {
+                                toolButton(
+                                    icon: "arrow.uturn.backward",
+                                    isActive: false,
+                                    activeColor: OPSStyle.Colors.warningStatus,
+                                    label: "Undo last point"
+                                ) {
+                                    toolState.undoMeasurePoint()
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                }
+                                .transition(.opacity)
+                            }
+                            if toolState.canFinishMeasurement {
+                                toolButton(
+                                    icon: "checkmark",
+                                    isActive: true,
+                                    activeColor: OPSStyle.Colors.warningStatus,
+                                    label: "Finish measurement"
+                                ) {
+                                    toolState.finishMeasurement()
+                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                }
+                                .transition(.opacity)
+                            }
                         }
                         toolRail
                     }
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.bottom, OPSStyle.Layout.spacing4)
+                .animation(reduceMotion ? nil : OPSStyle.Animation.fast, value: toolState.measurementPoints.count)
+                .animation(reduceMotion ? nil : OPSStyle.Animation.fast, value: toolState.measurementPhase)
             }
         }
     }
@@ -304,7 +339,7 @@ struct DeckFullscreenViewer: View {
         .cornerRadius(6)
     }
 
-    private func selectionRow(_ label: String, _ value: String, emphasized: Bool = false) -> some View {
+    private func selectionRow(_ label: String, _ value: String, emphasized: Bool = false, accent: Color = OPSStyle.Colors.primaryAccent) -> some View {
         HStack(spacing: 8) {
             Text(label)
                 .font(.system(size: emphasized ? 10 : 9, weight: .semibold, design: .monospaced))
@@ -313,9 +348,66 @@ struct DeckFullscreenViewer: View {
             Spacer(minLength: 8)
             Text(value)
                 .font(.system(size: emphasized ? 13 : 11, weight: emphasized ? .bold : .semibold, design: .monospaced))
-                .foregroundColor(emphasized ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
+                .foregroundColor(emphasized ? accent : OPSStyle.Colors.primaryText)
                 .lineLimit(1)
         }
+    }
+
+    // MARK: - Measure Card (polyline readout)
+
+    /// The card earns its spot only when it adds information beyond the
+    /// per-segment pills: a running total across 2+ segments, or the
+    /// area + perimeter of a closed loop (closing requires 3 points).
+    private var showsMeasureCard: Bool {
+        toolState.measurementPoints.count >= 3
+    }
+
+    /// Measure-mode readout card — the peek-sheet pattern in the measure
+    /// tool's color. Open run: running total + segment count. Closed loop:
+    /// area + perimeter.
+    private var measureSheet: some View {
+        let readout = DeckMeasureReadout.build(
+            points: toolState.measurementPoints,
+            closed: toolState.measurementPhase == .closed,
+            scaleFactor: drawingData.effectiveScaleFactor,
+            system: drawingData.config.measurementSystem
+        )
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("MEASURE")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Spacer(minLength: 12)
+                Button {
+                    toolState.clearMeasurement()
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Text("CLEAR")
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                .accessibilityLabel("Clear measurement")
+            }
+
+            if let area = readout.areaText {
+                selectionRow("AREA", area.uppercased(), emphasized: true, accent: OPSStyle.Colors.warningStatus)
+            }
+            if let perimeter = readout.perimeterText {
+                selectionRow("PERIMETER", perimeter)
+            }
+            if let total = readout.totalLengthText {
+                selectionRow("TOTAL LENGTH", total, emphasized: true, accent: OPSStyle.Colors.warningStatus)
+                selectionRow("SEGMENTS", "\(readout.segmentCount)")
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: 260, alignment: .leading)
+        .background(Color.black.opacity(0.72))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(OPSStyle.Colors.warningStatus.opacity(0.35), lineWidth: 1)
+        )
+        .cornerRadius(6)
     }
 
     // MARK: - Derived
@@ -327,12 +419,22 @@ struct DeckFullscreenViewer: View {
         return "\(levelCount) LVL · \(areaText)"
     }
 
-    /// Live instruction for measure mode (moved out of DeckTab2DView).
+    /// Live instruction for measure mode. Each state teaches only the newly
+    /// unlocked, non-obvious action — continuing the run is self-evident after
+    /// two taps, so the hint always promotes the next capability instead.
     private var measurementHint: String? {
         guard toolState.isMeasuring else { return nil }
-        if toolState.measurementStart == nil { return "TAP POINT" }
-        if toolState.measurementEnd == nil { return "TAP END" }
-        return "TAP TO RESET"
+        switch toolState.measurementPhase {
+        case .finished, .closed:
+            return "TAP TO RESET"
+        case .drawing:
+            switch toolState.measurementPoints.count {
+            case 0: return "TAP POINT"
+            case 1: return "TAP NEXT"
+            case 2: return "TAP LAST TO FINISH"
+            default: return "TAP FIRST TO CLOSE"
+            }
+        }
     }
 
     /// Chrome fades to 0 while the viewport is being manipulated so the canvas

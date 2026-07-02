@@ -114,7 +114,6 @@ struct DeckTab2DView: View {
     private var canvasContent: some View {
         Canvas { context, size in
             drawGrid(context: context, size: size)
-            drawMeasurement(context: context)
 
             if drawingData.isMultiLevel {
                 // DECK-NEW-8 — render every level so multi-level designs are
@@ -209,6 +208,10 @@ struct DeckTab2DView: View {
                     }
                 }
             }
+
+            // The active tool draws LAST so the measurement always reads over
+            // the plan — edges, fills, and dimension labels never occlude it.
+            drawMeasurement(context: context)
         }
     }
 
@@ -673,26 +676,32 @@ struct DeckTab2DView: View {
         return CGPoint(x: cx, y: cy)
     }
 
-    /// Measurement-mode tap state machine: first tap sets start, second tap
-    /// closes the measurement, third tap resets and starts a new one.
-    /// DECK-NEW-9 — taps now snap to nearest vertex / edge projection
-    /// before being recorded, and the second tap also snaps the LINE
-    /// angle to perpendicular / parallel of nearby edges.
+    /// Measurement-mode tap: routed through the tool state's polyline machine
+    /// (append / finish on last-dot tap / close on first-dot tap / reset after
+    /// a frozen run). Close and finish are detected on the RAW canvas point —
+    /// before snapping — so a nearby deck-vertex snap can't yank a deliberate
+    /// close-tap out of the finger-sized target. Appended vertices snap to
+    /// geometry (DECK-NEW-9), then the segment angle snaps parallel /
+    /// perpendicular to nearby edges relative to the PREVIOUS vertex.
     private func recordMeasurementTap(at location: CGPoint, in viewportSize: CGSize) {
-        let rawCanvasLoc = canvasPoint(from: location, viewportSize: viewportSize)
-        let snappedLoc = snapToGeometry(rawCanvasLoc)
-
-        if toolState.measurementStart == nil {
-            toolState.measurementStart = snappedLoc
-            toolState.measurementEnd = nil
-        } else if toolState.measurementEnd == nil {
-            // Second tap: snap angle relative to existing edges so the
-            // measurement reads true perpendicular / parallel when the
-            // user is close to that intent.
-            toolState.measurementEnd = snapAngleToEdges(from: toolState.measurementStart!, candidate: snappedLoc)
-        } else {
-            toolState.measurementStart = snappedLoc
-            toolState.measurementEnd = nil
+        let raw = canvasPoint(from: location, viewportSize: viewportSize)
+        // Finger-sized close/finish target regardless of zoom.
+        let closeThreshold = max(12, 22 / Double(canvasScale))
+        let result = toolState.recordMeasureTap(
+            raw: raw,
+            closeThreshold: closeThreshold,
+            snapPoint: { snapToGeometry($0) },
+            snapSegmentEnd: { last, candidate in snapAngleToEdges(from: last, candidate: candidate) }
+        )
+        switch result {
+        case .started, .appended:
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        case .finished:
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        case .closed:
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        case .ignored:
+            break
         }
     }
 
@@ -761,65 +770,138 @@ struct DeckTab2DView: View {
         return SnapEngine.snapMeasurementEnd(from: start, candidate: candidate, referenceEdges: segments)
     }
 
-    /// Render the in-progress measurement (anchor dots, dashed line, midpoint
-    /// distance pill) inside the Canvas pass. Fullscreen only.
+    /// Render the measure polyline — anchor dots, dashed segments, per-segment
+    /// length pills, the first-dot close halo, the faint close-preview edge,
+    /// and (once closed) the loop fill + centroid area pill — inside the
+    /// Canvas pass. Drawn last so the tool reads over the plan. Fullscreen only.
+    ///
+    /// Distances are always real-world readings: effectiveScaleFactor is the
+    /// calibrated scale when set, else the prescale every edge is already
+    /// dimensioned at (always > 0). All values format through DimensionEngine
+    /// so metric decks read metric — matching dimension labels and readouts.
     private func drawMeasurement(context: GraphicsContext) {
         guard showsTools, toolState.isMeasuring else { return }
-        let dotR: CGFloat = 6
-        let dotStroke: CGFloat = 2
-        let lineColor = OPSStyle.Colors.warningStatus
+        let points = toolState.measurementPoints
+        guard !points.isEmpty else { return }
 
-        if let start = toolState.measurementStart {
+        let lineColor = OPSStyle.Colors.warningStatus
+        let closed = toolState.measurementPhase == .closed && points.count >= 3
+        let scale = drawingData.effectiveScaleFactor
+        let system = drawingData.config.measurementSystem
+
+        // Closed loop — fill first so segments, dots, and pills stay legible over it.
+        if closed {
+            var fill = Path()
+            fill.move(to: points[0])
+            for p in points.dropFirst() { fill.addLine(to: p) }
+            fill.closeSubpath()
+            context.fill(fill, with: .color(lineColor.opacity(0.12)))
+        }
+
+        // Drawn segments, each with its mid-point length pill.
+        for i in 1..<points.count {
+            drawMeasureSegment(context: context, from: points[i - 1], to: points[i],
+                               color: lineColor, scale: scale, system: system)
+        }
+        if closed {
+            // The implicit closing edge is a real measured run — draw + label it.
+            drawMeasureSegment(context: context, from: points[points.count - 1], to: points[0],
+                               color: lineColor, scale: scale, system: system)
+        } else if toolState.canCloseMeasurement {
+            // Faint preview of the loop a first-dot tap would close.
+            var preview = Path()
+            preview.move(to: points[points.count - 1])
+            preview.addLine(to: points[0])
+            context.stroke(preview, with: .color(lineColor.opacity(0.35)),
+                           style: StrokeStyle(lineWidth: 1.5, dash: [3, 4]))
+        }
+
+        // Vertex dots over the lines. The FIRST dot gets a halo while the loop
+        // is closable — the visual target the "TAP FIRST TO CLOSE" hint names.
+        let dotR: CGFloat = 6
+        for (index, p) in points.enumerated() {
+            if index == 0 && toolState.canCloseMeasurement {
+                let haloR = dotR + 5
+                let halo = Path(ellipseIn: CGRect(
+                    x: p.x - haloR, y: p.y - haloR,
+                    width: haloR * 2, height: haloR * 2
+                ))
+                context.stroke(halo, with: .color(lineColor.opacity(0.5)), lineWidth: 1.5)
+            }
             let circle = Path(ellipseIn: CGRect(
-                x: start.x - dotR, y: start.y - dotR,
+                x: p.x - dotR, y: p.y - dotR,
                 width: dotR * 2, height: dotR * 2
             ))
             context.fill(circle, with: .color(lineColor.opacity(0.2)))
-            context.stroke(circle, with: .color(lineColor), lineWidth: dotStroke)
+            context.stroke(circle, with: .color(lineColor), lineWidth: 2)
         }
 
-        guard let start = toolState.measurementStart, let end = toolState.measurementEnd else { return }
+        // Enclosed area at the true centroid once closed. Suppressed for
+        // self-intersecting loops — a bowtie's shoelace area is a net value,
+        // not a footprint, and a confidently-wrong number erodes trust.
+        if closed,
+           !PolygonMath.isSelfIntersecting(vertices: points),
+           let centroid = PolygonMath.polygonCentroid(vertices: points) {
+            let areaSqIn = PolygonMath.realWorldArea(vertices: points, scaleFactor: scale)
+            drawMeasurePill(
+                context: context,
+                text: DimensionEngine.formatArea(areaSqIn, system: system).uppercased(),
+                at: centroid,
+                color: lineColor,
+                fontSize: 13
+            )
+        }
+    }
 
-        var linePath = Path()
-        linePath.move(to: start)
-        linePath.addLine(to: end)
-        context.stroke(linePath, with: .color(lineColor),
-                       style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+    /// One dashed measure segment + its mid-point length pill. The pill is
+    /// skipped when the segment is too short on screen to carry it — the
+    /// card's running total still accounts for every segment.
+    private func drawMeasureSegment(
+        context: GraphicsContext,
+        from start: CGPoint,
+        to end: CGPoint,
+        color: Color,
+        scale: Double,
+        system: MeasurementSystem
+    ) {
+        var path = Path()
+        path.move(to: start)
+        path.addLine(to: end)
+        context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
 
-        let endCircle = Path(ellipseIn: CGRect(
-            x: end.x - dotR, y: end.y - dotR,
-            width: dotR * 2, height: dotR * 2
-        ))
-        context.fill(endCircle, with: .color(lineColor.opacity(0.2)))
-        context.stroke(endCircle, with: .color(lineColor), lineWidth: dotStroke)
+        let canvasLength = SnapEngine.distance(start, end)
+        guard canvasLength * Double(canvasScale) >= 56 else { return }
+        let mid = CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
+        drawMeasurePill(
+            context: context,
+            text: DimensionEngine.format(canvasLength / scale, system: system),
+            at: mid,
+            color: color,
+            fontSize: 12
+        )
+    }
 
-        let midX = (start.x + end.x) / 2
-        let midY = (start.y + end.y) / 2
-        let canvasDistance = hypot(end.x - start.x, end.y - start.y)
-
-        // Always a real-world reading: effectiveScaleFactor is the calibrated
-        // scale when set, else the prescale every edge is already dimensioned at
-        // (always > 0). Matches the dimension labels, area, and selection readouts.
-        let scale = drawingData.effectiveScaleFactor
-        let inches = canvasDistance / scale
-        let totalInches = Int(inches.rounded())
-        let feet = totalInches / 12
-        let remInches = totalInches % 12
-        let labelText = feet > 0 ? "\(feet)' \(remInches)\"" : "\(remInches)\""
-
-        let resolved = context.resolve(Text(labelText)
-            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+    /// Solid measure-color pill with black text — the measure tool's label style.
+    private func drawMeasurePill(
+        context: GraphicsContext,
+        text: String,
+        at point: CGPoint,
+        color: Color,
+        fontSize: CGFloat
+    ) {
+        let resolved = context.resolve(Text(text)
+            .font(.system(size: fontSize, weight: .semibold, design: .monospaced))
             .foregroundColor(.black))
-        let textSize = resolved.measure(in: CGSize(width: 200, height: 50))
+        let textSize = resolved.measure(in: CGSize(width: 220, height: 50))
         let padH: CGFloat = 8
         let padV: CGFloat = 4
         let bgRect = CGRect(
-            x: midX - textSize.width / 2 - padH,
-            y: midY - textSize.height / 2 - padV,
+            x: point.x - textSize.width / 2 - padH,
+            y: point.y - textSize.height / 2 - padV,
             width: textSize.width + padH * 2,
             height: textSize.height + padV * 2
         )
-        context.fill(Path(roundedRect: bgRect, cornerRadius: OPSStyle.Layout.chipRadius), with: .color(lineColor))
-        context.draw(resolved, at: CGPoint(x: midX, y: midY), anchor: .center)
+        context.fill(Path(roundedRect: bgRect, cornerRadius: OPSStyle.Layout.chipRadius), with: .color(color))
+        context.draw(resolved, at: point, anchor: .center)
     }
 }

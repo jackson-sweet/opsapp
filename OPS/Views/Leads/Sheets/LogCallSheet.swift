@@ -164,7 +164,7 @@ struct LogCallSheet: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, 14)
-            .glassSurface()
+            .commandCard()
         }
     }
 

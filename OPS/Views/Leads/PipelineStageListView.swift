@@ -15,21 +15,22 @@
 //      ├────────────────────────────────────────────────┤
 //      │  QUOTING                              04 LEADS │ ← titleRow
 //      │                                                │
-//      │  [LeadActionCard]   ← stale-first, 8pt gaps    │
-//      │  [LeadActionCard]                              │
+//      │  [LeadTriageCard]   ← stale-first, 8pt gaps    │
+//      │  [LeadTriageCard]                              │
 //      │  …                                             │
 //      └────────────────────────────────────────────────┘
 //
-//  A row tap routes up to LeadsTabView's single LeadDetail destination.
-//  LeadDetailView's mark-lost / edit / convert closures present sheets owned
-//  by LeadsTabView's `activeSheet`, so they are routed up through
-//  `onRequestSheet`. The LOG / MORE / ADVANCE quick-glyphs mirror the
-//  LeadsTabView triage-queue wiring, gated by permissions and terminal stage.
+//  The row is the SAME LeadTriageCard the LeadsTabView chase queue renders, so
+//  a lead looks identical wherever it surfaces. A row tap routes up to
+//  LeadsTabView's single LeadDetail destination; the on-card LOG / ADVANCE /
+//  WON / LOST actions and the long-press EDIT / ARCHIVE menu route their sheets
+//  up through `onRequestSheet` / `onLeadTap`, gated by permission + stage.
 //
 //  Won/Lost caveat: PipelineViewModel.bucketOf / verbFor / toneFor classify
-//  OPEN leads only — a closed lead would fall through to "CHECK IN" /
-//  neutral. For a terminal stage the row verb is the stage status (WON /
-//  LOST) at neutral tone.
+//  OPEN leads only. The card is handed `bucket: .all` (per-lead urgency) and
+//  handles terminal stages itself — a won/lost lead renders its outcome strip
+//  and hides the mutating quick actions rather than misclassifying as a verb.
+//  In practice the by-stage strip only opens OPEN stages, so this is defensive.
 //
 //  Plan:   docs/superpowers/plans/2026-05-19-leads-tab-rebuild.md §2.1 Q2
 //  Intent: docs/superpowers/specs/2026-05-19-leads-tab-design-intent.md §23 #5
@@ -52,9 +53,6 @@ struct PipelineStageListView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.dismiss) private var dismiss
-
-    /// Drives the MORE confirmation dialog.
-    @State private var moreForLead: Opportunity?
 
     /// This stage's leads — already sorted stale-first by the view model.
     private var leads: [Opportunity] { viewModel.opportunities(in: stage) }
@@ -87,26 +85,6 @@ struct PipelineStageListView: View {
             }
         }
         .navigationBarHidden(true)
-        .confirmationDialog(
-            "Actions",
-            isPresented: moreSheetPresented,
-            presenting: moreForLead
-        ) { lead in
-            if canManage {
-                Button("MARK WON →") { onRequestSheet(.convert(lead)) }
-                Button("MARK LOST", role: .destructive) { onRequestSheet(.lost(lead)) }
-                Button("EDIT") { onRequestSheet(.edit(lead)) }
-                Button("ARCHIVE") {
-                    Task {
-                        do {
-                            try await viewModel.archive(opportunityId: lead.id)
-                            ToastCenter.shared.present(Feedback.Lead.archived)
-                        } catch {}
-                    }
-                }
-            }
-            Button("CANCEL", role: .cancel) {}
-        }
     }
 
     // MARK: - Title
@@ -140,36 +118,42 @@ struct PipelineStageListView: View {
         } else {
             LazyVStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(leads) { lead in
-                    LeadActionCard(
-                        opportunity: lead,
-                        verb: verb(for: lead),
-                        tone: tone(for: lead),
-                        showsLog: canManage,
-                        showsMore: canManage && !stage.isTerminal,
-                        showsAdvance: canManage && !stage.isTerminal,
-                        onTap:     { onLeadTap(lead) },
-                        onLog:     { onRequestSheet(.log(lead)) },
-                        onMore:    { moreForLead = lead },
-                        onAdvance: { advance(lead) }
-                    )
+                    card(for: lead)
                 }
             }
         }
     }
 
-    // MARK: - Per-lead verb + tone
-    //
-    // PipelineViewModel.verbFor / toneFor are correct only for OPEN leads —
-    // they bucketise by urgency. A won/lost lead would misclassify as
-    // "CHECK IN" / neutral, so a terminal stage uses the stage status as the
-    // row verb at neutral tone.
-
-    private func verb(for lead: Opportunity) -> String {
-        stage.isTerminal ? stage.displayName : viewModel.verbFor(lead, bucket: .all)
-    }
-
-    private func tone(for lead: Opportunity) -> PipelineViewModel.UrgencyTone {
-        stage.isTerminal ? .neutral : viewModel.toneFor(.all, lead: lead)
+    /// The unified chase-queue card — same component as the LeadsTabView queue.
+    /// `bucket: .all` lets the card derive each lead's own urgency tone / verb /
+    /// due tag from its state; a terminal stage (won/lost) renders its outcome
+    /// and hides the mutating quick actions. Edit + archive live in the
+    /// long-press context menu, matching the queue's per-card affordances.
+    private func card(for lead: Opportunity) -> some View {
+        LeadTriageCard(
+            lead: lead,
+            viewModel: viewModel,
+            bucket: .all,
+            canManage: canManage,
+            onTap:     { onLeadTap(lead) },
+            onLog:     { onRequestSheet(.log(lead)) },
+            onAdvance: { advance(lead) },
+            onWon:     { onRequestSheet(.convert(lead)) },
+            onLost:    { onRequestSheet(.lost(lead)) }
+        )
+        .contextMenu {
+            if canManage {
+                Button { onRequestSheet(.edit(lead)) } label: { Label("Edit", systemImage: "pencil") }
+                Button {
+                    Task {
+                        do {
+                            try await viewModel.archive(opportunityId: lead.id)
+                            ToastCenter.shared.present(Feedback.Lead.archived)
+                        } catch {}
+                    }
+                } label: { Label("Archive", systemImage: "archivebox") }
+            }
+        }
     }
 
     // MARK: - Actions
@@ -191,13 +175,6 @@ struct PipelineStageListView: View {
     }
 
     // MARK: - Helpers
-
-    private var moreSheetPresented: Binding<Bool> {
-        Binding(
-            get: { moreForLead != nil },
-            set: { if !$0 { moreForLead = nil } }
-        )
-    }
 
     /// Atmosphere hue per stage — mirrors `LeadDetailView.atmosphereTone`.
     private var atmosphereTone: Atmosphere.Tone {

@@ -240,5 +240,106 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
             .padding(OPSStyle.Layout.spacing3_5)
         }
     }
+
+    /// The triage card in the by-stage drill (`bucket: .all`), including a lead
+    /// that carries a SOURCE — confirms the source renders on real data (the
+    /// preview mix carries none, so the queue snapshot never exercises it).
+    func testRenderLeadTriageCardSource() {
+        let vm = PipelineViewModel.previewLoaded()
+        let sourced = Opportunity.preview(
+            title: "Gutter replacement — 140 lf", contactName: "Dana Ruiz",
+            stage: .quoted, estimatedValue: 8_600, daysInStage: 4,
+            lastActivityDaysAgo: 6, nextFollowUpDaysFromNow: 3
+        )
+        sourced.source = "referral"
+        snapshot("leads_triage_card_source") {
+            LeadTriageCard(lead: sourced, viewModel: vm, bucket: .all)
+                .padding(OPSStyle.Layout.spacing3_5)
+        }
+    }
+
+    /// Terminal-stage cards — the new outcome strip (won → converted vs not,
+    /// lost → reason). These render in the by-stage drill for a closed stage;
+    /// the triage queue never routes terminal leads here.
+    func testRenderLeadTriageCardsTerminal() {
+        let vm = PipelineViewModel.previewLoaded()
+        let wonConverted = Opportunity.preview(
+            title: "Maple Lane porch", contactName: "Tom Liu",
+            stage: .won, estimatedValue: 11_200, daysInStage: 12, actualCloseDaysAgo: 3
+        )
+        wonConverted.projectId = "proj-123"
+        wonConverted.source = "referral"
+        let wonUnconverted = Opportunity.preview(
+            title: "Foster patio", contactName: "Jen Foster",
+            stage: .won, estimatedValue: 9_400, daysInStage: 6, actualCloseDaysAgo: 1
+        )
+        let lost = Opportunity.preview(
+            title: "Beacon Hill addition", contactName: "Beacon Hill LLC",
+            stage: .lost, estimatedValue: 26_500, daysInStage: 20, actualCloseDaysAgo: 5
+        )
+        lost.lostReason = "price"
+        snapshot("leads_triage_cards_terminal") {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
+                LeadTriageCard(lead: wonConverted, viewModel: vm, bucket: .all)
+                LeadTriageCard(lead: wonUnconverted, viewModel: vm, bucket: .all)
+                LeadTriageCard(lead: lost, viewModel: vm, bucket: .all)
+            }
+            .padding(OPSStyle.Layout.spacing3_5)
+        }
+    }
+
+    /// The won → convert chooser (2+ unconverted wins).
+    func testRenderLeadsWonChooser() {
+        let wins: [Opportunity] = [
+            {
+                let o = Opportunity.preview(title: "Roof tear-off, 28 sq", contactName: "Helen Calloway",
+                                            stage: .won, estimatedValue: 14_200, daysInStage: 2, actualCloseDaysAgo: 3)
+                o.source = "referral"
+                return o
+            }(),
+            {
+                let o = Opportunity.preview(title: "Maple Lane porch", contactName: "Tom Liu",
+                                            stage: .won, estimatedValue: 11_200, daysInStage: 5, actualCloseDaysAgo: 0)
+                o.source = "website"
+                return o
+            }(),
+            Opportunity.preview(title: "Skylight install", contactName: "Aimee Watari",
+                                stage: .won, estimatedValue: nil, daysInStage: 8, actualCloseDaysAgo: 8),
+        ]
+        // Render the row list directly (the sheet wraps it in a ScrollView, which
+        // ImageRenderer leaves blank) so the snapshot shows the actual rows.
+        snapshot("leads_won_chooser") {
+            VStack(spacing: 0) {
+                ForEach(Array(wins.enumerated()), id: \.element.id) { idx, lead in
+                    WonChooserRow(lead: lead, action: {})
+                    if idx < wins.count - 1 {
+                        Rectangle().fill(OPSStyle.Colors.lineSoft).frame(height: 1).padding(.leading, 52)
+                    }
+                }
+            }
+            .commandCard()
+            .padding(OPSStyle.Layout.spacing3_5)
+        }
+    }
+
+    /// The restyled detail cards — DetailHero + ContactCard now sit on the solid
+    /// command surface. Confirms the glass→command swap renders cleanly.
+    func testRenderLeadDetailComponents() {
+        let lead = Opportunity.preview(
+            title: "Roof tear-off, 28 sq", contactName: "Helen Calloway",
+            stage: .quoted, estimatedValue: 14_200, daysInStage: 9
+        )
+        lead.contactPhone = "(555) 123-4567"
+        lead.contactEmail = "helen@example.com"
+        lead.address = "1240 Maple Ave"
+        lead.source = "referral"
+        snapshot("leads_detail_components") {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
+                DetailHero(opportunity: lead)
+                ContactCard(opportunity: lead)
+            }
+            .padding(.vertical, OPSStyle.Layout.spacing3)
+        }
+    }
 }
 #endif

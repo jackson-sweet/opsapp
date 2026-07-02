@@ -245,7 +245,7 @@ struct ConvertToProjectSheet: View {
         .padding(.vertical, 14)
         .padding(.horizontal, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassSurface()
+        .commandCard()
     }
 
     // MARK: - Duplicate state

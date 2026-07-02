@@ -32,7 +32,7 @@ struct ActivityTimeline: View {
                 .padding(.bottom, 10)
 
             content
-                .glassSurface()
+                .commandCard()
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }

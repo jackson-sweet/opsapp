@@ -28,7 +28,10 @@ struct ContactCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassSurface()
+        // Solid raised command surface — matches the triage-queue card the
+        // operator just tapped through from, and reads crisper in sunlight than
+        // translucent glass (BooksCommandKit / MOBILE.md §3).
+        .commandCard()
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 

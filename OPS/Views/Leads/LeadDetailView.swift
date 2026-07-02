@@ -288,7 +288,9 @@ private struct WonNotConvertedCard: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassSurface()
+        // Solid command surface + mobile-bright olive edge (the -M line clears
+        // outdoor-glare contrast that commandCard(tone:)'s 0.30 border would not).
+        .commandCard()
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
                 .strokeBorder(OPSStyle.Colors.oliveLineM, lineWidth: 1)
@@ -340,7 +342,8 @@ private struct SiteVisitLaunchCard: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassSurface()
+        // Solid command surface + mobile-bright tan edge (see WonNotConvertedCard).
+        .commandCard()
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
                 .strokeBorder(OPSStyle.Colors.tanLineM, lineWidth: 1)

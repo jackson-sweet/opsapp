@@ -176,6 +176,46 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
         }
     }
 
+    // MARK: - Drill-down sheets (rebuilt 2026-07-01)
+
+    /// Renders each lens's header + content directly (the production sheet
+    /// wraps them in a ScrollView, which lays out empty under ImageRenderer).
+    private func sheetShot<V: View>(_ name: String, title: String, tag: String, @ViewBuilder _ content: () -> V) {
+        snapshot(name) {
+            VStack(alignment: .leading, spacing: 0) {
+                BooksSheetHeader(title: title, tag: tag)
+                    .padding(.top, OPSStyle.Layout.spacing4)
+                    .padding(.bottom, OPSStyle.Layout.spacing3_5)
+                content()
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.bottom, OPSStyle.Layout.spacing5)
+        }
+    }
+
+    func testRenderLensSheets() {
+        let vm = MoneyDashboardViewModel.previewStub()
+        sheetShot("sheet_pl", title: "P&L", tag: "6M") {
+            BooksPLSheet(viewModel: vm)
+        }
+        sheetShot("sheet_cashflow", title: "CASH FLOW", tag: "6M") {
+            BooksCashFlowSheet(viewModel: vm)
+        }
+        sheetShot("sheet_receivables", title: "RECEIVABLES", tag: "ALL OPEN") {
+            BooksARSheet(viewModel: vm)
+                .environmentObject(DataController())
+        }
+        sheetShot("sheet_forecast", title: "FORECAST", tag: "ACTIVE") {
+            BooksForecastSheet(viewModel: vm)
+        }
+        sheetShot("sheet_jobs", title: "JOBS", tag: "6M") {
+            BooksJobsSheet(viewModel: vm)
+        }
+        sheetShot("sheet_empty_state", title: "JOBS", tag: "6M") {
+            BooksJobsSheet(viewModel: .previewEmpty())
+        }
+    }
+
     func testRenderCommandGridPermissionReflow() {
         let vm = MoneyDashboardViewModel.previewStub()
         snapshot("money_grid_no_pipeline") {

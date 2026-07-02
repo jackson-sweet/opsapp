@@ -70,8 +70,10 @@ struct PaymentRecordSheet: View {
                                         )
                                     Spacer()
                                     if method == m {
+                                        // Selection state is white, not accent —
+                                        // accent is CTA + focus only (DESIGN.md §3).
                                         Image(systemName: "checkmark")
-                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
                                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     }
                                 }

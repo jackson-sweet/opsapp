@@ -274,6 +274,15 @@ struct PhotoViewerItem: Identifiable {
 struct PhotoThumbnail: View {
     let url: String
     let project: Project? // Optional to maintain backward compatibility
+
+    /// Server-generated small rendition (project_photos.thumbnail_url).
+    /// When present, the tile fetches THIS instead of the full original.
+    /// Optional + defaulted so legacy call sites keep compiling unchanged.
+    var remoteThumbnailURL: String? = nil
+
+    /// 72 pt tile at 3× — the decode cap for every tile image.
+    static let tileMaxPixelSize: CGFloat = 216
+
     /// Phase F — driven by the parent grid. When true, overlays a small
     /// `ruler` SF Symbol bottom-right per the LiDAR Dimensioned Capture spec
     /// §3.7. Default false keeps legacy callers unchanged.
@@ -334,11 +343,22 @@ struct PhotoThumbnail: View {
     /// evicted still swaps in the markup when `.annotationsComposited` fires.
     private func reloadFromCache() {
         let cacheKey = url.hasPrefix("//") ? "https:" + url : url
-        if let updated = ImageCache.shared.get(forKey: cacheKey) {
-            image = updated
-        } else if let composited = ImageFileManager.shared.loadCompositedImage(forURL: url) {
-            image = composited
-            ImageCache.shared.set(composited, forKey: cacheKey)
+        let thumbKey = cacheKey + "#thumb216"
+        let sourceURL = url
+        let inMemoryFull = ImageCache.shared.get(forKey: cacheKey)
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            var fresh: UIImage?
+            if let inMemoryFull {
+                fresh = ImageDownsampler.downsample(image: inMemoryFull, maxPixelSize: Self.tileMaxPixelSize)
+            } else if let composited = ImageFileManager.shared.loadCompositedImage(forURL: sourceURL) {
+                fresh = ImageDownsampler.downsample(image: composited, maxPixelSize: Self.tileMaxPixelSize)
+            }
+            guard let fresh else { return }
+            DispatchQueue.main.async {
+                self.image = fresh
+                ImageCache.shared.set(fresh, forKey: thumbKey)
+            }
         }
     }
 
@@ -347,115 +367,100 @@ struct PhotoThumbnail: View {
 
         isLoading = true
 
-        // Check if this is an asset catalog name (no URL prefix)
-        // Asset catalog names don't contain "://" or start with "//"
+        // Asset catalog names (demo images) — no "://" and no "//" prefix.
         let isAssetName = !url.contains("://") && !url.hasPrefix("//")
-
-        if isAssetName {
-            // Try to load from asset catalog (demo images)
-            if let assetImage = UIImage(named: url) {
-                DispatchQueue.main.async {
-                    self.isLoading = false
-                    self.image = assetImage
-                    // Cache in memory
-                    ImageCache.shared.set(assetImage, forKey: url)
-                }
-                return
-            }
-        }
-
-        // Normalize URL at the start for consistent caching
-        // Handle // prefix by adding https:
-        let cacheKey = url.hasPrefix("//") ? "https:" + url : url
-
-        // First check in-memory cache
-        if let cachedImage = ImageCache.shared.get(forKey: cacheKey) {
-            DispatchQueue.main.async {
-                self.isLoading = false
-                self.image = cachedImage
-            }
-            return
-        }
-
-        // Durable annotated composite (markup flattened onto the photo), checked
-        // BEFORE the raw original. The in-memory cache holds barely one full-
-        // resolution composite, so a thumbnail scrolled into view long after the
-        // .annotationsComposited posts fired would otherwise resolve the raw and
-        // lose its marks. The on-disk composite makes markup mount-time durable.
-        if let composited = ImageFileManager.shared.loadCompositedImage(forURL: url) {
-            DispatchQueue.main.async {
-                self.isLoading = false
-                self.image = composited
-                ImageCache.shared.set(composited, forKey: cacheKey)
-            }
-            return
-        }
-
-        // Then try to load from file system using ImageFileManager
-        // ImageFileManager also normalizes URLs internally for consistent file paths
-        if let loadedImage = ImageFileManager.shared.loadImage(localID: url) {
-            DispatchQueue.main.async {
-                self.isLoading = false
-                self.image = loadedImage
-
-                // Cache in memory for faster access next time
-                ImageCache.shared.set(loadedImage, forKey: cacheKey)
-            }
-            return
-        }
-
-        // For legacy support: try UserDefaults if not found in file system
-        if url.hasPrefix("local://") {
-            if let base64String = UserDefaults.standard.string(forKey: url),
-               let imageData = Data(base64Encoded: base64String),
-               let loadedImage = UIImage(data: imageData) {
-
-                // Migrate to file system for future use
-                _ = ImageFileManager.shared.saveImage(data: imageData, localID: url)
-
-                DispatchQueue.main.async {
-                    self.isLoading = false
-                    self.image = loadedImage
-
-                    // Cache in memory
-                    ImageCache.shared.set(loadedImage, forKey: cacheKey)
-                }
-                return
-            }
-        }
-
-        // If not found locally, try to load from network
-        guard let imageURL = URL(string: cacheKey) else {
+        if isAssetName, let assetImage = UIImage(named: url) {
             isLoading = false
+            image = assetImage
             return
         }
 
-        URLSession.shared.dataTask(with: imageURL) { data, response, error in
-            DispatchQueue.main.async {
-                self.isLoading = false
+        let cacheKey = url.hasPrefix("//") ? "https:" + url : url
+        let thumbKey = cacheKey + "#thumb216"
 
+        // Fast path — a tile-sized decode is already in memory.
+        if let cachedThumb = ImageCache.shared.get(forKey: thumbKey) {
+            isLoading = false
+            image = cachedThumb
+            return
+        }
+
+        // A full-size composite may sit in memory under the plain key
+        // (PhotoAnnotationSyncManager warms it) — downscale that rather than
+        // re-reading disk.
+        let inMemoryFull = ImageCache.shared.get(forKey: cacheKey)
+        let sourceURL = url
+        let remoteThumb = remoteThumbnailURL
+
+        // Everything below is disk I/O and decode work — strictly off main.
+        DispatchQueue.global(qos: .userInitiated).async {
+            func publish(_ resolved: UIImage?) {
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    if let resolved {
+                        self.image = resolved
+                        ImageCache.shared.set(resolved, forKey: thumbKey)
+                    }
+                }
+            }
+
+            if let inMemoryFull {
+                publish(ImageDownsampler.downsample(image: inMemoryFull, maxPixelSize: Self.tileMaxPixelSize))
+                return
+            }
+            // Durable annotated composite BEFORE the raw original — markup
+            // must win on tiles (same precedence as the old path).
+            if let composited = ImageFileManager.shared.loadCompositedImage(forURL: sourceURL) {
+                publish(ImageDownsampler.downsample(image: composited, maxPixelSize: Self.tileMaxPixelSize))
+                return
+            }
+            if let onDisk = ImageFileManager.shared.loadImage(localID: sourceURL) {
+                publish(ImageDownsampler.downsample(image: onDisk, maxPixelSize: Self.tileMaxPixelSize))
+                return
+            }
+            // Legacy UserDefaults storage — migrate to disk, as before.
+            if sourceURL.hasPrefix("local://"),
+               let base64String = UserDefaults.standard.string(forKey: sourceURL),
+               let imageData = Data(base64Encoded: base64String) {
+                _ = ImageFileManager.shared.saveImage(data: imageData, localID: sourceURL)
+                publish(ImageDownsampler.downsample(data: imageData, maxPixelSize: Self.tileMaxPixelSize))
+                return
+            }
+
+            // Network. Prefer the server thumbnail (small bytes, tiny decode);
+            // fall back to the full original, which we persist to disk exactly
+            // as the old path did so the viewer and future opens hit disk.
+            let normalizedThumb = remoteThumb.map { $0.hasPrefix("//") ? "https:" + $0 : $0 }
+            let fetchingThumbnail = normalizedThumb != nil
+            guard let imageURL = URL(string: normalizedThumb ?? cacheKey) else {
+                publish(nil)
+                return
+            }
+
+            URLSession.shared.dataTask(with: imageURL) { data, response, error in
                 if let error = error {
                     print("Image load error: \(error.localizedDescription)")
+                    publish(nil)
                     return
                 }
-
                 if let httpResponse = response as? HTTPURLResponse,
                    !(200...299).contains(httpResponse.statusCode) {
                     print("Image load failed with status: \(httpResponse.statusCode)")
+                    publish(nil)
                     return
                 }
-
-                if let data = data, let loadedImage = UIImage(data: data) {
-                    self.image = loadedImage
-
-                    // Cache the remote image locally in file system
-                    _ = ImageFileManager.shared.saveImage(data: data, localID: cacheKey)
-
-                    // Also cache in memory
-                    ImageCache.shared.set(loadedImage, forKey: cacheKey)
+                guard let data else {
+                    publish(nil)
+                    return
                 }
-            }
-        }.resume()
+                // Persist ONLY full originals under the photo's cache key —
+                // a thumbnail rendition must never masquerade as the original.
+                if !fetchingThumbnail {
+                    _ = ImageFileManager.shared.saveImage(data: data, localID: cacheKey)
+                }
+                publish(ImageDownsampler.downsample(data: data, maxPixelSize: Self.tileMaxPixelSize))
+            }.resume()
+        }
     }
 }
 

@@ -553,6 +553,15 @@ private struct ProjectPhotosCarousel: View {
         // Canonical gallery list: synced project_photos ∪ legacy CSV, deduped.
         // @Query keeps it live as inbound/realtime sync lands teammates' photos.
         let photos = project.mergedGalleryImageURLs(syncedPhotoURLs: syncedPhotos.galleryURLs())
+        // Server-generated thumbnail per full URL — PhotoThumbnail fetches the
+        // small rendition instead of the multi-MB original when one exists.
+        let thumbnailByURL: [String: String] = Dictionary(
+            syncedPhotos.compactMap { photo -> (String, String)? in
+                guard let thumb = photo.thumbnailURL, !thumb.isEmpty else { return nil }
+                return (photo.url, thumb)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
         let pending = imageSyncManager.currentInFlightUploads(for: project.id)
         // Split in-flight tiles into actively-uploading vs failed. The
         // UPLOADING badge counts only the spinners; failed tiles show
@@ -606,7 +615,7 @@ private struct ProjectPhotosCarousel: View {
                     HStack(spacing: OPSStyle.Layout.spacing2) {
                         ForEach(Array(photos.enumerated()), id: \.element) { index, url in
                             ZStack(alignment: .topTrailing) {
-                                PhotoThumbnail(url: url, project: project)
+                                PhotoThumbnail(url: url, project: project, remoteThumbnailURL: thumbnailByURL[url])
                                     .frame(width: 72, height: 72)
                                     .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
                                     .wizardTarget(index == 0 ? "view_photo" : "")

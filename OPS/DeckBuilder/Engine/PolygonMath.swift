@@ -37,6 +37,38 @@ struct PolygonMath {
         return canvasArea / (scaleFactor * scaleFactor)
     }
 
+    // MARK: - Centroid
+
+    /// Area-weighted centroid of a simple polygon — the correct anchor for a
+    /// label that must sit "inside the shape" even when it's concave (the
+    /// plain vertex average drifts toward dense vertex clusters and can exit
+    /// an L-shape entirely). Falls back to the vertex average for degenerate
+    /// inputs (< 3 vertices or near-zero area) where the standard formula
+    /// divides by ~0. Canvas coordinates in, canvas coordinates out.
+    static func polygonCentroid(vertices: [CGPoint]) -> CGPoint? {
+        guard !vertices.isEmpty else { return nil }
+        let n = vertices.count
+        let vertexAverage = CGPoint(
+            x: vertices.reduce(0.0) { $0 + Double($1.x) } / Double(n),
+            y: vertices.reduce(0.0) { $0 + Double($1.y) } / Double(n)
+        )
+        guard n >= 3 else { return vertexAverage }
+
+        let a = signedArea(vertices: vertices)
+        guard abs(a) > 1e-6 else { return vertexAverage }
+
+        var cx = 0.0
+        var cy = 0.0
+        for i in 0..<n {
+            let j = (i + 1) % n
+            let cross = Double(vertices[i].x) * Double(vertices[j].y)
+                      - Double(vertices[j].x) * Double(vertices[i].y)
+            cx += (Double(vertices[i].x) + Double(vertices[j].x)) * cross
+            cy += (Double(vertices[i].y) + Double(vertices[j].y)) * cross
+        }
+        return CGPoint(x: cx / (6 * a), y: cy / (6 * a))
+    }
+
     // MARK: - Perimeter
 
     /// Calculate total perimeter in canvas points

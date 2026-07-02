@@ -2,14 +2,15 @@
 //  ExpandedCardSheet.swift
 //  OPS
 //
-//  Books P6 — UX overhaul. The half-sheet a condensed hero card expands into.
-//  Reuses the established half-sheet pattern (NavigationStack + inline title
-//  + DONE, presented with `.presentationDetents([.medium, .large])` +
-//  `.presentationDragIndicator(.visible)` at the call site). Renders the lens's
-//  FULL content; the in-card drill actions live here now (decision 2026-06-01),
-//  dismissing the sheet before routing to the relevant segment.
+//  The half-sheet a command-grid tile expands into. Rebuilt 2026-07-01 for the
+//  Command Grid redesign: the system navigation chrome (SF-Pro title + DONE
+//  button) is gone — the sheet opens straight into the tactical header
+//  (`BooksSheetHeader`) and the lens's rebuilt content (`BooksLensSheets`),
+//  dismissing by drag (the call site shows the indicator) per MOBILE.md §6.2.
+//  The in-sheet drills still dismiss first, then route the parent ledger.
 //
-//  Spec: docs/superpowers/specs/2026-06-01-books-condensed-cards-ux-overhaul-design.md
+//  Presented with `.presentationDetents([.medium, .large])` +
+//  `.presentationDragIndicator(.visible)` at the call site.
 //
 
 import SwiftUI
@@ -19,69 +20,68 @@ struct ExpandedCardSheet: View {
     @ObservedObject var viewModel: MoneyDashboardViewModel
     /// P&L OUTSTANDING → Invoices/overdue. Sheet dismisses, then the parent routes.
     var onDrillOutstanding: () -> Void = {}
-    /// P&L FORECAST → Estimates/sent. Sheet dismisses, then the parent routes.
+    /// P&L FORECAST → Estimates/out. Sheet dismisses, then the parent routes.
     var onDrillForecast: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if card == .ar {
-                    // A/R expands into one merged rich sheet (owns its own scroll
-                    // + scroll-to-chase). No sheet-over-sheet.
-                    ARDetailSheet(viewModel: viewModel)
-                } else {
-                    ScrollView {
-                        cardContent
-                            .padding(.vertical, OPSStyle.Layout.spacing3)
-                    }
-                }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                BooksSheetHeader(title: title, tag: periodTag)
+                    .padding(.top, OPSStyle.Layout.spacing4)   // clears the drag indicator
+                    .padding(.bottom, OPSStyle.Layout.spacing3_5)
+
+                lensContent
             }
-            .background(OPSStyle.Colors.background.ignoresSafeArea())
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("DONE") { dismiss() }
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                }
-            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.bottom, OPSStyle.Layout.spacing5)
         }
+        .background(OPSStyle.Colors.background.ignoresSafeArea())
+        .accessibilityAction(.escape) { dismiss() }
     }
 
     @ViewBuilder
-    private var cardContent: some View {
+    private var lensContent: some View {
         switch card {
         case .pl:
-            PLCard(
+            BooksPLSheet(
                 viewModel: viewModel,
-                style: .full,
                 onTapOutstanding: { dismiss(); onDrillOutstanding() },
                 onTapForecast: { dismiss(); onDrillForecast() }
             )
         case .cashFlow:
-            CashFlowCard(viewModel: viewModel, style: .full)
+            BooksCashFlowSheet(viewModel: viewModel)
         case .cashForecast:
-            EmptyView()  // RUNWAY lens deep-links to its own full screen, never this sheet
+            EmptyView()  // RUNWAY deep-links to its own full screen, never this sheet
         case .ar:
-            EmptyView()  // handled by ARDetailSheet above
+            BooksARSheet(viewModel: viewModel)
         case .forecast:
-            ForecastCard(viewModel: viewModel, style: .full)
+            BooksForecastSheet(viewModel: viewModel)
         case .jobs:
-            JobsCard(viewModel: viewModel, style: .full)
+            BooksJobsSheet(viewModel: viewModel)
         }
     }
 
     private var title: String {
         switch card {
-        case .pl:       return "P&L"
-        case .cashFlow: return "CASH FLOW"
+        case .pl:           return "P&L"
+        case .cashFlow:     return "CASH FLOW"
         case .cashForecast: return "RUNWAY"
-        case .ar:       return "A/R"
-        case .forecast: return "FORECAST"
-        case .jobs:     return "JOBS"
+        case .ar:           return "RECEIVABLES"
+        case .forecast:     return "FORECAST"
+        case .jobs:         return "JOBS"
+        }
+    }
+
+    /// Period scope tag — the pill periods for the period-scoped lenses, the
+    /// always-on scopes for A/R (all open) and forecast (active pipeline).
+    private var periodTag: String {
+        switch card {
+        case .pl, .cashFlow, .jobs: return viewModel.selectedPeriod.shortLabel
+        case .ar:                   return "ALL OPEN"
+        case .forecast:             return "ACTIVE"
+        case .cashForecast:         return ""
         }
     }
 }
@@ -89,6 +89,12 @@ struct ExpandedCardSheet: View {
 #if DEBUG
 #Preview("ExpandedCardSheet — P&L") {
     ExpandedCardSheet(card: .pl, viewModel: .previewStub())
+        .environmentObject(DataController())
+        .preferredColorScheme(.dark)
+}
+
+#Preview("ExpandedCardSheet — Receivables") {
+    ExpandedCardSheet(card: .ar, viewModel: .previewStub())
         .environmentObject(DataController())
         .preferredColorScheme(.dark)
 }

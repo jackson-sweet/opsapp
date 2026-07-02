@@ -464,22 +464,6 @@ struct ProjectDetailsView: View {
                     .zIndex(24)
             }
 
-            #if DEBUG
-            // Temporary diagnostic — live overscroll readout on the Deck tab so the
-            // pull can be verified on-device. Remove once the gesture is confirmed.
-            if viewModel.selectedTab == .deck {
-                Text("DECK pull=\(Int(deckPull)) render=\(hasRenderableDeck ? "Y" : "N") vp=\(Int(deckViewportHeight)) ch=\(Int(deckContentHeight))")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundColor(.yellow)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.black.opacity(0.85))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    .padding(.bottom, 180)
-                    .allowsHitTesting(false)
-                    .zIndex(60)
-            }
-            #endif
 
             // Layer 7: Deck fullscreen focus mode (covers nav + global tab bar).
             if isDeckFullscreen, let design = displayedDeckDesign {

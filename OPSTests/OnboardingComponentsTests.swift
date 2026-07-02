@@ -12,7 +12,7 @@
 //       onSignOut is set; the field surfaces its error state; a disabled / loading
 //       primary CTA cannot invoke its action).
 //    2. VISUAL snapshots — each component rendered to a PNG via `ImageRenderer`
-//       (the same harness as `Views/BooksSnapshotTests.swift`) in default,
+//       (the same harness as `Views/MoneyLeadsRedesignSnapshotTests.swift`) in default,
 //       error/disabled, dark-mode, and a Reduce-Motion variant. Attachments are
 //       for human/agent visual verification; they never fail on pixels.
 //
@@ -146,7 +146,7 @@ final class OnboardingComponentsTests: XCTestCase {
     }
 
     /// Renders a SwiftUI view to a PNG at @3x on the canvas background.
-    /// Mirrors `Views/BooksSnapshotTests.swift` — attachment for inspection,
+    /// Mirrors `Views/MoneyLeadsRedesignSnapshotTests.swift` — attachment for inspection,
     /// plus a sim-tmp mirror. Never fails on pixels; asserts only that the
     /// renderer produced non-empty bytes (structural presence).
     @discardableResult

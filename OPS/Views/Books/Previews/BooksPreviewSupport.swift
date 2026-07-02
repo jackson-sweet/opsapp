@@ -209,7 +209,7 @@ extension PermissionStore {
         return store
     }
 
-    /// Operator — no `finances.view` / `pipeline.view` → carousel hides entirely.
+    /// Operator — no `finances.view` / `pipeline.view` → command grid hides entirely.
     @MainActor
     static func previewOperator() -> PermissionStore {
         let store = PermissionStore()

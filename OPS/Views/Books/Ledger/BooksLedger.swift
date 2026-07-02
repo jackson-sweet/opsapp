@@ -32,8 +32,12 @@ struct BooksLedger: View {
     @Query private var clients: [Client]
     @Query private var teamMembers: [TeamMember]
 
-    @State private var selectedInvoice: Invoice?
-    @State private var selectedEstimate: Estimate?
+    // Invoice/estimate detail-push selection is HOISTED to BooksTabView so its
+    // navigationDestination modifiers can live outside the tab's LazyVStack — a
+    // navigationDestination inside a lazy container is dropped by the nav stack
+    // (SwiftUI: "will be ignored in a future release").
+    @Binding var selectedInvoice: Invoice?
+    @Binding var selectedEstimate: Estimate?
     @State private var editingExpense: ExpenseDTO?
     @State private var showCreateEstimate = false
     @State private var showCreateExpense = false
@@ -60,12 +64,10 @@ struct BooksLedger: View {
         .onChange(of: invoiceFilter) { _, _ in openRowID = nil }
         .onChange(of: estimateFilter) { _, _ in openRowID = nil }
         .onChange(of: expenseFilter) { _, _ in openRowID = nil }
-        .navigationDestination(item: $selectedInvoice) { invoice in
-            InvoiceDetailView(invoice: invoice, viewModel: invoiceVM)
-        }
-        .navigationDestination(item: $selectedEstimate) { estimate in
-            EstimateDetailView(estimate: estimate, viewModel: estimateVM)
-        }
+        // NOTE: the invoice/estimate navigationDestinations were moved UP to
+        // BooksTabView (outside the ScrollView's LazyVStack). A row tap sets the
+        // hoisted `selectedInvoice` / `selectedEstimate` bindings; the push is
+        // wired there. Sheets/dialogs are unaffected by the lazy-container rule.
         .sheet(item: $editingExpense) { expense in
             ExpenseFormSheet(viewModel: expenseVM, editing: expense)
         }

@@ -52,6 +52,12 @@ struct BooksTabView: View {
     @State private var showCashflowForecast = false
     @State private var showBatchReview = false
 
+    // Ledger detail-push selection is held here (not in BooksLedger) so the
+    // navigationDestination modifiers can sit outside the ScrollView's
+    // LazyVStack — a navigationDestination inside a lazy container is ignored.
+    @State private var selectedInvoice: Invoice?
+    @State private var selectedEstimate: Estimate?
+
     // MARK: - Derived state
 
     private var selectedSegment: BooksSection {
@@ -186,7 +192,9 @@ struct BooksTabView: View {
                                     expenseVM: expenseVM,
                                     invoiceFilter: invoiceFilter,
                                     estimateFilter: estimateFilter,
-                                    expenseFilter: expenseFilter
+                                    expenseFilter: expenseFilter,
+                                    selectedInvoice: $selectedInvoice,
+                                    selectedEstimate: $selectedEstimate
                                 )
                                 .padding(.top, OPSStyle.Layout.spacing2)
                             } header: {
@@ -229,6 +237,15 @@ struct BooksTabView: View {
             }
             .navigationDestination(isPresented: $showBatchReview) {
                 ExpensesListView()
+            }
+            // Ledger detail pushes — placed OUTSIDE the ScrollView's LazyVStack
+            // (a navigationDestination inside a lazy container is ignored by the
+            // nav stack). A row tap sets these bindings inside BooksLedger.
+            .navigationDestination(item: $selectedInvoice) { invoice in
+                InvoiceDetailView(invoice: invoice, viewModel: invoiceVM)
+            }
+            .navigationDestination(item: $selectedEstimate) { estimate in
+                EstimateDetailView(estimate: estimate, viewModel: estimateVM)
             }
         }
         .trackScreen("Books")

@@ -264,4 +264,92 @@ final class DeckViewerToolStateTests: XCTestCase {
         XCTAssertFalse(s.canCloseMeasurement)
         XCTAssertTrue(s.canUndoMeasurement, "frozen runs can be re-opened")
     }
+
+    // MARK: - Split sub-state (select mode)
+
+    func testToggleSplitting_requiresSelectModeAndOneSurface() {
+        let s = DeckViewerToolState()
+        s.toggleSplitting()
+        XCTAssertFalse(s.isSplitting, "no mode, no split")
+
+        s.toggleSelect()
+        s.toggleSplitting()
+        XCTAssertFalse(s.isSplitting, "no surface selected")
+
+        s.selectedSurfaceIds = ["surf-1"]
+        s.toggleSplitting()
+        XCTAssertTrue(s.isSplitting)
+        s.toggleSplitting()
+        XCTAssertFalse(s.isSplitting, "toggles off")
+        XCTAssertTrue(s.splitPoints.isEmpty, "exit clears the cut")
+    }
+
+    func testCanSplit_gateIsExactlyOneSurface() {
+        let s = DeckViewerToolState()
+        s.toggleSelect()
+        XCTAssertFalse(s.canSplit)
+        s.selectedSurfaceIds = ["surf-1"]
+        XCTAssertTrue(s.canSplit)
+        s.selectedSurfaceIds = ["surf-1", "surf-2"]
+        XCTAssertFalse(s.canSplit, "two surfaces is ambiguous — no scissors")
+    }
+
+    func testRecordSplitTap_placesTwoPointsThenRecuts() {
+        let s = DeckViewerToolState()
+        s.toggleSelect()
+        s.selectedSurfaceIds = ["surf-1"]
+        s.toggleSplitting()
+
+        s.recordSplitTap(CGPoint(x: 10, y: 10))
+        XCTAssertEqual(s.splitPoints.count, 1)
+        s.recordSplitTap(CGPoint(x: 90, y: 90))
+        XCTAssertEqual(s.splitPoints.count, 2)
+        // Third tap re-cuts: starts a fresh line at the tap.
+        s.recordSplitTap(CGPoint(x: 40, y: 60))
+        XCTAssertEqual(s.splitPoints, [CGPoint(x: 40, y: 60)])
+    }
+
+    func testRecordSplitTap_ignoresCoincidentSecondPoint() {
+        let s = DeckViewerToolState()
+        s.toggleSelect()
+        s.selectedSurfaceIds = ["surf-1"]
+        s.toggleSplitting()
+        s.recordSplitTap(CGPoint(x: 10, y: 10))
+        s.recordSplitTap(CGPoint(x: 10.2, y: 10.1))
+        XCTAssertEqual(s.splitPoints.count, 1, "coincident points define no line")
+    }
+
+    func testClearSplit_keepsSplittingActive() {
+        let s = DeckViewerToolState()
+        s.toggleSelect()
+        s.selectedSurfaceIds = ["surf-1"]
+        s.toggleSplitting()
+        s.recordSplitTap(CGPoint(x: 10, y: 10))
+        s.recordSplitTap(CGPoint(x: 90, y: 90))
+        s.clearSplit()
+        XCTAssertTrue(s.splitPoints.isEmpty)
+        XCTAssertTrue(s.isSplitting, "CLEAR restarts the cut, not the tool")
+    }
+
+    func testSelectionChangeExitsSplit() {
+        let s = DeckViewerToolState()
+        s.toggleSelect()
+        s.selectedSurfaceIds = ["surf-1"]
+        s.toggleSplitting()
+        s.recordSplitTap(CGPoint(x: 10, y: 10))
+        s.selectionDidChange()
+        XCTAssertFalse(s.isSplitting)
+        XCTAssertTrue(s.splitPoints.isEmpty)
+    }
+
+    func testLeavingSelectModeClearsSplit() {
+        let s = DeckViewerToolState()
+        s.toggleSelect()
+        s.selectedSurfaceIds = ["surf-1"]
+        s.toggleSplitting()
+        s.recordSplitTap(CGPoint(x: 10, y: 10))
+        s.toggleMeasure()
+        XCTAssertFalse(s.isSplitting)
+        XCTAssertTrue(s.splitPoints.isEmpty)
+    }
 }

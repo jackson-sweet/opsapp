@@ -48,6 +48,13 @@ final class DeckViewerToolState: ObservableObject {
     @Published var selectedEdgeIds: Set<String> = []
     @Published var selectedSurfaceIds: Set<String> = []
 
+    // MARK: Split (select-mode sub-state, look-only inspection)
+    /// True while the scissors tool is armed on the selected surface.
+    @Published var isSplitting: Bool = false
+    /// The cut line's definition points (0–2, canvas space). The cut is the
+    /// INFINITE line through them — endpoints need not touch the surface.
+    @Published var splitPoints: [CGPoint] = []
+
     var isMeasuring: Bool { mode == .measure }
     var isSelecting: Bool { mode == .select }
     var hasSelection: Bool { !selectedEdgeIds.isEmpty || !selectedSurfaceIds.isEmpty }
@@ -79,6 +86,48 @@ final class DeckViewerToolState: ObservableObject {
     func clearSelection() {
         selectedEdgeIds = []
         selectedSurfaceIds = []
+    }
+
+    // MARK: Split sub-state (scissors on the selected surface)
+
+    /// Scissors gate: exactly one surface picked — two is ambiguous.
+    var canSplit: Bool { isSelecting && selectedSurfaceIds.count == 1 }
+
+    /// Arm/disarm the scissors on the current selection.
+    func toggleSplitting() {
+        guard canSplit else {
+            isSplitting = false
+            splitPoints = []
+            return
+        }
+        isSplitting.toggle()
+        splitPoints = []
+    }
+
+    /// Place a cut point: first tap anchors, second defines the line, a
+    /// third starts a fresh cut at the tap. Coincident seconds are ignored —
+    /// two identical points define no line.
+    func recordSplitTap(_ point: CGPoint) {
+        if splitPoints.count >= 2 {
+            splitPoints = [point]
+            return
+        }
+        if let last = splitPoints.last, SnapEngine.distance(last, point) < 0.5 {
+            return
+        }
+        splitPoints.append(point)
+    }
+
+    /// Card CLEAR — wipe the cut, keep the scissors armed.
+    func clearSplit() {
+        splitPoints = []
+    }
+
+    /// The canvas calls this whenever a selection tap changes the picked
+    /// set — a different surface invalidates the cut entirely.
+    func selectionDidChange() {
+        isSplitting = false
+        splitPoints = []
     }
 
     // MARK: Measure polyline state machine
@@ -158,6 +207,8 @@ final class DeckViewerToolState: ObservableObject {
     private func clearTransient() {
         measurementPoints = []
         measurementPhase = .drawing
+        isSplitting = false
+        splitPoints = []
         selectedEdgeIds = []
         selectedSurfaceIds = []
     }

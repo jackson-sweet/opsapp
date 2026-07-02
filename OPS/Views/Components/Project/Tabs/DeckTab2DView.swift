@@ -743,8 +743,9 @@ struct DeckTab2DView: View {
 
     /// Adjust the second-tap location so the measurement line lands exactly
     /// perpendicular or parallel to the closest edge if the user's pick is
-    /// already within ±5°. The line LENGTH stays the same; only the angle
-    /// is rotated. Returns the original candidate when no edge is nearby.
+    /// already within ±5°. The line LENGTH and DIRECTION stay the same; only the
+    /// angle is nudged onto the axis. Returns the original candidate when no edge
+    /// is nearby. Thin adapter over the pure, unit-tested `SnapEngine` routine.
     private func snapAngleToEdges(from start: CGPoint, candidate: CGPoint) -> CGPoint {
         let vertices = drawingData.isMultiLevel
             ? drawingData.levels.flatMap { $0.vertices }
@@ -752,59 +753,12 @@ struct DeckTab2DView: View {
         let edges = drawingData.isMultiLevel
             ? drawingData.levels.flatMap { $0.edges }
             : drawingData.edges
-        guard !edges.isEmpty else { return candidate }
-
-        // Find the edge whose midpoint is closest to the measurement line —
-        // a rough "which edge is the user near" heuristic that avoids
-        // anchoring snap to a faraway edge.
-        let midM = CGPoint(x: (start.x + candidate.x) / 2, y: (start.y + candidate.y) / 2)
-        var bestEdgeAngle: Double?
-        var bestDist = Double.infinity
-        for edge in edges {
+        let segments: [(start: CGPoint, end: CGPoint)] = edges.compactMap { edge in
             guard let s = vertices.first(where: { $0.id == edge.startVertexId }),
-                  let e = vertices.first(where: { $0.id == edge.endVertexId }) else { continue }
-            let edgeMid = CGPoint(x: (s.position.x + e.position.x) / 2, y: (s.position.y + e.position.y) / 2)
-            let d = SnapEngine.distance(midM, edgeMid)
-            if d < bestDist {
-                bestDist = d
-                bestEdgeAngle = SnapEngine.lineAngle(from: s.position, to: e.position)
-            }
+                  let e = vertices.first(where: { $0.id == edge.endVertexId }) else { return nil }
+            return (start: s.position, end: e.position)
         }
-        guard let edgeAngle = bestEdgeAngle else { return candidate }
-
-        let lineAngle = SnapEngine.lineAngle(from: start, to: candidate)
-        let length = SnapEngine.distance(start, candidate)
-
-        // Candidate snap targets: parallel (edgeAngle, edgeAngle ± 180°) and
-        // perpendicular (edgeAngle ± 90°). Pick the one within ±5°.
-        let targets: [Double] = [
-            edgeAngle, edgeAngle + 180, edgeAngle - 180,
-            edgeAngle + 90, edgeAngle - 90,
-            edgeAngle + 270, edgeAngle - 270
-        ]
-        let tolerance: Double = 5.0
-        var snapAngle: Double?
-        for t in targets {
-            // Normalise both into [0, 360) before comparing.
-            let normLine = ((lineAngle.truncatingRemainder(dividingBy: 360)) + 360).truncatingRemainder(dividingBy: 360)
-            let normT = ((t.truncatingRemainder(dividingBy: 360)) + 360).truncatingRemainder(dividingBy: 360)
-            var diff = abs(normLine - normT)
-            if diff > 180 { diff = 360 - diff }
-            if diff <= tolerance {
-                snapAngle = t
-                break
-            }
-        }
-
-        guard let target = snapAngle else { return candidate }
-
-        // Rotate end point around start to land on the snapped angle while
-        // preserving the user's chosen length.
-        let rad = target * .pi / 180
-        return CGPoint(
-            x: start.x + CGFloat(length * cos(rad)),
-            y: start.y + CGFloat(length * sin(rad))
-        )
+        return SnapEngine.snapMeasurementEnd(from: start, candidate: candidate, referenceEdges: segments)
     }
 
     /// Render the in-progress measurement (anchor dots, dashed line, midpoint

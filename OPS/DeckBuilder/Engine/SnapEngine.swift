@@ -82,6 +82,81 @@ struct SnapEngine {
         return CGPoint(x: snappedX, y: snappedY)
     }
 
+    // MARK: - Measurement Angle Snap
+
+    /// Snap a measurement segment's end point so it lands exactly parallel or
+    /// perpendicular to the nearest reference edge when the user's drawn angle is
+    /// already within `toleranceDegrees`. The drawn LENGTH is preserved and the
+    /// drawn DIRECTION is respected — the snap targets tile the circle every 90°
+    /// (parallel, antiparallel, both perpendiculars) and at a ±5° tolerance only
+    /// one can fall inside range, so the segment is nudged onto the true axis
+    /// without ever reversing. Returns `candidate` unchanged when no reference
+    /// edge is nearby or the pick is already off-axis.
+    ///
+    /// Angles use the same negated-Y "standard math" convention as `lineAngle`
+    /// (0° = right, 90° = up); the reconstruction negates Y back into SwiftUI
+    /// screen space (`start.y - length·sin`), identical to `snapEndpoint`.
+    static func snapMeasurementEnd(
+        from start: CGPoint,
+        candidate: CGPoint,
+        referenceEdges: [(start: CGPoint, end: CGPoint)],
+        toleranceDegrees: Double = 5.0
+    ) -> CGPoint {
+        guard !referenceEdges.isEmpty else { return candidate }
+
+        // Which edge is the user near? Closest edge-midpoint to the segment's
+        // midpoint — a cheap "which edge do they mean" heuristic that avoids
+        // anchoring the snap to a faraway edge.
+        let midM = CGPoint(x: (start.x + candidate.x) / 2, y: (start.y + candidate.y) / 2)
+        var bestEdgeAngle: Double?
+        var bestDist = Double.infinity
+        for edge in referenceEdges {
+            let edgeMid = CGPoint(x: (edge.start.x + edge.end.x) / 2,
+                                  y: (edge.start.y + edge.end.y) / 2)
+            let d = distance(midM, edgeMid)
+            if d < bestDist {
+                bestDist = d
+                bestEdgeAngle = lineAngle(from: edge.start, to: edge.end)
+            }
+        }
+        guard let edgeAngle = bestEdgeAngle else { return candidate }
+
+        let drawnAngle = lineAngle(from: start, to: candidate)
+        let length = distance(start, candidate)
+        guard length > 0 else { return candidate }
+
+        // Parallel (both senses) + both perpendiculars.
+        let targets: [Double] = [
+            edgeAngle, edgeAngle + 180, edgeAngle - 180,
+            edgeAngle + 90, edgeAngle - 90,
+            edgeAngle + 270, edgeAngle - 270
+        ]
+        var snapAngle: Double?
+        for t in targets {
+            let normLine = ((drawnAngle.truncatingRemainder(dividingBy: 360)) + 360).truncatingRemainder(dividingBy: 360)
+            let normT = ((t.truncatingRemainder(dividingBy: 360)) + 360).truncatingRemainder(dividingBy: 360)
+            var diff = abs(normLine - normT)
+            if diff > 180 { diff = 360 - diff }
+            if diff <= toleranceDegrees {
+                snapAngle = t
+                break
+            }
+        }
+        guard let target = snapAngle else { return candidate }
+
+        // Rotate the end around start onto the snapped axis, preserving length.
+        // `target` is in lineAngle's negated-Y math convention, so Y must be
+        // negated BACK into SwiftUI screen space — same as `snapEndpoint`.
+        // (Bug: this used `start.y + …·sin`, reflecting the end across the
+        // horizontal axis through start — a near-vertical measurement's second
+        // tap landed point-mirrored through the first.)
+        let rad = target * .pi / 180
+        return CGPoint(
+            x: start.x + CGFloat(length * cos(rad)),
+            y: start.y - CGFloat(length * sin(rad))
+        )
+    }
+
     // MARK: - Endpoint Magnetic Snap
 
     /// Find the nearest existing vertex within snap radius

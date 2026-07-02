@@ -51,7 +51,7 @@
 - Create: `OPS/DeckBuilder/Engine/PolygonSplitter.swift`
 - Test: `OPSTests/DeckBuilder/PolygonSplitterTests.swift`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```swift
 // OPS/OPSTests/DeckBuilder/PolygonSplitterTests.swift
@@ -188,11 +188,11 @@ final class PolygonSplitterTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `xcodebuild test ... -only-testing:OPSTests/PolygonSplitterTests` (full flags from the header). Expected: compile FAILURE — `PolygonSplitter` not defined. That is the red state for a new type.
 
-- [ ] **Step 3: Implement PolygonSplitter**
+- [x] **Step 3: Implement PolygonSplitter**
 
 ```swift
 // OPS/OPS/DeckBuilder/Engine/PolygonSplitter.swift
@@ -347,11 +347,11 @@ enum PolygonSplitter {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `xcodebuild test ... -only-testing:OPSTests/PolygonSplitterTests`. Expected: `** TEST SUCCEEDED **`, 10/10. If `testChord_concaveGivesTwoSegments` fails on count, debug `chords` midpoint-inside filtering before touching anything else.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add OPS/DeckBuilder/Engine/PolygonSplitter.swift OPSTests/DeckBuilder/PolygonSplitterTests.swift
@@ -366,7 +366,7 @@ git commit -m "feat(deck): concave-safe polygon splitter for the split inspectio
 - Create: `OPS/DeckBuilder/Models/DeckSplitReadout.swift`
 - Test: `OPSTests/DeckBuilder/DeckSplitReadoutTests.swift`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```swift
 // OPS/OPSTests/DeckBuilder/DeckSplitReadoutTests.swift
@@ -428,11 +428,11 @@ final class DeckSplitReadoutTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run to verify compile failure (red)**
+- [x] **Step 2: Run to verify compile failure (red)**
 
 Run: `xcodebuild test ... -only-testing:OPSTests/DeckSplitReadoutTests`. Expected: FAIL — `DeckSplitReadout` not defined.
 
-- [ ] **Step 3: Implement DeckSplitReadout**
+- [x] **Step 3: Implement DeckSplitReadout**
 
 ```swift
 // OPS/OPS/DeckBuilder/Models/DeckSplitReadout.swift
@@ -492,11 +492,11 @@ enum DeckSplitReadout {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify pass**
+- [x] **Step 4: Run tests to verify pass**
 
 Run: `xcodebuild test ... -only-testing:OPSTests/DeckSplitReadoutTests`. Expected: `** TEST SUCCEEDED **`, 4/4.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add OPS/DeckBuilder/Models/DeckSplitReadout.swift OPSTests/DeckBuilder/DeckSplitReadoutTests.swift
@@ -511,7 +511,7 @@ git commit -m "feat(deck): split readout reducer — per-side areas + cut length
 - Modify: `OPS/DeckBuilder/Models/DeckViewerToolState.swift`
 - Test: `OPSTests/DeckBuilder/DeckViewerToolStateTests.swift`
 
-- [ ] **Step 1: Write the failing tests** (append inside the existing `DeckViewerToolStateTests` class)
+- [x] **Step 1: Write the failing tests** (append inside the existing `DeckViewerToolStateTests` class)
 
 ```swift
     // MARK: - Split sub-state (select mode)
@@ -603,11 +603,11 @@ git commit -m "feat(deck): split readout reducer — per-side areas + cut length
     }
 ```
 
-- [ ] **Step 2: Run to verify red**
+- [x] **Step 2: Run to verify red**
 
 Run: `xcodebuild test ... -only-testing:OPSTests/DeckViewerToolStateTests`. Expected: compile FAIL — `toggleSplitting` undefined.
 
-- [ ] **Step 3: Implement the sub-state** (inside `DeckViewerToolState`)
+- [x] **Step 3: Implement the sub-state** (inside `DeckViewerToolState`)
 
 Add published state after the selection properties:
 
@@ -671,11 +671,11 @@ Extend `clearTransient()` (add the two lines before the selection resets):
         splitPoints = []
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `xcodebuild test ... -only-testing:OPSTests/DeckViewerToolStateTests`. Expected: `** TEST SUCCEEDED **` (26 existing + 7 new = 33).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add OPS/DeckBuilder/Models/DeckViewerToolState.swift OPSTests/DeckBuilder/DeckViewerToolStateTests.swift
@@ -689,7 +689,7 @@ git commit -m "feat(deck): split sub-state on the viewer tool state"
 **Files:**
 - Modify: `OPS/Views/Components/Project/Tabs/DeckTab2DView.swift`
 
-- [ ] **Step 1: Route select-mode taps to the cut while splitting**
+- [x] **Step 1: Route select-mode taps to the cut while splitting**
 
 In `recordSelectionTap(at:in:)`, add at the very top (before the edge hit-test):
 
@@ -716,7 +716,7 @@ In `recordSelectionTap(at:in:)`, add at the very top (before the edge hit-test):
 
 NOTE: `recordSelectionTap` currently computes `let p = canvasPoint(...)` below this block — leave that untouched; the split branch returns early. Also: in the surface/edge toggle paths at the bottom of `recordSelectionTap`, add `toolState.selectionDidChange()` immediately after each `selectedEdgeIds`/`selectedSurfaceIds` mutation so changing the pick disarms the scissors.
 
-- [ ] **Step 2: Render the split**
+- [x] **Step 2: Render the split**
 
 In `canvasContent`, after `drawMeasurement(context: context)` add:
 
@@ -787,11 +787,11 @@ Add the renderer after `drawMeasurePill`:
     }
 ```
 
-- [ ] **Step 3: Build for testing to verify compilation**
+- [x] **Step 3: Build for testing to verify compilation**
 
 Run: `xcodebuild build-for-testing -scheme OPS -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -clonedSourcePackagesDirPath .spm-local -derivedDataPath .ddata`. Expected: `** TEST BUILD SUCCEEDED **` (grep the log).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add OPS/Views/Components/Project/Tabs/DeckTab2DView.swift
@@ -805,7 +805,7 @@ git commit -m "feat(deck): split tap routing + side-fill/chord rendering in the 
 **Files:**
 - Modify: `OPS/Views/Components/Project/Tabs/DeckFullscreenViewer.swift`
 
-- [ ] **Step 1: Scissors contextual button**
+- [x] **Step 1: Scissors contextual button**
 
 In the chrome's trailing `VStack` (where measure's undo/finish buttons live), add a select-mode block after the measure block:
 
@@ -832,7 +832,7 @@ Extend the container's animation values so the button animates in (add below the
                 .animation(reduceMotion ? nil : OPSStyle.Animation.fast, value: toolState.splitPoints.count)
 ```
 
-- [ ] **Step 2: Hint copy**
+- [x] **Step 2: Hint copy**
 
 Replace `measurementHint` with a combined hint (keep the property name — it feeds the same pill):
 
@@ -863,7 +863,7 @@ Replace `measurementHint` with a combined hint (keep the property name — it fe
     }
 ```
 
-- [ ] **Step 3: Split readout + card**
+- [x] **Step 3: Split readout + card**
 
 Add next to `measureSheet`:
 
@@ -925,7 +925,7 @@ Add next to `measureSheet`:
     }
 ```
 
-- [ ] **Step 4: Card slot routing**
+- [x] **Step 4: Card slot routing**
 
 In the bottom-left readout slot, show the split card INSTEAD of the selection peek sheet while a valid cut exists (the selection readout is stale context once the user is cutting). Replace the slot's condition chain with:
 
@@ -942,11 +942,11 @@ In the bottom-left readout slot, show the split card INSTEAD of the selection pe
                     }
 ```
 
-- [ ] **Step 5: Build for testing to verify compilation**
+- [x] **Step 5: Build for testing to verify compilation**
 
 Run: `xcodebuild build-for-testing ...` (flags as Task 4). Expected: succeeds.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add OPS/Views/Components/Project/Tabs/DeckFullscreenViewer.swift
@@ -960,7 +960,7 @@ git commit -m "feat(deck): scissors rail button, split hints, and split readout 
 **Files:**
 - Modify: `OPSTests/Views/DeckFullscreenSnapshotTests.swift`
 
-- [ ] **Step 1: Add the split scenario** (after scenario 7 in `testRenderFullscreenChrome`)
+- [x] **Step 1: Add the split scenario** (after scenario 7 in `testRenderFullscreenChrome`)
 
 ```swift
         // 8. Split armed on the footprint surface with a valid diagonal-ish
@@ -980,11 +980,11 @@ git commit -m "feat(deck): scissors rail button, split hints, and split readout 
 
 NOTE: if `detectedSurfaces` is empty on the fixture (no closed-face detection for the hand-built data), fall back to selecting via `DeckSelectionReadout.surfaceContexts(in: splitData).first?.face.id`; if still empty, the fixture's footprint isn't detected — check how `DeckTab2DView` resolves `drawingData.detectedSurfaces` for the single-level path and mirror it. Do not fake the id.
 
-- [ ] **Step 2: Run the full affected suite**
+- [x] **Step 2: Run the full affected suite**
 
 Run: `xcodebuild test ... -only-testing:OPSTests/PolygonSplitterTests -only-testing:OPSTests/DeckSplitReadoutTests -only-testing:OPSTests/DeckViewerToolStateTests -only-testing:OPSTests/DeckMeasureReadoutTests -only-testing:OPSTests/SnapEngineTests -only-testing:OPSTests/PolygonMathTests -only-testing:OPSTests/DeckFullscreenSnapshotTests`. Expected: `** TEST SUCCEEDED **`, zero failures.
 
-- [ ] **Step 3: Extract + eyeball the snapshot**
+- [x] **Step 3: Extract + eyeball the snapshot**
 
 ```bash
 XCR=$(grep -oE "/[^ ]*\.xcresult" <test-log> | head -1)
@@ -992,11 +992,11 @@ xcrun xcresulttool export attachments --path "$XCR" --output-path <scratch-dir>
 ```
 Rename via `manifest.json` `suggestedHumanReadableName`, view `08-select-split`. Verify: two tint fills split at the chord, white cut line spanning the face, SIDE A / SIDE B card with plausible sq-ft values summing to the top-bar area, scissors button in active state, hint absent (cut complete → `TAP TO RE-CUT`). Fix anything off before proceeding.
 
-- [ ] **Step 4: Device-target build verification**
+- [x] **Step 4: Device-target build verification**
 
 Run: `xcodebuild -scheme OPS -destination 'generic/platform=iOS' -clonedSourcePackagesDirPath .spm-local -derivedDataPath .ddata build`. Expected: `** BUILD SUCCEEDED **`.
 
-- [ ] **Step 5: Commit + land**
+- [x] **Step 5: Commit + land**
 
 ```bash
 git add OPSTests/Views/DeckFullscreenSnapshotTests.swift
@@ -1006,7 +1006,7 @@ git -C <primary-ops-ios> merge --ff-only <branch>
 # Do NOT push. Report with the exported PNG.
 ```
 
-- [ ] **Step 6: Update memory**
+- [x] **Step 6: Update memory**
 
 Update `~/.claude/projects/-Users-jacksonsweet-Projects-OPS-ops-ios/memory/deck-fullscreen-measure-tools.md`: Task 4 shipped (hashes), device QA pending. Update the MEMORY.md index line to match.
 

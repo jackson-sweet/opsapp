@@ -39,6 +39,11 @@ struct ProjectLocationSnapshotView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var loader = ProjectLocationSnapshotLoader()
 
+    /// Bumped when connectivity returns while we still have no image — an
+    /// offline-open otherwise left the header a flat color block for the
+    /// whole session (the render key never changes on reconnect).
+    @State private var retryToken = 0
+
     private var style: OPSMapStyle { OPSMapStyle(rawValue: mapStyleRaw) ?? .dark }
 
     var body: some View {
@@ -58,7 +63,7 @@ struct ProjectLocationSnapshotView: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .animation(reduceMotion ? nil : OPSStyle.Animation.standard, value: loader.image)
-            .task(id: renderKey(size: geo.size)) {
+            .task(id: taskID(size: geo.size)) {
                 loader.render(
                     coordinate: coordinate,
                     projectName: projectName,
@@ -70,30 +75,64 @@ struct ProjectLocationSnapshotView: View {
                     size: geo.size
                 )
             }
+            .onReceive(NotificationCenter.default.publisher(
+                for: ConnectivityManager.connectivityChangedNotification
+            )) { _ in
+                if loader.image == nil { retryToken &+= 1 }
+            }
         }
     }
 
-    /// Stable identity for the snapshot. Project coordinate, frame size, and
-    /// style force a re-render; the operator dot is keyed only to ~100 m
-    /// precision so a moving operator never thrashes the renderer, while a
-    /// first fix or a meaningful move still refreshes the dot.
-    private func renderKey(size: CGSize) -> String {
-        let lat = (coordinate.latitude * 10_000).rounded() / 10_000
-        let lng = (coordinate.longitude * 10_000).rounded() / 10_000
+    /// Stable identity for the snapshot. Internal + nonisolated static so the
+    /// gating rules are unit-testable (pattern: RealtimeProcessor.subscribeRetryDelay).
+    ///
+    /// The operator's position folds into the identity ONLY when they are
+    /// close enough to plausibly land inside the framed area (the zoom-13
+    /// header frame is ~3 km across; 2.5 km is the conservative gate — the
+    /// dot draw itself still exact-checks pixel bounds). Without the gate, a
+    /// driving operator forced a full Snapshotter spin-up every ~100 m of
+    /// travel anywhere on earth. Near the project, ~100 m buckets still
+    /// refresh the dot on meaningful moves while absorbing GPS jitter.
+    nonisolated static func renderKey(
+        projectCoordinate: CLLocationCoordinate2D,
+        userCoordinate: CLLocationCoordinate2D?,
+        size: CGSize,
+        styleRaw: String,
+        taskColorHexes: [String],
+        statusDescription: String
+    ) -> String {
+        let lat = (projectCoordinate.latitude * 10_000).rounded() / 10_000
+        let lng = (projectCoordinate.longitude * 10_000).rounded() / 10_000
         let w = Int(size.width.rounded())
         let h = Int(size.height.rounded())
 
-        let user: String
+        var user = "none"
         if let u = userCoordinate {
-            let ulat = (u.latitude * 1_000).rounded() / 1_000
-            let ulng = (u.longitude * 1_000).rounded() / 1_000
-            user = "\(ulat),\(ulng)"
-        } else {
-            user = "none"
+            let userLocation = CLLocation(latitude: u.latitude, longitude: u.longitude)
+            let projectLocation = CLLocation(
+                latitude: projectCoordinate.latitude,
+                longitude: projectCoordinate.longitude
+            )
+            if userLocation.distance(from: projectLocation) <= 2_500 {
+                let ulat = (u.latitude * 1_000).rounded() / 1_000
+                let ulng = (u.longitude * 1_000).rounded() / 1_000
+                user = "\(ulat),\(ulng)"
+            }
         }
 
         let ring = taskColorHexes.joined(separator: "-")
-        return "\(lat),\(lng)|\(w)x\(h)|\(style.rawValue)|\(ring)|\(String(describing: status))|\(user)"
+        return "\(lat),\(lng)|\(w)x\(h)|\(styleRaw)|\(ring)|\(statusDescription)|\(user)"
+    }
+
+    private func taskID(size: CGSize) -> String {
+        Self.renderKey(
+            projectCoordinate: coordinate,
+            userCoordinate: userCoordinate,
+            size: size,
+            styleRaw: style.rawValue,
+            taskColorHexes: taskColorHexes,
+            statusDescription: String(describing: status)
+        ) + "|r\(retryToken)"
     }
 }
 

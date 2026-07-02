@@ -843,19 +843,15 @@ struct DeckTab2DView: View {
         let midY = (start.y + end.y) / 2
         let canvasDistance = hypot(end.x - start.x, end.y - start.y)
 
-        let labelText: String
-        if let scale = drawingData.scaleFactor, scale > 0 {
-            let inches = canvasDistance / scale
-            let totalInches = Int(inches.rounded())
-            let feet = totalInches / 12
-            let remInches = totalInches % 12
-            labelText = feet > 0 ? "\(feet)' \(remInches)\"" : "\(remInches)\""
-        } else {
-            // No scale calibrated — show canvas units so user still gets
-            // a relative read; the "NO SCALE CALIBRATED" hint in the viewer
-            // tells them why it isn't a real measurement.
-            labelText = "\(Int(canvasDistance.rounded())) pt"
-        }
+        // Always a real-world reading: effectiveScaleFactor is the calibrated
+        // scale when set, else the prescale every edge is already dimensioned at
+        // (always > 0). Matches the dimension labels, area, and selection readouts.
+        let scale = drawingData.effectiveScaleFactor
+        let inches = canvasDistance / scale
+        let totalInches = Int(inches.rounded())
+        let feet = totalInches / 12
+        let remInches = totalInches % 12
+        let labelText = feet > 0 ? "\(feet)' \(remInches)\"" : "\(remInches)\""
 
         let resolved = context.resolve(Text(labelText)
             .font(.system(size: 12, weight: .semibold, design: .monospaced))

@@ -332,7 +332,6 @@ struct DeckFullscreenViewer: View {
         guard toolState.isMeasuring else { return nil }
         if toolState.measurementStart == nil { return "TAP POINT" }
         if toolState.measurementEnd == nil { return "TAP END" }
-        if drawingData.scaleFactor == nil { return "NO SCALE CALIBRATED" }
         return "TAP TO RESET"
     }
 

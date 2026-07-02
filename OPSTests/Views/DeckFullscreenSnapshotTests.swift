@@ -135,6 +135,20 @@ final class DeckFullscreenSnapshotTests: XCTestCase {
         closedLoop.recordMeasureTap(raw: CGPoint(x: 78, y: 278), closeThreshold: 12) // close on first dot
         snapshot("07-measure-closed", toolState: closedLoop,
                  drawingData: Self.centeredSingleLevel(), title: "MERIDIAN DECK")
+
+        // 8. Split armed on the footprint surface with a valid diagonal-ish
+        //    cut — tinted halves, white chord, SIDE A/B card, scissors active.
+        let splitData = Self.centeredSingleLevel()
+        let splitting = DeckViewerToolState()
+        splitting.toggleSelect()
+        if let face = splitData.detectedSurfaces.first {
+            splitting.selectedSurfaceIds = [face.id]
+        }
+        splitting.toggleSplitting()
+        splitting.recordSplitTap(CGPoint(x: 196, y: 250))
+        splitting.recordSplitTap(CGPoint(x: 196, y: 470))
+        snapshot("08-select-split", toolState: splitting,
+                 drawingData: splitData, title: "MERIDIAN DECK")
     }
 
     // MARK: - Viewport-centered fixtures (≈ centered in a 393×852 pt canvas)

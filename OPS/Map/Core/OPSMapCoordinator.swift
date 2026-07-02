@@ -102,23 +102,21 @@ final class OPSMapCoordinator: ObservableObject {
     private var isRenderingPaused = false
 
     /// Pause/resume map work while the project-details sheet covers the map.
-    /// Removing the puck stops location/course-driven repaints (the dominant
-    /// online-only cost while covered); hiding the view drops it from
-    /// compositing. Camera, style, and annotations are untouched so resume
-    /// is instant with no reload.
+    /// Removing the puck stops location/course-driven repaints — the dominant
+    /// online-only cost while covered. The view is left visible (its dimmed
+    /// sliver above the sheet keeps showing the frozen map). Camera, style,
+    /// and annotations are untouched so resume is instant with no reload.
     func setRenderingPaused(_ paused: Bool) {
         guard paused != isRenderingPaused, let mapView else { return }
         isRenderingPaused = paused
         if paused {
             pausedPuckType = mapView.location.options.puckType
             mapView.location.options.puckType = nil
-            mapView.isHidden = true
         } else {
             if let pausedPuckType {
                 mapView.location.options.puckType = pausedPuckType
             }
             pausedPuckType = nil
-            mapView.isHidden = false
         }
     }
 

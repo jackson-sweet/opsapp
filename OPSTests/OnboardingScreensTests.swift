@@ -20,7 +20,7 @@
 //     never `.standard`. The coordinator is @MainActor, so this case is too.
 //
 //  2. SNAPSHOT — renders each screen to a PNG via `ImageRenderer`→`XCTAttachment`
-//     (the house harness, mirrored from `BooksSnapshotTests`) in default + dark +
+//     (the house harness, shared with `MoneyLeadsRedesignSnapshotTests`) in default + dark +
 //     Reduce-Motion, for human/agent visual inspection. Never asserts on pixels.
 //
 
@@ -2512,7 +2512,7 @@ final class OnboardingScreensTests: XCTestCase {
     private let deviceHeight: CGFloat = 852
 
     /// Renders a full-screen view to a PNG at @3x, in a chosen color scheme.
-    /// Mirrors the `BooksSnapshotTests` harness: attaches to the .xcresult AND
+    /// Mirrors the `MoneyLeadsRedesignSnapshotTests` harness: attaches to the .xcresult AND
     /// mirrors to the sim tmp dir. Never asserts on pixels.
     ///
     /// Note on Reduce Motion: `accessibilityReduceMotion` is a read-only

@@ -2,34 +2,17 @@
 //  BooksCardError.swift
 //  OPS
 //
-//  Books — Mission Deck Phase B.
-//  Card-level error state. Replaces a single Books card's body while sibling
-//  cards stay live — granular fail-soft, not a tab-wide spinner.
-//
-//  Spec: docs/superpowers/specs/2026-05-19-books-tab-mission-deck-rebuild.md § 4.4
+//  Card-level error state. Replaces a single Books lens's drill-down content
+//  while the rest of the tab stays live — granular fail-soft, not a tab-wide
+//  spinner. Rendered by the `BooksLensSheets` lenses on a failed load.
 //
 
 import SwiftUI
 
 struct BooksCardError: View {
     let onRetry: () -> Void
-    /// When true, render inside the canonical L2 condensed-card surface at the
-    /// shared strip height — so an errored carousel tile reads as a CARD, not a
-    /// borderless hole between its bordered siblings.
-    var inCard: Bool = false
 
     var body: some View {
-        if inCard {
-            content
-                .frame(height: BooksCondensedMetrics.cardHeight)
-                .booksL2Surface()
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-        } else {
-            content
-        }
-    }
-
-    private var content: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
             Text("—")
                 .font(.custom("Mohave-Light", size: 48))

@@ -74,7 +74,8 @@ private struct PeriodPillPreviewHost: View {
 #endif
 
 extension MoneyDashboardViewModel.Period {
-    /// Human-friendly label used by `PeriodPill` and `CollapsedCarouselStrip`.
+    /// Human-friendly label used by `PeriodPill` and the lens sheets'
+    /// accessibility strings.
     var pillLabel: String {
         switch self {
         case .month:       return "30 DAYS"
@@ -88,7 +89,8 @@ extension MoneyDashboardViewModel.Period {
         }
     }
 
-    /// Short label used in tight UI like the collapsed strip.
+    /// Short label used in tight UI — the command grid's NET CASH eyebrow and
+    /// the drill-down sheets' period tag.
     var shortLabel: String {
         switch self {
         case .month:       return "30D"

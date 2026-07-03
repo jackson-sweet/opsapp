@@ -1191,6 +1191,7 @@ class DataController: ObservableObject {
     @MainActor
     func refreshShareSessionBridge() async {
         await ShareSessionBridgeWriter.refresh(modelContext: modelContext, currentUser: currentUser)
+        await importDecksetHandoffIfPossible()
     }
 
     @MainActor

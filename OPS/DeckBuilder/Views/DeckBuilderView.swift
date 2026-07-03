@@ -20,6 +20,7 @@ struct DeckBuilderView: View {
     @State private var editingTitleText: String = ""
     @StateObject private var estimateVM = EstimateViewModel()
     @Environment(\.modelContext) private var env_modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \TaskType.displayOrder) private var taskTypes: [TaskType]
 
     let projectId: String?
@@ -478,6 +479,14 @@ struct DeckBuilderView: View {
             }
             viewModel.taskTypes = taskTypes.filter { $0.deletedAt == nil }
         }
+        .onDisappear {
+            viewModel.flushBeforeExit()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .inactive || phase == .background {
+                viewModel.flushBeforeExit()
+            }
+        }
         .onChange(of: taskTypes.count) { _, _ in
             viewModel.taskTypes = taskTypes.filter { $0.deletedAt == nil }
         }
@@ -532,6 +541,7 @@ struct DeckBuilderView: View {
                 isSaving = true
                 Task {
                     await viewModel.renderAndSave()
+                    viewModel.flushBeforeExit()
                     dismiss()
                 }
             } label: {

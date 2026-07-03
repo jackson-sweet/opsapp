@@ -903,6 +903,31 @@ final class DeckBuilderRegressionTests: XCTestCase {
                        "level stair edge rise (both 3.0 ft) must stay 3*12 = 36\" — unchanged by the fix")
     }
 
+    func testFlushBeforeExitPersistsUnsavedDrawingData() {
+        var original = DeckDrawingData()
+        original.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 120, y: 0)),
+        ]
+        original.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")
+        ]
+
+        var edited = original
+        edited.vertices.append(DeckVertex(id: "v3", position: CGPoint(x: 120, y: 120)))
+        edited.edges.append(DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"))
+
+        let design = deckDesign(drawingData: original)
+        let viewModel = DeckBuilderViewModel(deckDesign: design)
+        viewModel.drawingData = edited
+
+        viewModel.flushBeforeExit()
+
+        XCTAssertEqual(design.drawingData.vertices.count, 3)
+        XCTAssertEqual(design.drawingData.edges.count, 2)
+        XCTAssertTrue(design.needsSync)
+    }
+
     private func deckDesign(drawingData: DeckDrawingData) -> DeckDesign {
         DeckDesign(
             companyId: "company-1",

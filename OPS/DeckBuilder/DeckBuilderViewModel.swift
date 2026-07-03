@@ -652,6 +652,36 @@ class DeckBuilderViewModel: ObservableObject {
         autosaveTimer = nil
     }
 
+    /// Final persistence guard used when the designer is dismissed or the app
+    /// leaves the foreground. The timer is crash recovery; exit/background
+    /// must commit the current drawing immediately.
+    func flushBeforeExit() {
+        if shouldPersistExitSnapshot {
+            save()
+        }
+        triggerPendingDeckDesignSync()
+    }
+
+    private var shouldPersistExitSnapshot: Bool {
+        if !hasAnyCommittedGeometry && deckDesign.modelContext == nil {
+            return false
+        }
+        if deckDesign.modelContext == nil {
+            return true
+        }
+        if !isLocallySaved {
+            return true
+        }
+        return drawingData.toJSON() != deckDesign.drawingDataJSON
+    }
+
+    private func triggerPendingDeckDesignSync() {
+        guard let syncEngine else { return }
+        Task {
+            await syncEngine.triggerSync()
+        }
+    }
+
     /// Called by the prompt's accept path. Existing drawings opt in here.
     /// Persists the choice so the prompt never re-asks on this device.
     func enableAutosave() {

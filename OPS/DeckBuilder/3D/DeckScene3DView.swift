@@ -69,7 +69,11 @@ struct DeckScene3DView: UIViewRepresentable {
         scnView.backgroundColor = UIColor(red: 10/255, green: 10/255, blue: 10/255, alpha: 1)
         scnView.preferredFramesPerSecond = 60
 
-        let scene = DeckSceneBuilder.buildScene(from: drawingData)
+        // Route through the calibrated builder — an uncalibrated drawing (no
+        // `scaleFactor`, the case for ~93% of decks and every freshly drawn
+        // one) would otherwise render an empty scene here (bug: 3D canvas
+        // black/blank while project-details 3D worked).
+        let scene = DeckSceneBuilder.buildCalibratedScene(from: drawingData)
         scnView.scene = scene
 
         if let cameraNode = scene.rootNode.childNode(withName: "camera", recursively: true) {
@@ -87,7 +91,7 @@ struct DeckScene3DView: UIViewRepresentable {
         let currentJSON = drawingData.toJSON()
         guard currentJSON != controller.lastDrawingJSON else { return }
 
-        let scene = DeckSceneBuilder.buildScene(from: drawingData)
+        let scene = DeckSceneBuilder.buildCalibratedScene(from: drawingData)
         uiView.scene = scene
 
         if let cameraNode = scene.rootNode.childNode(withName: "camera", recursively: true) {

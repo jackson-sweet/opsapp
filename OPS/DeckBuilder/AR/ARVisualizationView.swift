@@ -324,7 +324,7 @@ struct ARSceneContainer: UIViewRepresentable {
 
         func renderer(_ renderer: SCNSceneRenderer, nodeFor anchor: ARAnchor) -> SCNNode? {
             guard anchor.name == "deckPlacement" else { return nil }
-            let deckNode = DeckSceneBuilder.buildARNode(from: viewModel.drawingData)
+            let deckNode = DeckSceneBuilder.buildCalibratedARNode(from: viewModel.drawingData)
             Task { @MainActor in viewModel.deckNode = deckNode }
             return deckNode
         }
@@ -435,7 +435,7 @@ struct ARSceneContainer: UIViewRepresentable {
         func setupPreviewNode() {
             guard previewNode == nil else { return }
 
-            let node = DeckSceneBuilder.buildARNode(from: viewModel.drawingData)
+            let node = DeckSceneBuilder.buildCalibratedARNode(from: viewModel.drawingData)
             node.name = "deckPreview"
 
             // Set all materials to 50% opacity for ghost effect

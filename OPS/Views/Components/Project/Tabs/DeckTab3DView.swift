@@ -158,13 +158,9 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
     /// their stored `scaleFactor`; uncalibrated designs are rendered against a
     /// copy carrying `effectiveScaleFactor` (the prescale every freehand edge
     /// was already dimensioned at), so the builder reproduces true proportions
-    /// instead of the old normalized-footprint/real-meter mix.
+    /// instead of the old normalized-footprint/real-meter mix. Shared with the
+    /// builder's own 3D canvas via `buildCalibratedScene(from:)`.
     private func buildScene() -> SCNScene {
-        if let scale = drawingData.scaleFactor, scale > 0 {
-            return DeckSceneBuilder.buildScene(from: drawingData)
-        }
-        var calibrated = drawingData
-        calibrated.scaleFactor = drawingData.effectiveScaleFactor
-        return DeckSceneBuilder.buildScene(from: calibrated)
+        DeckSceneBuilder.buildCalibratedScene(from: drawingData)
     }
 }

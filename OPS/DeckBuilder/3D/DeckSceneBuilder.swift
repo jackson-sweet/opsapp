@@ -34,6 +34,31 @@ struct DeckSceneBuilder {
     private static let treadThicknessM: Float = 1.5 * inchesToMeters  // 1.5" thick tread
     private static let houseWallHeightM: Float = 6.0 * feetToMeters   // 6' wall above deck — reads as the house face without dominating the deck in the viewer
 
+    // MARK: - Calibrated Build (interactive viewers)
+
+    /// Build a scene guaranteed to render the deck even for UNCALIBRATED
+    /// drawings. `buildScene(from:)` returns a ground+lights-only scene the
+    /// moment `scaleFactor` is nil — and ~93% of saved decks, plus EVERY
+    /// freshly drawn deck in the builder, have no `scaleFactor`. Both
+    /// interactive 3D viewers — the builder's own canvas (`DeckScene3DView`)
+    /// and the project-details tab (`DeckTab3DView`) — must show the deck
+    /// regardless, so they route through here. Uncalibrated drawings are
+    /// rendered against a copy carrying `effectiveScaleFactor` (the prescale
+    /// every freehand edge is already dimensioned at), reproducing true
+    /// proportions. Calibrated drawings pass straight through untouched.
+    ///
+    /// Kept distinct from the primitive `buildScene(from:)` so callers that
+    /// deliberately rely on the empty-scene-for-nil-scale behavior (AR node,
+    /// snapshot harness) are unaffected.
+    static func buildCalibratedScene(from drawingData: DeckDrawingData) -> SCNScene {
+        if let scale = drawingData.scaleFactor, scale > 0 {
+            return buildScene(from: drawingData)
+        }
+        var calibrated = drawingData
+        calibrated.scaleFactor = drawingData.effectiveScaleFactor
+        return buildScene(from: calibrated)
+    }
+
     // MARK: - Main Build
 
     static func buildScene(from drawingData: DeckDrawingData) -> SCNScene {
@@ -234,6 +259,20 @@ struct DeckSceneBuilder {
     }
 
     // MARK: - AR Node Variant
+
+    /// Calibrated AR node — same uncalibrated-drawing guarantee as
+    /// `buildCalibratedScene(from:)`, for the "View in AR" flow. `buildARNode`
+    /// returns an empty root for a nil `scaleFactor`, so an uncalibrated deck
+    /// (the common case) placed nothing in AR. Inject `effectiveScaleFactor`
+    /// so the deck lands in AR at plausible real-world proportions.
+    static func buildCalibratedARNode(from drawingData: DeckDrawingData) -> SCNNode {
+        if let scale = drawingData.scaleFactor, scale > 0 {
+            return buildARNode(from: drawingData)
+        }
+        var calibrated = drawingData
+        calibrated.scaleFactor = drawingData.effectiveScaleFactor
+        return buildARNode(from: calibrated)
+    }
 
     /// Build a deck node for AR placement — geometry only, no camera/lights/ground/wall.
     /// The AR environment provides its own camera, lighting, and ground.

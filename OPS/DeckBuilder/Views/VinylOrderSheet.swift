@@ -382,7 +382,10 @@ struct VinylOrderSheet: View {
                 }
 
                 directionControl
-                runLockControl
+                patternControl
+                if settings.patternMode == .solid {
+                    runLockControl
+                }
 
                 settingStepper(
                     label: "ROLL",
@@ -431,6 +434,41 @@ struct VinylOrderSheet: View {
             .padding(.horizontal, OPSStyle.Layout.spacing2)
             .background(OPSStyle.Colors.subtleBackground)
             .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+        }
+    }
+
+    private var patternControl: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Text("PATTERN")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .frame(width: VinylOrderLayout.labelWidth, alignment: .leading)
+
+            HStack(spacing: 0) {
+                ForEach(VinylPatternMode.allCases) { patternMode in
+                    Button {
+                        settings.patternMode = patternMode
+                        if patternMode == .linear {
+                            settings.allowsDirectionalChanges = false
+                        }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        Text(patternMode.label)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(settings.patternMode == patternMode ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: OPSStyle.Layout.touchTargetMin)
+                            .background(settings.patternMode == patternMode ? OPSStyle.Colors.surfaceActive : Color.clear)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .background(OPSStyle.Colors.subtleBackground)
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
         }
     }
 
@@ -508,6 +546,7 @@ struct VinylOrderSheet: View {
         section(title: "SUMMARY") {
             VStack(spacing: OPSStyle.Layout.spacing2) {
                 metricRow("ORDER AREA", "\(plan.totalOrderedSqFt) SQ FT")
+                metricRow("RUN", plan.runDirectionSummary)
                 metricRow("SURFACE AREA", "\(formatSqFtForSheet(plan.totalSurfaceAreaSqFt)) SQ FT")
                 if plan.totalReusedCutAreaSqFt > 0 {
                     metricRow("REUSED AREA", "\(formatSqFtForSheet(plan.totalReusedCutAreaSqFt)) SQ FT")
@@ -1592,10 +1631,10 @@ private struct VinylCutPreview: View {
               cut.bandEndInches > cut.bandStartInches else { return nil }
 
         let corners = [
-            previewPoint(run: cut.runStartInches, cross: cut.bandStartInches, axis: cut.runAxis, surface: surface, bounds: bounds, origin: origin, scale: scale),
-            previewPoint(run: cut.runEndInches, cross: cut.bandStartInches, axis: cut.runAxis, surface: surface, bounds: bounds, origin: origin, scale: scale),
-            previewPoint(run: cut.runEndInches, cross: cut.bandEndInches, axis: cut.runAxis, surface: surface, bounds: bounds, origin: origin, scale: scale),
-            previewPoint(run: cut.runStartInches, cross: cut.bandEndInches, axis: cut.runAxis, surface: surface, bounds: bounds, origin: origin, scale: scale)
+            previewPoint(run: cut.runStartInches, cross: cut.bandStartInches, angleDegrees: cut.runAngleDegrees, surface: surface, bounds: bounds, origin: origin, scale: scale),
+            previewPoint(run: cut.runEndInches, cross: cut.bandStartInches, angleDegrees: cut.runAngleDegrees, surface: surface, bounds: bounds, origin: origin, scale: scale),
+            previewPoint(run: cut.runEndInches, cross: cut.bandEndInches, angleDegrees: cut.runAngleDegrees, surface: surface, bounds: bounds, origin: origin, scale: scale),
+            previewPoint(run: cut.runStartInches, cross: cut.bandEndInches, angleDegrees: cut.runAngleDegrees, surface: surface, bounds: bounds, origin: origin, scale: scale)
         ]
 
         var path = Path()
@@ -1617,7 +1656,7 @@ private struct VinylCutPreview: View {
         previewPoint(
             run: (cut.runStartInches + cut.runEndInches) / 2,
             cross: (cut.bandStartInches + cut.bandEndInches) / 2,
-            axis: cut.runAxis,
+            angleDegrees: cut.runAngleDegrees,
             surface: surface,
             bounds: bounds,
             origin: origin,
@@ -1628,19 +1667,20 @@ private struct VinylCutPreview: View {
     private func previewPoint(
         run: Double,
         cross: Double,
-        axis: VinylRunAxis,
+        angleDegrees: Double,
         surface: VinylSurfaceCutPlan,
         bounds: CGRect,
         origin: CGPoint,
         scale: CGFloat
     ) -> CGPoint {
-        let point: CGPoint
-        switch axis {
-        case .horizontal:
-            point = CGPoint(x: run * surfaceScale(surface), y: cross * surfaceScale(surface))
-        case .vertical:
-            point = CGPoint(x: cross * surfaceScale(surface), y: run * surfaceScale(surface))
-        }
+        let radians = angleDegrees * .pi / 180
+        let cosValue = cos(radians)
+        let sinValue = sin(radians)
+        let scaleFactor = surfaceScale(surface)
+        let point = CGPoint(
+            x: ((run * cosValue) - (cross * sinValue)) * scaleFactor,
+            y: ((run * sinValue) + (cross * cosValue)) * scaleFactor
+        )
         return map(point, bounds: bounds, origin: origin, scale: scale)
     }
 

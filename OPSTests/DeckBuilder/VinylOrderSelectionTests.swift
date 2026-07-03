@@ -17,9 +17,22 @@ final class VinylOrderSelectionTests: XCTestCase {
         XCTAssertEqual(inputs.first?.scaleFactor, DeckBuilderViewModel.prescaleFallbackScale)
     }
 
-    func testSelectedSurfaceRequiresConfirmedLengthWhenPrescaleDrawingHasManualDimension() {
+    func testSelectedSurfaceInfersScaleFromConfirmedManualDimensionWhenSavedScaleIsMissing() {
         var data = rectangleDrawingData()
         data.edges[0].dimensionSource = .manual
+        let viewModel = viewModelWithSelectedSurface(drawingData: data)
+
+        let inputs = viewModel.selectedVinylOrderSurfaceInputs()
+
+        XCTAssertEqual(inputs.count, 1)
+        XCTAssertEqual(viewModel.vinylOrderEffectiveScale, DeckBuilderViewModel.prescaleFallbackScale)
+        XCTAssertEqual(inputs.first?.scaleFactor, DeckBuilderViewModel.prescaleFallbackScale)
+    }
+
+    func testSelectedSurfaceRequiresConfirmedLengthWhenManualDimensionConflictsWithGeometry() {
+        var data = rectangleDrawingData()
+        data.edges[0].dimensionSource = .manual
+        data.edges[0].dimension = 120
         let viewModel = viewModelWithSelectedSurface(drawingData: data)
 
         let inputs = viewModel.selectedVinylOrderSurfaceInputs()

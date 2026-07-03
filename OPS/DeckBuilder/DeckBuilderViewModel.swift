@@ -2716,18 +2716,18 @@ class DeckBuilderViewModel: ObservableObject {
     /// Scale used for vinyl ordering. Vinyl is a stricter consumer than the
     /// editor's area/perimeter readout or estimate generation: a cut-to-size
     /// order can't tolerate a drawing whose typed dimensions disagree with the
-    /// drawn geometry. So any stale edge blocks the order, and — before the
-    /// user has calibrated `scaleFactor` — the prescale fallback is trusted
-    /// only while every edge is still scale-derived (no user-typed override in
-    /// play). Once the drawing clears those bars the scale is simply
-    /// `drawingData.effectiveScaleFactor` (the calibrated factor, or the
-    /// prescale fallback the canvas already draws every edge at).
+    /// drawn geometry. Any stale edge blocks the order. When a legacy drawing
+    /// has confirmed dimensions but no persisted `scaleFactor`, infer the scale
+    /// only if every stored dimension still agrees with the geometry.
     var vinylOrderEffectiveScale: Double? {
         guard !drawingData.allEdges.contains(where: \.dimensionStale) else { return nil }
-        if (drawingData.scaleFactor ?? 0) <= 0, !canUsePrescaleFallbackForVinylOrder {
-            return nil
+        if let scaleFactor = drawingData.scaleFactor, scaleFactor > 0 {
+            return scaleFactor
         }
-        return drawingData.effectiveScaleFactor
+        if canUsePrescaleFallbackForVinylOrder {
+            return drawingData.effectiveScaleFactor
+        }
+        return inferredVinylOrderScaleFromConfirmedDimensions()
     }
 
     private var canUsePrescaleFallbackForVinylOrder: Bool {
@@ -2736,6 +2736,76 @@ class DeckBuilderViewModel: ObservableObject {
         return edges.allSatisfy { edge in
             edge.dimensionSource == .scale && !edge.dimensionStale
         }
+    }
+
+    private struct VinylOrderScaleMeasurement {
+        let canvasLength: Double
+        let inches: Double
+        let source: DimensionSource
+
+        var scaleFactor: Double {
+            canvasLength / inches
+        }
+    }
+
+    private func inferredVinylOrderScaleFromConfirmedDimensions() -> Double? {
+        let measurements = vinylOrderScaleMeasurements()
+        guard !measurements.isEmpty else { return nil }
+
+        let authoritative = measurements.filter { measurement in
+            Self.isConfirmedVinylDimensionSource(measurement.source)
+        }
+        guard !authoritative.isEmpty else { return nil }
+
+        let sortedScales = authoritative.map(\.scaleFactor).sorted()
+        let referenceScale = sortedScales[sortedScales.count / 2]
+        guard referenceScale.isFinite, referenceScale > 0 else { return nil }
+
+        let dimensionsAgree = measurements.allSatisfy { measurement in
+            let expectedInches = measurement.canvasLength / referenceScale
+            return abs(expectedInches - measurement.inches) < Self.vinylOrderScaleToleranceInches
+        }
+        return dimensionsAgree ? referenceScale : nil
+    }
+
+    private func vinylOrderScaleMeasurements() -> [VinylOrderScaleMeasurement] {
+        if drawingData.isMultiLevel {
+            return drawingData.levels.flatMap { level in
+                vinylOrderScaleMeasurements(edges: level.edges, vertices: level.vertices)
+            }
+        }
+
+        return vinylOrderScaleMeasurements(edges: drawingData.edges, vertices: drawingData.vertices)
+    }
+
+    private func vinylOrderScaleMeasurements(
+        edges: [DeckEdge],
+        vertices: [DeckVertex]
+    ) -> [VinylOrderScaleMeasurement] {
+        let verticesById = Dictionary(uniqueKeysWithValues: vertices.map { ($0.id, $0) })
+        return edges.compactMap { edge in
+            guard let inches = edge.dimension,
+                  inches.isFinite,
+                  inches > 0,
+                  let start = verticesById[edge.startVertexId],
+                  let end = verticesById[edge.endVertexId] else {
+                return nil
+            }
+
+            let canvasLength = SnapEngine.distance(start.position, end.position)
+            guard canvasLength.isFinite, canvasLength > 0 else { return nil }
+            return VinylOrderScaleMeasurement(
+                canvasLength: canvasLength,
+                inches: inches,
+                source: edge.dimensionSource
+            )
+        }
+    }
+
+    private static let vinylOrderScaleToleranceInches = 0.5
+
+    private static func isConfirmedVinylDimensionSource(_ source: DimensionSource) -> Bool {
+        source == .manual || source == .laser || source == .ar
     }
 
     /// Public, multi-level-aware accessor for a vertex by id. Mirrors

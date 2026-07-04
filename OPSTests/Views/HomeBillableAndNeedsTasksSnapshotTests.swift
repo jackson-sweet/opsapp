@@ -101,9 +101,12 @@ final class HomeBillableAndNeedsTasksSnapshotTests: XCTestCase {
         )
     }
 
-    /// Six valued jobs across both sections — proves every row renders when
-    /// expanded (bug 5137414e: previously capped at 3 per section).
-    private var sixValuedJobs: HomeBillableThisWeekRollup {
+    /// Four valued jobs in ONE section — the direct anti-regression fixture for
+    /// bug 5137414e: the old code capped each section at `prefix(3)`, so the
+    /// 4th ("1075 Pandora Ave") would have been invisible. projectCount == 4
+    /// hits the inline (non-scroll) branch, so all four rows render at once and
+    /// the snapshot proves nothing is hidden.
+    private var fourClosingJobs: HomeBillableThisWeekRollup {
         HomeBillableThisWeekRollup(
             weekStart: Date(timeIntervalSince1970: 1_780_000_000),
             weekEnd: Date(timeIntervalSince1970: 1_780_500_000),
@@ -111,12 +114,9 @@ final class HomeBillableAndNeedsTasksSnapshotTests: XCTestCase {
                 candidate("c1", title: "972 Lyall St", section: .closingThisWeek, tasks: 3, amount: 8_400),
                 candidate("c2", title: "3040 Cedar Hill Rd", section: .closingThisWeek, tasks: 2, amount: 12_600),
                 candidate("c3", title: "88 King St W", section: .closingThisWeek, tasks: 1, amount: 4_200),
-                candidate("c4", title: "4204 Springridge Cres", section: .closingThisWeek, tasks: 5, amount: 21_000)
+                candidate("c4", title: "1075 Pandora Ave", section: .closingThisWeek, tasks: 5, amount: 21_000)
             ],
-            readyToBill: [
-                candidate("r1", title: "2003 Hawkins Pl", section: .readyToBill, tasks: 4, amount: 6_800),
-                candidate("r2", title: "1075 Pandora Ave", section: .readyToBill, tasks: 2, amount: 9_500)
-            ]
+            readyToBill: []
         )
     }
 
@@ -141,9 +141,9 @@ final class HomeBillableAndNeedsTasksSnapshotTests: XCTestCase {
     /// Sanity assertions alongside the visual capture (the rollup semantics the
     /// card renders), so this file also fails loudly if the model regresses.
     func testBillableSemantics() {
-        XCTAssertTrue(sixValuedJobs.hasKnownAmounts)
-        XCTAssertEqual(sixValuedJobs.projectCount, 6)
-        XCTAssertEqual(sixValuedJobs.totalKnownAmount, 62_500, accuracy: 0.001)
+        XCTAssertTrue(fourClosingJobs.hasKnownAmounts)
+        XCTAssertEqual(fourClosingJobs.projectCount, 4)
+        XCTAssertEqual(fourClosingJobs.totalKnownAmount, 46_200, accuracy: 0.001)
 
         XCTAssertFalse(unvaluedJobs.hasKnownAmounts)
         XCTAssertEqual(unvaluedJobs.projectCount, 3)
@@ -152,8 +152,8 @@ final class HomeBillableAndNeedsTasksSnapshotTests: XCTestCase {
 
     func testRenderBillableExpandedAllJobs() {
         UserDefaults.standard.set(true, forKey: "homeBillableThisWeekExpanded")
-        hostSnapshot("home_billable_expanded_all_jobs", height: 460) {
-            HomeBillableThisWeekCard(rollup: sixValuedJobs, onSelect: { _ in })
+        hostSnapshot("home_billable_expanded_all_jobs", height: 380) {
+            HomeBillableThisWeekCard(rollup: fourClosingJobs, onSelect: { _ in })
         }
     }
 

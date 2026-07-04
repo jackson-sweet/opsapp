@@ -1,7 +1,8 @@
 -- ============================================================================
--- PENDING JACKSON'S GO — NOT YET APPLIED TO PROD (blocked by session policy
--- gate 2026-07-03; apply via Supabase MCP `apply_migration` with
--- name: photo_annotations_tombstone_writes).
+-- APPLIED TO PROD 2026-07-04 via Supabase MCP `apply_migration`
+-- (name: photo_annotations_tombstone_writes). Verified live: the direct
+-- soft-delete that returned 42501 pre-fix now returns rows=1 for the reporting
+-- user; cross-company + no-JWT see/touch nothing; bug row e975c1fb tombstoned.
 --
 -- THE ONE-LINE VERSION FOR JACKSON: photo-markup "clear" has been silently
 -- broken for every customer since May 12. This unblocks it for every phone

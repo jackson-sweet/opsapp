@@ -1,7 +1,8 @@
 -- ============================================================================
--- PENDING JACKSON'S GO — NOT YET APPLIED TO PROD (blocked by session policy
--- gate 2026-07-03; apply via Supabase MCP `apply_migration` with
--- name: soft_delete_photo_annotation_rpc).
+-- APPLIED TO PROD 2026-07-04 via Supabase MCP `apply_migration`
+-- (name: soft_delete_photo_annotation_rpc). Sentinel-tested rolled-back on
+-- prod first (Pete/Maverick: id returned; cross-company P0002; no-JWT 42501),
+-- then applied and verified live.
 -- ============================================================================
 --
 -- ADDITIVE ONLY: new SECURITY DEFINER RPC; no table, column, policy, or

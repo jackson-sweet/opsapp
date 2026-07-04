@@ -1,7 +1,8 @@
 -- ============================================================================
--- PENDING JACKSON'S GO — NOT YET APPLIED TO PROD (blocked by session policy
--- gate 2026-07-03; apply via Supabase MCP `apply_migration` with
--- name: heal_user_identity_rpc).
+-- APPLIED TO PROD 2026-07-04 via Supabase MCP `apply_migration`
+-- (name: heal_user_identity_rpc). Sentinel-tested rolled-back on prod first
+-- (unverified email does not link; verified email links exactly the unlinked
+-- row and backfills firebase_uid), then applied.
 -- ============================================================================
 --
 -- ADDITIVE ONLY: new SECURITY DEFINER RPC; nothing existing changes.

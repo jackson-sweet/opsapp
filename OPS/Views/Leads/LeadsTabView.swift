@@ -136,6 +136,14 @@ struct LeadsTabView: View {
                         }
                     }
                     .scrollIndicators(.hidden)
+                    .refreshable {
+                        // Manual pull-to-refresh — same silent merge reload as
+                        // the realtime / foreground triggers, so rows update in
+                        // place with no skeleton flash. System refresh control,
+                        // no custom styling. iOS 17.6 supports .refreshable on
+                        // ScrollView.
+                        await viewModel.loadData(silent: true)
+                    }
                     .safeAreaInset(edge: .bottom) {
                         Color.clear.frame(height: 120)
                     }
@@ -219,6 +227,33 @@ struct LeadsTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadDeletedSuccess"))) { _ in
             Task { await viewModel.loadData() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .opsLeadsDidChange)) { _ in
+            // Remote change (RealtimeProcessor: opportunities / activities /
+            // follow_ups). Funnel through the debounced, coalesced reload — an
+            // event storm collapses to one silent merge fetch; leads are
+            // deliberately outside the SwiftData sync engine.
+            viewModel.scheduleRefresh()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            // Catch-up on resume: realtime tears down ~30s after backgrounding
+            // (OPSApp scenePhase), so any change during background is lost —
+            // this re-fetch is the recovery path. Short debounce; the coalescer
+            // + hasLoadedOnce guard make it a no-op on cold launch where .task
+            // owns the first load.
+            viewModel.scheduleRefresh(debounce: .milliseconds(300))
+        }
+        .onChange(of: viewModel.allOpportunities.map(\.id)) { _, ids in
+            // A reload can drop a lead deleted / merged / archived elsewhere.
+            // If that lead is open in detail, pop it rather than strand a dead
+            // screen. Observe the id list (Equatable) rather than [Opportunity]
+            // — the @Model class has no Equatable conformance, and this covers
+            // every reload path (realtime, foreground, pull-to-refresh, the
+            // nine Lead*Success listeners), not just the realtime one.
+            // activeSheet is left alone — a mid-edit sheet stays (per non-goals).
+            if let open = detailLead, !ids.contains(open.id) {
+                detailLead = nil
+            }
         }
     }
 

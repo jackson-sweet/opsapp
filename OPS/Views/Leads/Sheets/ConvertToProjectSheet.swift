@@ -960,7 +960,8 @@ struct ConvertToProjectSheet: View {
             projectId: projectId,
             companyId: opportunity.companyId,
             userId: dataController.currentUser?.id,
-            modelContext: modelContext
+            modelContext: modelContext,
+            dataController: dataController
         )
     }
 

@@ -8,6 +8,10 @@
 import Foundation
 import SwiftData
 
+// Applies on the main actor — it mutates the shared SwiftData context and routes
+// the packet note through the main-actor-isolated DataController sync queue. Only
+// ever called from SwiftUI View code (lead conversion), which is already MainActor.
+@MainActor
 enum SiteVisitProjectHandoff {
     static func apply(
         payload: SiteVisitProjectPayload,
@@ -15,7 +19,8 @@ enum SiteVisitProjectHandoff {
         projectId: String,
         companyId: String,
         userId: String?,
-        modelContext: ModelContext
+        modelContext: ModelContext,
+        dataController: DataController? = nil
     ) {
         let included = artifacts
             .filter { $0.isActive && $0.includedInProjectReview }
@@ -37,12 +42,13 @@ enum SiteVisitProjectHandoff {
             modelContext: modelContext
         )
         insertProjectNotes(
-            from: included,
+            from: artifacts,
             payload: payload,
             projectId: projectId,
             companyId: companyId,
             userId: userId,
-            modelContext: modelContext
+            modelContext: modelContext,
+            dataController: dataController
         )
         attachDeckDesigns(
             payload.deckDesignIds,
@@ -134,34 +140,34 @@ enum SiteVisitProjectHandoff {
         projectId: String,
         companyId: String,
         userId: String?,
-        modelContext: ModelContext
+        modelContext: ModelContext,
+        dataController: DataController?
     ) {
-        let noteLines = artifacts
-            .filter { $0.pipesToProjectNotes || $0.pipesToProjectMeasurements }
-            .compactMap { artifact -> String? in
-                guard let body = artifact.body?.trimmingCharacters(in: .whitespacesAndNewlines),
-                      !body.isEmpty else { return nil }
-                switch artifact.kind {
-                case .measurement, .dimensionedPhoto:
-                    return "MEASURE :: \(body)"
-                case .note, .transcript:
-                    return body
-                case .photo, .annotatedPhoto, .deckDesign:
-                    return nil
-                }
-            }
+        // Bug 7649fd48 — the packet is now a structured system note. `content`
+        // keeps the legacy plain-text packet (web / older builds); the rich iOS
+        // feed card + sheet render from `content_metadata`.
+        guard let packet = SiteVisitPacketNote.build(artifacts: artifacts, payload: payload) else { return }
 
-        let packetLines = noteLines + payload.checklistLines
-        guard !packetLines.isEmpty else { return }
         let note = ProjectNote(
             projectId: projectId,
             companyId: companyId,
             authorId: userId ?? "",
-            content: "SITE VISIT PACKET\n\n" + packetLines.joined(separator: "\n\n"),
+            content: packet.content,
             createdAt: Date()
         )
-        note.needsSync = true
-        modelContext.insert(note)
+        note.eventKind = "site_visit"
+        note.contentMetadataJSON = packet.metadataJSON
+
+        // Route through the durable sync queue so the packet ACTUALLY reaches
+        // the server. The previous direct insert set needsSync but recorded no
+        // outbound op, and project notes have no needsSync sweep — so every
+        // packet was stranded on the capturing device (zero ever synced).
+        if let dataController = dataController {
+            dataController.createProjectNote(note: note)
+        } else {
+            note.needsSync = true
+            modelContext.insert(note)
+        }
     }
 
     private static func attachDeckDesigns(

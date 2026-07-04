@@ -4854,6 +4854,14 @@ class DataController: ObservableObject {
         if let photoURL = note.photoURL { changedFields["photo_url"] = photoURL }
         if !note.attachments.isEmpty { changedFields["attachments"] = note.attachments }
         if !note.mentionedUserIds.isEmpty { changedFields["mentioned_user_ids"] = note.mentionedUserIds }
+        // System-event notes (e.g. the site-visit packet) carry a discriminator
+        // and structured metadata so the outbound create writes both columns.
+        if let eventKind = note.eventKind { changedFields["event_kind"] = eventKind }
+        if let metadataJSON = note.contentMetadataJSON,
+           let data = metadataJSON.data(using: .utf8),
+           let object = try? JSONSerialization.jsonObject(with: data) {
+            changedFields["content_metadata"] = object
+        }
 
         syncEngine.recordOperation(
             entityType: .projectNote,

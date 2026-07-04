@@ -1138,13 +1138,18 @@ enum VinylCutListEngine {
         var index = 0
         while bandStart < crossMax - 0.01 {
             let bandEnd = bandStart + settings.rollWidthInches
-            if let run = runSpanInBand(polygon: polygon, bandMin: bandStart, bandMax: bandEnd) {
+            let requiredWidth = max(1, min(settings.rollWidthInches, min(bandEnd, crossMax) - max(bandStart, crossMin)))
+            // A band can straddle disjoint material — the two upstands of a
+            // U-shape with the void between them (bug 3ab9c10b). Each maximal
+            // run of material in the band is its own cut; a single strip must
+            // never bridge a void that spans the band's full width, or the void
+            // gets charged as purchased material and waste.
+            for (runIndex, run) in runSpansInBand(polygon: polygon, bandMin: bandStart, bandMax: bandEnd).enumerated() {
                 let runStart = run.min - settings.edgeWrapInches
                 let runEnd = run.max + settings.edgeWrapInches
                 let length = max(1, runEnd - runStart)
-                let requiredWidth = max(1, min(settings.rollWidthInches, min(bandEnd, crossMax) - max(bandStart, crossMin)))
                 cuts.append(VinylCutPiece(
-                    id: "\(surface.id)-\(idPrefix)-\(index)-\(vinylFormatInches(length))-\(vinylFormatInches(requiredWidth))",
+                    id: "\(surface.id)-\(idPrefix)-\(index)-\(runIndex)-\(vinylFormatInches(length))-\(vinylFormatInches(requiredWidth))",
                     surfaceId: surface.id,
                     surfaceLabel: surface.label,
                     levelName: surface.levelName,
@@ -1169,11 +1174,19 @@ enum VinylCutListEngine {
         return cuts
     }
 
-    private static func runSpanInBand(
+    /// The maximal runs of deck material a roll laid in this band must cover, in
+    /// the run axis. A run is one cut. Two runs stay separate only when NO
+    /// cross-sample within the band bridges them — i.e. the gap is a true void
+    /// spanning the band's full width (the U-shape centre cut-out). If any
+    /// sample bridges the gap (connected material, e.g. a band straddling the
+    /// U's base), the runs merge into one full-width strip. Union-and-merge
+    /// across every sample yields exactly that: the void-spanning bug charged
+    /// the whole span; this charges only real material.
+    private static func runSpansInBand(
         polygon: [CGPoint],
         bandMin: Double,
         bandMax: Double
-    ) -> (min: Double, max: Double)? {
+    ) -> [(min: Double, max: Double)] {
         let epsilon = 0.001
         var samples: [Double] = [
             bandMin + epsilon,
@@ -1189,17 +1202,26 @@ enum VinylCutListEngine {
             }
         }
 
-        var minRun = Double.infinity
-        var maxRun = -Double.infinity
+        var intervals: [(min: Double, max: Double)] = []
         for sample in samples where sample > bandMin && sample < bandMax {
-            for interval in scanIntervals(polygon: polygon, cross: sample) {
-                minRun = min(minRun, interval.min)
-                maxRun = max(maxRun, interval.max)
+            intervals.append(contentsOf: scanIntervals(polygon: polygon, cross: sample))
+        }
+        guard !intervals.isEmpty else { return [] }
+
+        // Merge overlapping/touching intervals — touching (shared endpoint)
+        // counts as connected so a seam-aligned split never fragments solid
+        // material. Whatever the sample order, sort by start first.
+        intervals.sort { $0.min < $1.min }
+        var merged: [(min: Double, max: Double)] = [intervals[0]]
+        for interval in intervals.dropFirst() {
+            let lastIndex = merged.count - 1
+            if interval.min <= merged[lastIndex].max + epsilon {
+                merged[lastIndex].max = max(merged[lastIndex].max, interval.max)
+            } else {
+                merged.append(interval)
             }
         }
-
-        guard minRun.isFinite, maxRun.isFinite, maxRun > minRun else { return nil }
-        return (minRun, maxRun)
+        return merged.filter { $0.max > $0.min }
     }
 
     private static func scanIntervals(

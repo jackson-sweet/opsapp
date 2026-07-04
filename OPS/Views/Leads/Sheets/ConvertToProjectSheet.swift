@@ -117,18 +117,16 @@ struct ConvertToProjectSheet: View {
         estimateBundles.reduce(0) { $0 + $1.laborItems.count }
     }
 
-    /// The street line a hand-typed address resolves to, mirroring the server's
-    /// `derive_project_name`: substring before the first comma, trimmed. Falls
-    /// back to the server `suggested_name`, then to a neutral placeholder.
+    /// The street line the address resolves to, mirroring the server's
+    /// `derive_project_name` via ProjectAutoNamer (comma split, plus the
+    /// civic-number + street-suffix extraction for comma-less hand-typed
+    /// addresses). Falls back to the server `suggested_name`, then to a
+    /// neutral placeholder.
     private var derivedNamePreview: String {
         let trimmedAddress = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedAddress.isEmpty {
-            let streetLine = trimmedAddress
-                .components(separatedBy: ",")
-                .first?
-                .trimmingCharacters(in: .whitespaces) ?? ""
-            if !streetLine.isEmpty { return streetLine }
-            return trimmedAddress
+        if !trimmedAddress.isEmpty,
+           let streetLine = ProjectAutoNamer.streetLine(from: trimmedAddress) {
+            return streetLine
         }
         let trimmedSuggested = suggestedName.trimmingCharacters(in: .whitespaces)
         if !trimmedSuggested.isEmpty { return trimmedSuggested }
@@ -884,12 +882,20 @@ struct ConvertToProjectSheet: View {
                 let service = LeadConversionService(companyId: companyId)
 
                 // The unified convert RPC reads address/lat/lng from the
-                // opportunity row — it has no address param. So if the operator
-                // edited the address here, persist it to the opportunity FIRST
-                // or the edit (and the derived name) is dropped server-side.
-                let trimmedAddress = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
+                // opportunity row — it has no address param. Persist the
+                // (canonicalized) address to the opportunity FIRST whenever we
+                // have one: the local model can carry an address the server
+                // row never received (e.g. the site-visit identity panel
+                // mutates the in-memory lead only), so diffing against the
+                // local model under-patches. One idempotent PATCH per
+                // conversion guarantees the RPC derives from what the
+                // operator saw. Comma-less hand-typed addresses are
+                // canonicalized ("972 Lyall St Esquimalt" → "972 Lyall St,
+                // Esquimalt") so the server's comma-splitting autoname
+                // matches the previewed street line.
+                let trimmedAddress = ProjectAutoNamer.canonicalizedAddress(addressText)
                 let originalAddress = (opportunity.address ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmedAddress != originalAddress {
+                if !trimmedAddress.isEmpty || trimmedAddress != originalAddress {
                     let repo = OpportunityRepository(companyId: companyId)
                     _ = try? await repo.update(opportunity.id, patch: ["address": trimmedAddress])
                     // Mirror locally so the optimistic model + the lead summary

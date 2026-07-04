@@ -986,6 +986,8 @@ struct NotificationListView: View {
                 return ("folder.badge.plus", OPSStyle.Colors.warningStatus)
             case "billable_this_week":
                 return ("dollarsign.circle", OPSStyle.Colors.finRevenue)
+            case "lead_converted":
+                return ("flag.checkered", OPSStyle.Colors.successStatus)
             case "email_sync_complete":
                 return ("envelope.badge", OPSStyle.Colors.primaryAccent)
             case "stale_estimate_review":
@@ -1234,6 +1236,16 @@ struct NotificationListView: View {
                 dismiss()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     NotificationCenter.default.post(name: Notification.Name("NavigateToMap"), object: nil)
+                }
+            case "lead_converted":
+                // A won lead is now a project — land the operator on that
+                // project so they can plan the work. The row carries the new
+                // project id; the web action_url is ignored on iOS.
+                if let projectId = notification.projectId, !projectId.isEmpty {
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        appState.viewProjectDetailsById(projectId)
+                    }
                 }
             case "catalog_mapping_needed":
                 openCatalogSetup(

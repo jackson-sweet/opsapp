@@ -121,6 +121,8 @@ class ProjectNotesViewModel: ObservableObject {
                 existing.attachmentsJSON = model.attachmentsJSON
                 existing.mentionedUserIdsString = model.mentionedUserIdsString
                 existing.photoURL = model.photoURL
+                existing.eventKind = model.eventKind
+                existing.contentMetadataJSON = model.contentMetadataJSON
                 existing.updatedAt = model.updatedAt
                 existing.deletedAt = model.deletedAt
                 existing.lastSyncedAt = Date()

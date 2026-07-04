@@ -66,6 +66,11 @@
 //  V11 → V12 stage: lightweight additive — site-visit identity draft rows for
 //  client/lead contact capture inside the visit console.
 //
+//  V12 → V13 stage: lightweight additive — `ProjectNote` gains two optional
+//  attributes (`eventKind`, `contentMetadataJSON`) mirroring the live
+//  `project_notes.event_kind` / `content_metadata` columns so system entries
+//  (status changes, site-visit packets) render as first-class feed cards.
+//
 
 import Foundation
 import SwiftData
@@ -84,7 +89,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV9.self,
             OPSSchemaV10.self,
             OPSSchemaV11.self,
-            OPSSchemaV12.self
+            OPSSchemaV12.self,
+            OPSSchemaV13.self
         ]
     }
 
@@ -100,9 +106,18 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addProjectPhotosV8toV9,
             addStockUnitEventsV9toV10,
             addSiteVisitCaptureArtifactsV10toV11,
-            addSiteVisitIdentityDraftsV11toV12
+            addSiteVisitIdentityDraftsV11toV12,
+            addProjectNoteEventKindV12toV13
         ]
     }
+
+    /// V12 → V13: purely additive — `ProjectNote` gains optional `eventKind` +
+    /// `contentMetadataJSON` attributes (live `project_notes` columns). Adding
+    /// optional attributes is an inferable lightweight transform.
+    static let addProjectNoteEventKindV12toV13 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV12.self,
+        toVersion: OPSSchemaV13.self
+    )
 
     /// V11 → V12: purely additive — identity drafts are local-first rows keyed
     /// to a site visit. They preserve contact/client info before the lead is

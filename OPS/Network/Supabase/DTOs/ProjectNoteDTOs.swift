@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Supabase
 
 struct ProjectNoteDTO: Codable, Identifiable {
     let id: String
@@ -16,6 +17,11 @@ struct ProjectNoteDTO: Codable, Identifiable {
     let attachments: [String]?
     let mentionedUserIds: [String]?
     let photoURL: String?
+    /// System-event discriminator — `status_change` (web), `site_visit` (iOS).
+    let eventKind: String?
+    /// Structured payload for system entries (jsonb). Decoded loosely so any
+    /// shape a client writes survives the round trip.
+    let contentMetadata: AnyJSON?
     let createdAt: String
     let updatedAt: String?
     let deletedAt: String?
@@ -29,6 +35,8 @@ struct ProjectNoteDTO: Codable, Identifiable {
         case attachments
         case mentionedUserIds = "mentioned_user_ids"
         case photoURL        = "photo_url"
+        case eventKind       = "event_kind"
+        case contentMetadata = "content_metadata"
         case createdAt       = "created_at"
         case updatedAt       = "updated_at"
         case deletedAt       = "deleted_at"
@@ -50,6 +58,8 @@ struct ProjectNoteDTO: Codable, Identifiable {
         if let mentionedUserIds = mentionedUserIds {
             note.mentionedUserIds = mentionedUserIds
         }
+        note.eventKind = eventKind
+        note.contentMetadataJSON = Self.metadataJSONString(from: contentMetadata)
         if let updatedAt = updatedAt {
             note.updatedAt = SupabaseDate.parse(updatedAt)
         }
@@ -57,6 +67,14 @@ struct ProjectNoteDTO: Codable, Identifiable {
             note.deletedAt = SupabaseDate.parse(deletedAt)
         }
         return note
+    }
+
+    /// Serialize the loosely-decoded jsonb back to a raw JSON string for the
+    /// SwiftData model. nil for user notes (no metadata) and for SQL null.
+    static func metadataJSONString(from metadata: AnyJSON?) -> String? {
+        guard let metadata, metadata != .null else { return nil }
+        guard let data = try? JSONEncoder().encode(metadata) else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 }
 

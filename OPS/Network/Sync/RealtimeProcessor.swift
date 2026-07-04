@@ -1917,6 +1917,8 @@ final class RealtimeProcessor: ObservableObject {
             if !pendingFields.contains("content")                   { existing.content = model.content }
             if !pendingFields.contains("attachmentsJSON")           { existing.attachmentsJSON = model.attachmentsJSON }
             if !pendingFields.contains("mentionedUserIdsString")    { existing.mentionedUserIdsString = model.mentionedUserIdsString }
+            if !pendingFields.contains("eventKind")                 { existing.eventKind = model.eventKind }
+            if !pendingFields.contains("contentMetadataJSON")       { existing.contentMetadataJSON = model.contentMetadataJSON }
             if !pendingFields.contains("updatedAt")                 { existing.updatedAt = model.updatedAt }
             if !pendingFields.contains("deletedAt")                 { existing.deletedAt = model.deletedAt }
             existing.lastSyncedAt = Date()

@@ -25,6 +25,103 @@ final class VinylCutListEngineTests: XCTestCase {
         XCTAssertEqual(plan.totalWasteSqFt, 66, accuracy: 0.01)
     }
 
+    func testAutomaticSolidUsesDiagonalRunOnlyWhenItClearlyReducesWaste() {
+        let surface = rotatedRectangle(
+            id: "main",
+            label: "Main deck",
+            width: 300,
+            height: 48,
+            angleDegrees: 45,
+            edgeType: .deckEdge
+        )
+
+        let axisOnlyPlan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 0,
+                edgeWrapInches: 0,
+                direction: .lengthwise
+            )
+        )
+        let angleAwarePlan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 0,
+                edgeWrapInches: 0,
+                direction: .automatic,
+                patternMode: .solid
+            )
+        )
+
+        let axisOnly = try! XCTUnwrap(axisOnlyPlan.surfaces.first)
+        let angleAware = try! XCTUnwrap(angleAwarePlan.surfaces.first)
+        XCTAssertEqual(angleAware.runDirectionLabel, "MIN WASTE")
+        XCTAssertEqual(angleAware.runAngleDegrees, 135, accuracy: 0.1)
+        XCTAssertLessThan(angleAware.cutAreaSqFt, axisOnly.cutAreaSqFt * 0.75)
+    }
+
+    func testAutomaticLinearUsesDominantHouseEdgeAcrossSurfaces() {
+        let main = rotatedRectangle(
+            id: "main",
+            label: "Main deck",
+            width: 300,
+            height: 96,
+            angleDegrees: 45,
+            edgeType: .houseEdge
+        )
+        let landing = rotatedRectangle(
+            id: "landing",
+            label: "Landing",
+            width: 96,
+            height: 48,
+            angleDegrees: 0,
+            edgeType: .deckEdge
+        )
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [main, landing],
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 0,
+                edgeWrapInches: 0,
+                direction: .automatic,
+                patternMode: .linear
+            )
+        )
+
+        XCTAssertEqual(plan.surfaces.count, 2)
+        XCTAssertTrue(plan.surfaces.allSatisfy { $0.runDirectionLabel == "HOUSE EDGE" })
+        XCTAssertTrue(plan.surfaces.allSatisfy { abs($0.runAngleDegrees - 45) < 0.1 })
+    }
+
+    func testAutomaticLinearFallsBackToExistingAutoWhenNoVisualAxisExists() {
+        let surface = rectangle(id: "main", width: 288, height: 192)
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 1.5,
+                edgeWrapInches: 6,
+                direction: .automatic,
+                patternMode: .linear
+            )
+        )
+
+        let cut = try! XCTUnwrap(plan.surfaces.first)
+        XCTAssertEqual(cut.resolvedDirection, .lengthwise)
+        XCTAssertEqual(cut.runDirectionLabel, "MIN WASTE")
+        XCTAssertEqual(cut.runAngleDegrees, 0, accuracy: 0.1)
+        XCTAssertEqual(cut.stripCount, 3)
+        XCTAssertEqual(plan.totalOrderedSqFt, 450)
+    }
+
     func testSettingsChangeStripCountAndOrderLineLength() {
         let surface = rectangle(id: "main", width: 240, height: 120)
         let settings = VinylOrderSettings(
@@ -429,6 +526,50 @@ final class VinylCutListEngineTests: XCTestCase {
                 CGPoint(x: 0, y: height)
             ],
             scaleFactor: 1
+        )
+    }
+
+    private func rotatedRectangle(
+        id: String,
+        label: String = "Surface",
+        width: Double,
+        height: Double,
+        angleDegrees: Double,
+        edgeType: EdgeType
+    ) -> VinylOrderSurfaceInput {
+        let radians = angleDegrees * .pi / 180
+        let run = CGVector(dx: cos(radians), dy: sin(radians))
+        let cross = CGVector(dx: -sin(radians), dy: cos(radians))
+        func point(_ runDistance: Double, _ crossDistance: Double) -> CGPoint {
+            CGPoint(
+                x: (run.dx * runDistance) + (cross.dx * crossDistance),
+                y: (run.dy * runDistance) + (cross.dy * crossDistance)
+            )
+        }
+
+        let positions = [
+            point(0, 0),
+            point(width, 0),
+            point(width, height),
+            point(0, height)
+        ]
+        let edges = positions.indices.map { index in
+            VinylOrderSurfaceEdge(
+                id: "\(id)-edge-\(index)",
+                start: positions[index],
+                end: positions[(index + 1) % positions.count],
+                edgeType: index == 0 ? edgeType : .deckEdge,
+                label: nil
+            )
+        }
+
+        return VinylOrderSurfaceInput(
+            id: id,
+            label: label,
+            levelName: nil,
+            positions: positions,
+            scaleFactor: 1,
+            edges: edges
         )
     }
 

@@ -245,6 +245,52 @@ final class VinylCutListEngineTests: XCTestCase {
         XCTAssertFalse(body.contains("240\""))
     }
 
+    /// Bug 2cb701e4: the operator can drop the project name into the supplier
+    /// message with a [project] token. Absent the token the project name never
+    /// leaks (existing templates are unaffected).
+    func testTextMessageBodyInsertsProjectNameToken() {
+        let surface = rectangle(id: "main", label: "Main deck", width: 96, height: 36)
+        let settings = VinylOrderSettings(
+            color: "Slate",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .lengthwise
+        )
+
+        let plan = VinylCutListEngine.makePlan(surfaces: [surface], settings: settings)
+
+        let body = plan.textMessageBody(
+            messageTemplate: "Order for [project] in [color]:\n[cuts]",
+            cutTemplate: "[quantity] @ [length]",
+            cutSeparator: .lines,
+            projectTitle: "Rear deck rebuild"
+        )
+
+        XCTAssertEqual(body, """
+        Order for Rear deck rebuild in Slate:
+        1 @ 8'
+        """)
+    }
+
+    func testTextMessageBodyProjectTokenEmptyWhenNoTitle() {
+        let surface = rectangle(id: "main", label: "Main deck", width: 96, height: 36)
+        let settings = VinylOrderSettings(
+            color: "Slate",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .lengthwise
+        )
+
+        let plan = VinylCutListEngine.makePlan(surfaces: [surface], settings: settings)
+
+        // Default template carries no [project] token, so the existing text-cuts
+        // flow is untouched even though the parameter now exists.
+        let body = plan.textMessageBody(projectTitle: "Rear deck rebuild")
+        XCTAssertFalse(body.contains("Rear deck rebuild"))
+    }
+
     func testTextMessageBodyUsesCustomTemplate() {
         let surface = rectangle(id: "main", label: "Main deck", width: 96, height: 36)
         let settings = VinylOrderSettings(

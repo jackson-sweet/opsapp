@@ -226,12 +226,14 @@ struct VinylCutPlan: Equatable {
     func textMessageBody(
         messageTemplate: String = VinylCutListTextTemplate.defaultMessageTemplate,
         cutTemplate: String = VinylCutListTextTemplate.defaultCutTemplate,
-        cutSeparator: VinylCutListSeparator = .lines
+        cutSeparator: VinylCutListSeparator = .lines,
+        projectTitle: String = ""
     ) -> String {
         VinylCutListTextTemplate.render(
             messageTemplate: messageTemplate,
             cutTemplate: cutTemplate,
             cutSeparator: cutSeparator,
+            projectTitle: projectTitle,
             plan: self
         )
     }
@@ -275,6 +277,7 @@ enum VinylCutListTextTemplate {
         messageTemplate rawMessageTemplate: String,
         cutTemplate rawCutTemplate: String,
         cutSeparator: VinylCutListSeparator,
+        projectTitle: String = "",
         plan: VinylCutPlan
     ) -> String {
         let trimmedMessageTemplate = rawMessageTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -287,7 +290,8 @@ enum VinylCutListTextTemplate {
             replacements: [
                 "color": color,
                 "cuts": cuts,
-                "cut_count": "\(plan.totalPurchasedStripCount)"
+                "cut_count": "\(plan.totalPurchasedStripCount)",
+                "project": projectTitle.trimmingCharacters(in: .whitespacesAndNewlines)
             ]
         )
             .trimmingCharacters(in: .whitespacesAndNewlines)

@@ -715,7 +715,30 @@ class DeckBuilderViewModel: ObservableObject {
 
     func setVinylCatalogItemId(_ itemId: String?) {
         let trimmed = itemId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        drawingData.config.vinylCatalogItemId = trimmed.isEmpty ? nil : trimmed
+        let newItemId = trimmed.isEmpty ? nil : trimmed
+        // A variant belongs to exactly one catalog item — switching product
+        // invalidates the persisted colour. Re-setting the same item (the
+        // settings sheet re-binds on every appearance) must keep it.
+        if newItemId != drawingData.config.vinylCatalogItemId {
+            drawingData.config.vinylCatalogVariantId = nil
+            drawingData.config.vinylColor = nil
+        }
+        drawingData.config.vinylCatalogItemId = newItemId
+        save()
+    }
+
+    /// Persists the vinyl colour chosen in the Vinyl Order sheet — the catalog
+    /// variant when a product is configured, or the free-text colour — so
+    /// reopening the sheet restores the operator's choice (bug 0f86b9b0).
+    func setVinylCatalogSelection(variantId: String?, color: String?) {
+        let trimmedVariant = variantId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let trimmedColor = color?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let newVariantId = trimmedVariant.isEmpty ? nil : trimmedVariant
+        let newColor = trimmedColor.isEmpty ? nil : trimmedColor
+        guard drawingData.config.vinylCatalogVariantId != newVariantId
+                || drawingData.config.vinylColor != newColor else { return }
+        drawingData.config.vinylCatalogVariantId = newVariantId
+        drawingData.config.vinylColor = newColor
         save()
     }
 

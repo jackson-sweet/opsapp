@@ -65,6 +65,11 @@ struct DrawingConfig: Codable {
     var endpointSnapRadius: Double = 20.0      // points (screen distance for magnetic snap)
     var gridVisible: Bool = true
     var vinylCatalogItemId: String?
+    /// Persisted vinyl colour choice from the Vinyl Order sheet: the selected
+    /// catalog variant (when a product is configured) or the free-text colour.
+    /// Optional + absent in pre-existing deck JSON — decode must tolerate both.
+    var vinylCatalogVariantId: String?
+    var vinylColor: String?
 
     enum CodingKeys: String, CodingKey {
         case measurementSystem
@@ -74,6 +79,8 @@ struct DrawingConfig: Codable {
         case endpointSnapRadius
         case gridVisible
         case vinylCatalogItemId
+        case vinylCatalogVariantId
+        case vinylColor
     }
 
     init(
@@ -83,7 +90,9 @@ struct DrawingConfig: Codable {
         snappingEnabled: Bool = true,
         endpointSnapRadius: Double = 20.0,
         gridVisible: Bool = true,
-        vinylCatalogItemId: String? = nil
+        vinylCatalogItemId: String? = nil,
+        vinylCatalogVariantId: String? = nil,
+        vinylColor: String? = nil
     ) {
         self.measurementSystem = measurementSystem
         self.angleSnapIncrement = angleSnapIncrement
@@ -92,6 +101,8 @@ struct DrawingConfig: Codable {
         self.endpointSnapRadius = endpointSnapRadius
         self.gridVisible = gridVisible
         self.vinylCatalogItemId = vinylCatalogItemId
+        self.vinylCatalogVariantId = vinylCatalogVariantId
+        self.vinylColor = vinylColor
     }
 
     init(from decoder: Decoder) throws {
@@ -103,6 +114,8 @@ struct DrawingConfig: Codable {
         self.endpointSnapRadius = try c.decodeIfPresent(Double.self, forKey: .endpointSnapRadius) ?? 20.0
         self.gridVisible = try c.decodeLegacyBoolIfPresent(forKey: .gridVisible) ?? true
         self.vinylCatalogItemId = try c.decodeIfPresent(String.self, forKey: .vinylCatalogItemId)
+        self.vinylCatalogVariantId = try c.decodeIfPresent(String.self, forKey: .vinylCatalogVariantId)
+        self.vinylColor = try c.decodeIfPresent(String.self, forKey: .vinylColor)
     }
 }
 

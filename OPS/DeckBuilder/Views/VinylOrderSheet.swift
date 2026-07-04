@@ -31,6 +31,9 @@ struct VinylOrderSheet: View {
     @State private var surfaceInputs: [VinylOrderSurfaceInput] = []
     @State private var didLoadSurfaceInputs = false
     @State private var showingTemplateEditor = false
+    /// One-shot latch for restoring a persisted free-text colour — catalog
+    /// reloads re-run the restore path and must not clobber in-session typing.
+    @State private var didRestoreFreeTextColor = false
     /// Resolved once on appear: company runs tracked inventory AND the
     /// catalog_stock_units schema is live. Gates every stock-inventory surface.
     @State private var stockTrackingActive = false
@@ -90,12 +93,22 @@ struct VinylOrderSheet: View {
         plan.textMessageBody(
             messageTemplate: messageTemplate,
             cutTemplate: cutTemplate,
-            cutSeparator: cutSeparator
+            cutSeparator: cutSeparator,
+            projectTitle: projectTitle
         )
     }
 
+    /// The signed-in operator's `users.id` (a lowercase Postgres uuid). This
+    /// must NEVER be the Firebase UID: `catalog_orders.created_by_id`,
+    /// `projects.vinyl_ordered_by`, and `catalog_stock_unit_events.created_by`
+    /// are uuid columns, and a Firebase UID (28-char alphanumeric) makes
+    /// Postgres reject the whole write with 22P02 — the "CREATE ORDER throws an
+    /// error" in bug 0f86b9b0. `SupabaseService.currentUserId` and the
+    /// UserDefaults "currentUserId" key both can carry the Firebase UID, so
+    /// neither is a safe source here. Nil until the user record loads — the
+    /// action buttons stay disabled rather than sending garbage.
     private var currentUserId: String? {
-        SupabaseService.shared.currentUserId ?? UserDefaults.standard.string(forKey: "currentUserId")
+        dataController.currentUser?.id.lowercased()
     }
 
     /// The selected catalog variant id, or nil when ordering by free-text color
@@ -280,6 +293,9 @@ struct VinylOrderSheet: View {
             }
             .task {
                 await resolveStockTracking()
+            }
+            .onDisappear {
+                persistFreeTextColorIfNeeded()
             }
             .sheet(item: $pendingRollReceipt) { context in
                 VinylRollReceiptSheet(context: context) { count, lengthFeet, widthInches in
@@ -645,7 +661,7 @@ struct VinylOrderSheet: View {
 
                     HStack(spacing: OPSStyle.Layout.spacing2) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("MESSAGE: [color] [cuts] [cut_count]")
+                            Text("MESSAGE: [project] [color] [cuts] [cut_count]")
                             Text("CUT: [quantity] [length] [surface]")
                         }
                             .font(OPSStyle.Typography.smallCaption)
@@ -985,10 +1001,50 @@ struct VinylOrderSheet: View {
               let variant = selectedProductChoice?.variants.first(where: { $0.id == variantId }) else {
             settings.catalogVariantId = nil
             settings.color = ""
+            viewModel.setVinylCatalogSelection(variantId: nil, color: nil)
             return
         }
         settings.catalogVariantId = variant.id
         settings.color = variantDisplayName(variant)
+        // Persist onto the deck design so reopening the sheet restores the
+        // colour instead of resetting it (bug 0f86b9b0).
+        viewModel.setVinylCatalogSelection(variantId: variant.id, color: variantDisplayName(variant))
+    }
+
+    /// Persists a free-text colour (no catalog product configured) once, when
+    /// the sheet closes — never per keystroke.
+    private func persistFreeTextColorIfNeeded() {
+        guard settings.catalogItemId == nil else { return }
+        let trimmed = settings.color.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != (viewModel.drawingData.config.vinylColor ?? "") else { return }
+        viewModel.setVinylCatalogSelection(variantId: nil, color: trimmed)
+    }
+
+    /// Pure resolution of the persisted vinyl selection against the live
+    /// catalog, so a deactivated product/variant is dropped instead of silently
+    /// restored. Static + primitive-typed for unit coverage.
+    static func restoredCatalogSelection(
+        configItemId: String?,
+        configVariantId: String?,
+        configColor: String?,
+        availableItemIds: Set<String>,
+        variantIdsByItem: [String: Set<String>]
+    ) -> (itemId: String?, variantId: String?, color: String?) {
+        let trimmedColor = configColor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let color = (trimmedColor?.isEmpty ?? true) ? nil : trimmedColor
+
+        guard let itemId = configItemId, availableItemIds.contains(itemId) else {
+            // No product (or a vanished one): keep the colour as free text so
+            // the operator's note survives.
+            return (nil, nil, color)
+        }
+        guard let variantId = configVariantId,
+              variantIdsByItem[itemId]?.contains(variantId) == true else {
+            // Product stands but the persisted variant is gone — force an
+            // explicit re-pick rather than ordering a dead variant.
+            return (itemId, nil, nil)
+        }
+        return (itemId, variantId, color)
     }
 
     private func variantDisplayName(_ variant: CatalogVariant) -> String {
@@ -1047,15 +1103,20 @@ struct VinylOrderSheet: View {
     }
 
     private func setProjectVinylOrdered(_ ordered: Bool) {
-        guard canToggleProjectMarker, let projectId, let userId = currentUserId else { return }
+        guard canToggleProjectMarker, let projectId else { return }
 
         let now = Date()
         let fields: [String: AnyJSON]
         if ordered {
+            // Persist status + timestamp; leave `vinyl_ordered_by` NULL. That
+            // column FKs to auth.users(id), which a Firebase-bridged user's
+            // public.users.id can never satisfy — writing a real id FK-fails and
+            // a Firebase UID 22P02s (bug 0f86b9b0). The "who" is never surfaced,
+            // so NULL loses nothing the UI shows.
             fields = [
                 ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
                 ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(now)),
-                ProjectVinylOrderFields.orderedBy: .string(userId)
+                ProjectVinylOrderFields.orderedBy: .null
             ]
         } else {
             fields = [
@@ -1124,15 +1185,29 @@ struct VinylOrderSheet: View {
     }
 
     private func applyConfiguredCatalogProduct(in choices: [VinylCatalogProductChoice]) {
-        guard settings.catalogItemId == nil,
-              let configuredItemId = viewModel.drawingData.config.vinylCatalogItemId?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !configuredItemId.isEmpty,
-              choices.contains(where: { $0.id == configuredItemId }) else {
-            return
+        guard settings.catalogItemId == nil else { return }
+
+        let restored = Self.restoredCatalogSelection(
+            configItemId: viewModel.drawingData.config.vinylCatalogItemId?.trimmingCharacters(in: .whitespacesAndNewlines),
+            configVariantId: viewModel.drawingData.config.vinylCatalogVariantId,
+            configColor: viewModel.drawingData.config.vinylColor,
+            availableItemIds: Set(choices.map(\.id)),
+            variantIdsByItem: Dictionary(uniqueKeysWithValues: choices.map { ($0.id, Set($0.variants.map(\.id))) })
+        )
+
+        if let itemId = restored.itemId {
+            settings.catalogItemId = itemId
+            settings.catalogVariantId = restored.variantId
+            settings.color = restored.color ?? ""
+        } else if !didRestoreFreeTextColor {
+            // Free-text mode (or the configured product vanished): restore the
+            // persisted colour exactly once so later catalog reloads never
+            // clobber what the operator is typing.
+            didRestoreFreeTextColor = true
+            if settings.color.isEmpty, let color = restored.color {
+                settings.color = color
+            }
         }
-        settings.catalogItemId = configuredItemId
-        settings.catalogVariantId = nil
-        settings.color = ""
     }
 
     @MainActor
@@ -1158,6 +1233,10 @@ struct VinylOrderSheet: View {
             errorMessage = "NO CUT LIST"
             return
         }
+
+        // The colour is committing to a real order — persist it on the deck
+        // design now, not just at sheet close.
+        persistFreeTextColorIfNeeded()
 
         statusMessage = nil
         errorMessage = nil

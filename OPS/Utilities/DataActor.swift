@@ -1405,17 +1405,29 @@ actor DataActor {
                 ]
             )
 
+            // Annotations don't write SyncOperation rows, so acceptableFields
+            // can't protect a not-yet-pushed tombstone from a live-row echo —
+            // without this guard the pending delete is silently reverted and
+            // never retried (prod 2026-06-24, bugs 452bab04/0415504f).
+            let preserveLocalTombstone = PhotoAnnotationMergePolicy.shouldPreserveLocalTombstone(
+                localNeedsSync: existing.needsSync,
+                localDeletedAt: existing.deletedAt,
+                incomingDeletedAt: dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+            )
+
             if accept.contains("annotationURL") { existing.annotationURL = dto.annotationUrl }
             if accept.contains("renderedPhotoURL") { existing.renderedPhotoURL = dto.renderedPhotoUrl }
             if accept.contains("note") { existing.note = dto.note ?? "" }
             if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
-            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("deletedAt"), !preserveLocalTombstone {
+                existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+            }
             if accept.contains("dimensions"), let dimensionsData = dto.dimensionsData {
                 existing.dimensionsData = dimensionsData
             }
 
             existing.lastSyncedAt = Date()
-            if !hasPendingOperations(entityType: .photoAnnotation, entityId: existing.id) {
+            if !hasPendingOperations(entityType: .photoAnnotation, entityId: existing.id), !preserveLocalTombstone {
                 existing.needsSync = false
             }
         } else {

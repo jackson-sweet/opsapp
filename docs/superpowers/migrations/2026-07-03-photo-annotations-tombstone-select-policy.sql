@@ -1,0 +1,112 @@
+-- ============================================================================
+-- PENDING JACKSON'S GO — NOT YET APPLIED TO PROD (blocked by session policy
+-- gate 2026-07-03; apply via Supabase MCP `apply_migration` with
+-- name: photo_annotations_tombstone_writes).
+--
+-- THE ONE-LINE VERSION FOR JACKSON: photo-markup "clear" has been silently
+-- broken for every customer since May 12. This unblocks it for every phone
+-- that is ALREADY in the field — no App Store release needed.
+-- ============================================================================
+--
+-- Fix: soft-delete of photo annotations was impossible for ALL clients.
+-- Bugs: 452bab04-631f-4781-817f-6dbf4ecdcbd7, 0415504f-b05b-4a2f-a85e-56da361fcd54
+--
+-- Root cause (verified by live reproduction 2026-07-03): PostgreSQL applies
+-- SELECT policies as WITH CHECK options against the NEW row of any UPDATE
+-- that also reads the table (every UPDATE with a WHERE clause does — see
+-- postgres rewrite/rowsecurity.c, "requiredPerms & ACL_SELECT"). The SELECT
+-- policy from 20260512000641 (tighten_rls_project_photo_annotations) included
+-- "deleted_at IS NULL", so any UPDATE that sets deleted_at raised
+--   42501 'new row violates row-level security policy'
+-- for every user since 2026-05-12 — regardless of identity or company.
+-- Ordinary saves (deleted_at untouched) passed, which is why only
+-- clears/soft-deletes failed. Reproduction on prod (2026-07-03), same user
+-- (pnLo4LsWtvMi7oxDrRIcLASCash2 / Maverick), same row (e975c1fb…), same role:
+--   * UPDATE … SET note            -> rows=1 (passes)
+--   * UPDATE … SET deleted_at      -> 42501  (always fails)
+-- Identity resolution was confirmed working under both `anon` and
+-- `authenticated` (private.get_user_company_id() -> ddee107c…), so the
+-- original "firebase_uid self-heal gap" hypothesis is NOT the cause here.
+--
+-- Fix: company scoping stays; the tombstone-hiding clause moves out of the
+-- policy. It was a UX filter, not a security boundary — tombstones are
+-- same-company rows. Readers that must not show tombstones already filter
+-- explicitly (iOS uses .is("deleted_at", nil) on direct reads and pulls
+-- tombstones deliberately via get_photo_annotations_since; ops-web has no
+-- application reads of this table on origin/main — verified by git grep).
+-- Side benefit: realtime UPDATE events for tombstoned rows now reach
+-- same-company subscribers, so cross-device markup removal propagates live
+-- instead of waiting for the next delta pull.
+--
+-- Deliberate decision: there is NO DELETE policy, and none is added — client
+-- hard-delete stays impossible by design. deleted_at tombstones are the only
+-- removal mechanism; offline/multi-device convergence depends on them
+-- flowing through get_photo_annotations_since.
+
+drop policy if exists "Users can read company annotations" on public.project_photo_annotations;
+
+create policy "Users can read company annotations"
+  on public.project_photo_annotations
+  for select
+  using (
+    company_id = (select private.get_user_company_id())::text
+  );
+
+-- ============================================================================
+-- VERIFICATION RUNBOOK (run each block via execute_sql after applying).
+-- Every DO block self-reverts via RAISE EXCEPTION; read the answer out of the
+-- error text.
+-- ============================================================================
+--
+-- 1) The formerly-failing soft-delete now passes (expect rows=1):
+--
+-- do $$
+-- declare v_cnt int;
+-- begin
+--   perform set_config('request.jwt.claims',
+--     '{"sub":"pnLo4LsWtvMi7oxDrRIcLASCash2","role":"anon","email":"peterjmitchell1988@gmail.com"}', true);
+--   set local role anon;
+--   update public.project_photo_annotations
+--      set deleted_at = now(), updated_at = now()
+--    where id = 'e975c1fb-fc77-45b9-938f-fa0ce8d903ee';
+--   get diagnostics v_cnt = row_count;
+--   raise exception 'POST_FIX_SOFT_DELETE rows=% (rolled back)', v_cnt;
+-- end $$;
+--
+-- 2) Cross-company isolation intact (expect visible=0, rows=0 — uses a real
+--    other-company sub):
+--
+-- do $$
+-- declare v_cnt int; v_vis int;
+-- begin
+--   perform set_config('request.jwt.claims',
+--     '{"sub":"D1HiiNQaeiO6fRfcaiGRnrvoUhp2","role":"anon"}', true);
+--   set local role anon;
+--   select count(*) into v_vis from public.project_photo_annotations
+--    where id = 'e975c1fb-fc77-45b9-938f-fa0ce8d903ee';
+--   update public.project_photo_annotations set deleted_at = now()
+--    where id = 'e975c1fb-fc77-45b9-938f-fa0ce8d903ee';
+--   get diagnostics v_cnt = row_count;
+--   raise exception 'ISOLATION visible=% rows=% (rolled back)', v_vis, v_cnt;
+-- end $$;
+--
+-- 3) No-JWT anon sees and touches nothing (expect visible=0, rows=0):
+--    same block as (2) with claims '{}'.
+--
+-- ============================================================================
+-- REMEDIATION (run ONCE after verification — executes Pete Mitchell's
+-- recorded 2026-06-24 intent; both bug reports are the receipt; the row has
+-- not been edited since 17:51 UTC that day). This is the mission's proof:
+-- the e975c1fb soft-delete finally landing.
+-- ============================================================================
+--
+-- begin;
+-- select set_config('request.jwt.claims',
+--   '{"sub":"pnLo4LsWtvMi7oxDrRIcLASCash2","role":"anon","email":"peterjmitchell1988@gmail.com"}', true);
+-- set local role anon;
+-- update public.project_photo_annotations
+--    set deleted_at = now(), updated_at = now()
+--  where id = 'e975c1fb-fc77-45b9-938f-fa0ce8d903ee';
+-- commit;
+-- select id, deleted_at, updated_at from public.project_photo_annotations
+--  where id = 'e975c1fb-fc77-45b9-938f-fa0ce8d903ee';

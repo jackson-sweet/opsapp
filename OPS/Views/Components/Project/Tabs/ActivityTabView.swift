@@ -447,19 +447,22 @@ private struct AnnotationEntryView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(authorName)
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    // Name + timestamp inline — same position as every other
+                    // feed card (was far-right here, in the ellipsis slot).
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Text(authorName)
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        Text(relativeTimestamp)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
                     Text(AnnotationFeedPolicy.actionLabel(annotationURL: annotation.annotationURL))
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
 
                 Spacer()
-
-                Text(relativeTimestamp)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
 
             // Photo thumbnail + note side by side

@@ -68,13 +68,26 @@ struct ActivityEntryView: View {
                         )
                 }
 
-                Text(authorName)
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                // Name + timestamp inline (one consistent position across every
+                // feed card), with an "added a photo" subtitle on photo-only
+                // posts so a comment-less photo still reads as an action.
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Text(authorName)
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
 
-                Text(relativeTimestamp)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        Text(relativeTimestamp)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+
+                    if note.content.isEmpty && !notePhotoURLs.isEmpty {
+                        Text(photoAddedSubtitle)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
 
                 Spacer()
 
@@ -199,6 +212,11 @@ struct ActivityEntryView: View {
         }
         urls.append(contentsOf: note.attachments.filter { !$0.isEmpty })
         return urls
+    }
+
+    /// Subtitle for a comment-less photo post — "added a photo" / "added N photos".
+    private var photoAddedSubtitle: String {
+        notePhotoURLs.count == 1 ? "added a photo" : "added \(notePhotoURLs.count) photos"
     }
 
     private var relativeTimestamp: String {

@@ -96,6 +96,66 @@ class Opportunity: Identifiable {
         return "Unnamed lead"
     }
 
+    // MARK: - Field copy (realtime refresh)
+
+    /// Copies every stored property from `other` onto self (id excluded). Used by
+    /// the LEADS reload merge (`PipelineViewModel.merge`) so the SAME instance
+    /// survives a refresh — the pushed detail screen observes these writes and
+    /// re-renders in place, and list identity stays stable.
+    ///
+    /// Assignments follow the stored-property declaration order above. Keep this
+    /// in lockstep: a field missed here silently never refreshes, and a field
+    /// that goes nil server-side (e.g. `nextFollowUpAt` after a follow-up is
+    /// completed on the web) must be nilled here too, not left stale.
+    func apply(_ other: Opportunity) {
+        companyId = other.companyId
+
+        title = other.title
+        contactName = other.contactName
+        contactEmail = other.contactEmail
+        contactPhone = other.contactPhone
+        descriptionText = other.descriptionText
+        address = other.address
+
+        stage = other.stage
+        stageEnteredAt = other.stageEnteredAt
+        stageManuallySet = other.stageManuallySet
+        assignedTo = other.assignedTo
+        priority = other.priority
+        source = other.source
+        quoteDeliveryMethod = other.quoteDeliveryMethod
+
+        estimatedValue = other.estimatedValue
+        actualValue = other.actualValue
+        winProbabilityOverride = other.winProbabilityOverride
+
+        expectedCloseDate = other.expectedCloseDate
+        actualCloseDate = other.actualCloseDate
+        nextFollowUpAt = other.nextFollowUpAt
+        lastActivityAt = other.lastActivityAt
+
+        projectId = other.projectId
+        clientId = other.clientId
+        lostReason = other.lostReason
+        lostNotes = other.lostNotes
+
+        deletedAt = other.deletedAt
+        archivedAt = other.archivedAt
+
+        tags = other.tags
+        sourceEmailId = other.sourceEmailId
+
+        correspondenceCount = other.correspondenceCount
+        outboundCount = other.outboundCount
+        inboundCount = other.inboundCount
+        lastInboundAt = other.lastInboundAt
+        lastOutboundAt = other.lastOutboundAt
+        lastMessageDirection = other.lastMessageDirection
+
+        createdAt = other.createdAt
+        updatedAt = other.updatedAt
+    }
+
     // MARK: - Init
 
     init(

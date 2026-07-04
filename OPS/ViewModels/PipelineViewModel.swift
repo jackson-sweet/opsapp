@@ -37,20 +37,91 @@ class PipelineViewModel: ObservableObject {
         self.repository = OpportunityRepository(companyId: companyId)
     }
 
+    // MARK: - Remote-change refresh (debounced, coalesced, merge-based)
+    //
+    // Leads are deliberately outside the SwiftData sync engine (see bug
+    // 0b7e9b17): three freshness triggers — Supabase Realtime events, a
+    // foreground-resume catch-up, and pull-to-refresh — all funnel through
+    // one debounced, coalesced reload that MERGES server rows into the
+    // existing Opportunity instances by id (reference semantics keep the
+    // pushed LeadDetailView live and list identity stable).
+
+    /// True once the initial `.task` load has populated the surface. Remote /
+    /// foreground triggers before that are no-ops — the initial load owns cold
+    /// start (avoids a debounced fetch racing the first `.task` load).
+    private(set) var hasLoadedOnce = false
+    private var pendingRefreshTask: Task<Void, Never>?
+    private var isLoadInFlight = false
+    private var needsFollowUpLoad = false
+
+    /// Single funnel for every automatic trigger (realtime burst, foreground).
+    /// The trailing debounce collapses event storms into one fetch; the
+    /// in-flight coalescer guarantees a fetch STARTED before the last event
+    /// completes re-runs once more, so no change is missed.
+    func scheduleRefresh(debounce: Duration = .milliseconds(1500)) {
+        guard hasLoadedOnce else { return }
+        pendingRefreshTask?.cancel()
+        pendingRefreshTask = Task { [weak self] in
+            try? await Task.sleep(for: debounce)
+            guard !Task.isCancelled else { return }
+            await self?.refreshCoalesced()
+        }
+    }
+
+    private func refreshCoalesced() async {
+        if isLoadInFlight { needsFollowUpLoad = true; return }
+        isLoadInFlight = true
+        await loadData(silent: true)
+        isLoadInFlight = false
+        if needsFollowUpLoad {
+            needsFollowUpLoad = false
+            await refreshCoalesced()
+        }
+    }
+
+    /// Identity-preserving merge. Existing instances are mutated via `apply`
+    /// (reference semantics keep the pushed detail screen live); result order
+    /// follows `incoming` (server sort = created_at desc); ids absent from
+    /// `incoming` drop out (server-deleted / merged leads disappear).
+    ///
+    /// `nonisolated` — a pure transform over its arguments that touches no
+    /// actor-isolated state, so it is safe to call off the main actor (and
+    /// from synchronous test code).
+    nonisolated static func merge(existing: [Opportunity], incoming: [Opportunity]) -> [Opportunity] {
+        let byId = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return incoming.map { fresh in
+            if let current = byId[fresh.id] {
+                current.apply(fresh)
+                return current
+            }
+            return fresh
+        }
+    }
+
     // MARK: - Load
 
-    func loadData() async {
+    /// Loads opportunities + stage transitions for the company.
+    ///
+    /// - `silent == false` (initial `.task` load and the nine `Lead*Success`
+    ///   listeners): the loading spinner flips as before.
+    /// - `silent == true` (realtime / foreground / pull-to-refresh): skips the
+    ///   `isLoading` writes so no skeleton flashes over live content — the
+    ///   surface stays put while rows update in place — but still records
+    ///   `loadError`.
+    func loadData(silent: Bool = false) async {
         guard let repo = repository else { return }
-        isLoading = true
+        if !silent { isLoading = true }
         loadError = nil
-        defer { isLoading = false }
+        defer { if !silent { isLoading = false } }
 
         do {
             async let oppsTask  = repo.fetchAll()
             async let txTask    = repo.fetchAllStageTransitions()
             let (oppDtos, txDtos) = try await (oppsTask, txTask)
-            allOpportunities    = oppDtos.map { $0.toModel() }
+            allOpportunities    = Self.merge(existing: allOpportunities,
+                                             incoming: oppDtos.map { $0.toModel() })
             allStageTransitions = txDtos.map { $0.toModel() }
+            hasLoadedOnce = true
             // Keep the incoming-call caller-ID directory fresh (154cb8a3).
             // No-op unless the operator has the toggle on.
             CallDirectoryRefresher.refresh(from: oppDtos)
@@ -60,6 +131,10 @@ class PipelineViewModel: ObservableObject {
                 loadError = error.localizedDescription
             }
         }
+    }
+
+    deinit {
+        pendingRefreshTask?.cancel()
     }
 
     // MARK: - Derivations

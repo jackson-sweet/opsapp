@@ -1,0 +1,37 @@
+[ANALYTICS] 📊 Tracked lifecycle/app_open
+[ANALYTICS] ✅ AnalyticsService started — session 39567333
+2026-07-03 23:15:24.570 OPS[15366:6468428] You've implemented -[<UIApplicationDelegate> application:didReceiveRemoteNotification:fetchCompletionHandler:], but you still need to add "remote-notification" to the list of your supported UIBackgroundModes in your Info.plist.
+2026-07-03 23:15:24.644 OPS[15366:6468428] [Firebase/Crashlytics] Version 12.6.0
+[ONESIGNAL] Initialized successfully
+[VARIANT] Loaded cached variant: A
+[SYNC] 📱 Initial connection state: Disconnected
+[SYNC_ENGINE] DataActor reference set — actor path now active
+[DATA_CONTROLLER] DataActor created — actor path is active for this session
+[FIREBASE AUTH] No existing session
+[VARIANT] Already resolved, skipping fetch
+[DataActor] Linking all relationships...
+[DataActor] Catalog data has no post-merge linking pass (junctions are first-class)
+[DataActor] Linked inventory items → units + tags
+[DataActor] Relationships linked
+[APP_LAUNCH] 🏥 Performing data health check before app launch sync...
+[APP_LAUNCH] ⚠️ No user ID - user not authenticated, skipping sync
+[SYNC] 🔌 Network state changed: Connected
+[SUBSCRIPTION] Checking subscription status...
+[SUBSCRIPTION] Error: No current user
+[APP_ACTIVE] 🏥 App became active - running subscription check...
+[SUBSCRIPTION] Checking subscription status...
+[SUBSCRIPTION] Error: No current user
+[ANALYTICS] ⚠️ Flush failed, requeued 12 events: permission denied for table analytics_events
+[CONTENT_VIEW] ========== AUTH CHECK ==========
+[CONTENT_VIEW] isAuthenticated: false
+[CONTENT_VIEW] currentUser: nil
+[CONTENT_VIEW] ===== END AUTH CHECK (rebuilt) =====
+[ONBOARDING_STATE] No saved state found
+[ONBOARDING_MANAGER] Created initial state
+[ANALYTICS] 📊 Tracked lifecycle/onboarding_step_viewed
+[ANALYTICS] ⚠️ Flush failed, requeued 13 events: permission denied for table analytics_events
+[SYNC] 🔌 Network state changed: Connected
+[ANALYTICS] ⚠️ Flush failed, requeued 13 events: permission denied for table analytics_events
+[ANALYTICS] ⚠️ Flush failed, requeued 13 events: permission denied for table analytics_events
+[ANALYTICS] ⚠️ Flush failed, requeued 13 events: permission denied for table analytics_events
+co.opsapp.ops.OPS: 15366

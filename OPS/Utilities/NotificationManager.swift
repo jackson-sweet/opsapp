@@ -1913,6 +1913,10 @@ extension Notification.Name {
     static let projectNoteReceived = Notification.Name("projectNoteReceived")
     static let pushNotificationReceived = Notification.Name("pushNotificationReceived")
     static let expenseUpdated = Notification.Name("expenseUpdated")
+    /// Posted by RealtimeProcessor on any opportunities / activities / follow_ups
+    /// change. LEADS surfaces respond with a debounced re-fetch (PipelineViewModel
+    /// .scheduleRefresh) — leads are deliberately outside the SwiftData sync engine.
+    static let opsLeadsDidChange = Notification.Name("opsLeadsDidChange")
     static let calendarEventUpdated = Notification.Name("calendarEventUpdated")
     static let notificationReceived = Notification.Name("notificationReceived")
     /// Posted when a task-reminder local notification is tapped — payload

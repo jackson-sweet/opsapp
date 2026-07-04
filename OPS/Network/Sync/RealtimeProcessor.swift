@@ -215,7 +215,14 @@ final class RealtimeProcessor: ObservableObject {
         // (migration enable_realtime_for_deck_designs) so crew see a teammate's
         // deck edits live. The realtime merge reuses mergeDeckDesign →
         // applyServerSnapshot, so a stale echo can't revert a fresh local edit.
-        "deck_designs"
+        "deck_designs",
+        // LEADS live updates (2026-07-03, bug 0b7e9b17). Publication +
+        // REPLICA IDENTITY FULL + company_id verified for all three.
+        // Notification-only tables (no SwiftData merge); LeadsTabView
+        // re-fetches via REST on the debounced .opsLeadsDidChange event.
+        "opportunities",
+        "activities",
+        "follow_ups"
     ]
 
     // MARK: - Init
@@ -1029,6 +1036,13 @@ final class RealtimeProcessor: ObservableObject {
                 let pendingFields = protectedFieldsForEntity(entityType: .deckDesign, entityId: dto.id, context: context)
                 try upsertDeckDesign(context: context, id: dto.id, dto: dto, pendingFields: pendingFields)
 
+            // LEADS live updates (bug 0b7e9b17). Notification-only, exactly
+            // like expenses: no DTO decode, no actor dispatch. LeadsTabView
+            // re-fetches via REST (PipelineViewModel.scheduleRefresh) on the
+            // debounced event, since opportunities are outside the sync engine.
+            case "opportunities", "activities", "follow_ups":
+                NotificationCenter.default.post(name: .opsLeadsDidChange, object: nil)
+
             case "expenses", "expense_batches":
                 NotificationCenter.default.post(name: .expenseUpdated, object: nil)
                 NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
@@ -1159,6 +1173,13 @@ final class RealtimeProcessor: ObservableObject {
                     try context.save()
                 }
 
+            // LEADS live updates (bug 0b7e9b17). Notification-only, exactly
+            // like expenses: no DTO decode, no actor dispatch. LeadsTabView
+            // re-fetches via REST (PipelineViewModel.scheduleRefresh) on the
+            // debounced event, since opportunities are outside the sync engine.
+            case "opportunities", "activities", "follow_ups":
+                NotificationCenter.default.post(name: .opsLeadsDidChange, object: nil)
+
             case "expenses", "expense_batches":
                 NotificationCenter.default.post(name: .expenseUpdated, object: nil)
                 NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
@@ -1191,7 +1212,8 @@ final class RealtimeProcessor: ObservableObject {
     /// background actor for transaction-wrapped merge.
     ///
     /// Filtering DTOs BEFORE the actor boundary avoids sending discarded records across
-    /// actors. Non-merge tables (expenses, calendar_user_events, notifications, permissions)
+    /// actors. Non-merge tables (expenses, opportunities/activities/follow_ups,
+    /// calendar_user_events, notifications, permissions)
     /// bypass the actor entirely — they just post NotificationCenter events on main.
     private func dispatchUpsertToActor<R: HasRecord>(table: String, record: R, actor: DataActor) {
         do {
@@ -1296,7 +1318,15 @@ final class RealtimeProcessor: ObservableObject {
                 let dto = try record.decodeRecord(as: CompanyDefaultProductDTO.self, decoder: decoder)
                 Task { await actor.handleRealtimeUpdate(.companyDefaultProduct(dto)) }
 
-            // Non-merge tables: no actor involvement, just post events on main.
+            // Non-merge tables (incl. opportunities/activities/follow_ups):
+            // no actor involvement, just post events on main.
+            // LEADS live updates (bug 0b7e9b17). Notification-only, exactly
+            // like expenses: no DTO decode, no actor dispatch. LeadsTabView
+            // re-fetches via REST (PipelineViewModel.scheduleRefresh) on the
+            // debounced event, since opportunities are outside the sync engine.
+            case "opportunities", "activities", "follow_ups":
+                NotificationCenter.default.post(name: .opsLeadsDidChange, object: nil)
+
             case "expenses", "expense_batches":
                 NotificationCenter.default.post(name: .expenseUpdated, object: nil)
                 NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
@@ -1354,6 +1384,13 @@ final class RealtimeProcessor: ObservableObject {
                     // iPhone-Calendar event for the deleted task.
                     await CalendarMirrorService.shared.unmirrorEvent(opsId: payload.id)
                 }
+
+            // LEADS live updates (bug 0b7e9b17). Notification-only, exactly
+            // like expenses: no DTO decode, no actor dispatch. LeadsTabView
+            // re-fetches via REST (PipelineViewModel.scheduleRefresh) on the
+            // debounced event, since opportunities are outside the sync engine.
+            case "opportunities", "activities", "follow_ups":
+                NotificationCenter.default.post(name: .opsLeadsDidChange, object: nil)
 
             case "expenses", "expense_batches":
                 NotificationCenter.default.post(name: .expenseUpdated, object: nil)

@@ -49,6 +49,14 @@ struct HomeBillableThisWeekRollup {
         }
     }
 
+    /// True when at least one project carries a real dollar value (a draft
+    /// invoice or live estimate). Projects with no attached value have a nil
+    /// amount — "no data", NOT $0 — so a week of unvalued jobs renders the
+    /// em-dash empty state instead of a lying "$0".
+    var hasKnownAmounts: Bool {
+        allItems.contains { $0.amount != nil }
+    }
+
     var hasItems: Bool {
         !closingThisWeek.isEmpty || !readyToBill.isEmpty
     }

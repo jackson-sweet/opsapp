@@ -13,7 +13,13 @@ import Foundation
 @Model
 class Activity: Identifiable {
     @Attribute(.unique) var id: String
-    var opportunityId: String
+    // Unified-activity parents — an activity can be parented to a lead
+    // (opportunity), a client, OR a job (project). All nullable and additive
+    // (mirrors the nullable call-provenance fields below): opportunity-only
+    // rows carry nil clientId/projectId, and vice versa.
+    var opportunityId: String?
+    var clientId: String?             // DB: client_id (no FK)
+    var projectId: String?            // DB: project_id (TEXT, no FK)
     var companyId: String
     var type: ActivityType
     var subject: String?              // backfilled by trg_activities_default_subject when omitted
@@ -43,7 +49,7 @@ class Activity: Identifiable {
 
     init(
         id: String = UUID().uuidString,
-        opportunityId: String,
+        opportunityId: String? = nil,
         companyId: String,
         type: ActivityType,
         createdAt: Date = Date()

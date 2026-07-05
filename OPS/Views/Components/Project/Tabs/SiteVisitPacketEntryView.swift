@@ -385,32 +385,32 @@ struct StatusChangeEntryView: View {
     }
 
     var body: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
+        HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
             Image(systemName: "arrow.triangle.2.circlepath")
                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .padding(.top, 1)
 
-            Group {
-                if let transition {
-                    Text("\(authorName) changed status  ")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    + Text("\(transition.from.uppercased()) → \(transition.to.uppercased())")
-                        .font(OPSStyle.Typography.status)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                } else {
+            VStack(alignment: .leading, spacing: 2) {
+                // Name + timestamp on the top line; the status transition gets
+                // its own full-width line so it never truncates (the transition
+                // is the point of the entry).
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     Text("\(authorName) changed status")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Spacer(minLength: OPSStyle.Layout.spacing2)
+                    Text(ActivityRelativeTimestamp.string(from: note.createdAt))
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                if let transition {
+                    Text("\(transition.from.uppercased()) → \(transition.to.uppercased())")
+                        .font(OPSStyle.Typography.status)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .lineLimit(2)
-
-            Spacer()
-
-            Text(ActivityRelativeTimestamp.string(from: note.createdAt))
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, OPSStyle.Layout.spacing1)

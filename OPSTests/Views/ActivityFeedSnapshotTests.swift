@@ -48,7 +48,8 @@ final class ActivityFeedSnapshotTests: XCTestCase {
         let host = UIHostingController(rootView: root)
         host.overrideUserInterfaceStyle = .dark
         let fitting = host.sizeThatFits(in: CGSize(width: w, height: .greatestFiniteMagnitude))
-        let size = CGSize(width: w, height: max(fitting.height, 1))
+        // +8pt headroom so wrapped last-line descenders never clip.
+        let size = CGSize(width: w, height: max(fitting.height, 1) + 8)
         host.view.frame = CGRect(origin: .zero, size: size)
         host.view.backgroundColor = UIColor.black
 
@@ -154,7 +155,7 @@ final class ActivityFeedSnapshotTests: XCTestCase {
     // MARK: - Comment badge
 
     func testCommentBadge() {
-        snapshot("carousel_comment_badge", width: 120) {
+        snapshot("carousel_comment_badge", width: 100) {
             ZStack(alignment: .bottomLeading) {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                     .fill(OPSStyle.Colors.surfaceInput)
@@ -162,7 +163,8 @@ final class ActivityFeedSnapshotTests: XCTestCase {
                 PhotoCommentCountBadge_ProxyForSnapshot(count: 3)
                     .offset(x: 4, y: -4)
             }
-            .padding(OPSStyle.Layout.spacing3)
+            .frame(width: 72, height: 72)
+            .padding(OPSStyle.Layout.spacing4)
         }
     }
 }

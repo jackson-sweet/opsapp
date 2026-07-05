@@ -53,6 +53,7 @@ struct PipelineStageListView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.dismiss) private var dismiss
+    @State private var discardTarget: Opportunity?
 
     /// This stage's leads — already sorted stale-first by the view model.
     private var leads: [Opportunity] { viewModel.opportunities(in: stage) }
@@ -85,6 +86,10 @@ struct PipelineStageListView: View {
             }
         }
         .navigationBarHidden(true)
+        .leadDiscardFlow(
+            target: $discardTarget,
+            perform: { lead in try await viewModel.discard(opportunityId: lead.id) }
+        )
     }
 
     // MARK: - Title
@@ -142,17 +147,20 @@ struct PipelineStageListView: View {
             onLost:    { onRequestSheet(.lost(lead)) }
         )
         .contextMenu {
-            if canManage {
-                Button { onRequestSheet(.edit(lead)) } label: { Label("Edit", systemImage: "pencil") }
-                Button {
+            LeadCardContextMenu(
+                lead: lead,
+                canManage: canManage,
+                onEdit: { onRequestSheet(.edit(lead)) },
+                onArchive: {
                     Task {
                         do {
                             try await viewModel.archive(opportunityId: lead.id)
                             ToastCenter.shared.present(Feedback.Lead.archived)
                         } catch {}
                     }
-                } label: { Label("Archive", systemImage: "archivebox") }
-            }
+                },
+                onDiscard: { discardTarget = lead }
+            )
         }
     }
 

@@ -27,6 +27,7 @@ struct LostReasonSheet: View {
     @State private var notes: String = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var discardTarget: Opportunity?
 
     private var canSave: Bool { reason != nil && !isSaving }
 
@@ -45,7 +46,7 @@ struct LostReasonSheet: View {
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .padding(.top, OPSStyle.Layout.spacing1)
-                    .padding(.bottom, 130)
+                    .padding(.bottom, 170)
                 }
                 .scrollIndicators(.hidden)
             }
@@ -54,6 +55,17 @@ struct LostReasonSheet: View {
         }
         .preferredColorScheme(.dark)
         .interactiveDismissDisabled(isSaving)
+        .leadDiscardFlow(
+            target: $discardTarget,
+            perform: { lead in
+                _ = try await OpportunityRepository(companyId: lead.companyId)
+                    .moveToStage(opportunityId: lead.id, to: .discarded,
+                                 userId: dataController.currentUser?.id)
+                lead.stage = .discarded
+                lead.stageEnteredAt = Date()
+            },
+            onDiscarded: { _ in dismiss() }
+        )
     }
 
     // MARK: - Header
@@ -171,6 +183,27 @@ struct LostReasonSheet: View {
                 .opacity(canSave ? 1 : 0.5)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+
+            // Escape hatch: this was never a real lead → discard instead of
+            // logging a false loss. Subordinate to CONFIRM LOST (text only, no
+            // fill) so it never competes with the primary destructive CTA.
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                discardTarget = opportunity
+            } label: {
+                HStack(spacing: 0) {
+                    Text("Not a real lead? ")
+                        .foregroundColor(OPSStyle.Colors.textMute)
+                    Text("Discard instead")
+                        .foregroundColor(OPSStyle.Colors.roseTextM)
+                }
+                .font(OPSStyle.Typography.body)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+            .disabled(isSaving)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.bottom, 28)
         }
         .background(
@@ -183,7 +216,7 @@ struct LostReasonSheet: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: 160)
+            .frame(height: 200)
             .allowsHitTesting(false),
             alignment: .bottom
         )

@@ -405,26 +405,18 @@ struct BooksARSheet: View {
         let color: Color
     }
 
-    // Bucket split carried over verbatim from ARCard (31/61/91 thresholds,
-    // canonical ramp colors).
+    // 31/61/91 thresholds + canonical ramp colors. The split comes from the ONE
+    // shared reducer (MoneyDashboardViewModel.agingBuckets) that the command-grid
+    // tile also uses — not-yet-due and undated invoices land in the youngest
+    // bucket, so these four columns always sum to `totalOutstanding` (the hero)
+    // and this drill-down reconciles to the card it was opened from.
     private var buckets: [Bucket] {
-        let today = Date()
-        var b0_30: Double = 0, b31_60: Double = 0, b61_90: Double = 0, b90: Double = 0
-        for item in viewModel.outstandingInvoiceBreakdown {
-            guard let due = item.date else { continue }
-            let days = Int(today.timeIntervalSince(due) / 86400)
-            switch days {
-            case ..<31:   b0_30  += item.amount
-            case 31...60: b31_60 += item.amount
-            case 61...90: b61_90 += item.amount
-            default:      b90    += item.amount
-            }
-        }
+        let b = MoneyDashboardViewModel.agingBuckets(from: viewModel.outstandingInvoiceBreakdown)
         return [
-            Bucket(id: 0, label: "0–30D",  amount: b0_30,  color: OPSStyle.Colors.olive),
-            Bucket(id: 1, label: "31–60D", amount: b31_60, color: OPSStyle.Colors.accountingReceivables),
-            Bucket(id: 2, label: "61–90D", amount: b61_90, color: OPSStyle.Colors.warningStatus),
-            Bucket(id: 3, label: "90D+",   amount: b90,    color: OPSStyle.Colors.accountingOverdue),
+            Bucket(id: 0, label: "0–30D",  amount: b.current, color: OPSStyle.Colors.olive),
+            Bucket(id: 1, label: "31–60D", amount: b.d30,     color: OPSStyle.Colors.accountingReceivables),
+            Bucket(id: 2, label: "61–90D", amount: b.d60,     color: OPSStyle.Colors.warningStatus),
+            Bucket(id: 3, label: "90D+",   amount: b.d90,     color: OPSStyle.Colors.accountingOverdue),
         ]
     }
     private var totalOutstanding: Double {

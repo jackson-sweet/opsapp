@@ -126,21 +126,12 @@ struct BooksCommandGrid: View {
         viewModel.outstandingInvoiceBreakdown.reduce(0) { $0 + $1.amount }
     }
 
-    /// Aging buckets split at 31/61/91 days off each outstanding item's date —
-    /// identical thresholds + colors to the A/R lens.
+    /// Aging buckets split at 31/61/91 days off each outstanding item's date.
+    /// Single source of truth — the drill-down sheet reads the SAME split, so
+    /// the tile hero and the sheet it opens always reconcile.
     private var agingBuckets: (current: Double, d30: Double, d60: Double, d90: Double) {
-        let now = Date()
-        var current = 0.0, d30 = 0.0, d60 = 0.0, d90 = 0.0
-        for item in viewModel.outstandingInvoiceBreakdown {
-            let days = item.date.map { Int(now.timeIntervalSince($0) / 86_400) } ?? 0
-            switch days {
-            case ..<31:   current += item.amount
-            case 31...60: d30 += item.amount
-            case 61...90: d60 += item.amount
-            default:      d90 += item.amount
-            }
-        }
-        return (current, d30, d60, d90)
+        let b = MoneyDashboardViewModel.agingBuckets(from: viewModel.outstandingInvoiceBreakdown)
+        return (b.current, b.d30, b.d60, b.d90)
     }
 
     // MARK: Skeleton (cold launch, no cached metrics yet)

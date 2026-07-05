@@ -28,7 +28,6 @@ struct EditLeadSheet: View {
     @State private var isSaving = false
     @State private var isArchiving = false
     @State private var errorMessage: String?
-    @State private var showDeleteConfirm = false
 
     init(opportunity: Opportunity) {
         self.opportunity = opportunity
@@ -58,8 +57,7 @@ struct EditLeadSheet: View {
                         LeadFormView(
                             form: $form,
                             isEdit: true,
-                            onArchive: archive,
-                            onDelete: { showDeleteConfirm = true }
+                            onArchive: archive
                         )
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -73,16 +71,6 @@ struct EditLeadSheet: View {
         }
         .preferredColorScheme(.dark)
         .interactiveDismissDisabled(isSaving || isArchiving)
-        .confirmationDialog(
-            "Delete this lead?",
-            isPresented: $showDeleteConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("DELETE", role: .destructive) { delete() }
-            Button("CANCEL", role: .cancel) {}
-        } message: {
-            Text("This soft-deletes the lead. It can be restored from the trash.")
-        }
     }
 
     // MARK: - Header
@@ -243,31 +231,6 @@ struct EditLeadSheet: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 NotificationCenter.default.post(
                     name: Notification.Name("LeadArchivedSuccess"),
-                    object: nil,
-                    userInfo: ["leadId": opportunity.id]
-                )
-                dismiss()
-            } catch {
-                isArchiving = false
-                errorMessage = simplifyError(error)
-            }
-        }
-    }
-
-    // MARK: - Delete
-
-    private func delete() {
-        errorMessage = nil
-        isArchiving = true
-        Task {
-            do {
-                let companyId = opportunity.companyId
-                try await OpportunityRepository(companyId: companyId)
-                    .softDelete(opportunity.id)
-                opportunity.deletedAt = Date()
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-                NotificationCenter.default.post(
-                    name: Notification.Name("LeadDeletedSuccess"),
                     object: nil,
                     userInfo: ["leadId": opportunity.id]
                 )

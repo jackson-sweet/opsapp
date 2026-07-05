@@ -16,7 +16,7 @@ enum PipelineStage: String, Codable, CaseIterable, Identifiable {
     case negotiation  = "negotiation"
     case won          = "won"
     case lost         = "lost"
-    case discarded    = "discarded"   // server-only junk state (migration 045); terminal, never in the triage queue
+    case discarded    = "discarded"   // junk state (migration 045); terminal, never in the triage queue. Operator-settable from iOS via the Discard action (move_opportunity_stage).
 
     var id: String { rawValue }
 

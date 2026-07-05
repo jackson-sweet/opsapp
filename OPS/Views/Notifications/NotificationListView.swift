@@ -1041,6 +1041,25 @@ struct NotificationListView: View {
         }
     }
 
+    /// Routes an expense notification to its specific batch review when the row
+    /// carries a `batchId`, otherwise to the generic Expenses surface. Bug
+    /// 7cdbe7bb: "View expenses batch" rows dropped the batchId and only flipped
+    /// to the Books tab; they now push the batch's review detail.
+    private func routeExpenseNotification(batchId: String?) {
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            if let batchId, !batchId.isEmpty {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenExpenseBatch"),
+                    object: nil,
+                    userInfo: ["batchId": batchId]
+                )
+            } else {
+                NotificationCenter.default.post(name: Notification.Name("OpenExpenses"), object: nil)
+            }
+        }
+    }
+
     private func handleNotificationTap(_ notification: NotificationDTO) {
         // Light impact earns its place here — this is a meaningful navigation
         // commit (opens a detail surface), matches the app-wide pattern used
@@ -1148,13 +1167,9 @@ struct NotificationListView: View {
         case "expense", "expenses", "expenseReview":
             // Bug 8ed0d2ed — expense notifications previously fell through to
             // `default` which only handled projectId, leaving the deep link
-            // dead. Route to the Expenses list (admin) or My Expenses (crew)
-            // via OpenExpenses; MainTabView handles the permission split and
-            // tab switch.
-            dismiss()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                NotificationCenter.default.post(name: Notification.Name("OpenExpenses"), object: nil)
-            }
+            // dead. Bug 7cdbe7bb — a batch row now opens that specific batch;
+            // MainTabView handles the permission split and tab switch.
+            routeExpenseNotification(batchId: notification.batchId)
         case "invoice", "invoices":
             dismiss()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -1193,11 +1208,8 @@ struct NotificationListView: View {
         case "invoice_detail":
             // Legacy alias — old expense_submitted rows landed here by mistake.
             // Treated identically to "expense" so existing rail entries route
-            // correctly without backfill.
-            dismiss()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                NotificationCenter.default.post(name: Notification.Name("OpenExpenses"), object: nil)
-            }
+            // correctly without backfill (batch-aware since bug 7cdbe7bb).
+            routeExpenseNotification(batchId: notification.batchId)
         case "cashflow":
             // Cashflow forecast dip / cleared notification. Switch to Books,
             // then post OpenCashflowForecast so BooksTabView presents the
@@ -1219,10 +1231,8 @@ struct NotificationListView: View {
             case "expense_submitted",
                  "expense_approved",
                  "expense_rejected":
-                dismiss()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    NotificationCenter.default.post(name: Notification.Name("OpenExpenses"), object: nil)
-                }
+                // Legacy rows with no deep_link_type — still batch-aware.
+                routeExpenseNotification(batchId: notification.batchId)
             case "invoice_approved",
                  "invoice_revisions",
                  "invoice_overdue":

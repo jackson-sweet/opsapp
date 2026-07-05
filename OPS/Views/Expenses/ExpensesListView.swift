@@ -11,6 +11,9 @@ import SwiftData
 
 struct ExpensesListView: View {
     var embedded: Bool = false
+    /// When set (from a batch-scoped expense deep link), the hub auto-pushes this
+    /// batch's review detail once batches load. Bug 7cdbe7bb.
+    var deepLinkBatchId: String? = nil
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -24,6 +27,9 @@ struct ExpensesListView: View {
     @State private var showExpenseSettings = false
     @State private var showAddExpense = false
     @State private var hasAppeared = false
+    // Batch-scoped deep-link target (bug 7cdbe7bb).
+    @State private var deepLinkBatch: ExpenseBatchDTO? = nil
+    @State private var showDeepLinkBatch = false
 
     enum ReviewTab: String, CaseIterable {
         case needsReview = "NEEDS REVIEW"
@@ -123,6 +129,17 @@ struct ExpensesListView: View {
             ExpenseSettingsView(viewModel: viewModel)
                 .environmentObject(dataController)
         }
+        // Bug 7cdbe7bb — auto-pushed batch detail when arriving via a
+        // batch-scoped expense notification.
+        .navigationDestination(isPresented: $showDeepLinkBatch) {
+            if let batch = deepLinkBatch {
+                ExpenseBatchDetailView(batch: batch, viewModel: viewModel)
+                    .environmentObject(dataController)
+            }
+        }
+        .onChange(of: deepLinkBatchId) { _, _ in
+            Task { await openDeepLinkBatchIfNeeded() }
+        }
         .sheet(isPresented: $showAddExpense) {
             ExpenseFormSheet(viewModel: viewModel)
                 .environmentObject(dataController)
@@ -142,8 +159,22 @@ struct ExpensesListView: View {
                 await viewModel.loadBatchesForReview()
                 computeAvailablePeriods()
                 hasAppeared = true
+                await openDeepLinkBatchIfNeeded()
             }
         }
+    }
+
+    /// Resolves `deepLinkBatchId` against the loaded review batches and pushes
+    /// its detail. No-op when there's no deep link or the batch can't be found
+    /// (the user still lands on the review hub — never a dead tab). Bug 7cdbe7bb.
+    private func openDeepLinkBatchIfNeeded() async {
+        guard let id = deepLinkBatchId, !id.isEmpty, !showDeepLinkBatch else { return }
+        if viewModel.reviewBatches.isEmpty {
+            await viewModel.loadBatchesForReview()
+        }
+        guard let batch = viewModel.reviewBatches.first(where: { $0.id == id }) else { return }
+        deepLinkBatch = batch
+        showDeepLinkBatch = true
     }
 
     // MARK: - Header

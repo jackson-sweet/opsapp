@@ -66,6 +66,17 @@
 //  V11 → V12 stage: lightweight additive — site-visit identity draft rows for
 //  client/lead contact capture inside the visit console.
 //
+//  V12 → V13 stage: unified activity parents. Widens `Activity` so a timeline
+//  activity can attach to a lead (opportunity), a client, OR a job (project),
+//  and carry an author. `opportunityId` relaxes from required `String` to
+//  optional `String?` and two nullable columns (`clientId`, `projectId`) are
+//  added. Required→optional plus new optionals is an inferable lightweight
+//  transform. Like SiteVisit at V10→V11, `Activity` is version-scoped: the
+//  frozen `OPSSchemaLegacyActivity.Activity` (required opportunityId, no
+//  client/project) backs V1–V12; the live `Activity` backs V13+. This confines
+//  the change to this single boundary instead of silently rewriting every
+//  historical schema's `Activity` hash (the hazard documented in OPSApp.swift).
+//
 
 import Foundation
 import SwiftData
@@ -84,7 +95,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV9.self,
             OPSSchemaV10.self,
             OPSSchemaV11.self,
-            OPSSchemaV12.self
+            OPSSchemaV12.self,
+            OPSSchemaV13.self
         ]
     }
 
@@ -100,9 +112,24 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addProjectPhotosV8toV9,
             addStockUnitEventsV9toV10,
             addSiteVisitCaptureArtifactsV10toV11,
-            addSiteVisitIdentityDraftsV11toV12
+            addSiteVisitIdentityDraftsV11toV12,
+            addUnifiedActivityParentsV12toV13
         ]
     }
+
+    /// V12 → V13: unified activity parents. `Activity.opportunityId` relaxes
+    /// from required `String` to optional `String?` and gains nullable
+    /// `clientId` / `projectId` so an activity can attach to a lead, a client,
+    /// OR a job. Required→optional plus new optionals is an inferable lightweight
+    /// transform; existing non-null `opportunityId` values are preserved and the
+    /// new columns default to nil for historical rows. `Activity` is
+    /// version-scoped at this boundary (frozen `OPSSchemaLegacyActivity.Activity`
+    /// for V1–V12, live `Activity` for V13+) so the widening does not rewrite
+    /// every historical schema's `Activity` fingerprint.
+    static let addUnifiedActivityParentsV12toV13 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV12.self,
+        toVersion: OPSSchemaV13.self
+    )
 
     /// V11 → V12: purely additive — identity drafts are local-first rows keyed
     /// to a site visit. They preserve contact/client info before the lead is

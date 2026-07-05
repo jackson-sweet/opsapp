@@ -41,6 +41,7 @@ enum OPSSchemaV6: VersionedSchema {
 
     static var models: [any PersistentModel.Type] {
         OPSSchemaCommon.unchangedModels
+            + OPSSchemaCommon.v1ToV12ActivityModel
             + OPSSchemaCommon.v1ToV10SiteVisitModel
             + OPSSchemaCommon.v4CoreModels
             + OPSSchemaCommon.v4TaskModels
@@ -62,6 +63,7 @@ enum OPSSchemaV7: VersionedSchema {
 
     static var models: [any PersistentModel.Type] {
         OPSSchemaCommon.unchangedModels
+            + OPSSchemaCommon.v1ToV12ActivityModel
             + OPSSchemaCommon.v1ToV10SiteVisitModel
             + OPSSchemaCommon.v4CoreModels
             + OPSSchemaCommon.v4TaskModels
@@ -84,6 +86,7 @@ enum OPSSchemaV8: VersionedSchema {
 
     static var models: [any PersistentModel.Type] {
         OPSSchemaCommon.unchangedModels
+            + OPSSchemaCommon.v1ToV12ActivityModel
             + OPSSchemaCommon.v1ToV10SiteVisitModel
             + OPSSchemaCommon.v4CoreModels
             + OPSSchemaCommon.v4TaskModels

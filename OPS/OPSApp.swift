@@ -43,7 +43,7 @@ struct OPSApp: App {
     @State private var realtimeStopTask: Task<Void, Never>?
 
     // Create the model container for SwiftData.
-    // Schema is driven by the LATEST VersionedSchema (currently `OPSSchemaV9`)
+    // Schema is driven by the LATEST VersionedSchema (currently `OPSSchemaV13`)
     // and the container runs `OPSMigrationPlan` on launch so stores written by
     // earlier builds (e.g. pre-`WizardState.id`, pre-catalog, pre-reminders)
     // are migrated in place. **When you add a new VersionedSchema (V7, V8, …),
@@ -65,7 +65,7 @@ struct OPSApp: App {
     // schema in the migration plan, so it refuses to open it. We delete the store
     // and start fresh — Supabase sync will re-hydrate all data on next launch.
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema(versionedSchema: OPSSchemaV10.self)
+        let schema = Schema(versionedSchema: OPSSchemaV13.self)
 
         let isHostedXCTest = ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil
         let modelConfiguration = ModelConfiguration(

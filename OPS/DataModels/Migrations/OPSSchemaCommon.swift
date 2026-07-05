@@ -497,6 +497,56 @@ enum OPSSchemaLegacySiteVisit {
     }
 }
 
+/// Frozen `Activity` shape as it shipped through V1–V12 — a REQUIRED
+/// `opportunityId: String`, and NO `clientId` / `projectId`. The live top-level
+/// `Activity` widens `opportunityId` to optional and adds `clientId`/`projectId`
+/// (unified-activity parents) from V13 onward. `Activity` was in
+/// `unchangedModels`, so that widening would otherwise shift EVERY historical
+/// schema's fingerprint by the same delta — the exact hazard documented in
+/// `OPSApp.swift`. Pulling the frozen shape out and version-scoping it (mirror
+/// of `OPSSchemaLegacySiteVisit`) confines the change to the V12→V13 boundary.
+/// Migration-fingerprint only — runtime code always uses the top-level model.
+enum OPSSchemaLegacyActivity {
+    @Model
+    final class Activity: Identifiable {
+        @Attribute(.unique) var id: String
+        var opportunityId: String
+        var companyId: String
+        var type: ActivityType
+        var subject: String?
+        var bodyText: String?
+        var content: String?
+        var direction: String?
+        var outcome: String?
+        var durationMinutes: Int?
+        var callSource: String?
+        var callerNumber: String?
+        var callStartedAt: Date?
+        var isRead: Bool
+        var hasAttachments: Bool
+        var attachmentCount: Int
+        var createdBy: String?
+        var createdAt: Date
+
+        init(
+            id: String = UUID().uuidString,
+            opportunityId: String,
+            companyId: String,
+            type: ActivityType,
+            createdAt: Date = Date()
+        ) {
+            self.id = id
+            self.opportunityId = opportunityId
+            self.companyId = companyId
+            self.type = type
+            self.isRead = false
+            self.hasAttachments = false
+            self.attachmentCount = 0
+            self.createdAt = createdAt
+        }
+    }
+}
+
 enum OPSSchemaCommon {
     /// Models present in both V2 and V3 (and unchanged across the V2→V3
     /// boundary). The inventory entities live only in V2; the catalog/product-
@@ -511,7 +561,13 @@ enum OPSSchemaCommon {
 
         // Supabase-backed models
         Opportunity.self,
-        Activity.self,
+        // NOTE: Activity is intentionally NOT here. Its persistent shape changed
+        // at the V12→V13 boundary (opportunityId String → String?, plus new
+        // clientId/projectId for unified-activity parents), so it is
+        // version-scoped: the frozen `OPSSchemaLegacyActivity.Activity`
+        // (required opportunityId, no client/project) backs V1–V12 and the live
+        // `Activity` (optional, +client/project) backs V13+. See
+        // `v1ToV12ActivityModel` / `v13ActivityModel`.
         FollowUp.self,
         StageTransition.self,
         Estimate.self,
@@ -637,6 +693,22 @@ enum OPSSchemaCommon {
     /// enabling lead-less (unlinked) site visits.
     static let v11SiteVisitModel: [any PersistentModel.Type] = [
         SiteVisit.self
+    ]
+
+    /// Activity as it shipped through V1–V12 — frozen, required `opportunityId`,
+    /// no `clientId`/`projectId`. Pulled out of `unchangedModels` so the V12→V13
+    /// widening (opportunityId → optional, + client/project parents) is isolated
+    /// to one boundary instead of silently rewriting every historical schema's
+    /// `Activity` hash. Mirror of `v1ToV10SiteVisitModel`.
+    static let v1ToV12ActivityModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacyActivity.Activity.self
+    ]
+
+    /// Activity from V13 onward — the live model with optional `opportunityId`
+    /// plus `clientId`/`projectId`, so an activity can be parented to a lead,
+    /// a client, OR a job. Mirror of `v11SiteVisitModel`.
+    static let v13ActivityModel: [any PersistentModel.Type] = [
+        Activity.self
     ]
 
     /// V11 site-visit capture packet. Additive over V10 — captures evidence,

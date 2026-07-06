@@ -561,7 +561,8 @@ struct UniversalJobBoardCard: View {
                     subtitleText
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.trailing, 100) // Reserve space for status/assigned-to-me badges
+                // Title flows full-width; the frosted overlay badges (top-right)
+                // blur it where they sit, so no trailing reservation/truncation.
 
                 metadataRow
             }
@@ -638,14 +639,7 @@ struct UniversalJobBoardCard: View {
                             .foregroundColor(project.status.color)
                             .padding(.horizontal, OPSStyle.Layout.spacing2)
                             .padding(.vertical, OPSStyle.Layout.spacing1)
-                            .background(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .fill(project.status.color.opacity(0.1))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .stroke(project.status.color, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
+                            .frostedBadgeFill(project.status.color, cornerRadius: OPSStyle.Layout.cardCornerRadius)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     .padding(OPSStyle.Layout.spacing2)
@@ -668,14 +662,7 @@ struct UniversalJobBoardCard: View {
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
                                 .padding(.horizontal, OPSStyle.Layout.spacing2)
                                 .padding(.vertical, OPSStyle.Layout.spacing1)
-                                .background(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .fill(OPSStyle.Colors.warningStatus.opacity(0.1))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .stroke(OPSStyle.Colors.warningStatus, lineWidth: OPSStyle.Layout.Border.standard)
-                                )
+                                .frostedBadgeFill(OPSStyle.Colors.warningStatus, cornerRadius: OPSStyle.Layout.cardCornerRadius)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                         .padding(OPSStyle.Layout.spacing2)
@@ -785,14 +772,7 @@ struct UniversalJobBoardCard: View {
                                 .foregroundColor(task.status.color)
                                 .padding(.horizontal, OPSStyle.Layout.spacing2)
                                 .padding(.vertical, OPSStyle.Layout.spacing1)
-                                .background(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .fill(task.status.color.opacity(0.1))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .stroke(task.status.color, lineWidth: OPSStyle.Layout.Border.standard)
-                                )
+                                .frostedBadgeFill(task.status.color, cornerRadius: OPSStyle.Layout.cardCornerRadius)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                         .padding(OPSStyle.Layout.spacing2)
@@ -803,14 +783,7 @@ struct UniversalJobBoardCard: View {
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
                                 .padding(.horizontal, OPSStyle.Layout.spacing2)
                                 .padding(.vertical, OPSStyle.Layout.spacing1)
-                                .background(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .fill(OPSStyle.Colors.warningStatus.opacity(0.1))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .stroke(OPSStyle.Colors.warningStatus, lineWidth: OPSStyle.Layout.Border.standard)
-                                )
+                                .frostedBadgeFill(OPSStyle.Colors.warningStatus, cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                                 .padding(OPSStyle.Layout.spacing2)
                         }

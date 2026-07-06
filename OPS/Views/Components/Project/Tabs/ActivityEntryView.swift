@@ -68,13 +68,33 @@ struct ActivityEntryView: View {
                         )
                 }
 
-                Text(authorName)
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                // Name + timestamp inline (one consistent position across every
+                // feed card), with an "added a photo" subtitle on photo-only
+                // posts so a comment-less photo still reads as an action.
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Text(authorName)
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
 
-                Text(relativeTimestamp)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        Text(relativeTimestamp)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+
+                    if isPhotoComment {
+                        // Bug e1f073ed — a note tied to a photo reads as a
+                        // comment on it, mirroring the annotation card's
+                        // "marked up a photo" subtitle grammar.
+                        Text("commented on a photo")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    } else if note.content.isEmpty && !notePhotoURLs.isEmpty {
+                        Text(photoAddedSubtitle)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
 
                 Spacer()
 
@@ -139,25 +159,48 @@ struct ActivityEntryView: View {
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                 }
-            } else if !note.content.isEmpty {
-                // Render with @mention highlighting
-                mentionHighlightedText(note.content)
-            }
+            } else if isPhotoComment, let photo = note.photoURL, !photo.isEmpty {
+                // Photo comment — thumbnail beside the comment text, tappable
+                // into the viewer (same grammar as the annotation card).
+                HStack(alignment: .top, spacing: 10) {
+                    Button(action: { onPhotoTap?([photo], 0) }) {
+                        PhotoThumbnail(url: photo, project: nil)
+                            .frame(width: 64, height: 64)
+                            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
 
-            // Photo attachments
-            let allPhotos = notePhotoURLs
-            if !allPhotos.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: OPSStyle.Layout.spacing2) {
-                        ForEach(Array(allPhotos.enumerated()), id: \.offset) { index, url in
-                            Button(action: {
-                                onPhotoTap?(allPhotos, index)
-                            }) {
-                                PhotoThumbnail(url: url, project: nil)
-                                    .frame(width: 80, height: 80)
-                                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                    if !note.content.isEmpty {
+                        mentionHighlightedText(note.content)
+                    } else {
+                        Spacer(minLength: 0)
+                    }
+                }
+            } else {
+                if !note.content.isEmpty {
+                    // Render with @mention highlighting
+                    mentionHighlightedText(note.content)
+                }
+
+                // Photo attachments
+                let allPhotos = notePhotoURLs
+                if !allPhotos.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            ForEach(Array(allPhotos.enumerated()), id: \.offset) { index, url in
+                                Button(action: {
+                                    onPhotoTap?(allPhotos, index)
+                                }) {
+                                    PhotoThumbnail(url: url, project: nil)
+                                        .frame(width: 80, height: 80)
+                                        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                                }
+                                .buttonStyle(PlainButtonStyle())
                             }
-                            .buttonStyle(PlainButtonStyle())
                         }
                     }
                 }
@@ -199,6 +242,18 @@ struct ActivityEntryView: View {
         }
         urls.append(contentsOf: note.attachments.filter { !$0.isEmpty })
         return urls
+    }
+
+    /// A note tied to a specific photo (posted from the photo viewer's comment
+    /// composer) reads as a comment on that photo.
+    private var isPhotoComment: Bool {
+        if let photo = note.photoURL { return !photo.isEmpty }
+        return false
+    }
+
+    /// Subtitle for a comment-less photo post — "added a photo" / "added N photos".
+    private var photoAddedSubtitle: String {
+        notePhotoURLs.count == 1 ? "added a photo" : "added \(notePhotoURLs.count) photos"
     }
 
     private var relativeTimestamp: String {

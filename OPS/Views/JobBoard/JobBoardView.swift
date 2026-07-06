@@ -379,6 +379,19 @@ struct JobBoardView: View {
             }
             .padding(.top, OPSStyle.Layout.spacing2)
             .padding(.bottom, OPSStyle.Layout.spacing2_5)
+            // Fade the chip banner into the content below instead of a hard
+            // bottom edge — mirrors the AppHeader treatment (background → clear).
+            .background(
+                LinearGradient(
+                    colors: [
+                        OPSStyle.Colors.background,
+                        OPSStyle.Colors.background.opacity(0.85),
+                        OPSStyle.Colors.background.opacity(0.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
         }
     }
 

@@ -47,6 +47,14 @@ struct ExpenseFormSheet: View {
     @State private var receiptQueue: [UIImage] = []
     @State private var queueIndex: Int = 0
 
+    // No-receipt escape hatch — surfaced when require_receipt_photo is on and no
+    // photo is attached, so a genuinely receiptless purchase still files with a
+    // reason the office can see.
+    @State private var noReceiptReason: NoReceiptReason? = nil
+    @State private var noReceiptNote: String = ""
+    @State private var showReceiptRequiredDialog = false
+    @State private var showNoReceiptSheet = false
+
     // Section expansion state (always expanded, non-collapsible)
     @State private var isDetailsExpanded = true
     @State private var isAllocationExpanded = true
@@ -266,6 +274,24 @@ struct ExpenseFormSheet: View {
                 Button("Choose from Library") { showImagePicker = true }
                 Button("Cancel", role: .cancel) { }
             }
+            .confirmationDialog("RECEIPT REQUIRED", isPresented: $showReceiptRequiredDialog, titleVisibility: .visible) {
+                Button("Add Receipt Photo") { showReceiptSourceSheet = true }
+                Button("No Receipt Available") { showNoReceiptSheet = true }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("This company requires a receipt to submit.")
+            }
+            .sheet(isPresented: $showNoReceiptSheet) {
+                NoReceiptReasonSheet(
+                    selected: noReceiptReason,
+                    note: $noReceiptNote,
+                    onSubmit: { reason in
+                        noReceiptReason = reason
+                        showNoReceiptSheet = false
+                        Task { await save(submit: true) }
+                    }
+                )
+            }
             .onAppear {
                 // Load categories if not already loaded
                 if viewModel.categories.isEmpty {
@@ -297,6 +323,8 @@ struct ExpenseFormSheet: View {
                             (projectId: $0.projectId, percentage: String(format: "%.0f", $0.percentage))
                         }
                     }
+                    noReceiptReason = NoReceiptReason(code: exp.receiptMissingReason)
+                    noReceiptNote = exp.receiptMissingNote ?? ""
                 }
                 if let pid = prefilledProjectId, projectAllocations.isEmpty {
                     projectAllocations = [(projectId: pid, percentage: "100")]
@@ -1014,6 +1042,26 @@ struct ExpenseFormSheet: View {
         }
     }
 
+    // MARK: - Receipt gate
+
+    /// A receipt is present when a new photo is queued or the existing expense
+    /// already carries one.
+    private var hasReceipt: Bool {
+        !receiptQueue.isEmpty || (editing?.receiptImageUrl != nil)
+    }
+
+    /// A submit needs either a receipt or an explicit no-receipt reason when the
+    /// company requires a photo. Returns false and raises the fork (add photo /
+    /// no receipt) when neither is present. Only gates submits — saving a draft
+    /// or an in-place edit never blocks.
+    private func receiptGatePassed(submit: Bool) -> Bool {
+        guard submit, viewModel.settings?.requireReceiptPhoto == true else { return true }
+        if hasReceipt || noReceiptReason != nil { return true }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        showReceiptRequiredDialog = true
+        return false
+    }
+
     // MARK: - Validation
 
     private func validate() -> Bool {
@@ -1079,6 +1127,7 @@ struct ExpenseFormSheet: View {
     /// Performs the save without dismissing. Returns true on success.
     private func performSave(submit: Bool) async -> Bool {
         guard validate() else { return false }
+        guard receiptGatePassed(submit: submit) else { return false }
         isSaving = true
         defer { isSaving = false }
 
@@ -1092,11 +1141,12 @@ struct ExpenseFormSheet: View {
         let ocrData = lastOCRResult?.rawDataDict
         let ocrConfidence = lastOCRResult != nil ? Double(lastOCRResult!.overallConfidence) : nil
 
+        // No-receipt reason only rides along when there is genuinely no photo;
+        // a real receipt always supersedes a reason.
+        let missingReason = hasReceipt ? nil : noReceiptReason?.code
+        let missingNote = (hasReceipt || noReceiptNote.isEmpty) ? nil : noReceiptNote
+
         if let exp = editing {
-            // Server-authoritative edit: keep the line's status (no revert to
-            // draft). A pending line stays submitted; the place_expense trigger
-            // re-files it and recomputes the envelope after the field write
-            // (handled below by status).
             let priorStatus = ExpenseStatus(rawValue: exp.status) ?? .draft
             let fields = UpdateExpenseDTO(
                 categoryId: selectedCategoryId,
@@ -1107,11 +1157,14 @@ struct ExpenseFormSheet: View {
                 currency: selectedCurrency,
                 expenseDate: dateString,
                 paymentMethod: paymentMethod.rawValue,
+                receiptMissingReason: missingReason,
+                receiptMissingNote: missingNote,
                 status: nil
             )
             await viewModel.updateExpense(exp.id, fields: fields, silent: true)
 
-            // Upload receipt if new image captured (not already uploaded)
+            // Upload receipt if a new image was captured (not already uploaded).
+            var receiptUploadFailed = false
             if viewModel.error == nil, !receiptQueue.isEmpty, exp.receiptImageUrl == nil {
                 if queueIndex < receiptQueue.count {
                     let image = receiptQueue[queueIndex]
@@ -1125,6 +1178,7 @@ struct ExpenseFormSheet: View {
                         )
                         await viewModel.updateExpense(exp.id, fields: imageFields, silent: true)
                     } catch {
+                        receiptUploadFailed = true
                         print("[EXPENSE] Receipt upload failed: \(error.localizedDescription)")
                     }
                 }
@@ -1146,11 +1200,17 @@ struct ExpenseFormSheet: View {
                 }
             }
 
-            // Finalize per the prior status (server-authoritative — no client batching):
-            //  • draft + Add        → submitted; the place_expense trigger files it.
-            //  • rejected + Resubmit → submitted, then re-file into the current open envelope.
-            //  • submitted + Save    → keep submitted; re-file so the envelope total stays live.
-            if viewModel.error == nil {
+            // A captured receipt that failed to upload must not finalize without
+            // its photo — surface it and leave the line where it was so the crew
+            // can retry from the line.
+            if receiptUploadFailed {
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                ToastCenter.shared.present(Feedback.Expense.receiptUploadFailed)
+            } else if viewModel.error == nil {
+                // Finalize per the prior status (server-authoritative — no client batching):
+                //  • draft + Add        → submitted; the place_expense trigger files it.
+                //  • rejected + Resubmit → submitted, then re-file into the current open envelope.
+                //  • submitted + Save    → keep submitted; re-file so the envelope total stays live.
                 if submit && priorStatus == .draft {
                     await viewModel.submitExpense(exp.id)
                 } else if submit && priorStatus == .rejected {
@@ -1175,11 +1235,14 @@ struct ExpenseFormSheet: View {
                 receiptImageUrl: nil,
                 receiptThumbnailUrl: nil,
                 ocrRawData: ocrData,
-                ocrConfidence: ocrConfidence
+                ocrConfidence: ocrConfidence,
+                receiptMissingReason: missingReason,
+                receiptMissingNote: missingNote
             )
 
             if let created = created {
-                // Upload receipt image now that we have the expense ID
+                // Upload receipt image now that we have the expense ID.
+                var receiptUploadFailed = false
                 if !receiptQueue.isEmpty, queueIndex < receiptQueue.count {
                     let image = receiptQueue[queueIndex]
                     do {
@@ -1192,6 +1255,7 @@ struct ExpenseFormSheet: View {
                         )
                         await viewModel.updateExpense(created.id, fields: imageFields, silent: true)
                     } catch {
+                        receiptUploadFailed = true
                         print("[EXPENSE] Receipt upload failed: \(error.localizedDescription)")
                     }
                 }
@@ -1209,7 +1273,13 @@ struct ExpenseFormSheet: View {
                     await viewModel.setAllocations(created.id, allocations: allocs, silent: true)
                 }
 
-                if submit && viewModel.error == nil {
+                // A captured receipt that failed to upload keeps the line a draft
+                // (never submit a receipt-bearing expense without its receipt) —
+                // tell the crew to retry when they have signal.
+                if receiptUploadFailed {
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    ToastCenter.shared.present(Feedback.Expense.receiptUploadFailed)
+                } else if submit && viewModel.error == nil {
                     await viewModel.submitExpense(created.id)
                 }
             }
@@ -1733,5 +1803,128 @@ private struct ExpenseCurrencyPickerSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+    }
+}
+
+// MARK: - No-Receipt Reason Sheet
+
+/// Escape hatch for require_receipt_photo — the crew picks why a receipt is
+/// missing (and optionally adds a note) so the line still files and the office
+/// sees the reason instead of an unexplained blank. Confirm submits the expense.
+private struct NoReceiptReasonSheet: View {
+    @Binding var note: String
+    let onSubmit: (NoReceiptReason) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selected: NoReceiptReason?
+    @FocusState private var noteFocused: Bool
+
+    init(selected: NoReceiptReason?, note: Binding<String>, onSubmit: @escaping (NoReceiptReason) -> Void) {
+        self._note = note
+        self.onSubmit = onSubmit
+        self._selected = State(initialValue: selected)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack(alignment: .bottom) {
+                OPSStyle.Colors.background.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+                        Text("Why is there no receipt?")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.top, OPSStyle.Layout.spacing3)
+
+                        VStack(spacing: 0) {
+                            ForEach(Array(NoReceiptReason.allCases.enumerated()), id: \.element.id) { index, reason in
+                                if index > 0 {
+                                    Rectangle()
+                                        .fill(OPSStyle.Colors.cardBorder)
+                                        .frame(height: 1)
+                                        .padding(.leading, OPSStyle.Layout.spacing3_5)
+                                }
+                                Button {
+                                    selected = reason
+                                } label: {
+                                    HStack(spacing: OPSStyle.Layout.spacing3) {
+                                        Text(reason.label)
+                                            .font(OPSStyle.Typography.body)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
+                                        Spacer()
+                                        if selected == reason {
+                                            Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                                                .font(.system(size: OPSStyle.Layout.IconSize.md))
+                                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                        }
+                                    }
+                                    .padding(.vertical, 14)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                                    .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                            Text("NOTE")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            TextField("", text: $note, axis: .vertical)
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .focused($noteFocused)
+                                .lineLimit(1...3)
+                                .placeholder(when: note.isEmpty) {
+                                    Text("Add a note (optional)")
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.placeholderText)
+                                }
+                        }
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    }
+                    .padding(.top, OPSStyle.Layout.spacing2)
+                    .padding(.bottom, 120)
+                }
+                .scrollDismissesKeyboard(.interactively)
+
+                stickyConfirm
+                    .ignoresSafeArea(.keyboard, edges: .bottom)
+            }
+            .background(OPSStyle.Colors.background.ignoresSafeArea())
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("CANCEL") { dismiss() }
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                ToolbarItem(placement: .principal) {
+                    Text("NO RECEIPT")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var stickyConfirm: some View {
+        OPSFloatingButtonBar {
+            Button {
+                guard let selected else { return }
+                onSubmit(selected)
+            } label: {
+                Text("SUBMIT WITHOUT RECEIPT")
+                    .font(OPSStyle.Typography.button)
+            }
+            .opsPrimaryButtonStyle()
+            .disabled(selected == nil)
+            .opacity(selected == nil ? 0.4 : 1)
+        }
     }
 }

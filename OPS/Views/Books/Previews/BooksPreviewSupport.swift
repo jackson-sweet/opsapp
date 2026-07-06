@@ -164,6 +164,8 @@ extension ExpenseDTO {
             paymentMethod: nil,
             receiptImageUrl: hasReceipt ? "https://example.com/receipt.jpg" : nil,
             receiptThumbnailUrl: hasReceipt ? "https://example.com/receipt-thumb.jpg" : nil,
+            receiptMissingReason: nil,
+            receiptMissingNote: nil,
             ocrRawData: nil,
             ocrConfidence: nil,
             batchId: nil,

@@ -94,6 +94,7 @@ enum Feedback {
         static let saved           = Toast(label: "// EXPENSE SAVED", tone: .success)
         static let changesSaved    = Toast(label: "// CHANGES SAVED", tone: .success)
         static let submitted       = Toast(label: "// EXPENSE SUBMITTED", tone: .success)
+        static let receiptUploadFailed = Toast(label: "// RECEIPT DIDN'T UPLOAD — SAVED AS DRAFT", tone: .warning)
         static let deleted         = Toast(label: "// EXPENSE DELETED", tone: .success)
         static let approved        = Toast(label: "// EXPENSE APPROVED", tone: .success)
         static let rejected        = Toast(label: "// EXPENSE REJECTED", tone: .warning)
@@ -344,6 +345,7 @@ enum Feedback {
         Expense.saved, Expense.changesSaved, Expense.submitted, Expense.deleted, Expense.approved, Expense.rejected,
         Expense.flagged, Expense.flagCleared, Expense.categoryCreated, Expense.categoryUpdated, Expense.settingsSaved,
         Expense.allocationsSaved, Expense.ruleCreated, Expense.ruleUpdated, Expense.ruleDeleted,
+        Expense.receiptUploadFailed,
         JobBoard.taskTypeCreated, JobBoard.taskTypeUpdated, JobBoard.statusChanged, JobBoard.teamUpdated,
         JobBoard.clientCreated, JobBoard.clientUpdated, JobBoard.deleted, JobBoard.projectCompleted, JobBoard.projectClosed,
         JobBoard.noTasksToReschedule(createTask: {}),

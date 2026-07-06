@@ -433,38 +433,86 @@ class ProjectDetailsViewModel: ObservableObject {
             return
         }
 
-        let now = Date()
-        let fields: [String: AnyJSON]
-        if ordered {
-            fields = [
-                ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
-                ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(now)),
-                ProjectVinylOrderFields.orderedBy: .string(userId)
-            ]
-        } else {
-            fields = [
-                ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.notOrdered.rawValue),
-                ProjectVinylOrderFields.orderedAt: .null,
-                ProjectVinylOrderFields.orderedBy: .null
-            ]
+        isUpdatingVinylOrderMarker = true
+
+        // Snapshot the full materials list into the deck design (same detection
+        // the deck tab uses) and flip the project marker through the shared
+        // service, so both MARK ORDERED entry points freeze identically.
+        let service = DeckMaterialsOrderService(userId: userId) { pid, fields in
+            try await dataController.updateProjectFields(projectId: pid, fields: fields)
         }
 
-        isUpdatingVinylOrderMarker = true
-        Task {
+        Task { @MainActor in
             do {
-                try await dataController.updateProjectFields(projectId: project.id, fields: fields)
-                await MainActor.run {
-                    isUpdatingVinylOrderMarker = false
-                    ToastCenter.shared.present(Feedback.saved("vinyl status"))
+                let design = resolveDeckDesignForMaterials()
+                if ordered {
+                    if let design, let materials = resolveMaterialsForOrder(design: design) {
+                        try await service.markOrdered(
+                            projectId: project.id,
+                            design: design,
+                            materials: materials,
+                            settings: design.drawingData.materialsSettings ?? DeckMaterialsSettings(),
+                            vinylSettings: .default
+                        )
+                    } else {
+                        // No design / no vinyl set / unresolved scale — marker only.
+                        try await dataController.updateProjectFields(
+                            projectId: project.id,
+                            fields: [
+                                ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
+                                ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(Date())),
+                                ProjectVinylOrderFields.orderedBy: .string(userId)
+                            ]
+                        )
+                    }
+                } else {
+                    try await service.clearOrdered(projectId: project.id, design: design)
                 }
+                isUpdatingVinylOrderMarker = false
+                ToastCenter.shared.present(Feedback.saved("vinyl status"))
             } catch {
-                await MainActor.run {
-                    isUpdatingVinylOrderMarker = false
-                    networkError = "VINYL STATUS FAILED"
-                }
+                isUpdatingVinylOrderMarker = false
+                networkError = "VINYL STATUS FAILED"
                 print("[PROJECT_DETAILS] Failed to update vinyl marker: \(error)")
             }
         }
+    }
+
+    /// Most-recent renderable deck design for this project, or nil.
+    private func resolveDeckDesignForMaterials() -> DeckDesign? {
+        guard let context = dataController?.modelContext else { return nil }
+        let descriptor = FetchDescriptor<DeckDesign>()
+        guard let designs = try? context.fetch(descriptor) else { return nil }
+        return DeckDesign.displayCandidate(in: designs, forProjectId: project.id)
+    }
+
+    /// Full materials list for the design via the shared detection pipeline, or
+    /// nil when there is no vinyl set or the scale can't be resolved.
+    private func resolveMaterialsForOrder(design: DeckDesign) -> DeckMaterialsList? {
+        guard let context = dataController?.modelContext else { return nil }
+        let data = design.drawingData
+        let pid = project.id
+        let taskDescriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate { $0.projectId == pid && $0.deletedAt == nil }
+        )
+        let taskDisplays = ((try? context.fetch(taskDescriptor)) ?? []).compactMap { $0.taskType?.display }
+
+        let cid = project.companyId
+        let catalogDescriptor = FetchDescriptor<CatalogItem>(
+            predicate: #Predicate { $0.companyId == cid && $0.deletedAt == nil }
+        )
+        var blob: [String: String] = [:]
+        for item in (try? context.fetch(catalogDescriptor)) ?? [] {
+            blob[item.id] = (item.name + " " + (item.itemDescription ?? "")).lowercased()
+        }
+
+        return DeckMaterialsResolver.resolve(
+            data: data,
+            settings: data.materialsSettings ?? DeckMaterialsSettings(),
+            vinylSettings: .default,
+            taskTypeDisplays: taskDisplays,
+            catalogNameById: blob
+        ).materials
     }
 
     // MARK: - Address

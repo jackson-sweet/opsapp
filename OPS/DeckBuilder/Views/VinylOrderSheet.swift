@@ -1010,43 +1010,83 @@ struct VinylOrderSheet: View {
     private func setProjectVinylOrdered(_ ordered: Bool) {
         guard canToggleProjectMarker, let projectId, let userId = currentUserId else { return }
 
-        let now = Date()
-        let fields: [String: AnyJSON]
-        if ordered {
-            fields = [
-                ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
-                ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(now)),
-                ProjectVinylOrderFields.orderedBy: .string(userId)
-            ]
-        } else {
-            fields = [
-                ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.notOrdered.rawValue),
-                ProjectVinylOrderFields.orderedAt: .null,
-                ProjectVinylOrderFields.orderedBy: .null
-            ]
-        }
-
         isUpdatingProjectMarker = true
         statusMessage = nil
         errorMessage = nil
 
-        Task {
+        let service = DeckMaterialsOrderService(userId: userId) { pid, fields in
+            try await dataController.updateProjectFields(projectId: pid, fields: fields)
+        }
+        let design = viewModel.deckDesign
+        let data = viewModel.drawingData
+        let materialsSettings = data.materialsSettings ?? DeckMaterialsSettings()
+        let vinylSettings = settings
+
+        Task { @MainActor in
             do {
-                try await dataController.updateProjectFields(projectId: projectId, fields: fields)
-                await MainActor.run {
-                    isUpdatingProjectMarker = false
-                    statusMessage = ordered ? "VINYL MARKED ORDERED" : "VINYL MARK CLEARED"
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                if ordered {
+                    // Resolve the full materials list over the whole drawing (same
+                    // detection the deck tab uses) so the frozen snapshot's vinyl set
+                    // matches the tab's live recompute and never false-flags drift.
+                    let resolved = DeckMaterialsResolver.resolve(
+                        data: data,
+                        settings: materialsSettings,
+                        vinylSettings: vinylSettings,
+                        taskTypeDisplays: projectTaskTypeDisplays(projectId: projectId),
+                        catalogNameById: catalogNameBlob()
+                    )
+                    if let materials = resolved.materials {
+                        try await service.markOrdered(
+                            projectId: projectId,
+                            design: design,
+                            materials: materials,
+                            settings: materialsSettings,
+                            vinylSettings: vinylSettings
+                        )
+                    } else {
+                        // No vinyl set / unresolved scale — marker only, no snapshot.
+                        try await dataController.updateProjectFields(
+                            projectId: projectId,
+                            fields: [
+                                ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
+                                ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(Date())),
+                                ProjectVinylOrderFields.orderedBy: .string(userId)
+                            ]
+                        )
+                    }
+                } else {
+                    try await service.clearOrdered(projectId: projectId, design: design)
                 }
+                isUpdatingProjectMarker = false
+                statusMessage = ordered ? "VINYL MARKED ORDERED" : "VINYL MARK CLEARED"
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
             } catch {
                 print("[VinylOrderSheet] Vinyl marker update failed: \(error)")
-                await MainActor.run {
-                    isUpdatingProjectMarker = false
-                    errorMessage = "VINYL STATUS FAILED"
-                    UINotificationFeedbackGenerator().notificationOccurred(.error)
-                }
+                isUpdatingProjectMarker = false
+                errorMessage = "VINYL STATUS FAILED"
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
         }
+    }
+
+    /// Non-deleted task-type display names for this project — the vinyl job
+    /// signal source (§ 5). On-demand fetch (not a @Query) so it costs nothing
+    /// until MARK ORDERED is tapped.
+    private func projectTaskTypeDisplays(projectId: String) -> [String] {
+        let descriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate { $0.projectId == projectId && $0.deletedAt == nil }
+        )
+        let tasks = (try? modelContext.fetch(descriptor)) ?? []
+        return tasks.compactMap { $0.taskType?.display }
+    }
+
+    /// Catalog id → lowercased name+description blob for vinyl product resolution.
+    private func catalogNameBlob() -> [String: String] {
+        var blob: [String: String] = [:]
+        for item in catalogItems where item.companyId == companyId && item.deletedAt == nil {
+            blob[item.id] = (item.name + " " + (item.itemDescription ?? "")).lowercased()
+        }
+        return blob
     }
 
     private func beginCreateOrderAndNote() {

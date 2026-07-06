@@ -15,6 +15,13 @@ class NotificationRepository {
     /// is safe and avoids re-wiring unrelated callers.
     static let shared = NotificationRepository()
 
+    /// Notification `type` the iOS rail suppresses everywhere (list + badge).
+    /// `agent_suggestion` rows are web agent-queue proposals (action_url =
+    /// /agent/queue) — reviewed/accepted/dismissed only on the web surface. iOS
+    /// has no queue screen and the rows carry no target the app can act on, so
+    /// surfacing them is a guaranteed dead-tap. Bug af27ea82.
+    static let iosSuppressedType = "agent_suggestion"
+
     private let client: SupabaseClient
 
     init() {
@@ -108,6 +115,11 @@ class NotificationRepository {
             .select("id", head: true, count: .exact)
             .eq("user_id", value: userId)
             .eq("is_read", value: false)
+            // Bug af27ea82 — agent_suggestion rows are web agent-queue items
+            // (action_url = /agent/queue) with no iOS review surface and nothing
+            // iOS can accept/dismiss. Keep them out of the badge count so the app
+            // never advertises a notification it can't act on.
+            .neq("type", value: NotificationRepository.iosSuppressedType)
             .execute()
         return response.count ?? 0
     }
@@ -146,6 +158,9 @@ class NotificationRepository {
             .from("notifications")
             .select()
             .eq("user_id", value: userId)
+            // Suppress web-only agent-queue proposals from the iOS rail — see
+            // `iosSuppressedType`. Bug af27ea82.
+            .neq("type", value: NotificationRepository.iosSuppressedType)
             .order("created_at", ascending: false)
             .limit(limit)
             .execute()

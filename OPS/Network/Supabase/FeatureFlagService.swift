@@ -4,7 +4,9 @@
 //
 //  Fetches feature flags and per-user overrides from Supabase.
 //  Returns blocked permissions AND disabled flag slugs.
-//  Fails closed: if the fetch fails, all known flags are treated as disabled.
+//  `fetchFlags` THROWS on a network failure so the caller can preserve
+//  last-known-good state instead of failing closed; `failClosedResult()` supplies
+//  the fail-closed defaults for the genuinely-no-prior-state case (fresh install).
 //
 
 import Foundation
@@ -74,49 +76,61 @@ enum FeatureFlagService {
 
     /// Fetch all feature flags and the user's overrides.
     /// Returns both blocked permissions and disabled flag slugs.
-    static func fetchFlags(userId: String) async -> FeatureFlagResult {
-        do {
-            let client = SupabaseService.shared.client
+    ///
+    /// Throws on a genuine fetch failure (offline / flaky reception) rather than
+    /// failing closed. A fetch that can't reach the server says NOTHING about
+    /// entitlements — "couldn't fetch" is not "all flags disabled". The caller
+    /// (`PermissionStore.fetchPermissions`) preserves last-known-good flags on a
+    /// throw when it already has state, and only falls back to fail-closed when
+    /// there is genuinely no prior state (see `loadCachedPermissions`). Callers
+    /// that want the fail-closed defaults directly still use `failClosedResult()`.
+    static func fetchFlags(userId: String) async throws -> FeatureFlagResult {
+        let client = SupabaseService.shared.client
 
-            // 1. Fetch all feature flags
-            let flags: [FlagRow] = try await client
-                .from("feature_flags")
-                .select("slug, enabled, permissions")
-                .execute()
-                .value
+        // 1. Fetch all feature flags
+        let flags: [FlagRow] = try await client
+            .from("feature_flags")
+            .select("slug, enabled, permissions")
+            .execute()
+            .value
 
-            // 2. Fetch this user's overrides (early-access grants)
-            let overrides: [OverrideRow] = try await client
-                .from("feature_flag_overrides")
-                .select("flag_slug")
-                .eq("user_id", value: userId)
-                .execute()
-                .value
+        // 2. Fetch this user's overrides (early-access grants)
+        let overrides: [OverrideRow] = try await client
+            .from("feature_flag_overrides")
+            .select("flag_slug")
+            .eq("user_id", value: userId)
+            .execute()
+            .value
 
-            let overrideSlugs = Set(overrides.map(\.flag_slug))
+        let overrideSlugs = Set(overrides.map(\.flag_slug))
 
-            // 3. Build blocked permission set and disabled flag set
-            var blocked = Set<String>()
-            var disabled = Set<String>()
+        // 3. Build blocked permission set and disabled flag set
+        var blocked = Set<String>()
+        var disabled = Set<String>()
 
-            for flag in flags {
-                let isAccessible = flag.enabled || overrideSlugs.contains(flag.slug)
-                if !isAccessible {
-                    disabled.insert(flag.slug)
-                    for perm in (flag.permissions ?? []) {
-                        blocked.insert(perm)
-                    }
+        for flag in flags {
+            let isAccessible = flag.enabled || overrideSlugs.contains(flag.slug)
+            if !isAccessible {
+                disabled.insert(flag.slug)
+                for perm in (flag.permissions ?? []) {
+                    blocked.insert(perm)
                 }
             }
-
-            print("[FEATURE_FLAGS] Fetched \(flags.count) flags, \(overrides.count) overrides → \(disabled.count) disabled, \(blocked.count) permissions blocked")
-            return FeatureFlagResult(blockedPermissions: blocked, disabledFlags: disabled)
-
-        } catch {
-            // Fail closed: treat ALL known flags as disabled
-            print("[FEATURE_FLAGS] Fetch failed, failing closed: \(error)")
-            return failClosedResult()
         }
+
+        print("[FEATURE_FLAGS] Fetched \(flags.count) flags, \(overrides.count) overrides → \(disabled.count) disabled, \(blocked.count) permissions blocked")
+        return FeatureFlagResult(blockedPermissions: blocked, disabledFlags: disabled)
+    }
+
+    /// Resolve the feature-flag state to apply after a permissions fetch.
+    ///
+    /// `fresh == nil` means the flag fetch could not complete (offline / flaky
+    /// reception, `fetchFlags` threw). In that case we KEEP the last-known-good
+    /// state rather than fail closed — "couldn't fetch" is not "not entitled".
+    /// Absence of a fresh permission fetch is not absence of permission. When a
+    /// fresh result IS present it always wins (a flag really turned off must hide).
+    static func resolve(fresh: FeatureFlagResult?, lastKnown: FeatureFlagResult) -> FeatureFlagResult {
+        fresh ?? lastKnown
     }
 
     /// Returns fail-closed result using static definitions (all flags disabled).

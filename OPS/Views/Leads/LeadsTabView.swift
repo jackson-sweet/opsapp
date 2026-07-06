@@ -435,8 +435,8 @@ struct LeadsTabView: View {
         case .convert(let opp):
             ConvertToProjectSheet(opportunity: opp)
         case .log(let opp):
-            LeadLogActivitySheet(opportunity: opp)
-                .presentationDetents([.medium])
+            UnifiedLogActivitySheet(viewModel: UnifiedLogActivityViewModel(entry: .leadDetail(opp)))
+                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         case .wonChooser:
             LeadsWonChooserSheet(

@@ -128,6 +128,7 @@ struct FloatingActionMenu: View {
     @State private var showingPersonalEventSheet = false
     @State private var showingTimeOffSheet = false
     @State private var showingLogActivity = false
+    @State private var logActivityViewModel: UnifiedLogActivityViewModel?
     @State private var showingSiteVisitCapture = false
     @State private var activeSiteVisitLead: Opportunity?
     @State private var activeSiteVisitType: SiteVisitType?
@@ -293,7 +294,10 @@ struct FloatingActionMenu: View {
     private var menuGroups: [FABMenuGroup] {
         var workItems: [FABMenuItem] = []
 
-        // Log Activity — only when pipeline feature is enabled
+        // Log Activity — only when pipeline feature is enabled. One entry
+        // point for every correspondence type (call/email/meeting/note) —
+        // the unified sheet's TYPE chips replace the old separate "Log a
+        // Call" item, so a call capture is just the CALL chip pre-selected.
         if permissionStore.isFeatureEnabled("pipeline") {
             workItems.append(
                 FABMenuItem(
@@ -304,24 +308,8 @@ struct FloatingActionMenu: View {
                     disabledInTutorial: true,
                     action: {
                         showCreateMenu = false
+                        logActivityViewModel = UnifiedLogActivityViewModel(entry: .genericFAB)
                         showingLogActivity = true
-                    }
-                )
-            )
-
-            // Log a Call — capture a phone call as a lead activity. Routes
-            // through the shared capture coordinator (same host the post-call
-            // prompt and App Shortcut use). Around-call lead capture (154cb8a3).
-            workItems.append(
-                FABMenuItem(
-                    id: "log-call",
-                    icon: "phone.badge.plus",
-                    label: "Log a Call",
-                    permission: "pipeline.manage",
-                    disabledInTutorial: true,
-                    action: {
-                        showCreateMenu = false
-                        CallCaptureCoordinator.shared.present(.capture(.fab))
                     }
                 )
             )
@@ -850,7 +838,11 @@ struct FloatingActionMenu: View {
                 .environmentObject(dataController)
         }
         .sheet(isPresented: $showingLogActivity) {
-            LogActivitySheet()
+            if let logActivityViewModel {
+                UnifiedLogActivitySheet(viewModel: logActivityViewModel)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
         }
         .sheet(item: $siteVisitConvertLead) { lead in
             ConvertToProjectSheet(opportunity: lead)

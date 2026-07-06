@@ -515,8 +515,15 @@ struct MainTabView: View {
         }
         // Around-call capture sheet (154cb8a3). One host for all three entry
         // points — post-call prompt, FAB "Log a call", and the App Shortcut.
+        // Presents the unified Log Activity sheet pre-seeded with call
+        // provenance (`.postCall` / `.capture`) — the coordinator's queue,
+        // 5-min shortcut expiry, and request-id dedup are unchanged; only the
+        // sheet it drives was swapped.
         .sheet(item: $callCaptureCoordinator.activeRequest) { request in
-            LogCallSheet(request: request)
+            UnifiedLogActivitySheet(viewModel: UnifiedLogActivityViewModel(entry: request.unifiedEntry))
+                .presentationDetents(request.isPostCall ? [.medium, .large] : [.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(OPSStyle.Colors.background)
                 .environmentObject(dataController)
                 .environmentObject(permissionStore)
         }

@@ -133,6 +133,12 @@ final class UnifiedLogActivityViewModel: ObservableObject {
     private var opportunityRepository: OpportunityRepository?
     private var cancellables = Set<AnyCancellable>()
 
+    /// Guards `configure()` against re-running on a second `.onAppear` (a
+    /// sheet's body can re-evaluate while presented) — the repos + per-entry
+    /// loads (target list, candidate dedup, known-lead enrichment) must only
+    /// ever run once per presentation.
+    private var isConfigured = false
+
     /// The last opportunity id an activity was successfully logged against —
     /// the resolution `setFollowUp()` targets, since a brand-new lead's id
     /// isn't known until `save()` creates it.
@@ -185,6 +191,9 @@ final class UnifiedLogActivityViewModel: ObservableObject {
     // MARK: - Configure
 
     func configure(companyId: String, userId: String?, modelContext: ModelContext) {
+        guard !isConfigured else { return }
+        isConfigured = true
+
         self.companyId = companyId
         self.userId = userId
         self.modelContext = modelContext

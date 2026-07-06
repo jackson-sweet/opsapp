@@ -35,6 +35,24 @@ enum CallCaptureRequest: Identifiable, Equatable {
             return "capture-\(source.rawValue)"
         }
     }
+
+    /// True for the post-call return path — drives the shorter detent set
+    /// (a known/locked lead needs less scroll room than an unbound capture).
+    var isPostCall: Bool {
+        if case .postCall = self { return true }
+        return false
+    }
+
+    /// Maps this request onto the unified sheet's entry point — the only
+    /// thing that changed when `LogCallSheet` was retired in favor of
+    /// `UnifiedLogActivitySheet`; the request itself still carries all call
+    /// provenance untouched.
+    var unifiedEntry: UnifiedLogActivityViewModel.Entry {
+        switch self {
+        case .postCall(let pending): return .postCall(pending)
+        case .capture(let source):   return .capture(source)
+        }
+    }
 }
 
 @MainActor

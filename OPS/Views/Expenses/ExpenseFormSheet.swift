@@ -54,6 +54,10 @@ struct ExpenseFormSheet: View {
     @State private var noReceiptNote: String = ""
     @State private var showReceiptRequiredDialog = false
     @State private var showNoReceiptSheet = false
+    @State private var noProjectReason: NoProjectReason? = nil
+    @State private var noProjectNote: String = ""
+    @State private var showProjectRequiredDialog = false
+    @State private var showNoProjectSheet = false
 
     // Section expansion state (always expanded, non-collapsible)
     @State private var isDetailsExpanded = true
@@ -292,6 +296,24 @@ struct ExpenseFormSheet: View {
                     }
                 )
             }
+            .confirmationDialog("PROJECT REQUIRED", isPresented: $showProjectRequiredDialog, titleVisibility: .visible) {
+                Button("Add Project") { addProjectFromGate() }
+                Button("No Project Available") { showNoProjectSheet = true }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("This company requires a project to submit.")
+            }
+            .sheet(isPresented: $showNoProjectSheet) {
+                NoProjectReasonSheet(
+                    selected: noProjectReason,
+                    note: $noProjectNote,
+                    onSubmit: { reason in
+                        noProjectReason = reason
+                        showNoProjectSheet = false
+                        Task { await save(submit: true) }
+                    }
+                )
+            }
             .onAppear {
                 // Load categories if not already loaded
                 if viewModel.categories.isEmpty {
@@ -325,6 +347,8 @@ struct ExpenseFormSheet: View {
                     }
                     noReceiptReason = NoReceiptReason(code: exp.receiptMissingReason)
                     noReceiptNote = exp.receiptMissingNote ?? ""
+                    noProjectReason = NoProjectReason(code: exp.projectMissingReason)
+                    noProjectNote = exp.projectMissingNote ?? ""
                 }
                 if let pid = prefilledProjectId, projectAllocations.isEmpty {
                     projectAllocations = [(projectId: pid, percentage: "100")]
@@ -1062,6 +1086,32 @@ struct ExpenseFormSheet: View {
         return false
     }
 
+    /// A project is present when at least one allocation resolves to a real
+    /// project (a fresh pick or a hydrated existing allocation).
+    private var hasProject: Bool {
+        projectAllocations.contains { !$0.projectId.isEmpty }
+    }
+
+    /// A submit needs either a project or an explicit no-project reason when
+    /// the company requires one. Same submit-only gate as receipts.
+    private func projectGatePassed(submit: Bool) -> Bool {
+        guard submit, viewModel.settings?.requireProjectAssignment == true else { return true }
+        if hasProject || noProjectReason != nil { return true }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        showProjectRequiredDialog = true
+        return false
+    }
+
+    /// 'Add Project' from the fork — append a blank allocation and open the
+    /// picker, mirroring the ADD PROJECT button.
+    private func addProjectFromGate() {
+        projectAllocations.append((projectId: "", percentage: "100"))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            projectPickerIndex = projectAllocations.count - 1
+            showProjectPicker = true
+        }
+    }
+
     // MARK: - Validation
 
     private func validate() -> Bool {
@@ -1128,6 +1178,7 @@ struct ExpenseFormSheet: View {
     private func performSave(submit: Bool) async -> Bool {
         guard validate() else { return false }
         guard receiptGatePassed(submit: submit) else { return false }
+        guard projectGatePassed(submit: submit) else { return false }
         isSaving = true
         defer { isSaving = false }
 
@@ -1145,6 +1196,8 @@ struct ExpenseFormSheet: View {
         // a real receipt always supersedes a reason.
         let missingReason = hasReceipt ? nil : noReceiptReason?.code
         let missingNote = (hasReceipt || noReceiptNote.isEmpty) ? nil : noReceiptNote
+        let missingProjectReason = hasProject ? nil : noProjectReason?.code
+        let missingProjectNote = (hasProject || noProjectNote.isEmpty) ? nil : noProjectNote
 
         if let exp = editing {
             let priorStatus = ExpenseStatus(rawValue: exp.status) ?? .draft
@@ -1159,6 +1212,8 @@ struct ExpenseFormSheet: View {
                 paymentMethod: paymentMethod.rawValue,
                 receiptMissingReason: missingReason,
                 receiptMissingNote: missingNote,
+                projectMissingReason: missingProjectReason,
+                projectMissingNote: missingProjectNote,
                 status: nil
             )
             await viewModel.updateExpense(exp.id, fields: fields, silent: true)
@@ -1237,7 +1292,9 @@ struct ExpenseFormSheet: View {
                 ocrRawData: ocrData,
                 ocrConfidence: ocrConfidence,
                 receiptMissingReason: missingReason,
-                receiptMissingNote: missingNote
+                receiptMissingNote: missingNote,
+                projectMissingReason: missingProjectReason,
+                projectMissingNote: missingProjectNote
             )
 
             if let created = created {
@@ -1920,6 +1977,130 @@ private struct NoReceiptReasonSheet: View {
                 onSubmit(selected)
             } label: {
                 Text("SUBMIT WITHOUT RECEIPT")
+                    .font(OPSStyle.Typography.button)
+            }
+            .opsPrimaryButtonStyle()
+            .disabled(selected == nil)
+            .opacity(selected == nil ? 0.4 : 1)
+        }
+    }
+}
+
+// MARK: - No-Project Reason Sheet
+
+/// Escape hatch for require_project_assignment — the crew picks why an expense
+/// has no project (overhead, shop supplies) so the line still files and the
+/// office sees the reason. Confirm submits the expense. Mirrors
+/// NoReceiptReasonSheet.
+private struct NoProjectReasonSheet: View {
+    @Binding var note: String
+    let onSubmit: (NoProjectReason) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selected: NoProjectReason?
+    @FocusState private var noteFocused: Bool
+
+    init(selected: NoProjectReason?, note: Binding<String>, onSubmit: @escaping (NoProjectReason) -> Void) {
+        self._note = note
+        self.onSubmit = onSubmit
+        self._selected = State(initialValue: selected)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack(alignment: .bottom) {
+                OPSStyle.Colors.background.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+                        Text("Why is there no project?")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                            .padding(.top, OPSStyle.Layout.spacing3)
+
+                        VStack(spacing: 0) {
+                            ForEach(Array(NoProjectReason.allCases.enumerated()), id: \.element.id) { index, reason in
+                                if index > 0 {
+                                    Rectangle()
+                                        .fill(OPSStyle.Colors.cardBorder)
+                                        .frame(height: 1)
+                                        .padding(.leading, OPSStyle.Layout.spacing3_5)
+                                }
+                                Button {
+                                    selected = reason
+                                } label: {
+                                    HStack(spacing: OPSStyle.Layout.spacing3) {
+                                        Text(reason.label)
+                                            .font(OPSStyle.Typography.body)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
+                                        Spacer()
+                                        if selected == reason {
+                                            Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                                                .font(.system(size: OPSStyle.Layout.IconSize.md))
+                                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                        }
+                                    }
+                                    .padding(.vertical, 14)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                                    .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                            Text("NOTE")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            TextField("", text: $note, axis: .vertical)
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .focused($noteFocused)
+                                .lineLimit(1...3)
+                                .placeholder(when: note.isEmpty) {
+                                    Text("Add a note (optional)")
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.placeholderText)
+                                }
+                        }
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    }
+                    .padding(.top, OPSStyle.Layout.spacing2)
+                    .padding(.bottom, 120)
+                }
+                .scrollDismissesKeyboard(.interactively)
+
+                stickyConfirm
+                    .ignoresSafeArea(.keyboard, edges: .bottom)
+            }
+            .background(OPSStyle.Colors.background.ignoresSafeArea())
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("CANCEL") { dismiss() }
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                ToolbarItem(placement: .principal) {
+                    Text("NO PROJECT")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var stickyConfirm: some View {
+        OPSFloatingButtonBar {
+            Button {
+                guard let selected else { return }
+                onSubmit(selected)
+            } label: {
+                Text("SUBMIT WITHOUT PROJECT")
                     .font(OPSStyle.Typography.button)
             }
             .opsPrimaryButtonStyle()

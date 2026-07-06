@@ -266,7 +266,9 @@ class ExpenseViewModel: ObservableObject {
         ocrRawData: [String: String]?,
         ocrConfidence: Double?,
         receiptMissingReason: String? = nil,
-        receiptMissingNote: String? = nil
+        receiptMissingNote: String? = nil,
+        projectMissingReason: String? = nil,
+        projectMissingNote: String? = nil
     ) async -> ExpenseDTO? {
         guard let repo = repository else { return nil }
         let dto = CreateExpenseDTO(
@@ -285,6 +287,8 @@ class ExpenseViewModel: ObservableObject {
             receiptThumbnailUrl: receiptThumbnailUrl,
             receiptMissingReason: receiptMissingReason,
             receiptMissingNote: receiptMissingNote,
+            projectMissingReason: projectMissingReason,
+            projectMissingNote: projectMissingNote,
             ocrRawData: ocrRawData,
             ocrConfidence: ocrConfidence
         )

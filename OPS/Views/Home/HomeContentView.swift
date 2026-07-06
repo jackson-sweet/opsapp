@@ -24,7 +24,8 @@ struct HomeContentView: View {
     let isLoading: Bool
     @Binding var showLocationPermissionView: Bool
     let billableRollup: HomeBillableThisWeekRollup
-    
+    let projectsNeedingTasksCount: Int
+
     // Environment objects
     @ObservedObject var appState: AppState
     @ObservedObject var inProgressManager: InProgressManager
@@ -43,6 +44,7 @@ struct HomeContentView: View {
     let stopProject: (Project) -> Void
     let getActiveProject: () -> Project?
     let openBillableItem: (HomeBillableProjectCandidate) -> Void
+    let openProjectsNeedingTasks: () -> Void
 
     // State for project editing
     @State private var showingEditProject = false
@@ -267,6 +269,20 @@ struct HomeContentView: View {
                 HomeBillableThisWeekCard(
                     rollup: billableRollup,
                     onSelect: openBillableItem
+                )
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.top, OPSStyle.Layout.spacing1)
+            }
+
+            // Committed jobs nobody has broken into tasks — invisible until
+            // true, gone the moment the work is planned. Tap opens the
+            // needs-tasks review flow (same surface the rail notification
+            // routes to). Data self-scopes to operators who can see task-less
+            // projects, so crew never meet this strip.
+            if !appState.isInProjectMode, projectsNeedingTasksCount > 0 {
+                HomeNeedsTasksStrip(
+                    count: projectsNeedingTasksCount,
+                    onOpen: openProjectsNeedingTasks
                 )
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.top, OPSStyle.Layout.spacing1)
@@ -554,7 +570,8 @@ struct HomeContentView: View {
     }
 }
 
-private struct HomeBillableThisWeekCard: View {
+// Internal (not private) so the snapshot harness can render it in isolation.
+struct HomeBillableThisWeekCard: View {
     let rollup: HomeBillableThisWeekRollup
     let onSelect: (HomeBillableProjectCandidate) -> Void
 
@@ -574,13 +591,19 @@ private struct HomeBillableThisWeekCard: View {
             header
 
             if isExpanded {
-                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                    if !rollup.closingThisWeek.isEmpty {
-                        section("CLOSING", items: rollup.closingThisWeek)
-                    }
-
-                    if !rollup.readyToBill.isEmpty {
-                        section("READY TO BILL", items: rollup.readyToBill)
+                // Every job is listed — no row cap. The card sits on the map
+                // (no outer scroll), so once the list outgrows its slice of
+                // the screen the detail scrolls internally instead of pushing
+                // the layout off the bottom edge.
+                Group {
+                    if rollup.projectCount <= Self.rowsBeforeInternalScroll {
+                        detailSections
+                    } else {
+                        ScrollView {
+                            detailSections
+                        }
+                        .scrollIndicators(.hidden)
+                        .frame(height: Self.expandedDetailMaxHeight)
                     }
                 }
                 .transition(.opacity)
@@ -590,6 +613,27 @@ private struct HomeBillableThisWeekCard: View {
         // Restore the persisted state without animation so the card simply
         // appears in its last state rather than animating open on every launch.
         .onAppear { isExpanded = persistedExpanded }
+    }
+
+    /// Up to this many jobs the detail renders inline and the card hugs its
+    /// content; beyond it, the detail pins to `expandedDetailMaxHeight` and
+    /// scrolls internally so the open card never collides with the tab bar
+    /// on the smallest supported devices.
+    private static let rowsBeforeInternalScroll = 4
+
+    /// Roughly six rows plus section headers.
+    private static let expandedDetailMaxHeight: CGFloat = 264
+
+    private var detailSections: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            if !rollup.closingThisWeek.isEmpty {
+                section("CLOSING", items: rollup.closingThisWeek)
+            }
+
+            if !rollup.readyToBill.isEmpty {
+                section("READY TO BILL", items: rollup.readyToBill)
+            }
+        }
     }
 
     // MARK: - Header (tap anywhere to collapse / expand)
@@ -602,9 +646,12 @@ private struct HomeBillableThisWeekCard: View {
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.textMute)
 
-                    Text(currency(rollup.totalKnownAmount))
+                    // No project this week carries a value → "—", never a
+                    // lying "$0". A project with no invoice/estimate is
+                    // "no data", not zero dollars billable.
+                    Text(rollup.hasKnownAmounts ? currency(rollup.totalKnownAmount) : "—")
                         .font(OPSStyle.Typography.dataValueLg)
-                        .foregroundColor(OPSStyle.Colors.text)
+                        .foregroundColor(rollup.hasKnownAmounts ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
                         .monospacedDigit()
                 }
 
@@ -651,7 +698,7 @@ private struct HomeBillableThisWeekCard: View {
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.text3)
 
-            ForEach(items.prefix(3)) { item in
+            ForEach(items) { item in
                 Button {
                     onSelect(item)
                 } label: {
@@ -669,11 +716,18 @@ private struct HomeBillableThisWeekCard: View {
 
                         Spacer()
 
+                        // Valued jobs show their dollar figure; unvalued jobs
+                        // show the em-dash empty state — the amount slot never
+                        // silently disappears, so the column scans cleanly.
                         if let amount = item.amount {
                             Text(currency(amount))
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.finRevenue)
                                 .monospacedDigit()
+                        } else {
+                            Text("—")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.text3)
                         }
 
                         Image(systemName: OPSStyle.Icons.arrowRight)
@@ -698,4 +752,58 @@ private struct HomeBillableThisWeekCard: View {
         formatter.maximumFractionDigits = 0
         return formatter
     }()
+}
+
+// MARK: - Needs-Tasks Strip
+
+/// One-line attention strip for accepted / in-progress projects with zero
+/// tasks — work the business committed to that the crew literally cannot
+/// see. Appears only while the condition is true; tapping opens the
+/// needs-tasks review flow (the same surface the rail notification routes
+/// to), and the strip clears itself once every job has tasks.
+///
+/// Internal (not private) so the snapshot harness can render it in isolation.
+struct HomeNeedsTasksStrip: View {
+    let count: Int
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onOpen()
+        } label: {
+            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    Text("// NEEDS TASKS")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.textMute)
+
+                    Text("Accepted, no tasks yet.")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.text)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing1) {
+                    Text("\(count)")
+                        .font(OPSStyle.Typography.cardTitle)
+                        .foregroundColor(OPSStyle.Colors.tanTextM)
+                        .monospacedDigit()
+                    Text(count == 1 ? "JOB" : "JOBS")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.text3)
+                }
+
+                Image(systemName: OPSStyle.Icons.arrowRight)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.textMute)
+                    .padding(.leading, OPSStyle.Layout.spacing1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .opsCardStyle(padding: OPSStyle.Layout.spacing3)
+        .accessibilityLabel("\(count) accepted \(count == 1 ? "job" : "jobs") without tasks. Opens task planning.")
+    }
 }

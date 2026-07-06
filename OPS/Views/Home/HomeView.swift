@@ -29,6 +29,7 @@ struct HomeView: View {
     @State private var todaysProjects: [Project] = [] // Keep for carousel display
     @State private var allProjects: [Project] = [] // All projects for map "All" filter
     @State private var billableRollup: HomeBillableThisWeekRollup = .empty
+    @State private var projectsNeedingTasksCount = 0
     @State private var selectedEventIndex = 0
     @State private var showStartConfirmation = false
     @State private var isLoading = true
@@ -56,13 +57,24 @@ struct HomeView: View {
             isLoading: isLoading,
             showLocationPermissionView: $showLocationPermissionView,
             billableRollup: billableRollup,
+            projectsNeedingTasksCount: projectsNeedingTasksCount,
             appState: appState,
             inProgressManager: inProgressManager,
             startProject: startProject,
             stopProject: stopProject,
             getActiveProject: getActiveProject,
-            openBillableItem: openBillableItem
+            openBillableItem: openBillableItem,
+            openProjectsNeedingTasks: { appState.showProjectsNeedingTasksReview = true }
         )
+        // The needs-tasks strip must clear the moment the operator plans the
+        // work: recompute when the review sheet dismisses (tasks were just
+        // created into the local store, no sync round-trip needed).
+        .onChange(of: appState.showProjectsNeedingTasksReview) { _, showing in
+            guard !showing else { return }
+            projectsNeedingTasksCount = ProjectsWithoutTasksDetector
+                .projectsWithoutTasks(from: dataController.getProjectsForCurrentUser(for: nil))
+                .count
+        }
         .trackScreen("Home")
         .environmentObject(locationManager)
         .environmentObject(dataController)
@@ -297,12 +309,21 @@ struct HomeView: View {
                 }
             }
             let billableRollup = computeBillableRollup(projects: everyProject)
+            // Accepted / in-progress projects nobody has broken into tasks —
+            // committed work the crew can't see. Data self-scopes: task-less
+            // projects have no derived members, so only full-visibility
+            // operators ever get a non-zero count. Tutorial demo data is
+            // excluded with the same filter as everything else here.
+            let needsTasksCount = tutorialMode
+                ? 0
+                : ProjectsWithoutTasksDetector.projectsWithoutTasks(from: everyProject).count
 
             await MainActor.run {
                 self.todaysScheduledTasks = scheduledTasks
                 self.todaysProjects = uniqueProjects
                 self.allProjects = everyProject
                 self.billableRollup = billableRollup
+                self.projectsNeedingTasksCount = needsTasksCount
                 HomeBillableThisWeekNotificationDispatcher.dispatchIfNeeded(
                     rollup: billableRollup,
                     userId: dataController.currentUser?.id,

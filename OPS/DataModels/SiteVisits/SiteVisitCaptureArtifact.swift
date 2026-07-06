@@ -169,7 +169,6 @@ struct SiteVisitCaptureReviewSummary: Equatable {
 struct SiteVisitProjectPayload: Equatable {
     let siteVisitId: String
     let opportunityId: String
-    let projectTitle: String
     let address: String?
     let photoArtifactIds: [String]
     let measurementArtifactIds: [String]
@@ -183,7 +182,6 @@ enum SiteVisitProjectPayloadBuilder {
     static func payload(
         siteVisitId: String,
         opportunityId: String,
-        projectTitle: String,
         address: String?,
         artifacts: [SiteVisitCaptureArtifact],
         checklistAnswers: [SiteVisitChecklistAnswer] = []
@@ -203,7 +201,6 @@ enum SiteVisitProjectPayloadBuilder {
         return SiteVisitProjectPayload(
             siteVisitId: siteVisitId,
             opportunityId: opportunityId,
-            projectTitle: projectTitle,
             address: address,
             photoArtifactIds: included.filter(\.pipesToProjectPhotos).map(\.id),
             measurementArtifactIds: included.filter(\.pipesToProjectMeasurements).map(\.id),

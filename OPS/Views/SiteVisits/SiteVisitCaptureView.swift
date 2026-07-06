@@ -118,6 +118,7 @@ private struct SiteVisitCaptureConsole: View {
     @State private var noteAutosaveTask: Task<Void, Never>?
     @State private var customChecklistQuestion = ""
     @State private var customChecklistKind: SiteVisitFieldKind = .shortText
+    @State private var keyboardVisible = false
 
     var body: some View {
         ScrollViewReader { scrollProxy in
@@ -151,7 +152,22 @@ private struct SiteVisitCaptureConsole: View {
                     .scrollIndicators(.hidden)
                 }
 
+                // Hidden while the keyboard is up (bug e73f3a5c): typing owns
+                // the bottom edge — the keyboard toolbar's DONE is the exit.
+                // ignoresSafeArea keeps the bar anchored so it never rides the
+                // keyboard during the transition; the opacity fade is already
+                // the reduced-motion-safe treatment.
                 actionBar(scrollProxy: scrollProxy)
+                    .opacity(keyboardVisible ? 0 : 1)
+                    .allowsHitTesting(!keyboardVisible)
+                    .animation(OPSStyle.Animation.standard, value: keyboardVisible)
+                    .ignoresSafeArea(.keyboard, edges: .bottom)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                keyboardVisible = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                keyboardVisible = false
             }
             .onChange(of: showingReview) { _, showing in
                 // Returning from Review with "add lead details" pending: open the
@@ -974,13 +990,26 @@ private struct SiteVisitIdentityPanel: View {
                         keyboard: .phonePad,
                         capitalization: .never
                     )
-                    identityField(
-                        "ADDRESS",
-                        text: $address,
-                        placeholder: "SITE ADDRESS",
-                        capitalization: .words,
-                        axis: .vertical
-                    )
+                    // Address is an autocomplete, not a free-text field
+                    // (bugs e6a700ff / 0adf456b): suggestions-as-you-type plus
+                    // a use-my-location reverse geocode. Selections arrive
+                    // comma-canonical so the server's autoname derives the
+                    // street-line project name, and they persist to the bound
+                    // lead (with coordinates) immediately — a selection is a
+                    // commit, unlike keystrokes.
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("ADDRESS")
+                            .font(OPSStyle.Typography.miniLabel)
+                            .foregroundColor(OPSStyle.Colors.text3)
+
+                        AddressAutocompleteField(
+                            address: $address,
+                            placeholder: "SITE ADDRESS",
+                            onAddressSelected: { selected, coordinate in
+                                viewModel.applySelectedSiteAddress(selected, coordinate: coordinate)
+                            }
+                        )
+                    }
                     identityField(
                         "CLIENT NOTES",
                         text: $notes,
@@ -1761,7 +1790,6 @@ private struct SiteVisitReviewSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
-    @State private var projectTitle: String
     @State private var previewArtifact: SiteVisitCaptureArtifact?
     @State private var isCreatingLead = false
 
@@ -1773,7 +1801,6 @@ private struct SiteVisitReviewSheet: View {
         self.viewModel = viewModel
         self.onCreateProject = onCreateProject
         self.onRequestLeadCapture = onRequestLeadCapture
-        _projectTitle = State(initialValue: viewModel.visitProjectTitle)
     }
 
     var body: some View {
@@ -1832,19 +1859,22 @@ private struct SiteVisitReviewSheet: View {
 
     private var summaryCard: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            TextField("PROJECT NAME", text: $projectTitle)
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(OPSStyle.Colors.text)
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .frame(height: 48)
-                .background(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                        .fill(OPSStyle.Colors.surfaceInput)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                        .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
-                )
+            // Projected auto-name readout — NOT an input. The old editable
+            // "PROJECT NAME" field here fed a dead payload field and silently
+            // lost whatever was typed; naming is decided on the convert sheet
+            // that opens next (AUTO by default, RENAME affordance there).
+            // This mirrors the server's derive_project_name so the operator
+            // sees the street-line name the project will actually get.
+            HStack(spacing: 0) {
+                Text("// ")
+                    .foregroundColor(OPSStyle.Colors.textMute)
+                Text("PROJECT · ")
+                    .foregroundColor(OPSStyle.Colors.text3)
+                Text(viewModel.projectedProjectName.uppercased())
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .lineLimit(1)
+            }
+            .font(OPSStyle.Typography.metadata)
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 SiteVisitCaptureMetric(label: "PHOTOS", value: "\(viewModel.summary.photoCount)")
@@ -2047,7 +2077,7 @@ private struct SiteVisitReviewSheet: View {
         guard canCreateProject,
               let opportunity = viewModel.currentOpportunity,
               viewModel.completeVisit(),
-              let payload = viewModel.projectPayload(projectTitle: projectTitle) else { return }
+              let payload = viewModel.projectPayload() else { return }
         SiteVisitProjectHandoffStore.shared.stage(payload, for: opportunity.id)
         dismiss()
         onCreateProject(opportunity)

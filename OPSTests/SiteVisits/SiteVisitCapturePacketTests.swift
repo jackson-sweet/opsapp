@@ -142,7 +142,6 @@ final class SiteVisitCapturePacketTests: XCTestCase {
         let payload = SiteVisitProjectPayloadBuilder.payload(
             siteVisitId: "visit-1",
             opportunityId: "lead-1",
-            projectTitle: "Maple deck rebuild",
             address: "1100 Maple Ave",
             artifacts: [deck, note, excludedPhoto, manualMeasurement, dimensionedPhoto],
             checklistAnswers: [unanswered, checklistMeasurement]
@@ -150,7 +149,9 @@ final class SiteVisitCapturePacketTests: XCTestCase {
 
         XCTAssertEqual(payload.siteVisitId, "visit-1")
         XCTAssertEqual(payload.opportunityId, "lead-1")
-        XCTAssertEqual(payload.projectTitle, "Maple deck rebuild")
+        // projectTitle removed from the payload: the project name is now
+        // derived server-side by projects_autoname (mirrored by ProjectAutoNamer)
+        // rather than carried on the site-visit packet.
         XCTAssertEqual(payload.address, "1100 Maple Ave")
         XCTAssertEqual(payload.photoArtifactIds, ["lidar-1"])
         XCTAssertEqual(payload.measurementArtifactIds, ["lidar-1", "measure-1"])
@@ -215,7 +216,6 @@ final class SiteVisitCapturePacketTests: XCTestCase {
         let payload = SiteVisitProjectPayloadBuilder.payload(
             siteVisitId: "visit-1",
             opportunityId: "lead-1",
-            projectTitle: "Maple deck",
             address: "1100 Maple Ave",
             artifacts: [photo, note, measurement, deckArtifact],
             checklistAnswers: [checklistAnswer]
@@ -274,7 +274,6 @@ final class SiteVisitCapturePacketTests: XCTestCase {
         let payload = SiteVisitProjectPayloadBuilder.payload(
             siteVisitId: "visit-1",
             opportunityId: "lead-1",
-            projectTitle: "Maple deck",
             address: "1100 Maple Ave",
             artifacts: [dimensioned]
         )
@@ -509,7 +508,7 @@ final class SiteVisitCapturePacketTests: XCTestCase {
         XCTAssertTrue(viewModel.hasProjectEvidence)
         XCTAssertTrue(viewModel.completeVisit())
 
-        let payload = try XCTUnwrap(viewModel.projectPayload(projectTitle: "Maple deck"))
+        let payload = try XCTUnwrap(viewModel.projectPayload())
         XCTAssertTrue(payload.photoArtifactIds.isEmpty)
         XCTAssertEqual(payload.checklistAnswerIds.last, gateCode.id)
         XCTAssertTrue(payload.checklistLines.contains("CHECKLIST :: Gate code: 4812"))

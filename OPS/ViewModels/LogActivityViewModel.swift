@@ -181,10 +181,46 @@ class LogActivityViewModel: ObservableObject {
         selectedType == .call || selectedType == .meeting
     }
 
+    // MARK: - Planned Log (pure)
+
+    /// Everything `save()` will write to the `activities` table, derived
+    /// purely from the current form state. Kept separate from `save()` (which
+    /// also has to await lead creation / network I/O) so the regression that
+    /// used to silently drop direction/outcome/duration is unit-testable
+    /// without a live SupabaseClient or SwiftData context.
+    ///
+    /// `subject` is always nil — the DB trigger `trg_activities_default_subject`
+    /// backfills it from `type`.
+    struct PlannedLog: Equatable {
+        let type: ActivityType
+        let subject: String?
+        let body: String?
+        let direction: String?
+        let outcome: String?
+        let durationMinutes: Int?
+        let createdBy: String?
+    }
+
+    /// Build the planned log from current @Published state. `direction` is
+    /// only carried for call/email types (`showDirectionField`); `duration`
+    /// only for call/meeting types (`showDurationField`) — mirroring the
+    /// fields the sheet actually shows the operator for `selectedType`.
+    func plannedLog() -> PlannedLog {
+        PlannedLog(
+            type: selectedType,
+            subject: nil,
+            body: notesText.isEmpty ? nil : notesText,
+            direction: showDirectionField ? direction : nil,
+            outcome: outcome,
+            durationMinutes: showDurationField ? durationMinutes : nil,
+            createdBy: userId
+        )
+    }
+
     // MARK: - Save
 
     func save() async -> Bool {
-        guard let repository, let companyId, let userId else { return false }
+        guard let companyId, userId != nil else { return false }
         guard canSave else { return false }
 
         isSaving = true
@@ -195,6 +231,7 @@ class LogActivityViewModel: ObservableObject {
 
             // Create new lead if needed
             if isCreatingNewLead && selectedOpportunity == nil {
+                guard let repository else { isSaving = false; return false }
                 let dto = CreateOpportunityDTO(
                     companyId: companyId,
                     contactName: newLeadName.trimmingCharacters(in: .whitespaces),
@@ -219,18 +256,25 @@ class LogActivityViewModel: ObservableObject {
                 return false
             }
 
-            // Log the activity
-            let activityDTO = CreateActivityDTO(
-                opportunityId: opportunityId,
-                companyId: companyId,
-                type: selectedType.rawValue,
-                subject: nil,                     // trigger backfills from type
-                bodyText: notesText.isEmpty ? nil : notesText,
-                direction: nil,
-                outcome: nil,
-                durationMinutes: nil
+            // Log the activity — routed through the unified ActivityRepository
+            // so direction/outcome/duration (previously hardcoded to nil here)
+            // and the operator's author id are actually persisted. `parentKey`
+            // only reads `.id`/`.companyId` off the wrapped model, so a stub is
+            // fine for the just-created-lead path (selectedOpportunity is nil).
+            let planned = plannedLog()
+            let target: ActivityTarget = selectedOpportunity.map { .opportunity($0) }
+                ?? .opportunity(Opportunity(id: opportunityId, companyId: companyId, contactName: newLeadName.trimmingCharacters(in: .whitespaces)))
+            let activityRepository = ActivityRepository(companyId: companyId)
+            _ = try await activityRepository.logActivity(
+                target: target,
+                type: planned.type,
+                subject: planned.subject,
+                body: planned.body,
+                direction: planned.direction,
+                outcome: planned.outcome,
+                durationMinutes: planned.durationMinutes,
+                createdBy: planned.createdBy
             )
-            _ = try await repository.logActivity(activityDTO)
 
             // Update local opportunity's lastActivityAt
             if let opp = selectedOpportunity {

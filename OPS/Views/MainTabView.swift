@@ -1284,21 +1284,20 @@ struct MainTabView: View {
         let name = (pending.contactName ?? "").trimmingCharacters(in: .whitespaces)
         Task { @MainActor in
             do {
-                let repo = OpportunityRepository(companyId: companyId)
-                let dto = CreateActivityDTO(
-                    opportunityId: opportunityId,
-                    companyId: companyId,
-                    type: ActivityType.call.rawValue,
+                let activityRepo = ActivityRepository(companyId: companyId)
+                let created = try await activityRepo.logActivity(
+                    target: .opportunity(Opportunity(id: opportunityId, companyId: companyId, contactName: name)),
+                    type: .call,
                     subject: name.isEmpty ? "Call" : "Call with \(name)",
-                    bodyText: nil,
+                    body: nil,
                     direction: "outbound",
                     outcome: nil,
                     durationMinutes: nil,
                     callSource: CallCaptureSource.autoOutbound.rawValue,
                     callerNumber: PhoneNumber.normalize(pending.phoneNumber),
-                    callStartedAt: SupabaseDate.format(pending.startedAt)
+                    callStartedAt: pending.startedAt,
+                    createdBy: dataController.currentUser?.id
                 )
-                let created = try await repo.logActivity(dto)
                 NotificationCenter.default.post(
                     name: Notification.Name("LeadActivityLoggedSuccess"),
                     object: nil, userInfo: ["leadId": opportunityId]

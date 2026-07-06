@@ -324,7 +324,8 @@ struct LeadLogActivitySheet: View {
                     body: bodyText.isEmpty ? nil : bodyText,
                     direction: resolvedDirection,
                     outcome: resolvedOutcome,
-                    durationMinutes: resolvedDuration
+                    durationMinutes: resolvedDuration,
+                    createdBy: dataController.currentUser?.id
                 )
 
                 // Local optimistic — bump lastActivityAt so triage buckets

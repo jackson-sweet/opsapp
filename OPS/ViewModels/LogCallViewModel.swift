@@ -259,7 +259,8 @@ final class LogCallViewModel: ObservableObject {
                 durationMinutes: duration,
                 callSource: resolvedSource,
                 callerNumber: PhoneNumber.normalize(phoneNumber),
-                callStartedAt: callStartedAt
+                callStartedAt: callStartedAt,
+                createdBy: userId
             )
 
             if createdNewLead {

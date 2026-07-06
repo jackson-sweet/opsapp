@@ -79,9 +79,7 @@ struct UnifiedLogActivitySheet: View {
         }
         .onDisappear { viewModel.teardownVoice() }
         .onChange(of: viewModel.speechManager.state) { oldState, newState in
-            if oldState == .recording && newState == .idle {
-                viewModel.applyTranscription()
-            }
+            viewModel.handleSpeechStateChange(from: oldState, to: newState)
         }
         .sheet(isPresented: $showTargetPicker) {
             if let companyId = dataController.currentUser?.companyId {

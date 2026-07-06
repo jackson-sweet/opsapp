@@ -304,6 +304,55 @@ final class UnifiedLogActivityViewModelTests: XCTestCase {
         XCTAssertFalse(result)
         XCTAssertNotNil(vm.suggestedFollowUp, "a failed/no-op set must not clear the pending suggestion")
     }
+
+    // MARK: - Parse-on-error (dictation that ends in .error still flushes)
+
+    func test_speechError_fromRecording_withPartialTranscription_stillParses() throws {
+        let vm = try makeConfiguredViewModel(entry: .genericFAB)
+        vm.speechManager.transcription = "called Eric, quoted the reroof"
+
+        // Dictation is cut short by an error (dropped audio session, recognizer
+        // failure, connectivity loss). The partial words must still be flushed
+        // into the form — never silently discarded.
+        vm.handleSpeechStateChange(from: .recording, to: .error("audio session lost"))
+
+        XCTAssertTrue(vm.hasParsedVoice)
+        XCTAssertEqual(vm.speechManager.transcription, "",
+                       "applyTranscription clears the source buffer after flushing the partial dictation")
+    }
+
+    func test_speechError_fromRecording_withEmptyTranscription_isNoOp() throws {
+        let vm = try makeConfiguredViewModel(entry: .genericFAB)
+        vm.speechManager.transcription = "   "
+
+        vm.handleSpeechStateChange(from: .recording, to: .error("mic access off"))
+
+        XCTAssertFalse(vm.hasParsedVoice, "an error with nothing transcribed must not parse")
+    }
+
+    func test_speechError_notFromRecording_isNoOp() throws {
+        // A permission-denied error is surfaced from `.idle` (before recording
+        // ever started). There is nothing dictated to flush, so the guard must
+        // ignore it even if a stale buffer somehow lingers.
+        let vm = try makeConfiguredViewModel(entry: .genericFAB)
+        vm.speechManager.transcription = "stale text that predates any dictation"
+
+        vm.handleSpeechStateChange(from: .idle, to: .error("speech access off"))
+
+        XCTAssertFalse(vm.hasParsedVoice)
+    }
+
+    func test_speechIdle_fromRecording_stillParses_regressionGuard() throws {
+        // The pre-existing normal-stop path (`.recording → .idle`, including the
+        // coalesced manual-stop transition) must keep flushing.
+        let vm = try makeConfiguredViewModel(entry: .genericFAB)
+        vm.speechManager.transcription = "emailed the estimate over"
+
+        vm.handleSpeechStateChange(from: .recording, to: .idle)
+
+        XCTAssertTrue(vm.hasParsedVoice)
+        XCTAssertEqual(vm.speechManager.transcription, "")
+    }
 }
 
 // MARK: - Test-only accessors for private mapping logic

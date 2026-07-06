@@ -413,6 +413,36 @@ final class UnifiedLogActivityViewModel: ObservableObject {
         speechManager.transcription = ""
     }
 
+    /// React to a `SpeechRecognitionManager` state transition observed by the
+    /// capture sheet. A normal stop (`.recording → .idle` — including the
+    /// coalesced `.recording → .stopping → .idle` manual-stop path) always
+    /// flushes the dictation into the form. An error-terminated dictation
+    /// (`.recording → .error`) ALSO flushes when partial words were already
+    /// captured — otherwise a mid-sentence failure (dropped audio session,
+    /// recognizer error, connectivity loss) would silently discard everything
+    /// the operator just said. `applyTranscription()`'s own empty-guard keeps
+    /// the error path a no-op when nothing was transcribed, so this is safe.
+    ///
+    /// Kept on the view model (rather than inline in the sheet's `.onChange`)
+    /// so the transition rule is unit-testable without a live view or a real
+    /// audio session.
+    func handleSpeechStateChange(
+        from oldState: SpeechRecognitionState,
+        to newState: SpeechRecognitionState
+    ) {
+        guard oldState == .recording else { return }
+        switch newState {
+        case .idle:
+            applyTranscription()
+        case .error:
+            if !speechManager.transcription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                applyTranscription()
+            }
+        case .recording, .stopping:
+            break
+        }
+    }
+
     /// Stop any in-flight dictation (audio session teardown). Idempotent.
     func teardownVoice() {
         if speechManager.state == .recording || speechManager.state == .stopping {

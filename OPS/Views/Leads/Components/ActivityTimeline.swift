@@ -94,6 +94,13 @@ private struct ActivityRow: View {
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+
+                if let metadata = metadataText {
+                    Text(metadata)
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(metadataColor)
+                        .lineLimit(1)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -162,6 +169,65 @@ private struct ActivityRow: View {
         return body
     }
 
+    /// Metadata micro-line: duration and/or outcome, joined with a middot.
+    /// Renders nothing when neither field is present.
+    private var metadataText: String? {
+        let duration = activity.durationMinutes.flatMap(formatDuration)
+        let outcome = activity.outcome.flatMap(formatOutcome)
+
+        switch (duration, outcome) {
+        case let (.some(d), .some(o)): return "\(d) · \(o)"
+        case let (.some(d), .none):    return d
+        case let (.none, .some(o)):    return o
+        case (.none, .none):           return nil
+        }
+    }
+
+    /// Metadata line color: outcome drives it when present (semantic allowlist),
+    /// otherwise neutral text3.
+    private var metadataColor: Color {
+        guard let outcome = activity.outcome else { return OPSStyle.Colors.text3 }
+        return outcomeColor(outcome)
+    }
+
+    /// "6" -> "6 min", "65" -> "1 hr 5 min".
+    private func formatDuration(_ minutes: Int) -> String? {
+        guard minutes > 0 else { return nil }
+        if minutes < 60 { return "\(minutes) min" }
+        let hours = minutes / 60
+        let remainder = minutes % 60
+        if remainder == 0 { return "\(hours) hr" }
+        return "\(hours) hr \(remainder) min"
+    }
+
+    /// "no_answer" / "NO ANSWER" -> "No Answer".
+    private func formatOutcome(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return trimmed
+            .replacingOccurrences(of: "_", with: " ")
+            .split(separator: " ")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }
+            .joined(separator: " ")
+    }
+
+    /// Semantic allowlist ONLY — never color by anything else. Defaults to text3.
+    private func outcomeColor(_ raw: String) -> Color {
+        let normalized = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "_", with: " ")
+            .lowercased()
+
+        let positive: Set<String> = ["connected", "answered", "reached", "spoke"]
+        let negative: Set<String> = [
+            "no answer", "voicemail", "left voicemail", "declined", "not interested", "no show"
+        ]
+
+        if positive.contains(normalized) { return OPSStyle.Colors.oliveTextM }
+        if negative.contains(normalized) { return OPSStyle.Colors.roseTextM }
+        return OPSStyle.Colors.text3
+    }
+
     private var ageString: String {
         let interval = Date().timeIntervalSince(activity.createdAt)
         if interval < 60      { return "NOW" }
@@ -215,7 +281,9 @@ private struct EmptyLine: View {
                                      createdAt: Calendar.current.date(byAdding: .day, value: -5, to: Date())!)
                     a.direction = "inbound"
                     a.subject = "Inbound call"
-                    a.bodyText = "6 min · asked about timing"
+                    a.bodyText = "Asked about timing"
+                    a.durationMinutes = 6
+                    a.outcome = "connected"
                     return a
                 }(),
                 {
@@ -224,11 +292,21 @@ private struct EmptyLine: View {
                     a.direction = "outbound"
                     a.subject = "Site visit"
                     a.bodyText = "Walk + measure · 28 sq @ 4:12 pitch"
+                    a.durationMinutes = 45
+                    return a
+                }(),
+                {
+                    let a = Activity(opportunityId: "p", companyId: "p", type: .call,
+                                     createdAt: Calendar.current.date(byAdding: .day, value: -8, to: Date())!)
+                    a.direction = "outbound"
+                    a.subject = "Follow-up call"
+                    a.durationMinutes = 2
+                    a.outcome = "no_answer"
                     return a
                 }(),
                 {
                     let a = Activity(opportunityId: "p", companyId: "p", type: .note,
-                                     createdAt: Calendar.current.date(byAdding: .day, value: -8, to: Date())!)
+                                     createdAt: Calendar.current.date(byAdding: .day, value: -9, to: Date())!)
                     a.subject = "Internal note"
                     a.bodyText = "Homeowner mentioned competing quote from BlueSky"
                     return a

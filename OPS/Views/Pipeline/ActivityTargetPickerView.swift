@@ -210,16 +210,16 @@ struct ActivityTargetPickerView: View {
                 HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     ZStack {
                         Circle()
-                            .fill(OPSStyle.Colors.successStatus.opacity(0.2))
+                            .fill(OPSStyle.Colors.surfaceInput)
                             .frame(width: 40, height: 40)
                         Image(systemName: "plus")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(OPSStyle.Colors.successStatus)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
 
                     Text("New Lead")
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.successStatus)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
 
                     Spacer()
 
@@ -260,7 +260,7 @@ struct ActivityTargetPickerView: View {
                             .foregroundColor(canCreateNewLead ? OPSStyle.Colors.background : OPSStyle.Colors.tertiaryText)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                            .background(canCreateNewLead ? OPSStyle.Colors.successStatus : OPSStyle.Colors.surfaceInput)
+                            .background(canCreateNewLead ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.buttonRadius)
                     }
                     .disabled(!canCreateNewLead || isSavingNewLead)

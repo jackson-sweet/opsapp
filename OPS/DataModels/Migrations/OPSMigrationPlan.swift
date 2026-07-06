@@ -77,6 +77,16 @@
 //  the change to this single boundary instead of silently rewriting every
 //  historical schema's `Activity` hash (the hazard documented in OPSApp.swift).
 //
+//  V13 → V14 stage: site-visit → timeline auto-post idempotency. Adds a single
+//  nullable `SiteVisit.loggedActivityId` so a completed visit that posts its
+//  "Site visit" activity records the returned id and never double-posts on
+//  re-completion. A new optional column is an inferable lightweight transform.
+//  Like SiteVisit at V10→V11 and Activity at V12→V13, `SiteVisit` is
+//  version-scoped: the frozen `OPSSchemaLegacySiteVisitV11.SiteVisit` (optional
+//  opportunityId, no loggedActivityId) backs V11–V13; the live `SiteVisit`
+//  (+ loggedActivityId) backs V14+. This confines the change to this single
+//  boundary instead of rewriting every V11–V13 schema's `SiteVisit` hash.
+//
 
 import Foundation
 import SwiftData
@@ -96,7 +106,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV10.self,
             OPSSchemaV11.self,
             OPSSchemaV12.self,
-            OPSSchemaV13.self
+            OPSSchemaV13.self,
+            OPSSchemaV14.self
         ]
     }
 
@@ -113,9 +124,23 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addStockUnitEventsV9toV10,
             addSiteVisitCaptureArtifactsV10toV11,
             addSiteVisitIdentityDraftsV11toV12,
-            addUnifiedActivityParentsV12toV13
+            addUnifiedActivityParentsV12toV13,
+            addSiteVisitActivityLinkV13toV14
         ]
     }
+
+    /// V13 → V14: site-visit → timeline auto-post idempotency. Adds a single
+    /// nullable `SiteVisit.loggedActivityId` so a completed visit that posts its
+    /// "Site visit" activity can record the returned id and never double-post on
+    /// re-completion. A new optional column is an inferable lightweight
+    /// transform; the column defaults to nil for historical rows. `SiteVisit` is
+    /// version-scoped at this boundary (frozen `OPSSchemaLegacySiteVisitV11`
+    /// for V11–V13, live `SiteVisit` for V14+) so the widening does not rewrite
+    /// every V11–V13 schema's `SiteVisit` fingerprint.
+    static let addSiteVisitActivityLinkV13toV14 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV13.self,
+        toVersion: OPSSchemaV14.self
+    )
 
     /// V12 → V13: unified activity parents. `Activity.opportunityId` relaxes
     /// from required `String` to optional `String?` and gains nullable

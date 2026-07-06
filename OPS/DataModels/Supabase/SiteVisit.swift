@@ -21,6 +21,13 @@ class SiteVisit: Identifiable {
     var assignedTo: String?
     var createdAt: Date
 
+    /// The `activities` row id posted to the timeline when this visit was
+    /// completed. LOCAL-ONLY (site visits never sync to Supabase) — its sole job
+    /// is idempotency: once set, re-completing the visit (e.g. an offline retry)
+    /// must NOT post a second "Site visit" activity. `nil` until a successful
+    /// post; stays `nil` if the visit is unbound or the best-effort post fails.
+    var loggedActivityId: String?
+
     init(
         id: String = UUID().uuidString,
         opportunityId: String? = nil,

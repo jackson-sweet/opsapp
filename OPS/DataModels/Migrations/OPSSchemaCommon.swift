@@ -497,6 +497,46 @@ enum OPSSchemaLegacySiteVisit {
     }
 }
 
+/// Frozen `SiteVisit` shape as it shipped through V11–V13 — an OPTIONAL
+/// `opportunityId: String?` (the V10→V11 relaxation) but NO `loggedActivityId`.
+/// The live top-level `SiteVisit` adds `loggedActivityId` (the site-visit →
+/// timeline auto-post idempotency key) from V14 onward. `SiteVisit` was
+/// version-scoped at V10→V11 via `v11SiteVisitModel` pointing at the live class;
+/// adding a property to that live class would shift the fingerprint of V11, V12
+/// AND V13 by the same delta — the hazard documented in `OPSApp.swift`. Pulling
+/// the V11–V13 shape out and freezing it (mirror of `OPSSchemaLegacyActivity`)
+/// confines the change to the V13→V14 boundary. Migration-fingerprint only —
+/// runtime code always uses the top-level model.
+enum OPSSchemaLegacySiteVisitV11 {
+    @Model
+    final class SiteVisit: Identifiable {
+        @Attribute(.unique) var id: String
+        var opportunityId: String?
+        var companyId: String
+        var status: SiteVisitStatus
+        var scheduledAt: Date?
+        var completedAt: Date?
+        var notes: String?
+        var address: String?
+        var assignedTo: String?
+        var createdAt: Date
+
+        init(
+            id: String = UUID().uuidString,
+            opportunityId: String? = nil,
+            companyId: String,
+            status: SiteVisitStatus = .scheduled,
+            createdAt: Date = Date()
+        ) {
+            self.id = id
+            self.opportunityId = opportunityId
+            self.companyId = companyId
+            self.status = status
+            self.createdAt = createdAt
+        }
+    }
+}
+
 /// Frozen `Activity` shape as it shipped through V1–V12 — a REQUIRED
 /// `opportunityId: String`, and NO `clientId` / `projectId`. The live top-level
 /// `Activity` widens `opportunityId` to optional and adds `clientId`/`projectId`
@@ -577,10 +617,13 @@ enum OPSSchemaCommon {
         Payment.self,
         Product.self,
         // NOTE: SiteVisit is intentionally NOT here. Its persistent shape
-        // changed at the V10→V11 boundary (opportunityId String → String?),
-        // so it is version-scoped: the frozen `OPSSchemaLegacySiteVisit.SiteVisit`
-        // (required opportunityId) backs V1–V10 and the live `SiteVisit`
-        // (optional) backs V11+. See `v1ToV10SiteVisitModel` / `v11SiteVisitModel`.
+        // changed at TWO boundaries — V10→V11 (opportunityId String → String?)
+        // and V13→V14 (+ loggedActivityId) — so it is version-scoped three ways:
+        // the frozen `OPSSchemaLegacySiteVisit.SiteVisit` (required opportunityId)
+        // backs V1–V10, the frozen `OPSSchemaLegacySiteVisitV11.SiteVisit`
+        // (optional opportunityId, no loggedActivityId) backs V11–V13, and the
+        // live `SiteVisit` (+ loggedActivityId) backs V14+. See
+        // `v1ToV10SiteVisitModel` / `v11SiteVisitModel` / `v14SiteVisitModel`.
         ProjectNote.self,
         PhotoAnnotation.self,
         CalendarUserEvent.self,
@@ -689,9 +732,19 @@ enum OPSSchemaCommon {
         OPSSchemaLegacySiteVisit.SiteVisit.self
     ]
 
-    /// SiteVisit from V11 onward — the live model with optional `opportunityId`,
-    /// enabling lead-less (unlinked) site visits.
+    /// SiteVisit as it shipped through V11–V13 — optional `opportunityId`, no
+    /// `loggedActivityId`. Frozen so the V13→V14 addition of `loggedActivityId`
+    /// (site-visit → timeline auto-post idempotency key) is isolated to one
+    /// boundary instead of silently rewriting every V11–V13 schema's `SiteVisit`
+    /// hash. Mirror of `v1ToV12ActivityModel`.
     static let v11SiteVisitModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacySiteVisitV11.SiteVisit.self
+    ]
+
+    /// SiteVisit from V14 onward — the live model, which adds `loggedActivityId`
+    /// (a local-only idempotency key stamped when a completed visit posts its
+    /// "Site visit" activity to the timeline). Mirror of `v13ActivityModel`.
+    static let v14SiteVisitModel: [any PersistentModel.Type] = [
         SiteVisit.self
     ]
 

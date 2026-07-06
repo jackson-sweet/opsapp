@@ -112,6 +112,16 @@ enum UploadErrorClassifier {
             return classifyURLError(urlError)
         }
 
+        // Annotation-layer sentinel: a write that matched zero rows. RLS
+        // filtered the target (dead identity, wrong company) or the row is
+        // gone server-side; PostgREST reported 2xx either way, so the
+        // repository detected the empty RETURNING set and threw this.
+        // Retrying the same session cannot succeed — permanent.
+        if let annotationError = error as? AnnotationSyncError,
+           case .writeNotApplied = annotationError {
+            return .permanent(errorCode: "PG_0ROWS", reason: "write matched no rows (RLS-filtered)")
+        }
+
         // Unknown shape — treat as transient (retry), but escalate on exhaust.
         return .unknown(reason: String(describing: type(of: error)))
     }
@@ -132,6 +142,12 @@ enum UploadErrorClassifier {
         switch cls {
         case "23", "42", "22":
             // 23 = integrity, 42 = access/syntax (incl 42501 RLS), 22 = data exception
+            return .permanent(errorCode: "PG_\(code)", reason: message)
+        case "P0":
+            // P0xxx = a SECURITY DEFINER RPC raised deliberately (P0001
+            // raise_exception, P0002 no_data_found — e.g.
+            // soft_delete_photo_annotation's 'Annotation not found').
+            // A deliberate server rejection is permanent.
             return .permanent(errorCode: "PG_\(code)", reason: message)
         case "08":
             // 08 = connection exception — transient

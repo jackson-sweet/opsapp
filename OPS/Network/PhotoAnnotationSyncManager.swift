@@ -61,6 +61,33 @@ class PhotoAnnotationSyncManager {
     static let shared = PhotoAnnotationSyncManager()
     private init() {}
 
+    // MARK: - Permanent-failure parking
+
+    /// Parked annotation ids that already used their one retry this launch.
+    private var parkedRetriedThisLaunch: Set<String> = []
+
+    /// Reset retry-hygiene state after any successful server write of `annotation`.
+    private func noteSyncSuccess(_ annotation: PhotoAnnotation) {
+        annotation.syncFailureCount = 0
+        annotation.syncParkedAt = nil
+        parkedRetriedThisLaunch.remove(annotation.id)
+    }
+
+    /// Record a sweep failure. Only PERMANENT rejections count toward the
+    /// park threshold — transient network noise must keep retrying freely.
+    private func notePermanentFailure(_ annotation: PhotoAnnotation, kind: UploadErrorKind) {
+        guard case .permanent = kind else { return }
+        annotation.syncFailureCount = AnnotationRetryPolicy.nextFailureCount(after: annotation.syncFailureCount)
+        guard annotation.syncParkedAt == nil,
+              AnnotationRetryPolicy.shouldPark(failureCount: annotation.syncFailureCount) else { return }
+        annotation.syncParkedAt = Date()
+        DebugLogger.shared.log(
+            "Annotation \(annotation.id) parked after \(annotation.syncFailureCount) permanent sync failures — retrying once per launch from here",
+            level: .warning,
+            category: "PhotoAnnotationSyncManager"
+        )
+    }
+
     // MARK: - Save Annotation
 
     /// Render the drawing to a transparent PNG, upload to S3, and save the record.
@@ -141,6 +168,8 @@ class PhotoAnnotationSyncManager {
             let descriptor = FetchDescriptor<PhotoAnnotation>(predicate: #Predicate { $0.id == existingId })
             if let existing = try? modelContext.fetch(descriptor).first {
                 if let annotationURL {
+                    // The repository update above succeeded — reset retry hygiene.
+                    noteSyncSuccess(existing)
                     existing.annotationURL = annotationURL
                 }
                 existing.note = note
@@ -304,12 +333,13 @@ class PhotoAnnotationSyncManager {
                 do {
                     try await PhotoAnnotationRepository(companyId: companyId).softDelete(existingId)
                     if let existing {
+                        noteSyncSuccess(existing)
                         existing.needsSync = false
                         existing.lastSyncedAt = Date()
                         try? modelContext.save()
                     }
                 } catch {
-                    await AutoBugReporter.shared.reportIfPermanent(
+                    let kind = await AutoBugReporter.shared.reportIfPermanent(
                         error,
                         screen: "PhotoAnnotationSyncManager.applyEmptyDrawingClear",
                         suspectedFile: "PhotoAnnotationSyncManager.swift",
@@ -320,6 +350,10 @@ class PhotoAnnotationSyncManager {
                             "company_id": companyId
                         ]
                     )
+                    if let existing {
+                        notePermanentFailure(existing, kind: kind)
+                        try? modelContext.save()
+                    }
                     DebugLogger.shared.log(
                         "Cleared-annotation soft-delete failed for \(existingId): \(error)",
                         level: .warning,
@@ -607,6 +641,22 @@ class PhotoAnnotationSyncManager {
         print("[ANNOTATION SYNC] Found \(pending.count) pending annotations to sync")
 
         for annotation in pending {
+            // Park gate: rows the server has permanently rejected
+            // `AnnotationRetryPolicy.parkThreshold` times get exactly one
+            // retry per launch so a landed server-side fix self-heals the
+            // fleet without hammering (and re-filing bugs) in between.
+            switch AnnotationRetryPolicy.sweepDecision(
+                parkedAt: annotation.syncParkedAt,
+                alreadyRetriedThisLaunch: parkedRetriedThisLaunch.contains(annotation.id)
+            ) {
+            case .skip:
+                continue
+            case .attempt:
+                if annotation.syncParkedAt != nil {
+                    parkedRetriedThisLaunch.insert(annotation.id)
+                }
+            }
+
             if annotation.deletedAt != nil {
                 if ProjectPhotoAnnotationDeletePlanner.isLocalOnlyAnnotationID(annotation.id) {
                     annotation.needsSync = false
@@ -618,11 +668,12 @@ class PhotoAnnotationSyncManager {
                     let repo = PhotoAnnotationRepository(companyId: annotation.companyId)
                     try await repo.softDelete(annotation.id)
 
+                    noteSyncSuccess(annotation)
                     annotation.needsSync = false
                     annotation.lastSyncedAt = Date()
                     try? modelContext.save()
                 } catch {
-                    await AutoBugReporter.shared.reportIfPermanent(
+                    let kind = await AutoBugReporter.shared.reportIfPermanent(
                         error,
                         screen: "PhotoAnnotationSyncManager.syncPendingAnnotations",
                         suspectedFile: "PhotoAnnotationSyncManager.swift",
@@ -633,6 +684,8 @@ class PhotoAnnotationSyncManager {
                             "company_id": annotation.companyId
                         ]
                     )
+                    notePermanentFailure(annotation, kind: kind)
+                    try? modelContext.save()
                     DebugLogger.shared.log(
                         "Annotation delete retry failed for \(annotation.id): \(error)",
                         level: .warning,
@@ -661,6 +714,7 @@ class PhotoAnnotationSyncManager {
                 try await repo.updateAnnotation(annotation.id, annotationUrl: annotationURL, note: annotation.note)
 
                 // Update local
+                noteSyncSuccess(annotation)
                 annotation.annotationURL = annotationURL
                 annotation.needsSync = false
                 annotation.lastSyncedAt = Date()
@@ -670,7 +724,7 @@ class PhotoAnnotationSyncManager {
                 // hammers the same row every sweep — auto-bug on permanent
                 // so the dev team intervenes before the queue silently
                 // bloats with poisoned annotations.
-                await AutoBugReporter.shared.reportIfPermanent(
+                let kind = await AutoBugReporter.shared.reportIfPermanent(
                     error,
                     screen: "PhotoAnnotationSyncManager.syncPendingAnnotations",
                     suspectedFile: "PhotoAnnotationSyncManager.swift",
@@ -681,6 +735,8 @@ class PhotoAnnotationSyncManager {
                         "company_id": annotation.companyId
                     ]
                 )
+                notePermanentFailure(annotation, kind: kind)
+                try? modelContext.save()
                 DebugLogger.shared.log(
                     "Annotation sync retry failed for \(annotation.id): \(error)",
                     level: .warning,
@@ -702,12 +758,54 @@ extension Notification.Name {
 enum AnnotationSyncError: Error, LocalizedError {
     case uploadFailed
     case invalidURL
+    /// A PostgREST write matched zero rows: RLS filtered the target (dead
+    /// identity, wrong company) or the row vanished server-side. PostgREST
+    /// reports 2xx for these, so the repository detects the empty RETURNING
+    /// set and throws this instead of letting the caller mark the row
+    /// synced. Permanent — retrying the same session cannot succeed.
+    case writeNotApplied(annotationId: String)
 
     var errorDescription: String? {
         switch self {
         case .uploadFailed: return "Failed to upload annotation"
         case .invalidURL: return "Invalid upload URL"
+        case .writeNotApplied(let annotationId):
+            return "Annotation write matched no rows (RLS-filtered) for \(annotationId)"
         }
+    }
+}
+
+// MARK: - Permanent-failure retry policy
+
+/// Pure retry/park decisions for the pending-annotation sweep, kept separate
+/// so they are unit-testable without SwiftData or the network (same pattern
+/// as AnnotationClearPlanner).
+///
+/// A write the server has permanently rejected (RLS, validation) must not be
+/// hammered on every sweep forever — that is how bugs 452bab04/0415504f kept
+/// re-firing the same dead soft-delete. After `parkThreshold` permanent
+/// failures the row parks and gets exactly one retry per app launch: enough
+/// to self-heal the moment a server-side fix lands, silent otherwise.
+/// Transient failures never count toward parking.
+enum AnnotationRetryPolicy {
+    static let parkThreshold = 3
+
+    enum SweepDecision: Equatable {
+        case attempt
+        case skip
+    }
+
+    static func sweepDecision(parkedAt: Date?, alreadyRetriedThisLaunch: Bool) -> SweepDecision {
+        guard parkedAt != nil else { return .attempt }
+        return alreadyRetriedThisLaunch ? .skip : .attempt
+    }
+
+    static func nextFailureCount(after count: Int) -> Int {
+        count + 1
+    }
+
+    static func shouldPark(failureCount: Int) -> Bool {
+        failureCount >= parkThreshold
     }
 }
 

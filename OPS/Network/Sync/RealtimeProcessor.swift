@@ -1954,16 +1954,29 @@ final class RealtimeProcessor: ObservableObject {
     private func upsertPhotoAnnotation(context: ModelContext, id: String, model: PhotoAnnotation, pendingFields: Set<String>) throws {
         let descriptor = FetchDescriptor<PhotoAnnotation>(predicate: #Predicate { $0.id == id })
         if let existing = try context.fetch(descriptor).first {
+            // Annotations don't write SyncOperation rows, so pendingFields
+            // can't protect a not-yet-pushed tombstone from a live-row echo —
+            // without this guard the pending delete is silently reverted and
+            // never retried (prod 2026-06-24, bugs 452bab04/0415504f).
+            let preserveLocalTombstone = PhotoAnnotationMergePolicy.shouldPreserveLocalTombstone(
+                localNeedsSync: existing.needsSync,
+                localDeletedAt: existing.deletedAt,
+                incomingDeletedAt: model.deletedAt
+            )
             if !pendingFields.contains("annotationURL")     { existing.annotationURL = model.annotationURL }
             if !pendingFields.contains("renderedPhotoURL")  { existing.renderedPhotoURL = model.renderedPhotoURL }
             if !pendingFields.contains("note")              { existing.note = model.note }
             if !pendingFields.contains("updatedAt")         { existing.updatedAt = model.updatedAt }
-            if !pendingFields.contains("deletedAt")         { existing.deletedAt = model.deletedAt }
+            if !pendingFields.contains("deletedAt"), !preserveLocalTombstone {
+                existing.deletedAt = model.deletedAt
+            }
             if !pendingFields.contains("dimensions"), let dimensionsData = model.dimensionsData {
                 existing.dimensionsData = dimensionsData
             }
             existing.lastSyncedAt = Date()
-            existing.needsSync = false
+            if !preserveLocalTombstone {
+                existing.needsSync = false
+            }
         } else {
             model.lastSyncedAt = Date()
             model.needsSync = false

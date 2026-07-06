@@ -30,6 +30,20 @@ class PhotoAnnotation: Identifiable {
     var lastSyncedAt: Date?
     var needsSync: Bool = false
 
+    // Retry hygiene (2026-07-03, bugs 452bab04/0415504f): permanent server
+    // rejections park the row so the pending sweep stops hammering dead
+    // writes. Parked rows get exactly one retry per app launch, which
+    // self-heals the fleet the moment a server-side fix lands. Both fields
+    // are additive with defaults — lightweight SwiftData migration, same as
+    // the V6 renderedPhotoURL precedent.
+
+    /// Consecutive PERMANENT sync failures (transient failures never count).
+    var syncFailureCount: Int = 0
+
+    /// Set when syncFailureCount crossed `AnnotationRetryPolicy.parkThreshold`.
+    /// nil = not parked. Cleared by any successful server write of this row.
+    var syncParkedAt: Date?
+
     // Local-only: PKDrawing data for offline editing
     var localDrawingData: Data?
 

@@ -29,6 +29,14 @@ struct ActivityDraft {
 
     /// The raw parsed contact name (before matching)
     var parsedContactName: String?
+
+    /// A suggested follow-up due date, detected from a follow-up cue + date
+    /// mention in the raw transcription (e.g. "callback Tuesday"). Nil unless
+    /// both a cue phrase and a resolvable date are present.
+    var suggestedFollowUpDueAt: Date?
+
+    /// A suggested follow-up title paired with `suggestedFollowUpDueAt`.
+    var suggestedFollowUpTitle: String?
 }
 
 struct VoiceActivityParser {
@@ -37,9 +45,12 @@ struct VoiceActivityParser {
 
     /// Parse a raw transcription into an ActivityDraft.
     /// `opportunities` is the list of active opportunities to match against.
+    /// `now` is the reference "current time" used to resolve/roll-forward any
+    /// detected follow-up date — defaulted so existing call sites are unaffected.
     static func parse(
         transcription: String,
-        opportunities: [(id: String, contactName: String)]
+        opportunities: [(id: String, contactName: String)],
+        now: Date = Date()
     ) -> ActivityDraft {
         let trimmed = transcription.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -56,13 +67,14 @@ struct VoiceActivityParser {
         let notes = cleanNotes(afterContact)
 
         // Step 4: Fuzzy match contact against opportunities
+        var draft: ActivityDraft
         if let parsedName {
             let matches = fuzzyMatch(name: parsedName, against: opportunities)
 
             if matches.count == 1 {
                 let match = matches[0]
                 let confidence: ActivityDraft.MatchConfidence = match.score >= 0.9 ? .exact : .high
-                return ActivityDraft(
+                draft = ActivityDraft(
                     type: type,
                     matchedOpportunityId: match.opportunityId,
                     matchedContactName: match.contactName,
@@ -71,7 +83,7 @@ struct VoiceActivityParser {
                     parsedContactName: parsedName
                 )
             } else if matches.count > 1 {
-                return ActivityDraft(
+                draft = ActivityDraft(
                     type: type,
                     notes: notes,
                     confidence: .ambiguous,
@@ -80,17 +92,25 @@ struct VoiceActivityParser {
                 )
             } else {
                 // No match — will create new lead on save
-                return ActivityDraft(
+                draft = ActivityDraft(
                     type: type,
                     notes: notes,
                     confidence: .noMatch,
                     parsedContactName: parsedName
                 )
             }
+        } else {
+            // No "with" pattern found
+            draft = ActivityDraft(type: type, notes: notes, confidence: .noContact)
         }
 
-        // No "with" pattern found
-        return ActivityDraft(type: type, notes: notes, confidence: .noContact)
+        // Step 5: Detect an optional follow-up suggestion from the raw transcript.
+        if let followUp = detectFollowUp(rawTranscription: trimmed, contactName: parsedName, now: now) {
+            draft.suggestedFollowUpDueAt = followUp.dueAt
+            draft.suggestedFollowUpTitle = followUp.title
+        }
+
+        return draft
     }
 
     // MARK: - Type Extraction
@@ -219,6 +239,118 @@ struct VoiceActivityParser {
         // Capitalize first letter
         guard !cleaned.isEmpty else { return cleaned }
         return cleaned.prefix(1).uppercased() + cleaned.dropFirst()
+    }
+
+    // MARK: - Follow-Up Detection
+
+    /// Cue phrases that gate follow-up detection. Without one of these present
+    /// in the transcript, an incidental date mention (e.g. "met him Monday")
+    /// must NOT produce a suggested follow-up.
+    private static let followUpCues = [
+        "follow up", "follow-up", "followup", "call back", "callback",
+        "circle back", "check in", "reach out", "remind me", "next week", "next month"
+    ]
+
+    /// NSDataDetector's documented convention: a date match with no explicit
+    /// time-of-day spoken resolves to local noon. Anything else means a time
+    /// was actually stated (e.g. "at 3pm") and must be preserved as-is.
+    private static func isDateOnlyMatch(_ date: Date, calendar: Calendar) -> Bool {
+        let comps = calendar.dateComponents([.hour, .minute], from: date)
+        return comps.hour == 12 && comps.minute == 0
+    }
+
+    /// Detects a suggested follow-up (due date + title) from the raw transcription.
+    /// Returns nil unless BOTH a follow-up cue phrase and a resolvable date are present.
+    private static func detectFollowUp(
+        rawTranscription: String,
+        contactName: String?,
+        now: Date
+    ) -> (dueAt: Date, title: String)? {
+        let lower = rawTranscription.lowercased()
+
+        // Gate: require an explicit follow-up cue before doing any date detection work.
+        guard followUpCues.contains(where: { lower.contains($0) }) else {
+            return nil
+        }
+
+        let calendar = Calendar.current
+        var resolvedDate: Date
+
+        if let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.date.rawValue) {
+            let fullRange = NSRange(rawTranscription.startIndex..., in: rawTranscription)
+            let match = detector.firstMatch(in: rawTranscription, options: [], range: fullRange)
+
+            if let matchedDate = match?.date {
+                if isDateOnlyMatch(matchedDate, calendar: calendar) {
+                    // Date-only match (NSDataDetector defaults to noon) — normalize to 09:00 local.
+                    var dateOnlyComponents = calendar.dateComponents(
+                        [.year, .month, .day], from: matchedDate
+                    )
+                    dateOnlyComponents.hour = 9
+                    dateOnlyComponents.minute = 0
+                    dateOnlyComponents.second = 0
+                    resolvedDate = calendar.date(from: dateOnlyComponents) ?? matchedDate
+                } else {
+                    // An explicit time-of-day was spoken — preserve it.
+                    resolvedDate = matchedDate
+                }
+            } else if lower.contains("next week") {
+                // NSDataDetector does not resolve bare relative phrases like "next week"
+                // into a concrete date — resolve manually, defaulting to 09:00 local.
+                resolvedDate = defaultTime(daysFromNow: 7, now: now, calendar: calendar)
+            } else if lower.contains("next month") {
+                resolvedDate = defaultTime(monthsFromNow: 1, now: now, calendar: calendar)
+            } else {
+                return nil
+            }
+        } else if lower.contains("next week") {
+            resolvedDate = defaultTime(daysFromNow: 7, now: now, calendar: calendar)
+        } else if lower.contains("next month") {
+            resolvedDate = defaultTime(monthsFromNow: 1, now: now, calendar: calendar)
+        } else {
+            return nil
+        }
+
+        // Mandatory roll-forward: if the resolved date is in the past or the same
+        // instant relative to `now`, advance by whole weeks until it's strictly future.
+        // (A bare weekday spoken on that same weekday must roll to NEXT week's occurrence.)
+        while resolvedDate <= now {
+            guard let advanced = calendar.date(byAdding: .day, value: 7, to: resolvedDate) else {
+                break
+            }
+            resolvedDate = advanced
+        }
+
+        let title: String
+        if let contactName, !contactName.isEmpty {
+            title = "Follow up with \(contactName)"
+        } else {
+            title = "Follow up"
+        }
+
+        return (dueAt: resolvedDate, title: title)
+    }
+
+    /// Resolves a relative-phrase follow-up date (e.g. "next week") to a concrete
+    /// Date, defaulted to 09:00 local on the target day.
+    private static func defaultTime(
+        daysFromNow: Int = 0,
+        monthsFromNow: Int = 0,
+        now: Date,
+        calendar: Calendar
+    ) -> Date {
+        var target = now
+        if daysFromNow != 0 {
+            target = calendar.date(byAdding: .day, value: daysFromNow, to: target) ?? target
+        }
+        if monthsFromNow != 0 {
+            target = calendar.date(byAdding: .month, value: monthsFromNow, to: target) ?? target
+        }
+        var comps = calendar.dateComponents([.year, .month, .day], from: target)
+        comps.hour = 9
+        comps.minute = 0
+        comps.second = 0
+        return calendar.date(from: comps) ?? target
     }
 
     // MARK: - Fuzzy Matching

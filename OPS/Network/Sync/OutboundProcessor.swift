@@ -524,7 +524,13 @@ final class OutboundProcessor {
     }
 
     static func sanitizedProjectPayloadForSync(_ payload: [String: Any]) -> [String: Any] {
-        payload.filter { Self.validProjectColumns.contains($0.key) }
+        // `vinyl_ordered_by` is a Postgres uuid column; a non-UUID attribution
+        // (historic Firebase-UID writes, bug 0f86b9b0) would 22P02 the whole
+        // PATCH and wedge the queued op. Null it instead of poisoning the write.
+        SupabaseUUID.nullingNonUuidValue(
+            forKey: "vinyl_ordered_by",
+            in: payload.filter { Self.validProjectColumns.contains($0.key) }
+        )
     }
 
     static func sanitizedProjectTaskPayloadForSync(_ payload: [String: Any]) -> [String: Any] {

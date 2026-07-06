@@ -32,18 +32,57 @@ final class ProjectTeamSyncPayloadTests: XCTestCase {
         let payload: [String: Any] = [
             "vinyl_order_status": "ordered",
             "vinyl_ordered_at": "2026-06-15T00:00:00Z",
-            "vinyl_ordered_by": "user-1"
+            "vinyl_ordered_by": "283d49df-90a1-4abb-b94c-3e9f17f02c0d"
         ]
 
         let legacy = OutboundProcessor.sanitizedProjectPayloadForSync(payload)
         XCTAssertEqual(legacy["vinyl_order_status"] as? String, "ordered")
         XCTAssertEqual(legacy["vinyl_ordered_at"] as? String, "2026-06-15T00:00:00Z")
-        XCTAssertEqual(legacy["vinyl_ordered_by"] as? String, "user-1")
+        XCTAssertEqual(legacy["vinyl_ordered_by"] as? String, "283d49df-90a1-4abb-b94c-3e9f17f02c0d")
 
         let active = DataActor.sanitizedProjectPayloadForSync(payload)
         XCTAssertEqual(active["vinyl_order_status"] as? String, "ordered")
         XCTAssertEqual(active["vinyl_ordered_at"] as? String, "2026-06-15T00:00:00Z")
-        XCTAssertEqual(active["vinyl_ordered_by"] as? String, "user-1")
+        XCTAssertEqual(active["vinyl_ordered_by"] as? String, "283d49df-90a1-4abb-b94c-3e9f17f02c0d")
+    }
+
+    /// Bug 0f86b9b0: `projects.vinyl_ordered_by` is a Postgres `uuid` column, but
+    /// the Vinyl Order sheet historically stamped the Firebase UID (a 28-char
+    /// alphanumeric, e.g. "8SUXPDPJG0QdQVghxKuMpnvq7yx1"). The server rejects the
+    /// whole PATCH with 22P02, so the queued op can never drain and the marker
+    /// silently never reaches the server. Both sanitizers must null a non-UUID
+    /// attribution instead of letting it poison the write.
+    func testProjectSyncPayloadNullsNonUuidVinylOrderedBy() throws {
+        let payload: [String: Any] = [
+            "vinyl_order_status": "ordered",
+            "vinyl_ordered_by": "8SUXPDPJG0QdQVghxKuMpnvq7yx1"
+        ]
+
+        let legacy = OutboundProcessor.sanitizedProjectPayloadForSync(payload)
+        XCTAssertEqual(legacy["vinyl_order_status"] as? String, "ordered")
+        XCTAssertTrue(legacy["vinyl_ordered_by"] is NSNull, "non-UUID attribution must be nulled, not sent")
+
+        let active = DataActor.sanitizedProjectPayloadForSync(payload)
+        XCTAssertEqual(active["vinyl_order_status"] as? String, "ordered")
+        XCTAssertTrue(active["vinyl_ordered_by"] is NSNull, "non-UUID attribution must be nulled, not sent")
+    }
+
+    /// Clearing the marker sends explicit nulls — they must pass through both
+    /// sanitizers untouched.
+    func testProjectSyncPayloadKeepsNullVinylOrderedBy() throws {
+        let payload: [String: Any] = [
+            "vinyl_order_status": "not_ordered",
+            "vinyl_ordered_at": NSNull(),
+            "vinyl_ordered_by": NSNull()
+        ]
+
+        let legacy = OutboundProcessor.sanitizedProjectPayloadForSync(payload)
+        XCTAssertTrue(legacy["vinyl_ordered_by"] is NSNull)
+        XCTAssertTrue(legacy["vinyl_ordered_at"] is NSNull)
+
+        let active = DataActor.sanitizedProjectPayloadForSync(payload)
+        XCTAssertTrue(active["vinyl_ordered_by"] is NSNull)
+        XCTAssertTrue(active["vinyl_ordered_at"] is NSNull)
     }
 
     /// Regression (bug bbc2d228): `title_is_auto` was present in

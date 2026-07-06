@@ -7,18 +7,26 @@
 
 import SwiftUI
 import SwiftData
+import Supabase
 
 struct JobBoardProjectListView: View {
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
     @Environment(\.wizardStateManager) private var wizardStateManager
     @Query private var allProjects: [Project]
+    @Query private var vinylOrderMarkers: [ProjectVinylOrderMarker]
+    @Query private var taskTypes: [TaskType]
     let searchText: String
     @Binding var showingFilters: Bool
     @Binding var showingFilterSheet: Bool
     var activeOnly: Bool = false
     var assignedToMe: Bool = false
+    /// Vinyl procurement mode (bug c6e90385): narrows the list to projects with a
+    /// vinyl task and reveals a per-card ordered-state strip + mark action.
+    var vinylFilter: Bool = false
+    @State private var markingVinylProjectIds: Set<String> = []
     @State private var selectedStatuses: Set<Status> = []
     @State private var selectedTeamMemberIds: Set<String> = []
     // Persisted sort preference. Default is `.latestEdited` so freshly
@@ -83,6 +91,17 @@ struct JobBoardProjectListView: View {
             filtered = filtered.filter { project in
                 let projectTeamMemberIds = Set(project.getTeamMemberIds())
                 return !projectTeamMemberIds.intersection(selectedTeamMemberIds).isEmpty
+            }
+        }
+
+        // Vinyl procurement filter: only projects that actually carry vinyl work.
+        if vinylFilter {
+            let vinylTypeIds = vinylTaskTypeIds
+            filtered = filtered.filter { project in
+                VinylTaskFilter.hasVinylTask(
+                    taskTypeIds: project.tasks.filter { $0.deletedAt == nil }.map(\.taskTypeId),
+                    vinylTaskTypeIds: vinylTypeIds
+                )
             }
         }
 
@@ -196,6 +215,61 @@ struct JobBoardProjectListView: View {
         max(project.updatedAt ?? .distantPast, project.createdAt ?? .distantPast)
     }
 
+    /// Task-type ids that read as vinyl work, scoped to the current company.
+    private var vinylTaskTypeIds: Set<String> {
+        let companyId = dataController.currentUser?.companyId
+        let displaysById = Dictionary(
+            taskTypes
+                .filter { $0.deletedAt == nil && (companyId == nil || $0.companyId == companyId) }
+                .map { ($0.id, $0.display) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return VinylTaskFilter.vinylTaskTypeIds(displaysById: displaysById)
+    }
+
+    private func vinylMarker(for project: Project) -> ProjectVinylOrderMarker? {
+        vinylOrderMarkers.first { $0.projectId == project.id }
+    }
+
+    private var canMarkVinyl: Bool {
+        permissionStore.can("projects.edit")
+    }
+
+    /// Commits vinyl-ordered state via the same synced field path the Vinyl Order
+    /// sheet uses (projects.vinyl_order_*). Persists status + timestamp; leaves
+    /// `vinyl_ordered_by` NULL — that column FKs to auth.users(id), which a
+    /// Firebase-bridged user's public.users.id can never satisfy, and the "who"
+    /// is never surfaced anyway. (Send NULL, never the Firebase UID or a
+    /// public.users.id: the former 22P02s, the latter FK-fails — bug 0f86b9b0.)
+    private func markVinylOrdered(_ project: Project) {
+        guard canMarkVinyl, !markingVinylProjectIds.contains(project.id) else { return }
+
+        markingVinylProjectIds.insert(project.id)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        let fields: [String: AnyJSON] = [
+            ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
+            ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(Date())),
+            ProjectVinylOrderFields.orderedBy: .null
+        ]
+
+        Task {
+            do {
+                try await dataController.updateProjectFields(projectId: project.id, fields: fields)
+                await MainActor.run {
+                    markingVinylProjectIds.remove(project.id)
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
+            } catch {
+                print("[JobBoardProjectListView] Vinyl mark-ordered failed: \(error)")
+                await MainActor.run {
+                    markingVinylProjectIds.remove(project.id)
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                }
+            }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if showingFilters && hasActiveFilters {
@@ -222,38 +296,49 @@ struct JobBoardProjectListView: View {
                             ForEach(Array(activeProjects.enumerated()), id: \.element.id) { index, project in
                             let isFocusedProject = !shouldGreyOutProject(project)
 
-                            UniversalJobBoardCard(cardType: .project(project))
-                                .environmentObject(dataController)
-                                .id("\(project.id)-\(project.teamMemberIdsString)")
-                                .if(index == 0) { view in
-                                    view
-                                        .wizardTarget("browse_projects")
-                                        .wizardTarget("swipe_status")
-                                        .wizardTarget("tap_project")
-                                        .wizardTarget("view_on_board", style: .row)
-                                }
-                                // Tutorial mode: Grey out non-focused projects during status demo/swipe phases
-                                // Also grey out focused card during status transition animation
-                                // Also dim during closedProjectsScroll to highlight the closed section button
-                                .opacity(cardOpacity(for: project, isFocused: isFocusedProject) * (showClosedSectionOverlay ? 0.3 : 1.0))
-                                .animation(OPSStyle.Animation.standard, value: showClosedSectionOverlay)
-                                .allowsHitTesting(!shouldGreyOutProject(project) && !showClosedSectionOverlay)
-                                // Tutorial: Capture frame of the focused project for swipe indicator
-                                .background(
-                                    GeometryReader { geo in
-                                        Color.clear
-                                            .onAppear {
-                                                if isFocusedProject && tutorialMode && tutorialPhase == .projectListSwipe {
-                                                    postProjectCardFrame(geo.frame(in: .global))
-                                                }
-                                            }
-                                            .onChange(of: tutorialPhase) { _, newPhase in
-                                                if isFocusedProject && tutorialMode && newPhase == .projectListSwipe {
-                                                    postProjectCardFrame(geo.frame(in: .global))
-                                                }
-                                            }
+                            VStack(spacing: OPSStyle.Layout.spacing1) {
+                                UniversalJobBoardCard(cardType: .project(project))
+                                    .environmentObject(dataController)
+                                    .id("\(project.id)-\(project.teamMemberIdsString)")
+                                    .if(index == 0) { view in
+                                        view
+                                            .wizardTarget("browse_projects")
+                                            .wizardTarget("swipe_status")
+                                            .wizardTarget("tap_project")
+                                            .wizardTarget("view_on_board", style: .row)
                                     }
-                                )
+                                    // Tutorial: Capture frame of the focused project for swipe indicator
+                                    .background(
+                                        GeometryReader { geo in
+                                            Color.clear
+                                                .onAppear {
+                                                    if isFocusedProject && tutorialMode && tutorialPhase == .projectListSwipe {
+                                                        postProjectCardFrame(geo.frame(in: .global))
+                                                    }
+                                                }
+                                                .onChange(of: tutorialPhase) { _, newPhase in
+                                                    if isFocusedProject && tutorialMode && newPhase == .projectListSwipe {
+                                                        postProjectCardFrame(geo.frame(in: .global))
+                                                    }
+                                                }
+                                        }
+                                    )
+
+                                if vinylFilter {
+                                    VinylOrderStrip(
+                                        project: project,
+                                        marker: vinylMarker(for: project),
+                                        canMark: canMarkVinyl,
+                                        onMarkOrdered: { markVinylOrdered(project) }
+                                    )
+                                }
+                            }
+                            // Tutorial mode: Grey out non-focused projects during status demo/swipe phases
+                            // Also grey out focused card during status transition animation
+                            // Also dim during closedProjectsScroll to highlight the closed section button
+                            .opacity(cardOpacity(for: project, isFocused: isFocusedProject) * (showClosedSectionOverlay ? 0.3 : 1.0))
+                            .animation(OPSStyle.Animation.standard, value: showClosedSectionOverlay)
+                            .allowsHitTesting(!shouldGreyOutProject(project) && !showClosedSectionOverlay)
                         }
 
                         // Closed and Archived section buttons

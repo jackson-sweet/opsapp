@@ -28,6 +28,8 @@ struct JobBoardView: View {
     @State private var activeOnly = false
     @State private var assignedToMe = false
     @State private var prioritizeMode = false
+    @State private var vinylOrderedFilter = false
+    @Query private var taskTypes: [TaskType]
     @State private var selectedProjectStatuses: Set<Status> = []
     @State private var selectedProjectTeamMemberIds: Set<String> = []
     @AppStorage("projectListSortOrder") private var projectSortOptionRaw: String = ProjectSortOption.latestEdited.rawValue
@@ -305,6 +307,19 @@ struct JobBoardView: View {
         }
     }
 
+    /// True when the company defines at least one vinyl task type — gates the
+    /// VINYL filter pill so it stays invisible for trades that never do vinyl.
+    private var companyHasVinylWork: Bool {
+        let companyId = dataController.currentUser?.companyId
+        let displaysById = Dictionary(
+            taskTypes
+                .filter { $0.deletedAt == nil && (companyId == nil || $0.companyId == companyId) }
+                .map { ($0.id, $0.display) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return !VinylTaskFilter.vinylTaskTypeIds(displaysById: displaysById).isEmpty
+    }
+
     // Action row: filter + active toggle + assigned to me + prioritize.
     @ViewBuilder private var actionRowSection: some View {
         if !tutorialMode && (selectedSection == .projects || selectedSection == .myProjects || selectedSection == .tasks || selectedSection == .kanban) {
@@ -373,6 +388,19 @@ struct JobBoardView: View {
                         .buttonStyle(.plain)
                     }
 
+                    // VINYL procurement filter — only shown when the company
+                    // actually runs vinyl work, so it never clutters other trades.
+                    if (selectedSection == .projects || selectedSection == .myProjects) && companyHasVinylWork {
+                        Button(action: {
+                            withAnimation(OPSStyle.Animation.panel) { vinylOrderedFilter.toggle() }
+                        }) {
+                            JobBoardFilterPill(title: "VINYL", isOn: vinylOrderedFilter)
+                                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -406,7 +434,8 @@ struct JobBoardView: View {
                     showingFilters: $showingFilters,
                     showingFilterSheet: $showingProjectListFilterSheet,
                     activeOnly: activeOnly,
-                    assignedToMe: assignedToMe
+                    assignedToMe: assignedToMe,
+                    vinylFilter: vinylOrderedFilter
                 )
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
             } else {
@@ -419,7 +448,8 @@ struct JobBoardView: View {
                         showingFilters: $showingFilters,
                         showingFilterSheet: $showingProjectListFilterSheet,
                         activeOnly: activeOnly,
-                        assignedToMe: assignedToMe
+                        assignedToMe: assignedToMe,
+                        vinylFilter: vinylOrderedFilter
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                 case .projects:
@@ -432,7 +462,8 @@ struct JobBoardView: View {
                             showingFilters: $showingFilters,
                             showingFilterSheet: $showingProjectListFilterSheet,
                             activeOnly: activeOnly,
-                            assignedToMe: assignedToMe
+                            assignedToMe: assignedToMe,
+                            vinylFilter: vinylOrderedFilter
                         )
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
                     }

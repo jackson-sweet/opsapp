@@ -724,6 +724,17 @@ struct DeckDrawingData: Codable {
     /// (deck-catalog integration spec § 3.2 + § 4.2).
     var components: [DesignComponentRow]? = nil
 
+    // MARK: - Materials list (deck-tab § materials)
+
+    /// Crew-editable consumable presets for the deck-tab materials list — stick
+    /// lengths + glue coverage. Absent on legacy JSON and non-vinyl designs;
+    /// the UI substitutes `DeckMaterialsSettings()` defaults when nil.
+    var materialsSettings: DeckMaterialsSettings? = nil
+
+    /// The materials list frozen at MARK ORDERED. Present ⇒ the tab renders this
+    /// snapshot, locks the presets, and flags drift. Cleared by CLEAR ORDERED.
+    var orderedMaterials: DeckMaterialsSnapshot? = nil
+
     enum CodingKeys: String, CodingKey {
         case vertices
         case edges
@@ -737,6 +748,8 @@ struct DeckDrawingData: Codable {
         case levels
         case levelConnections
         case components
+        case materialsSettings
+        case orderedMaterials
     }
 
     init() {}
@@ -755,6 +768,12 @@ struct DeckDrawingData: Codable {
         self.levels = try c.decodeIfPresent([DeckLevel].self, forKey: .levels) ?? []
         self.levelConnections = try c.decodeIfPresent([LevelConnection].self, forKey: .levelConnections) ?? []
         self.components = try c.decodeIfPresent([DesignComponentRow].self, forKey: .components)
+        // Absent on all legacy JSON — `decodeIfPresent` nils both nodes so every
+        // older drawing round-trips. A corrupt `orderedMaterials` (e.g. missing
+        // `orderedAt`) throws inside its own decode; catch it here so a bad
+        // snapshot nils gracefully instead of failing the whole drawing decode.
+        self.materialsSettings = try c.decodeIfPresent(DeckMaterialsSettings.self, forKey: .materialsSettings)
+        self.orderedMaterials = try? c.decodeIfPresent(DeckMaterialsSnapshot.self, forKey: .orderedMaterials)
     }
 
     // MARK: - Vertex Helpers

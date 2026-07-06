@@ -3,7 +3,7 @@
 import CoreGraphics
 import Foundation
 
-enum VinylLayoutDirection: String, CaseIterable, Identifiable {
+enum VinylLayoutDirection: String, Codable, CaseIterable, Identifiable {
     case automatic
     case lengthwise
     case widthwise
@@ -19,7 +19,7 @@ enum VinylLayoutDirection: String, CaseIterable, Identifiable {
     }
 }
 
-struct VinylOrderSettings: Equatable {
+struct VinylOrderSettings: Equatable, Codable {
     var color: String
     var catalogItemId: String?
     var catalogVariantId: String?
@@ -31,6 +31,18 @@ struct VinylOrderSettings: Equatable {
     /// Minimum leftover width (inches) for a remnant to be worth banking as an
     /// offcut. Below this it is treated as scrap and neither reused nor banked.
     var offcutMinWidthInches: Double
+
+    enum CodingKeys: String, CodingKey {
+        case color
+        case catalogItemId
+        case catalogVariantId
+        case rollWidthInches
+        case seamOverlapInches
+        case edgeWrapInches
+        case direction
+        case allowsDirectionalChanges
+        case offcutMinWidthInches
+    }
 
     init(
         color: String,
@@ -52,6 +64,21 @@ struct VinylOrderSettings: Equatable {
         self.direction = direction
         self.allowsDirectionalChanges = allowsDirectionalChanges
         self.offcutMinWidthInches = offcutMinWidthInches
+    }
+
+    /// Custom decode so partial / legacy JSON round-trips with `.default`'s
+    /// values instead of throwing on a missing key (DeckGeometry house style).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.color = try c.decodeIfPresent(String.self, forKey: .color) ?? ""
+        self.catalogItemId = try c.decodeIfPresent(String.self, forKey: .catalogItemId)
+        self.catalogVariantId = try c.decodeIfPresent(String.self, forKey: .catalogVariantId)
+        self.rollWidthInches = try c.decodeIfPresent(Double.self, forKey: .rollWidthInches) ?? 72
+        self.seamOverlapInches = try c.decodeIfPresent(Double.self, forKey: .seamOverlapInches) ?? 1.5
+        self.edgeWrapInches = try c.decodeIfPresent(Double.self, forKey: .edgeWrapInches) ?? 6
+        self.direction = try c.decodeIfPresent(VinylLayoutDirection.self, forKey: .direction) ?? .automatic
+        self.allowsDirectionalChanges = try c.decodeIfPresent(Bool.self, forKey: .allowsDirectionalChanges) ?? false
+        self.offcutMinWidthInches = try c.decodeIfPresent(Double.self, forKey: .offcutMinWidthInches) ?? 6
     }
 
     static let `default` = VinylOrderSettings(
@@ -98,6 +125,40 @@ struct VinylOrderSurfaceEdge: Identifiable, Equatable {
     let end: CGPoint
     let edgeType: EdgeType
     let label: String?
+    /// Boundary vertex ids for this segment (face order). Used by
+    /// `DeckMaterialsEngine`'s interior-seam test — a pair shared by two faces is
+    /// an interior seam and gets no flashing. Nil ⇒ never treated as interior
+    /// (preview fallback edges carry no vertex identity).
+    let startVertexId: String?
+    let endVertexId: String?
+    /// True when the matched deck edge carries a parapet-wall railing — parapet
+    /// edges get 90° flash like a house edge.
+    let isParapet: Bool
+    /// The matched deck edge's real-world dimension (inches) when > 0, else nil.
+    /// `DeckMaterialsEngine` falls back to canvas length ÷ scale when nil.
+    let dimensionInches: Double?
+
+    init(
+        id: String,
+        start: CGPoint,
+        end: CGPoint,
+        edgeType: EdgeType,
+        label: String?,
+        startVertexId: String? = nil,
+        endVertexId: String? = nil,
+        isParapet: Bool = false,
+        dimensionInches: Double? = nil
+    ) {
+        self.id = id
+        self.start = start
+        self.end = end
+        self.edgeType = edgeType
+        self.label = label
+        self.startVertexId = startVertexId
+        self.endVertexId = endVertexId
+        self.isParapet = isParapet
+        self.dimensionInches = dimensionInches
+    }
 }
 
 /// A remnant the cut plan produces — leftover roll width × the strip length —

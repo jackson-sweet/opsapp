@@ -153,6 +153,13 @@ struct DeckTabView: View {
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .animation(OPSStyle.Animation.fast, value: viewMode)
             .accessibilityAction(named: Text("Expand deck to fullscreen")) { onRequestFullscreen() }
+
+            // Auto-calculated vinyl materials list — renders nothing for
+            // non-vinyl designs, so the tab is unchanged for those. Scrolls
+            // beneath the viewport (this tab lives in ProjectDetailsView's
+            // ScrollView).
+            DeckMaterialsSection(design: design, project: project)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
     }
 

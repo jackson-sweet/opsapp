@@ -28,11 +28,15 @@ enum DeckMaterialsResolver {
         taskTypeDisplays: [String],
         catalogNameById: [String: String]
     ) -> Resolved {
-        guard let scale = VinylOrderScaleResolver.resolve(data) else {
-            return Resolved(scale: nil, vinylInputs: [], materials: nil)
-        }
+        // Strict scale gates the materials math. Detection does NOT need it — a
+        // surface's vinyl-ness is a material question, not a geometry one — so
+        // build inputs at a display-safe scale to resolve the vinyl SET even when
+        // the strict scale is nil. That lets the tab tell "no vinyl set" (hidden)
+        // apart from "vinyl set but unconfirmed scale" (CONFIRM ONE EDGE LENGTH).
+        let strictScale = VinylOrderScaleResolver.resolve(data)
+        let scaleForInputs = strictScale ?? data.effectiveScaleFactor
 
-        let allInputs = DeckMaterialsInputBuilder.surfaceInputs(for: data, scale: scale)
+        let allInputs = DeckMaterialsInputBuilder.surfaceInputs(for: data, scale: scaleForInputs)
         let jobSignal = DeckVinylDetection.jobHasVinylSignal(
             taskTypeDisplays: taskTypeDisplays,
             vinylCatalogItemId: data.config.vinylCatalogItemId
@@ -46,8 +50,11 @@ enum DeckMaterialsResolver {
             .filter { vinylIds.contains($0.input.id) }
             .map(\.input)
 
-        guard !vinylInputs.isEmpty else {
-            return Resolved(scale: scale, vinylInputs: [], materials: nil)
+        // Materials only when the strict scale holds AND a vinyl set exists.
+        // vinylInputs are already built at strictScale in that case (they equal
+        // scaleForInputs), so the geometry is accurate.
+        guard strictScale != nil, !vinylInputs.isEmpty else {
+            return Resolved(scale: strictScale, vinylInputs: vinylInputs, materials: nil)
         }
 
         let facesByLevel = data.isMultiLevel
@@ -60,6 +67,6 @@ enum DeckMaterialsResolver {
             settings: settings,
             vinylSettings: vinylSettings
         )
-        return Resolved(scale: scale, vinylInputs: vinylInputs, materials: materials)
+        return Resolved(scale: strictScale, vinylInputs: vinylInputs, materials: materials)
     }
 }

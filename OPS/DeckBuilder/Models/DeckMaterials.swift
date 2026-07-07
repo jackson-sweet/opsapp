@@ -141,6 +141,18 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
     /// at all — either would make a rebuilt count diverge from the live side and
     /// false-flag DESIGN CHANGED SINCE ORDER the instant the design was ordered.
     var vinylSurfaceCount: Int
+    /// How the vinyl was purchased at order time (spec § 3.3). `.cutList` is the
+    /// default and the legacy fallback; `.fullRolls` when whole rolls were bought.
+    var orderMode: VinylOrderMode
+    /// The full-roll length (feet) used when `orderMode == .fullRolls`, so the
+    /// ordered display reads the exact rolls that were bought (`N ROLLS @ L' × W"`).
+    var fullRollLengthFeet: Double
+    /// Whole rolls ordered — present only in `.fullRolls` mode, nil in cut-list.
+    var orderedRollCount: Int?
+    /// True when any confirmed quantity differed from its calculated value at
+    /// order time — drives the subtle ADJUSTED tag on the ordered card. NEVER
+    /// affects drift (which is geometry-only); a purely presentational flag.
+    var isOrderedEdited: Bool
 
     enum CodingKeys: String, CodingKey {
         case orderedAt
@@ -160,6 +172,10 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         case glueAreaSqFt
         case glueBuckets
         case vinylSurfaceCount
+        case orderMode
+        case fullRollLengthFeet
+        case orderedRollCount
+        case isOrderedEdited
     }
 
     init(
@@ -179,7 +195,11 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         ninetySticks: Int,
         glueAreaSqFt: Double,
         glueBuckets: Int,
-        vinylSurfaceCount: Int
+        vinylSurfaceCount: Int,
+        orderMode: VinylOrderMode = .cutList,
+        fullRollLengthFeet: Double = 75,
+        orderedRollCount: Int? = nil,
+        isOrderedEdited: Bool = false
     ) {
         self.orderedAt = orderedAt
         self.orderedBy = orderedBy
@@ -198,6 +218,10 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         self.glueAreaSqFt = glueAreaSqFt
         self.glueBuckets = glueBuckets
         self.vinylSurfaceCount = vinylSurfaceCount
+        self.orderMode = orderMode
+        self.fullRollLengthFeet = fullRollLengthFeet
+        self.orderedRollCount = orderedRollCount
+        self.isOrderedEdited = isOrderedEdited
     }
 
     init(from decoder: Decoder) throws {
@@ -227,5 +251,12 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         // snapshot written since carries the explicit count.
         self.vinylSurfaceCount = try c.decodeIfPresent(Int.self, forKey: .vinylSurfaceCount)
             ?? Set(self.cutGroups.map(\.surfaceLabel)).count
+        // Full-roll / ordered-record additions (spec § 3.3). Calc-derived legacy
+        // fallbacks: pre-existing snapshots (none in prod) were exact cut-list
+        // orders, so `.cutList`, the 75' default, no roll count, and unedited.
+        self.orderMode = try c.decodeIfPresent(VinylOrderMode.self, forKey: .orderMode) ?? .cutList
+        self.fullRollLengthFeet = try c.decodeIfPresent(Double.self, forKey: .fullRollLengthFeet) ?? 75
+        self.orderedRollCount = try c.decodeIfPresent(Int.self, forKey: .orderedRollCount)
+        self.isOrderedEdited = try c.decodeIfPresent(Bool.self, forKey: .isOrderedEdited) ?? false
     }
 }

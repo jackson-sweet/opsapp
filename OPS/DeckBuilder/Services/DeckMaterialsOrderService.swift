@@ -13,6 +13,58 @@
 import Foundation
 import Supabase
 
+/// The actually-ordered quantities a human confirmed at MARK ORDERED time. The
+/// calculator's suggestion pre-fills every field; each is then nudgeable in the
+/// order-confirm sheet. What the operator confirms here becomes the FROZEN
+/// ordered record — but the geometry drift key is never derived from these edits,
+/// so a spare-stick or full-roll rounding never flags DESIGN CHANGED SINCE ORDER.
+struct DeckMaterialsOrderConfirmation: Equatable {
+    var orderMode: VinylOrderMode
+    var fullRollLengthFeet: Double
+    /// Ordered vinyl area (cut-list mode). In roll mode this carries the calc
+    /// reference sq ft — the operator edits `rollCount`, not this.
+    var vinylOrderedSqFt: Int
+    /// Whole rolls ordered (roll mode only; ignored in cut-list mode).
+    var rollCount: Int
+    var dripSticks: Int
+    var clipSticks: Int
+    var ninetySticks: Int
+    var glueBuckets: Int
+
+    /// The unedited confirmation — every field pre-filled from the calculated
+    /// materials list. `VinylOrderConfirmSheet` starts here and lets the operator
+    /// nudge; `markOrdered` falls back to this when no confirmation is supplied.
+    static func calculated(
+        from materials: DeckMaterialsList,
+        settings: DeckMaterialsSettings
+    ) -> DeckMaterialsOrderConfirmation {
+        DeckMaterialsOrderConfirmation(
+            orderMode: settings.orderMode,
+            fullRollLengthFeet: settings.fullRollLengthFeet,
+            vinylOrderedSqFt: materials.vinylPlan.totalOrderedSqFt,
+            rollCount: materials.rollCount,
+            dripSticks: materials.dripEdge.sticks,
+            clipSticks: materials.clip.sticks,
+            ninetySticks: materials.ninetyFlash.sticks,
+            glueBuckets: materials.glueBuckets
+        )
+    }
+
+    /// True when any confirmed quantity differs from the calculated value —
+    /// vinyl (rolls in roll mode, sq ft in cut-list mode) or any stick/bucket
+    /// count. Mode and roll length are settings, not edits, so they are excluded.
+    func differs(fromCalculated calc: DeckMaterialsOrderConfirmation) -> Bool {
+        let vinylEdited = orderMode == .fullRolls
+            ? rollCount != calc.rollCount
+            : vinylOrderedSqFt != calc.vinylOrderedSqFt
+        return vinylEdited
+            || dripSticks != calc.dripSticks
+            || clipSticks != calc.clipSticks
+            || ninetySticks != calc.ninetySticks
+            || glueBuckets != calc.glueBuckets
+    }
+}
+
 @MainActor
 struct DeckMaterialsOrderService {
     let userId: String
@@ -28,10 +80,19 @@ struct DeckMaterialsOrderService {
         design: DeckDesign,
         materials: DeckMaterialsList,
         settings: DeckMaterialsSettings,
-        vinylSettings: VinylOrderSettings
+        vinylSettings: VinylOrderSettings,
+        confirmed: DeckMaterialsOrderConfirmation? = nil
     ) async throws {
         let now = Date()
         let priorSnapshot = design.drawingData.orderedMaterials
+
+        // The confirmed order — the operator's actual quantities, or the plain
+        // calculated values when no confirm step ran. `isOrderedEdited` compares
+        // against the calc so a hand-edit is remembered; the geometry drift key
+        // below still comes straight from `materials` (never the edits).
+        let calc = DeckMaterialsOrderConfirmation.calculated(from: materials, settings: settings)
+        let confirmation = confirmed ?? calc
+        let isOrderedEdited = confirmation.differs(fromCalculated: calc)
 
         // Purchased cut groups only — the snapshot shows "what was ordered".
         let purchasedGroups = VinylCutGroup
@@ -51,22 +112,30 @@ struct DeckMaterialsOrderService {
             settings: settings,
             vinylSettings: vinylSettings,
             vinylColor: vinylSettings.color,
-            vinylOrderedSqFt: materials.vinylPlan.totalOrderedSqFt,
+            // CONFIRMED display quantities (calc value when unedited).
+            vinylOrderedSqFt: confirmation.vinylOrderedSqFt,
             vinylSurfaceAreaSqFt: materials.vinylPlan.totalSurfaceAreaSqFt,
+            // Drift-relevant fields stay CALC — the snapshot's cut geometry,
+            // flashing exact feet, glue area and surface count must mirror the
+            // live recompute or an edit would false-flag DESIGN CHANGED.
             cutGroups: purchasedGroups,
             dripEdgeFeet: materials.dripEdge.exactFeet,
-            dripSticks: materials.dripEdge.sticks,
+            dripSticks: confirmation.dripSticks,
             clipFeet: materials.clip.exactFeet,
-            clipSticks: materials.clip.sticks,
+            clipSticks: confirmation.clipSticks,
             ninetyFeet: materials.ninetyFlash.exactFeet,
-            ninetySticks: materials.ninetyFlash.sticks,
+            ninetySticks: confirmation.ninetySticks,
             glueAreaSqFt: materials.glueAreaSqFt,
-            glueBuckets: materials.glueBuckets,
+            glueBuckets: confirmation.glueBuckets,
             // Populate from the LIVE materials so the snapshot and the tab's live
             // recompute count vinyl surfaces identically — reconstructing this
             // from `cutGroups` (shared labels collapse, degenerate faces drop)
             // would false-flag drift the instant the design was ordered.
-            vinylSurfaceCount: materials.driftKey.vinylSurfaceCount
+            vinylSurfaceCount: materials.driftKey.vinylSurfaceCount,
+            orderMode: confirmation.orderMode,
+            fullRollLengthFeet: confirmation.fullRollLengthFeet,
+            orderedRollCount: confirmation.orderMode == .fullRolls ? confirmation.rollCount : nil,
+            isOrderedEdited: isOrderedEdited
         )
 
         // (1) Local-first snapshot — the accessor marks needsSync + updatedAt.

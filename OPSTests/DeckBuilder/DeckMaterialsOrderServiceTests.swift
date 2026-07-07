@@ -86,6 +86,27 @@ final class DeckMaterialsOrderServiceTests: XCTestCase {
         return try XCTUnwrap(design.drawingData.orderedMaterials)
     }
 
+    /// Mark ordered with an explicit confirmation + settings, returning both the
+    /// design (for round-trip assertions) and the frozen snapshot.
+    private func markOrderedSnapshot(
+        _ materials: DeckMaterialsList,
+        confirmed: DeckMaterialsOrderConfirmation?,
+        settings: DeckMaterialsSettings,
+        vinylSettings: VinylOrderSettings = .default
+    ) async throws -> (design: DeckDesign, snapshot: DeckMaterialsSnapshot) {
+        let design = DeckDesign(companyId: "co-1")
+        let service = DeckMaterialsOrderService(userId: "user-1") { _, _ in }
+        try await service.markOrdered(
+            projectId: "proj-1",
+            design: design,
+            materials: materials,
+            settings: settings,
+            vinylSettings: vinylSettings,
+            confirmed: confirmed
+        )
+        return (design, try XCTUnwrap(design.drawingData.orderedMaterials))
+    }
+
     func testMarkOrderedWritesSnapshotAndTrio() async throws {
         let design = DeckDesign(companyId: "co-1")
         var captured: [String: AnyJSON]?
@@ -230,5 +251,105 @@ final class DeckMaterialsOrderServiceTests: XCTestCase {
             vinylSettings: .default
         )
         XCTAssertNotEqual(DeckMaterialsDriftKey(snapshot: snapshot), moved.driftKey)
+    }
+
+    // MARK: - Editable ordered record (spec § 3.3 / § 6)
+
+    /// Confirming with hand-edited quantities freezes the EDITED values and flags
+    /// `isOrderedEdited` — yet the geometry drift key is byte-identical to the
+    /// live materials, so a spare-stick order is drift-clean at the order instant.
+    func testConfirmWithEditsStoresEditedValuesAndFlagsEdited() async throws {
+        let materials = rectMaterials()
+        var confirmation = DeckMaterialsOrderConfirmation.calculated(from: materials, settings: DeckMaterialsSettings())
+        // Operator bought spare sticks + rounded glue up.
+        let editedDrip = confirmation.dripSticks + 2
+        let editedGlue = confirmation.glueBuckets + 1
+        confirmation.dripSticks = editedDrip
+        confirmation.glueBuckets = editedGlue
+
+        let (_, snapshot) = try await markOrderedSnapshot(
+            materials, confirmed: confirmation, settings: DeckMaterialsSettings()
+        )
+
+        XCTAssertEqual(snapshot.dripSticks, editedDrip)
+        XCTAssertEqual(snapshot.glueBuckets, editedGlue)
+        XCTAssertTrue(snapshot.isOrderedEdited)
+        // Untouched quantities keep the calc value.
+        XCTAssertEqual(snapshot.clipSticks, materials.clip.sticks)
+        XCTAssertEqual(snapshot.ninetySticks, materials.ninetyFlash.sticks)
+        // Drift-clean: the edits never moved the geometry key.
+        XCTAssertEqual(DeckMaterialsDriftKey(snapshot: snapshot), materials.driftKey)
+    }
+
+    /// Confirming the calculated values unchanged — or supplying no confirmation
+    /// at all — leaves `isOrderedEdited` false.
+    func testConfirmUnchangedIsNotFlaggedEdited() async throws {
+        let materials = rectMaterials()
+        let calc = DeckMaterialsOrderConfirmation.calculated(from: materials, settings: DeckMaterialsSettings())
+
+        let (_, explicit) = try await markOrderedSnapshot(
+            materials, confirmed: calc, settings: DeckMaterialsSettings()
+        )
+        XCTAssertFalse(explicit.isOrderedEdited)
+        XCTAssertEqual(explicit.dripSticks, materials.dripEdge.sticks)
+
+        // The no-confirmation path (legacy callers) is also unedited.
+        let implicit = try await markOrderedSnapshot(materials)
+        XCTAssertFalse(implicit.isOrderedEdited)
+        XCTAssertNil(implicit.orderedRollCount)
+        XCTAssertEqual(implicit.orderMode, .cutList)
+    }
+
+    /// Roll-mode order freezes the roll count + full-roll length and round-trips
+    /// them through the design JSON. `orderedRollCount` is nil in cut-list mode.
+    func testRollModeSnapshotRoundTripsRollCount() async throws {
+        var settings = DeckMaterialsSettings()
+        settings.orderMode = .fullRolls
+        settings.fullRollLengthFeet = 75
+        let materials = DeckMaterialsEngine.compute(
+            vinylInputs: [rectSurface(id: "s1", label: "Main", width: 144, height: 240, houseEdgeIndex: 3)],
+            allDetectedFacesByLevel: [],
+            settings: settings,
+            vinylSettings: .default
+        )
+        XCTAssertGreaterThan(materials.rollCount, 0)
+        let confirmation = DeckMaterialsOrderConfirmation.calculated(from: materials, settings: settings)
+
+        let (design, snapshot) = try await markOrderedSnapshot(
+            materials, confirmed: confirmation, settings: settings
+        )
+        XCTAssertEqual(snapshot.orderMode, .fullRolls)
+        XCTAssertEqual(snapshot.fullRollLengthFeet, 75)
+        XCTAssertEqual(snapshot.orderedRollCount, materials.rollCount)
+        XCTAssertFalse(snapshot.isOrderedEdited)
+
+        // Survives a full design-JSON round-trip.
+        let decoded = try XCTUnwrap(DeckDrawingData.fromJSON(design.drawingData.toJSON()))
+        XCTAssertEqual(decoded.orderedMaterials?.orderMode, .fullRolls)
+        XCTAssertEqual(decoded.orderedMaterials?.fullRollLengthFeet, 75)
+        XCTAssertEqual(decoded.orderedMaterials?.orderedRollCount, materials.rollCount)
+    }
+
+    /// Editing the roll count in roll mode flags edited and stores the edited
+    /// count — a full-roll rounding is remembered without touching drift.
+    func testRollModeEditedRollCountFlagsEdited() async throws {
+        var settings = DeckMaterialsSettings()
+        settings.orderMode = .fullRolls
+        settings.fullRollLengthFeet = 75
+        let materials = DeckMaterialsEngine.compute(
+            vinylInputs: [rectSurface(id: "s1", label: "Main", width: 144, height: 240, houseEdgeIndex: 3)],
+            allDetectedFacesByLevel: [],
+            settings: settings,
+            vinylSettings: .default
+        )
+        var confirmation = DeckMaterialsOrderConfirmation.calculated(from: materials, settings: settings)
+        confirmation.rollCount = materials.rollCount + 1 // bought a spare roll
+
+        let (_, snapshot) = try await markOrderedSnapshot(
+            materials, confirmed: confirmation, settings: settings
+        )
+        XCTAssertEqual(snapshot.orderedRollCount, materials.rollCount + 1)
+        XCTAssertTrue(snapshot.isOrderedEdited)
+        XCTAssertEqual(DeckMaterialsDriftKey(snapshot: snapshot), materials.driftKey)
     }
 }

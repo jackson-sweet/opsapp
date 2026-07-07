@@ -887,7 +887,7 @@ struct MonthGridView: View {
                 }
             }
             .sheet(item: $sheetDate) { identifiableDate in
-                DayDetailsSheet(date: identifiableDate.date, viewModel: viewModel, cache: cache)
+                DayDetailsSheet(date: identifiableDate.date, viewModel: viewModel)
                     .opsSheet(detents: [.medium, .large])
             }
             .sheet(isPresented: $showMonthPicker) {
@@ -1533,24 +1533,19 @@ private struct MonthGridReschedulePresenter: View {
 struct DayDetailsSheet: View {
     let date: Date
     @ObservedObject var viewModel: CalendarViewModel
-    @ObservedObject var cache: MonthGridCache
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var dataController: DataController
     @EnvironmentObject var appState: AppState
 
-    private var eventPreviews: [ScheduledTaskPreview] {
-        cache.events(for: date)
-    }
-
     private var scheduledTasks: [ProjectTask] {
-        // User-event entries use a "userevent:" prefix on eventId — skip them
-        // here so they don't get resolved against the task store (Bug 1).
-        let taskIds = Set(eventPreviews
-            .map { $0.eventId }
-            .filter { !$0.hasPrefix("userevent:") })
-        return taskIds.compactMap { id in
-            dataController.getTask(id: id)
-        }
+        // Resolve from the calendar's source of truth — the same path day/week
+        // view uses — not the month grid's derived cache. That cache is built
+        // asynchronously and only rebuilt on a handful of triggers, so it can be
+        // empty or stale the moment the sheet reads it, which surfaced as "the day
+        // sheet is not picking up any events in month view" while day view worked.
+        // scheduledTasks(for:) is scope- and filter-aware and always current, so
+        // the month day sheet now matches day view exactly.
+        viewModel.scheduledTasks(for: date)
     }
 
     /// User-owned events overlapping this date (Bug 1 — surface time-off /

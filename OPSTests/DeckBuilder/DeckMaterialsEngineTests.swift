@@ -333,4 +333,72 @@ final class DeckMaterialsEngineTests: XCTestCase {
         )
         XCTAssertNotEqual(list1.driftKey, list3.driftKey)
     }
+
+    // MARK: - Full-roll ordering (spec § 4.2)
+
+    /// Cut-list mode (the default) leaves the roll figures at 0 — nothing to pack.
+    func testCutListModeLeavesRollFieldsZero() {
+        let list = DeckMaterialsEngine.compute(
+            vinylInputs: [rectInput()],
+            allDetectedFacesByLevel: [],
+            settings: defaults,              // .cutList
+            vinylSettings: .default
+        )
+        XCTAssertEqual(list.rollCount, 0)
+        XCTAssertEqual(list.overlengthStripCount, 0)
+    }
+
+    /// Full-roll mode packs the plan's PURCHASED strips into whole rolls. The
+    /// engine must feed the packer exactly those strips at the configured roll
+    /// length — verified against an independent `VinylRollPacker` call.
+    func testFullRollModePacksPurchasedCuts() {
+        var s = defaults
+        s.orderMode = .fullRolls
+        s.fullRollLengthFeet = 75
+        let list = DeckMaterialsEngine.compute(
+            vinylInputs: [rectInput()],
+            allDetectedFacesByLevel: [],
+            settings: s,
+            vinylSettings: .default
+        )
+        let strips = list.vinylPlan.surfaces.flatMap(\.purchasedCuts).map { $0.lengthInches / 12.0 }
+        let expected = VinylRollPacker.rollsNeeded(stripLengthsFeet: strips, rollLengthFeet: 75)
+        XCTAssertEqual(list.rollCount, expected.rollCount)
+        XCTAssertEqual(list.overlengthStripCount, expected.overlengthStripCount)
+        XCTAssertGreaterThan(list.rollCount, 0) // a real 12'×20' rect needs ≥1 roll
+    }
+
+    /// The full-roll length flows through: a short roll can never pack into fewer
+    /// rolls than a long one for the same design.
+    func testFullRollCountRespondsToRollLength() {
+        var short = defaults; short.orderMode = .fullRolls; short.fullRollLengthFeet = 25
+        var long = defaults;  long.orderMode = .fullRolls;  long.fullRollLengthFeet = 300
+        let shortList = DeckMaterialsEngine.compute(
+            vinylInputs: [rectInput()], allDetectedFacesByLevel: [], settings: short, vinylSettings: .default
+        )
+        let longList = DeckMaterialsEngine.compute(
+            vinylInputs: [rectInput()], allDetectedFacesByLevel: [], settings: long, vinylSettings: .default
+        )
+        XCTAssertGreaterThanOrEqual(shortList.rollCount, longList.rollCount)
+        XCTAssertGreaterThanOrEqual(longList.rollCount, 1)
+    }
+
+    /// THE core invariant (spec § 4.2): order mode is a purchasing choice, not a
+    /// design change — the geometry drift key is byte-identical across cut-list
+    /// and full-roll mode, so switching modes on an ordered design never flags
+    /// DESIGN CHANGED SINCE ORDER.
+    func testOrderModeDoesNotAffectDriftKey() {
+        let input = rectInput(houseEdgeIndex: 3)
+        var cut = defaults;  cut.orderMode = .cutList
+        var roll = defaults; roll.orderMode = .fullRolls; roll.fullRollLengthFeet = 75
+        let cutList = DeckMaterialsEngine.compute(
+            vinylInputs: [input], allDetectedFacesByLevel: [], settings: cut, vinylSettings: .default
+        )
+        let rollList = DeckMaterialsEngine.compute(
+            vinylInputs: [input], allDetectedFacesByLevel: [], settings: roll, vinylSettings: .default
+        )
+        XCTAssertEqual(cutList.driftKey, rollList.driftKey)
+        XCTAssertEqual(cutList.rollCount, 0)
+        XCTAssertGreaterThan(rollList.rollCount, 0)
+    }
 }

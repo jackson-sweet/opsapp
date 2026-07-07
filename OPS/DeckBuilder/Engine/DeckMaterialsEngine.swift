@@ -95,6 +95,14 @@ struct DeckMaterialsList: Equatable {
 
     var vinylPlan: VinylCutPlan
     var vinylSurfaceIds: Set<String>
+    /// Whole rolls to order when `settings.orderMode == .fullRolls` (the plan's
+    /// purchased strips packed into `settings.fullRollLengthFeet` rolls). 0 in
+    /// cut-list mode — a purchasing figure only, it never feeds the drift key.
+    var rollCount: Int
+    /// Purchased strips longer than a single full roll (cannot be produced at the
+    /// current roll length). Drives the CUT LONGER THAN ROLL warning; 0 in
+    /// cut-list mode.
+    var overlengthStripCount: Int
     var dripEdge: FlashingLine
     var clip: FlashingLine           // same exactFeet as dripEdge, own stick math
     var ninetyFlash: FlashingLine
@@ -150,6 +158,17 @@ enum DeckMaterialsEngine {
 
         let plan = VinylCutListEngine.makePlan(surfaces: vinylInputs, settings: vinylSettings)
 
+        // Full-roll ordering (spec § 4.2): pack the plan's PURCHASED strips into
+        // whole rolls of `fullRollLengthFeet`. Cut-list mode leaves both fields 0.
+        // `orderMode` is a purchasing choice and never touches the plan or the
+        // drift key below — switching modes must not flag DESIGN CHANGED.
+        let rollPack: RollPackResult = settings.orderMode == .fullRolls
+            ? VinylRollPacker.rollsNeeded(
+                stripLengthsFeet: plan.surfaces.flatMap(\.purchasedCuts).map { $0.lengthInches / 12.0 },
+                rollLengthFeet: settings.fullRollLengthFeet
+            )
+            : RollPackResult(rollCount: 0, overlengthStripCount: 0)
+
         let driftKey = DeckMaterialsDriftKey(
             cutPairs: plan.surfaces
                 .flatMap(\.cuts)
@@ -164,6 +183,8 @@ enum DeckMaterialsEngine {
         return DeckMaterialsList(
             vinylPlan: plan,
             vinylSurfaceIds: Set(vinylInputs.map(\.id)),
+            rollCount: rollPack.rollCount,
+            overlengthStripCount: rollPack.overlengthStripCount,
             dripEdge: dripLine,
             clip: clipLine,
             ninetyFlash: ninetyLine,

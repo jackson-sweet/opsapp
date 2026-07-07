@@ -110,6 +110,7 @@ struct LeadsTabView: View {
                         onAddLead: canManage ? { activeSheet = .add } : nil
                     )
                     .padding(.bottom, OPSStyle.Layout.spacing2)
+                    .background(OPSStyle.Colors.background.ignoresSafeArea(edges: .top))
 
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {

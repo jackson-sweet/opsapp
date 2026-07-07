@@ -135,6 +135,16 @@ final class IOSBugReportRegressionTests: XCTestCase {
         )
     }
 
+    func testUniversalSearchKeepsCompletedProjectsWithActiveResults() {
+        let completed = makeProject(id: "completed", status: .completed, teamIds: [])
+        let closed = makeProject(id: "closed", status: .closed, teamIds: [])
+        let archived = makeProject(id: "archived", status: .archived, teamIds: [])
+
+        XCTAssertFalse(UniversalSearchVisibilityPolicy.isInactiveProject(completed))
+        XCTAssertTrue(UniversalSearchVisibilityPolicy.isInactiveProject(closed))
+        XCTAssertTrue(UniversalSearchVisibilityPolicy.isInactiveProject(archived))
+    }
+
     private func makeProject(id: String, status: Status, teamIds: [String]) -> Project {
         let project = Project(id: id, title: id, status: status)
         project.setTeamMemberIds(teamIds)

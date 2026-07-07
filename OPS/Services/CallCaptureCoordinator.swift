@@ -45,6 +45,8 @@ final class CallCaptureCoordinator: ObservableObject {
     /// the capture sheet; the sheet clears it on dismiss.
     @Published var activeRequest: CallCaptureRequest?
 
+    private var deferredRequest: CallCaptureRequest?
+
     /// App Shortcut requests are queued (persisted, with a timestamp) rather
     /// than presented directly: the intent's `perform()` can run before
     /// permissions hydrate / before `MainTabView` mounts (cold launch, PIN,
@@ -60,15 +62,28 @@ final class CallCaptureCoordinator: ObservableObject {
 
     private init() {}
 
-    /// Present immediately. No-op when a request is already active so a stray
-    /// second invocation can't be silently lost behind a live sheet.
+    /// Present immediately, or defer one request when a sheet is already up.
+    /// Field shortcuts often fire while another modal is open; dropping them is
+    /// worse than showing the capture as soon as the active sheet leaves.
     func present(_ request: CallCaptureRequest) {
-        guard activeRequest == nil else { return }
+        guard activeRequest == nil else {
+            deferredRequest = request
+            return
+        }
         activeRequest = request
     }
 
     func dismiss() {
         activeRequest = nil
+        presentDeferredIfPossible()
+    }
+
+    @discardableResult
+    func presentDeferredIfPossible() -> Bool {
+        guard activeRequest == nil, let request = deferredRequest else { return false }
+        deferredRequest = nil
+        activeRequest = request
+        return true
     }
 
     /// Queue an App Shortcut capture for the next ready moment.
@@ -93,5 +108,11 @@ final class CallCaptureCoordinator: ObservableObject {
         guard ts > 0 else { return false }
         UserDefaults.standard.removeObject(forKey: shortcutQueueKey)
         return now.timeIntervalSince1970 - ts <= maxAge
+    }
+
+    func resetForTests() {
+        activeRequest = nil
+        deferredRequest = nil
+        UserDefaults.standard.removeObject(forKey: shortcutQueueKey)
     }
 }

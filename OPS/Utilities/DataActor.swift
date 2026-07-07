@@ -1291,11 +1291,16 @@ actor DataActor {
                 entityId: id,
                 fields: [
                     "content", "attachmentsJSON", "mentionedUserIdsString",
+                    "eventKind", "contentMetadataJSON",
                     "updatedAt", "deletedAt"
                 ]
             )
 
             if accept.contains("content") { existing.content = dto.content }
+            if accept.contains("eventKind") { existing.eventKind = dto.eventKind }
+            if accept.contains("contentMetadataJSON") {
+                existing.contentMetadataJSON = ProjectNoteDTO.metadataJSONString(from: dto.contentMetadata)
+            }
             if accept.contains("attachmentsJSON") {
                 if let attachments = dto.attachments, !attachments.isEmpty,
                    let data = try? JSONEncoder().encode(attachments),

@@ -247,7 +247,7 @@ class OneSignalService {
         try await sendToUser(
             userId: userId,
             title: "\(authorName) mentioned you",
-            body: "\"\(preview)\" on \(projectName)",
+            body: preview.isEmpty ? "on \(projectName)" : "\"\(preview)\" on \(projectName)",
             data: [
                 "type": "projectNoteMention",
                 "projectId": projectId,
@@ -264,6 +264,7 @@ class OneSignalService {
         userIds: [String],
         authorName: String,
         notePreview: String,
+        photoCount: Int = 0,
         projectName: String,
         projectId: String,
         noteId: String,
@@ -271,11 +272,17 @@ class OneSignalService {
     ) async throws {
         guard !userIds.isEmpty else { return }
 
-        let preview = notePreview.count > 80 ? String(notePreview.prefix(80)) + "..." : notePreview
+        let trimmed = notePreview.trimmingCharacters(in: .whitespacesAndNewlines)
+        let preview = trimmed.count > 80 ? String(trimmed.prefix(80)) + "..." : trimmed
+        // Photo-only posts read "added a photo"; any caption is carried in the
+        // body, which never renders empty quotes.
+        let action = photoCount > 0
+            ? (photoCount == 1 ? "added a photo" : "added \(photoCount) photos")
+            : "added a note"
         try await sendToUsers(
             userIds: userIds,
-            title: "\(authorName) added a note",
-            body: "\"\(preview)\" on \(projectName)",
+            title: "\(authorName) \(action)",
+            body: preview.isEmpty ? "on \(projectName)" : "\"\(preview)\" on \(projectName)",
             data: [
                 "type": "projectNoteAdded",
                 "projectId": projectId,
@@ -339,7 +346,7 @@ class OneSignalService {
         try await sendToUser(
             userId: userId,
             title: "\(authorName) commented on your photo",
-            body: "\"\(preview)\" on \(projectName)",
+            body: preview.isEmpty ? "on \(projectName)" : "\"\(preview)\" on \(projectName)",
             data: [
                 "type": "photo_comment",
                 "projectId": projectId,

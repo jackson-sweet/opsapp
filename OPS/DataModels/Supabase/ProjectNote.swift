@@ -18,6 +18,12 @@ class ProjectNote: Identifiable {
     var attachmentsJSON: String
     var mentionedUserIdsString: String
     var photoURL: String?
+    /// System-event discriminator (live `project_notes.event_kind`). nil for
+    /// user notes; `status_change` (web-written), `site_visit` (iOS packet).
+    var eventKind: String?
+    /// Raw JSON of `project_notes.content_metadata` — structured payload for
+    /// system entries (e.g. the site-visit packet summary). nil for user notes.
+    var contentMetadataJSON: String?
     var createdAt: Date
     var updatedAt: Date?
     var deletedAt: Date?

@@ -31,6 +31,22 @@ private enum ProjectTeamAssignmentSyncError: LocalizedError {
     }
 }
 
+enum ProjectAutoNamer {
+    static func derivedTitle(from address: String) -> String {
+        streetLine(from: address) ?? "New project"
+    }
+
+    static func streetLine(from fullAddress: String) -> String? {
+        let trimmed = fullAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let components = trimmed.components(separatedBy: ",")
+        if let street = components.first?.trimmingCharacters(in: .whitespaces), !street.isEmpty {
+            return street
+        }
+        return nil
+    }
+}
+
 /// Main controller for managing data, authentication, and app state
 class DataController: ObservableObject {
     // MARK: - Preview Detection
@@ -5025,6 +5041,13 @@ class DataController: ObservableObject {
 
         var changedFields: [String: Any] = ["address": sanitized]
 
+        if project.titleIsAuto {
+            let nextTitle = ProjectAutoNamer.derivedTitle(from: sanitized)
+            project.title = nextTitle
+            changedFields["title"] = nextTitle
+            changedFields["title_is_auto"] = true
+        }
+
         // Geocode the address to update lat/long for map display.
         // Three outcomes — each one syncs a consistent lat/lng to the server
         // so the map never lies about where the address is:
@@ -6017,7 +6040,7 @@ class DataController: ObservableObject {
         // Apply locally for known fields
         let descriptor = FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id == taskId })
         if let task = try? context.fetch(descriptor).first {
-            applyTaskFieldsLocally(task: task, fields: fields)
+            applyTaskFieldsLocally(task: task, fields: fields, context: context)
             task.needsSync = true
             try? context.save()
         }
@@ -6034,17 +6057,35 @@ class DataController: ObservableObject {
     }
 
     /// Apply AnyJSON field values to a local ProjectTask model
-    private func applyTaskFieldsLocally(task: ProjectTask, fields: [String: AnyJSON]) {
+    private func applyTaskFieldsLocally(task: ProjectTask, fields: [String: AnyJSON], context: ModelContext) {
         for (key, value) in fields {
             switch key {
             case "status":
                 if case .string(let v) = value { task.status = TaskStatus(rawValue: v) ?? task.status }
             case "task_notes":
                 if case .string(let v) = value { task.taskNotes = v }
+                if case .null = value { task.taskNotes = nil }
             case "custom_title":
                 if case .string(let v) = value { task.customTitle = v }
+                if case .null = value { task.customTitle = nil }
             case "task_color":
                 if case .string(let v) = value { task.taskColor = v }
+            case "task_type_id":
+                guard case .string(let v) = value else { break }
+                task.taskTypeId = v
+                let taskTypeId = v
+                let descriptor = FetchDescriptor<TaskType>(predicate: #Predicate { $0.id == taskTypeId })
+                if let taskType = try? context.fetch(descriptor).first {
+                    task.taskType = taskType
+                    if fields["task_color"] == nil {
+                        task.taskColor = taskType.color
+                    }
+                } else {
+                    task.taskType = nil
+                }
+            case "dependency_overrides":
+                if case .string(let v) = value { task.dependencyOverridesJSON = v }
+                if case .null = value { task.dependencyOverridesJSON = nil }
             case "team_member_ids":
                 if case .string(let v) = value { task.teamMemberIdsString = v }
             case "display_order":

@@ -68,6 +68,8 @@ struct InlineTaskRow: View {
     }
 
     private var hasType: Bool { taskType != nil }
+    private var hasTeam: Bool { teamMemberCount > 0 }
+    private var hasSchedule: Bool { task.startDate != nil }
 
     private var dateLabel: String {
         guard let start = task.startDate else { return "—" }
@@ -191,27 +193,33 @@ struct InlineTaskRow: View {
                 Image(systemName: OPSStyle.Icons.personTwo)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(
-                        teamMemberCount > 0
-                            ? OPSStyle.Colors.text2
+                        hasTeam
+                            ? OPSStyle.Colors.oliveTextM
                             : OPSStyle.Colors.text3
                     )
 
-                Text(teamMemberCount > 0 ? "\(teamMemberCount)" : "—")
+                Text(hasTeam ? "\(teamMemberCount)" : "—")
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(
-                        teamMemberCount > 0
-                            ? OPSStyle.Colors.text2
+                        hasTeam
+                            ? OPSStyle.Colors.oliveTextM
                             : OPSStyle.Colors.text3
                     )
+
+                if hasTeam {
+                    Image(systemName: OPSStyle.Icons.checkmark)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.oliveTextM)
+                }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing2)
             .padding(.vertical, OPSStyle.Layout.spacing2)
             .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-            .background(OPSStyle.Colors.surfaceInput)
+            .background(hasTeam ? OPSStyle.Colors.oliveFillM : OPSStyle.Colors.surfaceInput)
             .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                    .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(hasTeam ? OPSStyle.Colors.oliveLineM : OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(.plain)
@@ -228,28 +236,34 @@ struct InlineTaskRow: View {
                 Image(systemName: OPSStyle.Icons.calendar)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(
-                        task.startDate != nil
-                            ? OPSStyle.Colors.text2
+                        hasSchedule
+                            ? OPSStyle.Colors.oliveTextM
                             : OPSStyle.Colors.text3
                     )
 
                 Text(dateLabel)
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(
-                        task.startDate != nil
-                            ? OPSStyle.Colors.text2
+                        hasSchedule
+                            ? OPSStyle.Colors.oliveTextM
                             : OPSStyle.Colors.text3
                     )
                     .lineLimit(1)
+
+                if hasSchedule {
+                    Image(systemName: OPSStyle.Icons.checkmark)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.oliveTextM)
+                }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing2)
             .padding(.vertical, OPSStyle.Layout.spacing2)
             .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-            .background(OPSStyle.Colors.surfaceInput)
+            .background(hasSchedule ? OPSStyle.Colors.oliveFillM : OPSStyle.Colors.surfaceInput)
             .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                    .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(hasSchedule ? OPSStyle.Colors.oliveLineM : OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(.plain)

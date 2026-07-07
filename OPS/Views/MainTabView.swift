@@ -459,6 +459,7 @@ struct MainTabView: View {
         // ZStack (and therefore above PushInMessage at zIndex 2).
         .toastHost()
         .leadsToastSubscriber()
+        .opsKeyboardDoneToolbar()
         .sheet(isPresented: $appState.showingUniversalSearch) {
             UniversalSearchSheet()
                 .environmentObject(dataController)
@@ -993,6 +994,7 @@ struct MainTabView: View {
         // rather than letting it age out waiting for an external foreground event.
         .onChange(of: callCaptureCoordinator.activeRequest) { _, newValue in
             if newValue == nil {
+                if callCaptureCoordinator.presentDeferredIfPossible() { return }
                 presentPostCallPromptIfNeeded()
                 drainQueuedCaptureIfNeeded()
             }
@@ -1391,6 +1393,7 @@ struct MainTabView: View {
     /// before auth/permissions hydrate. Re-check for a short window until the
     /// request presents or expires. Idempotent — safe to call from every trigger.
     private func pumpCaptureDrain() {
+        if CallCaptureCoordinator.shared.presentDeferredIfPossible() { return }
         presentPostCallPromptIfNeeded()
         drainQueuedCaptureIfNeeded()
         guard !capturePumpActive, CallCaptureCoordinator.shared.hasQueuedShortcut else { return }

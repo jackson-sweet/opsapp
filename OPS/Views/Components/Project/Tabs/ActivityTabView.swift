@@ -78,6 +78,11 @@ struct ActivityTabView: View {
         return items.sorted { $0.createdAt > $1.createdAt }
     }
 
+    private var pinnedProjectDescription: String? {
+        let trimmed = (project.projectDescription ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     /// Comment count per photo URL for the carousel badge (bug e1f073ed).
     /// Explicit photo comments (photoURL set) always count; a feed note that
     /// attached this photo counts only when it carries text (a caption is a
@@ -99,6 +104,10 @@ struct ActivityTabView: View {
 
     private var notesFeed: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            if let pinnedProjectDescription {
+                ProjectDescriptionPinnedEntryView(description: pinnedProjectDescription)
+            }
+
             if notesViewModel.isLoading && notesViewModel.notes.isEmpty && notesViewModel.annotations.isEmpty {
                 HStack {
                     Spacer()
@@ -107,7 +116,7 @@ struct ActivityTabView: View {
                     Spacer()
                 }
                 .padding(.vertical, OPSStyle.Layout.spacing4)
-            } else if feedItems.isEmpty {
+            } else if feedItems.isEmpty && pinnedProjectDescription == nil {
                 // Empty state
                 VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: "note.text")
@@ -436,6 +445,36 @@ struct ActivityTabView: View {
                 }
             }
         }
+    }
+}
+
+private struct ProjectDescriptionPinnedEntryView: View {
+    let description: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Text("PINNED")
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Rectangle()
+                    .fill(OPSStyle.Colors.cardBorder)
+                    .frame(height: OPSStyle.Layout.Border.standard)
+
+                Text("PROJECT DESCRIPTION")
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
+
+            Text(description)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
+        .accessibilityElement(children: .combine)
     }
 }
 

@@ -498,20 +498,22 @@ class ProjectDetailsViewModel: ObservableObject {
         let taskDisplays = ((try? context.fetch(taskDescriptor)) ?? []).compactMap { $0.taskType?.display }
 
         let cid = project.companyId
+        let productDescriptor = FetchDescriptor<Product>(
+            predicate: #Predicate { $0.companyId == cid }
+        )
         let catalogDescriptor = FetchDescriptor<CatalogItem>(
             predicate: #Predicate { $0.companyId == cid && $0.deletedAt == nil }
         )
-        var blob: [String: String] = [:]
-        for item in (try? context.fetch(catalogDescriptor)) ?? [] {
-            blob[item.id] = (item.name + " " + (item.itemDescription ?? "")).lowercased()
-        }
+        let products = (try? context.fetch(productDescriptor)) ?? []
+        let catalogItems = (try? context.fetch(catalogDescriptor)) ?? []
+        let hints = DeckVinylHintBuilder.build(products: products, catalogItems: catalogItems)
 
         return DeckMaterialsResolver.resolve(
             data: data,
             settings: data.materialsSettings ?? DeckMaterialsSettings(),
             vinylSettings: .default,
             taskTypeDisplays: taskDisplays,
-            catalogNameById: blob
+            vinylHintByProductId: hints
         ).materials
     }
 

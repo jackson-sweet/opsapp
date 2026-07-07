@@ -1033,7 +1033,7 @@ struct VinylOrderSheet: View {
                         settings: materialsSettings,
                         vinylSettings: vinylSettings,
                         taskTypeDisplays: projectTaskTypeDisplays(projectId: projectId),
-                        catalogNameById: catalogNameBlob()
+                        vinylHintByProductId: vinylHintByProductId()
                     )
                     if let materials = resolved.materials {
                         try await service.markOrdered(
@@ -1080,13 +1080,18 @@ struct VinylOrderSheet: View {
         return tasks.compactMap { $0.taskType?.display }
     }
 
-    /// Catalog id → lowercased name+description blob for vinyl product resolution.
-    private func catalogNameBlob() -> [String: String] {
-        var blob: [String: String] = [:]
-        for item in catalogItems where item.companyId == companyId && item.deletedAt == nil {
-            blob[item.id] = (item.name + " " + (item.itemDescription ?? "")).lowercased()
-        }
-        return blob
+    /// `productId → vinyl-hint` blob for detection rule 3 — keyed by `Product.id`
+    /// (what an `AssignedItem.productId` references), each product's linked
+    /// catalog item folded in (see `DeckVinylHintBuilder`). Products fetched
+    /// on-demand; the catalog side reuses this sheet's live `@Query`.
+    private func vinylHintByProductId() -> [String: String] {
+        let cid = companyId
+        let productDescriptor = FetchDescriptor<Product>(
+            predicate: #Predicate { $0.companyId == cid }
+        )
+        let products = (try? modelContext.fetch(productDescriptor)) ?? []
+        let scopedCatalog = catalogItems.filter { $0.companyId == companyId && $0.deletedAt == nil }
+        return DeckVinylHintBuilder.build(products: products, catalogItems: scopedCatalog)
     }
 
     private func beginCreateOrderAndNote() {

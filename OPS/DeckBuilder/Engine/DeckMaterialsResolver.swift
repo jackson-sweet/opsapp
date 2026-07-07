@@ -4,7 +4,8 @@
 // only surface inputs → vinyl detection → materials engine. Shared by the deck-
 // tab materials section and the project-details MARK ORDERED path so both resolve
 // the vinyl set and the materials list identically. Pure — the caller injects the
-// job's task-type displays and a catalog id→name/description blob.
+// job's task-type displays and a productId→vinyl-hint blob (via
+// `DeckVinylHintBuilder`).
 
 import Foundation
 
@@ -26,7 +27,7 @@ enum DeckMaterialsResolver {
         settings: DeckMaterialsSettings,
         vinylSettings: VinylOrderSettings,
         taskTypeDisplays: [String],
-        catalogNameById: [String: String]
+        vinylHintByProductId: [String: String]
     ) -> Resolved {
         // Strict scale gates the materials math. Detection does NOT need it — a
         // surface's vinyl-ness is a material question, not a geometry one — so
@@ -44,7 +45,7 @@ enum DeckMaterialsResolver {
         let vinylIds = DeckVinylDetection.vinylSurfaceIds(
             surfaces: allInputs,
             jobHasVinylSignal: jobSignal,
-            catalogNameById: catalogNameById
+            vinylHintByProductId: vinylHintByProductId
         )
         let vinylInputs = allInputs
             .filter { vinylIds.contains($0.input.id) }

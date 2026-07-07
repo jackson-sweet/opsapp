@@ -285,14 +285,14 @@ struct DeckMaterialsSection: View {
     private func recompute() {
         let data = design.drawingData
         let taskDisplays = fetchTaskTypeDisplays()
-        let catalogBlob = fetchCatalogNameBlob()
+        let vinylHints = fetchVinylHintByProductId()
 
         resolved = DeckMaterialsResolver.resolve(
             data: data,
             settings: data.materialsSettings ?? DeckMaterialsSettings(),
             vinylSettings: defaultSeededVinylSettings(data),
             taskTypeDisplays: taskDisplays,
-            catalogNameById: catalogBlob
+            vinylHintByProductId: vinylHints
         )
 
         if let snapshot = data.orderedMaterials {
@@ -301,7 +301,7 @@ struct DeckMaterialsSection: View {
                 settings: snapshot.settings,
                 vinylSettings: snapshot.vinylSettings,
                 taskTypeDisplays: taskDisplays,
-                catalogNameById: catalogBlob
+                vinylHintByProductId: vinylHints
             )
             if let materials = recompute.materials {
                 driftFlagged = materials.driftKey != DeckMaterialsDriftKey(snapshot: snapshot)
@@ -322,16 +322,20 @@ struct DeckMaterialsSection: View {
         return ((try? modelContext.fetch(descriptor)) ?? []).compactMap { $0.taskType?.display }
     }
 
-    private func fetchCatalogNameBlob() -> [String: String] {
+    /// `productId → vinyl-hint` blob for detection rule 3. Keyed by `Product.id`
+    /// (what an `AssignedItem.productId` references), with each product's linked
+    /// catalog item folded in — see `DeckVinylHintBuilder`.
+    private func fetchVinylHintByProductId() -> [String: String] {
         let cid = project.companyId
-        let descriptor = FetchDescriptor<CatalogItem>(
+        let productDescriptor = FetchDescriptor<Product>(
+            predicate: #Predicate { $0.companyId == cid }
+        )
+        let catalogDescriptor = FetchDescriptor<CatalogItem>(
             predicate: #Predicate { $0.companyId == cid && $0.deletedAt == nil }
         )
-        var blob: [String: String] = [:]
-        for item in (try? modelContext.fetch(descriptor)) ?? [] {
-            blob[item.id] = (item.name + " " + (item.itemDescription ?? "")).lowercased()
-        }
-        return blob
+        let products = (try? modelContext.fetch(productDescriptor)) ?? []
+        let catalogItems = (try? modelContext.fetch(catalogDescriptor)) ?? []
+        return DeckVinylHintBuilder.build(products: products, catalogItems: catalogItems)
     }
 
     private func defaultSeededVinylSettings(_ data: DeckDrawingData) -> VinylOrderSettings {

@@ -226,7 +226,9 @@ struct VinylCutPlan: Equatable {
         !reuseNotes.isEmpty
     }
 
-    func orderNotes(projectTitle: String, deckTitle: String) -> String {
+    /// `rolls` (e.g. "3 ROLLS @ 75'") is appended as a ROLLS line when the order
+    /// is placed in full-roll mode; nil/empty leaves the note cut-list-identical.
+    func orderNotes(projectTitle: String, deckTitle: String, rolls: String? = nil) -> String {
         var lines: [String] = []
         lines.append("// VINYL ORDER")
         lines.append("PROJECT: \(projectTitle)")
@@ -235,6 +237,9 @@ struct VinylCutPlan: Equatable {
         lines.append("ROLL: \(vinylFormatInches(settings.rollWidthInches))")
         lines.append("SEAM OVERLAP: \(vinylFormatInches(settings.seamOverlapInches))")
         lines.append("EDGE WRAP: \(vinylFormatInches(settings.edgeWrapInches))")
+        if let rolls, !rolls.isEmpty {
+            lines.append("ROLLS: \(rolls)")
+        }
         lines.append("ORDER AREA: \(totalOrderedSqFt) SQ FT")
         lines.append("SURFACE AREA: \(vinylFormatSqFt(totalSurfaceAreaSqFt)) SQ FT")
         if totalReusedCutAreaSqFt > 0 {
@@ -261,13 +266,15 @@ struct VinylCutPlan: Equatable {
     func textMessageBody(
         messageTemplate: String = VinylCutListTextTemplate.defaultMessageTemplate,
         cutTemplate: String = VinylCutListTextTemplate.defaultCutTemplate,
-        cutSeparator: VinylCutListSeparator = .lines
+        cutSeparator: VinylCutListSeparator = .lines,
+        rolls: String = ""
     ) -> String {
         VinylCutListTextTemplate.render(
             messageTemplate: messageTemplate,
             cutTemplate: cutTemplate,
             cutSeparator: cutSeparator,
-            plan: self
+            plan: self,
+            rolls: rolls
         )
     }
 
@@ -310,7 +317,8 @@ enum VinylCutListTextTemplate {
         messageTemplate rawMessageTemplate: String,
         cutTemplate rawCutTemplate: String,
         cutSeparator: VinylCutListSeparator,
-        plan: VinylCutPlan
+        plan: VinylCutPlan,
+        rolls: String = ""
     ) -> String {
         let trimmedMessageTemplate = rawMessageTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
         let messageTemplate = trimmedMessageTemplate.isEmpty ? defaultMessageTemplate : rawMessageTemplate
@@ -322,7 +330,10 @@ enum VinylCutListTextTemplate {
             replacements: [
                 "color": color,
                 "cuts": cuts,
-                "cut_count": "\(plan.totalPurchasedStripCount)"
+                "cut_count": "\(plan.totalPurchasedStripCount)",
+                // Full-roll summary (e.g. "3 ROLLS @ 75'"); empty in cut-list mode
+                // so a [rolls] token in a custom template quietly disappears.
+                "rolls": rolls
             ]
         )
             .trimmingCharacters(in: .whitespacesAndNewlines)

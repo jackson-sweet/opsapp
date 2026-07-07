@@ -23,6 +23,13 @@ struct VinylOrderSheet: View {
     @Query private var stockUnits: [CatalogStockUnit]
 
     @State private var settings = VinylOrderSettings.default
+    /// UI mirror of the design's persisted `materialsSettings.orderMode` — the
+    /// single source of truth shared with the deck-tab materials card. Seeded on
+    /// appear, written straight back to the design on change (so MARK ORDERED and
+    /// the card always agree).
+    @State private var orderMode: VinylOrderMode = .cutList
+    @State private var fullRollLengthFeet: Double = 75
+    @State private var didSeedOrderMode = false
     @State private var isCreating = false
     @State private var isUpdatingProjectMarker = false
     @State private var statusMessage: String?
@@ -86,15 +93,65 @@ struct VinylOrderSheet: View {
     }
 
     private var noteText: String {
-        plan.orderNotes(projectTitle: projectTitle, deckTitle: deckTitle)
+        plan.orderNotes(projectTitle: projectTitle, deckTitle: deckTitle, rolls: isRollMode ? rollSummaryLine : nil)
     }
 
     private var messageText: String {
         plan.textMessageBody(
             messageTemplate: messageTemplate,
             cutTemplate: cutTemplate,
-            cutSeparator: cutSeparator
+            cutSeparator: cutSeparator,
+            rolls: isRollMode ? rollSummaryLine : ""
         )
+    }
+
+    // MARK: - Full-roll ordering
+
+    private var isRollMode: Bool { orderMode == .fullRolls }
+
+    /// The plan's purchased strips packed into whole rolls of `fullRollLengthFeet`.
+    private var rollPack: RollPackResult {
+        VinylRollPacker.rollsNeeded(
+            stripLengthsFeet: plan.surfaces.flatMap(\.purchasedCuts).map { $0.lengthInches / 12.0 },
+            rollLengthFeet: fullRollLengthFeet
+        )
+    }
+
+    /// e.g. "3 ROLLS @ 75'" — the roll-mode order line for the summary + notes.
+    private var rollSummaryLine: String {
+        "\(rollPack.rollCount) ROLL\(rollPack.rollCount == 1 ? "" : "S") @ \(Int(fullRollLengthFeet))'"
+    }
+
+    /// Seed the order-mode mirror from the design's persisted materials settings
+    /// on first appear (idempotent — user edits thereafter own the state).
+    private func seedOrderModeIfNeeded() {
+        guard !didSeedOrderMode else { return }
+        didSeedOrderMode = true
+        let ms = viewModel.drawingData.materialsSettings ?? DeckMaterialsSettings()
+        orderMode = ms.orderMode
+        fullRollLengthFeet = ms.fullRollLengthFeet
+    }
+
+    /// Persist an order-mode change straight to the design's `materialsSettings`
+    /// so the deck-tab card and MARK ORDERED read the same value.
+    private func writeMaterialsOrderMode(_ mode: VinylOrderMode) {
+        guard orderMode != mode else { return }
+        orderMode = mode
+        var ms = viewModel.drawingData.materialsSettings ?? DeckMaterialsSettings()
+        ms.orderMode = mode
+        var data = viewModel.drawingData
+        data.materialsSettings = ms
+        viewModel.deckDesign.drawingData = data
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func writeFullRollLength(_ feet: Double) {
+        fullRollLengthFeet = feet
+        var ms = viewModel.drawingData.materialsSettings ?? DeckMaterialsSettings()
+        ms.fullRollLengthFeet = feet
+        var data = viewModel.drawingData
+        data.materialsSettings = ms
+        viewModel.deckDesign.drawingData = data
     }
 
     private var currentUserId: String? {
@@ -279,6 +336,7 @@ struct VinylOrderSheet: View {
                 )
             }
             .task {
+                seedOrderModeIfNeeded()
                 await loadSurfaceInputsIfNeeded()
             }
             .task {
@@ -326,7 +384,9 @@ struct VinylOrderSheet: View {
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .tracking(1.1)
-                Text("\(plan.surfaces.count) SURFACE\(plan.surfaces.count == 1 ? "" : "S") / \(plan.totalOrderedSqFt) SQ FT")
+                Text(isRollMode
+                     ? "\(plan.surfaces.count) SURFACE\(plan.surfaces.count == 1 ? "" : "S") / \(rollPack.rollCount) ROLL\(rollPack.rollCount == 1 ? "" : "S")"
+                     : "\(plan.surfaces.count) SURFACE\(plan.surfaces.count == 1 ? "" : "S") / \(plan.totalOrderedSqFt) SQ FT")
                     .font(OPSStyle.Typography.dataValue)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .contentTransition(.numericText())
@@ -416,8 +476,66 @@ struct VinylOrderSheet: View {
                     range: 0...18,
                     step: 0.5
                 )
+
+                orderModeControl
+                if isRollMode {
+                    rollLengthStepper
+                }
             }
         }
+    }
+
+    /// `CUT LIST | FULL ROLLS` segmented control — reads/writes the design's
+    /// `materialsSettings.orderMode` (single source of truth with the deck-tab card).
+    private var orderModeControl: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Text("ORDER")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .frame(width: VinylOrderLayout.labelWidth, alignment: .leading)
+
+            HStack(spacing: 0) {
+                ForEach(VinylOrderMode.allCases, id: \.self) { mode in
+                    Button {
+                        writeMaterialsOrderMode(mode)
+                    } label: {
+                        Text(mode.presetLabel)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(orderMode == mode ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: OPSStyle.Layout.touchTargetMin)
+                            .background(orderMode == mode ? OPSStyle.Colors.surfaceActive : Color.clear)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .background(OPSStyle.Colors.subtleBackground)
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+    }
+
+    private var rollLengthStepper: some View {
+        Stepper(
+            value: Binding(get: { fullRollLengthFeet }, set: { writeFullRollLength($0) }),
+            in: 25...300,
+            step: 5
+        ) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Text("ROLL LENGTH")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .frame(width: VinylOrderLayout.labelWidth, alignment: .leading)
+                Text("\(Int(fullRollLengthFeet))'")
+                    .font(OPSStyle.Typography.dataValue)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Spacer(minLength: 0)
+            }
+        }
+        .tint(OPSStyle.Colors.secondaryText)
     }
 
     private var catalogVariantPicker: some View {
@@ -521,6 +639,14 @@ struct VinylOrderSheet: View {
     private var summarySection: some View {
         section(title: "SUMMARY") {
             VStack(spacing: OPSStyle.Layout.spacing2) {
+                if isRollMode {
+                    // Full-roll mode leads with whole rolls; the cut list below
+                    // stays the on-site cutting guide.
+                    metricRow("ROLLS", "\(rollPack.rollCount) @ \(Int(fullRollLengthFeet))'")
+                    if rollPack.overlengthStripCount > 0 {
+                        metricRow("OVER ROLL", "\(rollPack.overlengthStripCount) CUT\(rollPack.overlengthStripCount == 1 ? "" : "S")")
+                    }
+                }
                 metricRow("ORDER AREA", "\(plan.totalOrderedSqFt) SQ FT")
                 metricRow("SURFACE AREA", "\(formatSqFtForSheet(plan.totalSurfaceAreaSqFt)) SQ FT")
                 if plan.totalReusedCutAreaSqFt > 0 {
@@ -1226,7 +1352,10 @@ struct VinylOrderSheet: View {
 
         let draftPlan = plan
         let draftSettings = settings.normalized
-        let draftNoteText = draftPlan.orderNotes(projectTitle: projectTitle, deckTitle: deckTitle)
+        // Reflect roll-mode quantity in the drafted note (catalog line-item
+        // quantity stays sq ft — the catalog unit — per scope).
+        let draftRolls: String? = isRollMode ? rollSummaryLine : nil
+        let draftNoteText = draftPlan.orderNotes(projectTitle: projectTitle, deckTitle: deckTitle, rolls: draftRolls)
         let draftProjectTitle = projectTitle
         let draftCatalogSelection = vinylCatalogSelection
 

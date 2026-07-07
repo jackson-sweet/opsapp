@@ -545,7 +545,93 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         visit.notes = combinedNotes()
         saveContext()
         isCompleting = false
+
+        // Best-effort: post a "Site visit" activity to the timeline. Site visits
+        // are LOCAL-ONLY (they never reach Supabase), so no DB trigger can fire —
+        // this app-side insert is the ONLY path onto the timeline. Fire-and-forget
+        // so completion never blocks or fails on the network; idempotent so a
+        // re-completion can't double-post.
+        Task { await postSiteVisitActivityIfNeeded(for: visit) }
+
         return true
+    }
+
+    // MARK: - Timeline auto-post (app-side, local-only visit)
+
+    /// The parent a completed visit's activity attaches to. Prefers the bound
+    /// opportunity so the "Site visit" row lands on the LEAD timeline — the only
+    /// activity timeline that renders today (client/job timelines are a deferred
+    /// follow-on). Falls back to the client when no lead is bound. `nil` when the
+    /// visit is fully unbound (no lead AND no client) — nothing to attach to, so
+    /// no activity is posted.
+    ///
+    /// The site-visit flow's `currentOpportunity` is a synced server row — it
+    /// comes from the pipeline, or from an inline lead create that round-trips
+    /// through `OpportunityRepository.create` before `reassignVisit` binds it —
+    /// so the `opportunity_id` FK is safe in practice. The post is best-effort
+    /// and idempotent regardless, so a rare unsynced-lead FK rejection is
+    /// absorbed and retried on the next completion rather than lost.
+    var siteVisitActivityTarget: ActivityTarget? {
+        if let opportunity = currentOpportunity {
+            return .opportunity(opportunity)
+        }
+        if let clientId = activeClientId?.trimmedNilIfEmpty,
+           let client = fetchClient(id: clientId) {
+            return .client(client)
+        }
+        return nil
+    }
+
+    /// A terse human summary of what the visit captured — the operator's notes,
+    /// then a one-line roll-up of how many checklist items were answered — used
+    /// as the activity body. `nil` when nothing was captured (the DB trigger
+    /// still backfills the "Site visit" subject, so the row is never blank).
+    var siteVisitActivitySummary: String? {
+        var lines: [String] = []
+        if let notes = combinedNotes()?.trimmedNilIfEmpty {
+            lines.append(notes)
+        }
+        let answered = checklistAnswers.filter { $0.isActive && $0.isAnswered }.count
+        if answered > 0 {
+            lines.append("\(answered) checklist item\(answered == 1 ? "" : "s") completed")
+        }
+        let joined = lines.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return joined.isEmpty ? nil : joined
+    }
+
+    /// Guards against a double-tap racing two posts before the first stamps
+    /// `loggedActivityId` — set synchronously on the MainActor before the first
+    /// `await`, so a second scheduled post sees it and bails.
+    private var isPostingSiteVisitActivity = false
+
+    /// Best-effort post of a completed visit's "Site visit" activity. Idempotent:
+    /// no-ops when the visit already logged one (offline-retry safe), when a post
+    /// is already in flight, or when the visit is unbound. Never throws — a failed
+    /// post leaves `loggedActivityId` nil so a later re-completion retries without
+    /// duplicating.
+    func postSiteVisitActivityIfNeeded(for visit: SiteVisit) async {
+        guard visit.loggedActivityId == nil else { return }
+        guard !isPostingSiteVisitActivity else { return }
+        guard let target = siteVisitActivityTarget else { return }
+
+        isPostingSiteVisitActivity = true
+        defer { isPostingSiteVisitActivity = false }
+
+        do {
+            let activity = try await ActivityRepository(companyId: companyId).logActivity(
+                target: target,
+                type: .siteVisit,
+                subject: nil,                       // trigger backfills "Site visit"
+                body: siteVisitActivitySummary,
+                siteVisitId: visit.id,
+                createdBy: userId
+            )
+            visit.loggedActivityId = activity.id
+            saveContext()
+        } catch {
+            // Swallow — best-effort. loggedActivityId stays nil so a re-completion
+            // (e.g. once connectivity returns) retries without double-posting.
+        }
     }
 
     func projectPayload() -> SiteVisitProjectPayload? {

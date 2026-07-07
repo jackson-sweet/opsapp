@@ -34,7 +34,6 @@ final class SiteVisitPacketNoteTests: XCTestCase {
         SiteVisitProjectPayload(
             siteVisitId: "sv-1",
             opportunityId: "opp-1",
-            projectTitle: "123 Main St",
             address: "123 Main St",
             photoArtifactIds: [],
             measurementArtifactIds: [],

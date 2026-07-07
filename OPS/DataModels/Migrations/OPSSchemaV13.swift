@@ -10,6 +10,12 @@
 //  `contentMetadataJSON` (raw jsonb payload for structured system entries).
 //  Purely additive optional attributes — a lightweight transform.
 //
+//  `Activity` and `SiteVisit` are unchanged at this boundary: Activity is still
+//  the pre-widening (narrow, required-opportunityId) shape frozen as
+//  `v1ToV12ActivityModel` — the unified-activity widening lands at V14 — and
+//  SiteVisit is the optional-opportunityId shape (`v11SiteVisitModel`); its
+//  `loggedActivityId` widening lands at V15.
+//
 
 import Foundation
 import SwiftData
@@ -19,6 +25,8 @@ enum OPSSchemaV13: VersionedSchema {
 
     static var models: [any PersistentModel.Type] {
         OPSSchemaCommon.unchangedModels
+            + OPSSchemaCommon.v13ProjectNoteModel
+            + OPSSchemaCommon.v1ToV12ActivityModel
             + OPSSchemaCommon.v11SiteVisitModel
             + OPSSchemaCommon.v4CoreModels
             + OPSSchemaCommon.v4TaskModels

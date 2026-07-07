@@ -69,7 +69,34 @@
 //  V12 → V13 stage: lightweight additive — `ProjectNote` gains two optional
 //  attributes (`eventKind`, `contentMetadataJSON`) mirroring the live
 //  `project_notes.event_kind` / `content_metadata` columns so system entries
-//  (status changes, site-visit packets) render as first-class feed cards.
+//  (status changes, site-visit packets) render as first-class feed cards. Like
+//  SiteVisit at V10→V11 and Activity at V13→V14, `ProjectNote` is version-scoped
+//  here: the frozen `OPSSchemaLegacyProjectNote.ProjectNote` (no system-event
+//  columns) backs V1–V12, the live `ProjectNote` backs V13+. Adding the columns
+//  in place would leave V12 and V13 byte-identical and abort plan construction
+//  with "Duplicate version checksums across stages"; the frozen split gives the
+//  stage a real fingerprint delta.
+//
+//  V13 → V14 stage: unified activity parents. Widens `Activity` so a timeline
+//  activity can attach to a lead (opportunity), a client, OR a job (project),
+//  and carry an author. `opportunityId` relaxes from required `String` to
+//  optional `String?` and two nullable columns (`clientId`, `projectId`) are
+//  added. Required→optional plus new optionals is an inferable lightweight
+//  transform. Like SiteVisit at V10→V11, `Activity` is version-scoped: the
+//  frozen `OPSSchemaLegacyActivity.Activity` (required opportunityId, no
+//  client/project) backs V1–V13; the live `Activity` backs V14+. This confines
+//  the change to this single boundary instead of silently rewriting every
+//  historical schema's `Activity` hash (the hazard documented in OPSApp.swift).
+//
+//  V14 → V15 stage: site-visit → timeline auto-post idempotency. Adds a single
+//  nullable `SiteVisit.loggedActivityId` so a completed visit that posts its
+//  "Site visit" activity records the returned id and never double-posts on
+//  re-completion. A new optional column is an inferable lightweight transform.
+//  Like SiteVisit at V10→V11 and Activity at V13→V14, `SiteVisit` is
+//  version-scoped: the frozen `OPSSchemaLegacySiteVisitV11.SiteVisit` (optional
+//  opportunityId, no loggedActivityId) backs V11–V14; the live `SiteVisit`
+//  (+ loggedActivityId) backs V15+. This confines the change to this single
+//  boundary instead of rewriting every V11–V14 schema's `SiteVisit` hash.
 //
 
 import Foundation
@@ -90,7 +117,9 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV10.self,
             OPSSchemaV11.self,
             OPSSchemaV12.self,
-            OPSSchemaV13.self
+            OPSSchemaV13.self,
+            OPSSchemaV14.self,
+            OPSSchemaV15.self
         ]
     }
 
@@ -107,13 +136,46 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addStockUnitEventsV9toV10,
             addSiteVisitCaptureArtifactsV10toV11,
             addSiteVisitIdentityDraftsV11toV12,
-            addProjectNoteEventKindV12toV13
+            addProjectNoteEventKindV12toV13,
+            addUnifiedActivityParentsV13toV14,
+            addSiteVisitActivityLinkV14toV15
         ]
     }
 
+    /// V14 → V15: site-visit → timeline auto-post idempotency. Adds a single
+    /// nullable `SiteVisit.loggedActivityId` so a completed visit that posts its
+    /// "Site visit" activity can record the returned id and never double-post on
+    /// re-completion. A new optional column is an inferable lightweight
+    /// transform; the column defaults to nil for historical rows. `SiteVisit` is
+    /// version-scoped at this boundary (frozen `OPSSchemaLegacySiteVisitV11`
+    /// for V11–V14, live `SiteVisit` for V15+) so the widening does not rewrite
+    /// every V11–V14 schema's `SiteVisit` fingerprint.
+    static let addSiteVisitActivityLinkV14toV15 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV14.self,
+        toVersion: OPSSchemaV15.self
+    )
+
+    /// V13 → V14: unified activity parents. `Activity.opportunityId` relaxes
+    /// from required `String` to optional `String?` and gains nullable
+    /// `clientId` / `projectId` so an activity can attach to a lead, a client,
+    /// OR a job. Required→optional plus new optionals is an inferable lightweight
+    /// transform; existing non-null `opportunityId` values are preserved and the
+    /// new columns default to nil for historical rows. `Activity` is
+    /// version-scoped at this boundary (frozen `OPSSchemaLegacyActivity.Activity`
+    /// for V1–V13, live `Activity` for V14+) so the widening does not rewrite
+    /// every historical schema's `Activity` fingerprint.
+    static let addUnifiedActivityParentsV13toV14 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV13.self,
+        toVersion: OPSSchemaV14.self
+    )
+
     /// V12 → V13: purely additive — `ProjectNote` gains optional `eventKind` +
     /// `contentMetadataJSON` attributes (live `project_notes` columns). Adding
-    /// optional attributes is an inferable lightweight transform.
+    /// optional attributes is an inferable lightweight transform. `ProjectNote`
+    /// is version-scoped at this boundary (frozen `OPSSchemaLegacyProjectNote`
+    /// for V1–V12, live `ProjectNote` for V13+) so V12 and V13 have distinct
+    /// fingerprints — an in-place widening leaves them identical and SwiftData
+    /// aborts the plan with "Duplicate version checksums across stages".
     static let addProjectNoteEventKindV12toV13 = MigrationStage.lightweight(
         fromVersion: OPSSchemaV12.self,
         toVersion: OPSSchemaV13.self

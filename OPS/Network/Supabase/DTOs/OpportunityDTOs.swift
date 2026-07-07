@@ -322,6 +322,11 @@ struct ActivityDTO: Codable, Identifiable {
     let callSource: String?
     let callerNumber: String?
     let callStartedAt: String?
+    // Unified-activity parents — an activity can be parented to a lead
+    // (opportunity), a client, OR a job (project). All nullable and additive:
+    // opportunity-only rows carry nil client_id/project_id.
+    let clientId: String?
+    let projectId: String?
     let isRead: Bool?
     let hasAttachments: Bool?
     let attachmentCount: Int?
@@ -342,6 +347,8 @@ struct ActivityDTO: Codable, Identifiable {
         case callSource      = "call_source"
         case callerNumber    = "caller_number"
         case callStartedAt   = "call_started_at"
+        case clientId        = "client_id"
+        case projectId       = "project_id"
         case isRead          = "is_read"
         case hasAttachments  = "has_attachments"
         case attachmentCount = "attachment_count"
@@ -352,7 +359,7 @@ struct ActivityDTO: Codable, Identifiable {
     func toModel() -> Activity {
         let act = Activity(
             id: id,
-            opportunityId: opportunityId ?? "",
+            opportunityId: opportunityId,
             companyId: companyId,
             type: ActivityType(rawValue: type) ?? .note,
             createdAt: SupabaseDate.parse(createdAt) ?? Date()
@@ -366,6 +373,8 @@ struct ActivityDTO: Codable, Identifiable {
         act.callSource = callSource
         act.callerNumber = callerNumber
         act.callStartedAt = callStartedAt.flatMap { SupabaseDate.parse($0) }
+        act.clientId = clientId
+        act.projectId = projectId
         act.isRead = isRead ?? false
         act.hasAttachments = hasAttachments ?? false
         act.attachmentCount = attachmentCount ?? 0
@@ -375,7 +384,16 @@ struct ActivityDTO: Codable, Identifiable {
 }
 
 struct CreateActivityDTO: Codable {
-    let opportunityId: String
+    // Unified-activity parents — an activity can be parented to a lead
+    // (opportunity), a client, OR a job (project). Exactly one is set per
+    // activity; the rest stay nil. A nil optional is OMITTED from the encoded
+    // JSON by Swift's synthesized encoder (never sent as `null`), so a
+    // client-targeted activity does not carry `opportunity_id: null` — which
+    // PostgREST would otherwise try to write as a null FK.
+    let opportunityId: String?
+    let clientId: String?
+    let projectId: String?
+    let siteVisitId: String?
     let companyId: String
     let type: String
     let subject: String?    // optional — trg_activities_default_subject backfills
@@ -386,9 +404,13 @@ struct CreateActivityDTO: Codable {
     let callSource: String?
     let callerNumber: String?
     let callStartedAt: String?
+    let createdBy: String?
 
     enum CodingKeys: String, CodingKey {
         case opportunityId   = "opportunity_id"
+        case clientId        = "client_id"
+        case projectId       = "project_id"
+        case siteVisitId     = "site_visit_id"
         case companyId       = "company_id"
         case type
         case subject
@@ -399,13 +421,15 @@ struct CreateActivityDTO: Codable {
         case callSource      = "call_source"
         case callerNumber    = "caller_number"
         case callStartedAt   = "call_started_at"
+        case createdBy       = "created_by"
     }
 
-    // Explicit init so the call-provenance fields stay optional at every call
-    // site (the generic activity loggers don't pass them; only the around-call
-    // capture flow does).
+    // Explicit init so every new parent + the call-provenance fields stay
+    // optional at every call site. The generic activity loggers pass only the
+    // parent they target; the around-call capture flow adds the call fields.
+    // All new fields default to nil so existing call sites compile unchanged.
     init(
-        opportunityId: String,
+        opportunityId: String? = nil,
         companyId: String,
         type: String,
         subject: String? = nil,
@@ -415,7 +439,11 @@ struct CreateActivityDTO: Codable {
         durationMinutes: Int? = nil,
         callSource: String? = nil,
         callerNumber: String? = nil,
-        callStartedAt: String? = nil
+        callStartedAt: String? = nil,
+        clientId: String? = nil,
+        projectId: String? = nil,
+        siteVisitId: String? = nil,
+        createdBy: String? = nil
     ) {
         self.opportunityId = opportunityId
         self.companyId = companyId
@@ -428,6 +456,10 @@ struct CreateActivityDTO: Codable {
         self.callSource = callSource
         self.callerNumber = callerNumber
         self.callStartedAt = callStartedAt
+        self.clientId = clientId
+        self.projectId = projectId
+        self.siteVisitId = siteVisitId
+        self.createdBy = createdBy
     }
 }
 

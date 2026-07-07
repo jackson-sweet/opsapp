@@ -497,6 +497,147 @@ enum OPSSchemaLegacySiteVisit {
     }
 }
 
+/// Frozen `SiteVisit` shape as it shipped through V11–V14 — an OPTIONAL
+/// `opportunityId: String?` (the V10→V11 relaxation) but NO `loggedActivityId`.
+/// The live top-level `SiteVisit` adds `loggedActivityId` (the site-visit →
+/// timeline auto-post idempotency key) from V15 onward. `SiteVisit` was
+/// version-scoped at V10→V11 via `v11SiteVisitModel` pointing at the live class;
+/// adding a property to that live class would shift the fingerprint of V11, V12,
+/// V13 AND V14 by the same delta — the hazard documented in `OPSApp.swift`.
+/// Pulling the V11–V14 shape out and freezing it (mirror of
+/// `OPSSchemaLegacyActivity`) confines the change to the V14→V15 boundary.
+/// Migration-fingerprint only — runtime code always uses the top-level model.
+enum OPSSchemaLegacySiteVisitV11 {
+    @Model
+    final class SiteVisit: Identifiable {
+        @Attribute(.unique) var id: String
+        var opportunityId: String?
+        var companyId: String
+        var status: SiteVisitStatus
+        var scheduledAt: Date?
+        var completedAt: Date?
+        var notes: String?
+        var address: String?
+        var assignedTo: String?
+        var createdAt: Date
+
+        init(
+            id: String = UUID().uuidString,
+            opportunityId: String? = nil,
+            companyId: String,
+            status: SiteVisitStatus = .scheduled,
+            createdAt: Date = Date()
+        ) {
+            self.id = id
+            self.opportunityId = opportunityId
+            self.companyId = companyId
+            self.status = status
+            self.createdAt = createdAt
+        }
+    }
+}
+
+/// Frozen `Activity` shape as it shipped through V1–V13 — a REQUIRED
+/// `opportunityId: String`, and NO `clientId` / `projectId`. The live top-level
+/// `Activity` widens `opportunityId` to optional and adds `clientId`/`projectId`
+/// (unified-activity parents) from V14 onward. `Activity` was in
+/// `unchangedModels`, so that widening would otherwise shift EVERY historical
+/// schema's fingerprint by the same delta — the exact hazard documented in
+/// `OPSApp.swift`. Pulling the frozen shape out and version-scoping it (mirror
+/// of `OPSSchemaLegacySiteVisit`) confines the change to the V13→V14 boundary.
+/// Migration-fingerprint only — runtime code always uses the top-level model.
+enum OPSSchemaLegacyActivity {
+    @Model
+    final class Activity: Identifiable {
+        @Attribute(.unique) var id: String
+        var opportunityId: String
+        var companyId: String
+        var type: ActivityType
+        var subject: String?
+        var bodyText: String?
+        var content: String?
+        var direction: String?
+        var outcome: String?
+        var durationMinutes: Int?
+        var callSource: String?
+        var callerNumber: String?
+        var callStartedAt: Date?
+        var isRead: Bool
+        var hasAttachments: Bool
+        var attachmentCount: Int
+        var createdBy: String?
+        var createdAt: Date
+
+        init(
+            id: String = UUID().uuidString,
+            opportunityId: String,
+            companyId: String,
+            type: ActivityType,
+            createdAt: Date = Date()
+        ) {
+            self.id = id
+            self.opportunityId = opportunityId
+            self.companyId = companyId
+            self.type = type
+            self.isRead = false
+            self.hasAttachments = false
+            self.attachmentCount = 0
+            self.createdAt = createdAt
+        }
+    }
+}
+
+/// Frozen `ProjectNote` shape as it shipped through V1–V12 — WITHOUT the
+/// `eventKind` / `contentMetadataJSON` system-event columns. The live top-level
+/// `ProjectNote` adds those two optional attributes (live `project_notes`
+/// `event_kind` / `content_metadata`) from V13 onward. `ProjectNote` was in
+/// `unchangedModels`, so widening it in place made V12 and V13 byte-identical —
+/// SwiftData then rejects the whole plan with "Duplicate version checksums
+/// across stages detected" the moment the chain is activated past V12 (the
+/// dormant-at-V10 store never traversed the stage, which is why it went
+/// unnoticed). Pulling the pre-widening shape out and version-scoping it (mirror
+/// of `OPSSchemaLegacyActivity`) confines the change to the V12→V13 boundary and
+/// gives that stage a real fingerprint delta. Migration-fingerprint only —
+/// runtime code always uses the top-level model.
+enum OPSSchemaLegacyProjectNote {
+    @Model
+    final class ProjectNote: Identifiable {
+        @Attribute(.unique) var id: String
+        var projectId: String
+        var companyId: String
+        var authorId: String
+        var content: String
+        var attachmentsJSON: String
+        var mentionedUserIdsString: String
+        var photoURL: String?
+        var createdAt: Date
+        var updatedAt: Date?
+        var deletedAt: Date?
+        var lastSyncedAt: Date?
+        var needsSync: Bool = false
+
+        init(
+            id: String = UUID().uuidString,
+            projectId: String,
+            companyId: String,
+            authorId: String,
+            content: String = "",
+            photoURL: String? = nil,
+            createdAt: Date = Date()
+        ) {
+            self.id = id
+            self.projectId = projectId
+            self.companyId = companyId
+            self.authorId = authorId
+            self.content = content
+            self.attachmentsJSON = "[]"
+            self.mentionedUserIdsString = ""
+            self.photoURL = photoURL
+            self.createdAt = createdAt
+        }
+    }
+}
+
 enum OPSSchemaCommon {
     /// Models present in both V2 and V3 (and unchanged across the V2→V3
     /// boundary). The inventory entities live only in V2; the catalog/product-
@@ -511,7 +652,13 @@ enum OPSSchemaCommon {
 
         // Supabase-backed models
         Opportunity.self,
-        Activity.self,
+        // NOTE: Activity is intentionally NOT here. Its persistent shape changed
+        // at the V13→V14 boundary (opportunityId String → String?, plus new
+        // clientId/projectId for unified-activity parents), so it is
+        // version-scoped: the frozen `OPSSchemaLegacyActivity.Activity`
+        // (required opportunityId, no client/project) backs V1–V13 and the live
+        // `Activity` (optional, +client/project) backs V14+. See
+        // `v1ToV12ActivityModel` / `v13ActivityModel`.
         FollowUp.self,
         StageTransition.self,
         Estimate.self,
@@ -521,11 +668,19 @@ enum OPSSchemaCommon {
         Payment.self,
         Product.self,
         // NOTE: SiteVisit is intentionally NOT here. Its persistent shape
-        // changed at the V10→V11 boundary (opportunityId String → String?),
-        // so it is version-scoped: the frozen `OPSSchemaLegacySiteVisit.SiteVisit`
-        // (required opportunityId) backs V1–V10 and the live `SiteVisit`
-        // (optional) backs V11+. See `v1ToV10SiteVisitModel` / `v11SiteVisitModel`.
-        ProjectNote.self,
+        // changed at TWO boundaries — V10→V11 (opportunityId String → String?)
+        // and V14→V15 (+ loggedActivityId) — so it is version-scoped three ways:
+        // the frozen `OPSSchemaLegacySiteVisit.SiteVisit` (required opportunityId)
+        // backs V1–V10, the frozen `OPSSchemaLegacySiteVisitV11.SiteVisit`
+        // (optional opportunityId, no loggedActivityId) backs V11–V14, and the
+        // live `SiteVisit` (+ loggedActivityId) backs V15+. See
+        // `v1ToV10SiteVisitModel` / `v11SiteVisitModel` / `v14SiteVisitModel`.
+        // NOTE: ProjectNote is intentionally NOT here. Its persistent shape
+        // changed at the V12→V13 boundary (added optional `eventKind` +
+        // `contentMetadataJSON` system-event columns), so it is version-scoped:
+        // the frozen `OPSSchemaLegacyProjectNote.ProjectNote` (no system-event
+        // columns) backs V1–V12 and the live `ProjectNote` backs V13+. See
+        // `v1ToV12ProjectNoteModel` / `v13ProjectNoteModel`.
         PhotoAnnotation.self,
         CalendarUserEvent.self,
 
@@ -633,10 +788,59 @@ enum OPSSchemaCommon {
         OPSSchemaLegacySiteVisit.SiteVisit.self
     ]
 
-    /// SiteVisit from V11 onward — the live model with optional `opportunityId`,
-    /// enabling lead-less (unlinked) site visits.
+    /// SiteVisit as it shipped through V11–V14 — optional `opportunityId`, no
+    /// `loggedActivityId`. Frozen so the V14→V15 addition of `loggedActivityId`
+    /// (site-visit → timeline auto-post idempotency key) is isolated to one
+    /// boundary instead of silently rewriting every V11–V14 schema's `SiteVisit`
+    /// hash. Mirror of `v1ToV12ActivityModel`.
     static let v11SiteVisitModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacySiteVisitV11.SiteVisit.self
+    ]
+
+    /// SiteVisit from V15 onward — the live model, which adds `loggedActivityId`
+    /// (a local-only idempotency key stamped when a completed visit posts its
+    /// "Site visit" activity to the timeline). Mirror of `v13ActivityModel`.
+    /// (The `v14` suffix is the pre-consolidation introduction version; after the
+    /// three-way schema reconciliation this live shape first appears at V15.)
+    static let v14SiteVisitModel: [any PersistentModel.Type] = [
         SiteVisit.self
+    ]
+
+    /// Activity as it shipped through V1–V13 — frozen, required `opportunityId`,
+    /// no `clientId`/`projectId`. Pulled out of `unchangedModels` so the V13→V14
+    /// widening (opportunityId → optional, + client/project parents) is isolated
+    /// to one boundary instead of silently rewriting every historical schema's
+    /// `Activity` hash. Mirror of `v1ToV10SiteVisitModel`. (The `V12` suffix is
+    /// the pre-consolidation introduction version; after the three-way schema
+    /// reconciliation this frozen shape backs V1–V13.)
+    static let v1ToV12ActivityModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacyActivity.Activity.self
+    ]
+
+    /// Activity from V14 onward — the live model with optional `opportunityId`
+    /// plus `clientId`/`projectId`, so an activity can be parented to a lead,
+    /// a client, OR a job. Mirror of `v11SiteVisitModel`. (The `v13` suffix is
+    /// the pre-consolidation introduction version; after the three-way schema
+    /// reconciliation this live shape first appears at V14.)
+    static let v13ActivityModel: [any PersistentModel.Type] = [
+        Activity.self
+    ]
+
+    /// ProjectNote as it shipped through V1–V12 — frozen, WITHOUT the
+    /// `eventKind` / `contentMetadataJSON` system-event columns. Pulled out of
+    /// `unchangedModels` so the V12→V13 addition of those two optional columns is
+    /// isolated to one boundary — otherwise V12 and V13 are byte-identical and
+    /// SwiftData aborts plan construction with "Duplicate version checksums
+    /// across stages". Mirror of `v1ToV12ActivityModel`.
+    static let v1ToV12ProjectNoteModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacyProjectNote.ProjectNote.self
+    ]
+
+    /// ProjectNote from V13 onward — the live model with optional `eventKind`
+    /// (system-event discriminator) and `contentMetadataJSON` (structured jsonb
+    /// payload for system entries). Mirror of `v13ActivityModel`.
+    static let v13ProjectNoteModel: [any PersistentModel.Type] = [
+        ProjectNote.self
     ]
 
     /// V11 site-visit capture packet. Additive over V10 — captures evidence,

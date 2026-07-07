@@ -360,6 +360,13 @@ class ProjectDetailsViewModel: ObservableObject {
 
     // MARK: - Title Editing
 
+    nonisolated static func titleUpdateFields(forCustomTitle title: String) -> [String: AnyJSON] {
+        [
+            "title": .string(title),
+            "title_is_auto": .bool(false)
+        ]
+    }
+
     func saveTitle() {
         guard !editedTitle.isEmpty, editedTitle != project.title else {
             isEditingTitle = false
@@ -372,12 +379,13 @@ class ProjectDetailsViewModel: ObservableObject {
         Task {
             do {
                 project.title = editedTitle
+                project.titleIsAuto = false
                 project.needsSync = true
                 try dataController?.modelContext?.save()
 
                 try await dataController?.updateProjectFields(
                     projectId: project.id,
-                    fields: ["title": .string(editedTitle)]
+                    fields: Self.titleUpdateFields(forCustomTitle: editedTitle)
                 )
 
                 project.needsSync = false

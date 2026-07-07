@@ -55,7 +55,7 @@ final class TabBarSnapshotTests: XCTestCase {
         let iconW: CGFloat = 28
         let p = CGFloat(adminTabs.count - 1)
         let gap = max((deviceWidth - p * iconW) / (p + 1), 8)
-        return (iconW + gap) + 1 + gap / 2 // cell + dividerWidth + trailing gap/2
+        return (iconW + gap) + 1 + gap // cell + dividerWidth + gap
     }
 
     private var outDir: URL {
@@ -140,6 +140,37 @@ final class TabBarSnapshotTests: XCTestCase {
             ZStack(alignment: .bottom) {
                 OPSStyle.Colors.background
                 CustomTabBar(selectedTab: .constant(6), tabs: adminTabs)
+            }
+        }
+    }
+
+    /// Mock of the notifications-menu header row — confirms the Settings entry
+    /// uses the same nav-settings glyph as the tab bar (not the SF Symbol gear)
+    /// and sits balanced beside the back chevron.
+    func testRenderNotifHeader() {
+        hostSnapshot("notif_header", height: 96) {
+            ZStack(alignment: .top) {
+                OPSStyle.Colors.background
+                HStack {
+                    Image(systemName: OPSStyle.Icons.chevronLeft)
+                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                    Spacer()
+                    Text("NOTIFICATIONS")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    Spacer()
+                    Image("nav-settings")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: OPSStyle.Layout.IconSize.md, height: OPSStyle.Layout.IconSize.md)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.top, OPSStyle.Layout.spacing2_5)
             }
         }
     }

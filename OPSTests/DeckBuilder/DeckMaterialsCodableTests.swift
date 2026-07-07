@@ -18,6 +18,10 @@ final class DeckMaterialsCodableTests: XCTestCase {
         XCTAssertEqual(s.dripStickFeet, 8)
         XCTAssertEqual(s.ninetyStickFeet, 8)
         XCTAssertEqual(s.clipStickFeet, 10)
+        // Full-roll ordering additions default to the cut-list purchasing mode
+        // and a 75' full-roll length (spec § 3.2).
+        XCTAssertEqual(s.orderMode, .cutList)
+        XCTAssertEqual(s.fullRollLengthFeet, 75)
     }
 
     func testSettingsPartialJSONFillsDefaults() throws {
@@ -25,6 +29,33 @@ final class DeckMaterialsCodableTests: XCTestCase {
         let s = try JSONDecoder().decode(DeckMaterialsSettings.self, from: Data(json.utf8))
         XCTAssertEqual(s.glueCoverageSqFt, 350)
         XCTAssertEqual(s.clipStickFeet, 10)
+        // Absent order-mode keys fall back to their defaults.
+        XCTAssertEqual(s.orderMode, .cutList)
+        XCTAssertEqual(s.fullRollLengthFeet, 75)
+    }
+
+    /// A settings JSON that sets only the order mode keeps every other field —
+    /// including the untouched full-roll length and stick/glue presets — at its
+    /// default (additive-field discipline).
+    func testSettingsPartialJSONSetsOrderModeKeepsOtherDefaults() throws {
+        let json = #"{"orderMode":"fullRolls"}"#
+        let s = try JSONDecoder().decode(DeckMaterialsSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(s.orderMode, .fullRolls)
+        XCTAssertEqual(s.fullRollLengthFeet, 75)
+        XCTAssertEqual(s.glueCoverageSqFt, 400)
+        XCTAssertEqual(s.dripStickFeet, 8)
+        XCTAssertEqual(s.ninetyStickFeet, 8)
+        XCTAssertEqual(s.clipStickFeet, 10)
+    }
+
+    func testVinylOrderModeRawRoundTrip() throws {
+        for mode in VinylOrderMode.allCases {
+            let decoded = try JSONDecoder().decode(VinylOrderMode.self, from: JSONEncoder().encode(mode))
+            XCTAssertEqual(decoded, mode)
+        }
+        // Raw values are the stable JSON contract.
+        XCTAssertEqual(VinylOrderMode.cutList.rawValue, "cutList")
+        XCTAssertEqual(VinylOrderMode.fullRolls.rawValue, "fullRolls")
     }
 
     func testSnapshotRoundTripsThroughDrawingData() throws {

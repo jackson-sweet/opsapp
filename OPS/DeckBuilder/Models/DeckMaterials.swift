@@ -30,24 +30,39 @@ struct DeckMaterialsSettings: Codable, Equatable {
     var dripStickFeet: Double = 8        // clamp 4...20, step 1
     var ninetyStickFeet: Double = 8      // clamp 4...20, step 1
     var clipStickFeet: Double = 10       // clamp 4...20, step 1
+    /// How the vinyl membrane is purchased — exact cut list vs. whole rolls.
+    /// A purchasing choice, NOT a geometry change: switching it must never flag
+    /// DESIGN CHANGED SINCE ORDER (`DeckMaterialsEngine.driftKey` ignores it).
+    var orderMode: VinylOrderMode = .cutList
+    /// Length of one full roll (feet) used when packing cuts in `.fullRolls`
+    /// mode. Default 75'; the stepper UI clamps 25...300 step 5. Distinct from
+    /// the inventory `receiveRolls` physical-roll default (150') — different
+    /// concept, do not merge.
+    var fullRollLengthFeet: Double = 75
 
     enum CodingKeys: String, CodingKey {
         case glueCoverageSqFt
         case dripStickFeet
         case ninetyStickFeet
         case clipStickFeet
+        case orderMode
+        case fullRollLengthFeet
     }
 
     init(
         glueCoverageSqFt: Double = 400,
         dripStickFeet: Double = 8,
         ninetyStickFeet: Double = 8,
-        clipStickFeet: Double = 10
+        clipStickFeet: Double = 10,
+        orderMode: VinylOrderMode = .cutList,
+        fullRollLengthFeet: Double = 75
     ) {
         self.glueCoverageSqFt = glueCoverageSqFt
         self.dripStickFeet = dripStickFeet
         self.ninetyStickFeet = ninetyStickFeet
         self.clipStickFeet = clipStickFeet
+        self.orderMode = orderMode
+        self.fullRollLengthFeet = fullRollLengthFeet
     }
 
     init(from decoder: Decoder) throws {
@@ -56,6 +71,8 @@ struct DeckMaterialsSettings: Codable, Equatable {
         self.dripStickFeet = try c.decodeIfPresent(Double.self, forKey: .dripStickFeet) ?? 8
         self.ninetyStickFeet = try c.decodeIfPresent(Double.self, forKey: .ninetyStickFeet) ?? 8
         self.clipStickFeet = try c.decodeIfPresent(Double.self, forKey: .clipStickFeet) ?? 10
+        self.orderMode = try c.decodeIfPresent(VinylOrderMode.self, forKey: .orderMode) ?? .cutList
+        self.fullRollLengthFeet = try c.decodeIfPresent(Double.self, forKey: .fullRollLengthFeet) ?? 75
     }
 }
 

@@ -21,6 +21,29 @@
 import SwiftUI
 import UIKit
 
+/// Everything a MARK ORDERED entry point needs to present `VinylOrderConfirmSheet`
+/// and, on confirm, freeze the order through `markOrdered(confirmed:)`. Both entry
+/// points (the Vinyl Order sheet and the Details-tab marker) resolve one of these
+/// and drive an identical confirm-then-freeze flow. `Identifiable` so it can back a
+/// `.sheet(item:)`.
+struct PendingVinylOrderConfirm: Identifiable {
+    let id = UUID()
+    let design: DeckDesign
+    let materials: DeckMaterialsList
+    let settings: DeckMaterialsSettings
+    let vinylSettings: VinylOrderSettings
+    let projectId: String
+    let projectTitle: String
+    let deckTitle: String
+
+    /// The calculator's suggestion — the confirm sheet's pre-fill and RESET target.
+    var calculated: DeckMaterialsOrderConfirmation {
+        DeckMaterialsOrderConfirmation.calculated(from: materials, settings: settings)
+    }
+
+    var rollWidthInches: Double { vinylSettings.rollWidthInches }
+}
+
 struct VinylOrderConfirmSheet: View {
     let projectTitle: String
     let deckTitle: String

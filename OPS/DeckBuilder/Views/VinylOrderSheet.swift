@@ -37,6 +37,9 @@ struct VinylOrderSheet: View {
     /// Set after a successful order draft (tracked companies only) to prompt the
     /// roll-receipt confirmation.
     @State private var pendingRollReceipt: VinylRollReceiptContext?
+    /// Set when MARK ORDERED resolves a materials list — presents the order-confirm
+    /// sheet so the operator confirms the actual quantities before the freeze.
+    @State private var pendingOrderConfirm: PendingVinylOrderConfirm?
     @State private var bankingOffcutIds: Set<String> = []
     @State private var bankedOffcutIds: Set<String> = []
     @AppStorage(VinylCutListTextTemplate.messageStorageKey) private var messageTemplate = VinylCutListTextTemplate.defaultMessageTemplate
@@ -285,6 +288,17 @@ struct VinylOrderSheet: View {
                 VinylRollReceiptSheet(context: context) { count, lengthFeet, widthInches in
                     await receiveRolls(context: context, count: count, lengthFeet: lengthFeet, widthInches: widthInches)
                 }
+            }
+            .sheet(item: $pendingOrderConfirm) { ctx in
+                VinylOrderConfirmSheet(
+                    projectTitle: ctx.projectTitle,
+                    deckTitle: ctx.deckTitle,
+                    rollWidthInches: ctx.rollWidthInches,
+                    calculated: ctx.calculated,
+                    onConfirm: { confirmed in confirmProjectVinylOrder(ctx, confirmed) }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
             }
             // Memoization hooks live in a ViewModifier so the (already large) body
             // expression stays inside the Swift type-checker's budget. They keep
@@ -1009,56 +1023,112 @@ struct VinylOrderSheet: View {
 
     private func setProjectVinylOrdered(_ ordered: Bool) {
         guard canToggleProjectMarker, let projectId, let userId = currentUserId else { return }
-
-        isUpdatingProjectMarker = true
         statusMessage = nil
         errorMessage = nil
 
+        guard ordered else {
+            clearProjectVinylOrdered(projectId: projectId, userId: userId)
+            return
+        }
+
+        // Resolve the full materials list over the whole drawing (same detection
+        // the deck tab uses) so the frozen snapshot's vinyl set matches the tab's
+        // live recompute and never false-flags drift.
+        let data = viewModel.drawingData
+        let materialsSettings = data.materialsSettings ?? DeckMaterialsSettings()
+        let resolved = DeckMaterialsResolver.resolve(
+            data: data,
+            settings: materialsSettings,
+            vinylSettings: settings,
+            taskTypeDisplays: projectTaskTypeDisplays(projectId: projectId),
+            vinylHintByProductId: vinylHintByProductId()
+        )
+
+        if let materials = resolved.materials {
+            // A materials list resolved → confirm the actual order first. The
+            // mark happens in `confirmProjectVinylOrder` on CONFIRM ORDERED.
+            pendingOrderConfirm = PendingVinylOrderConfirm(
+                design: viewModel.deckDesign,
+                materials: materials,
+                settings: materialsSettings,
+                vinylSettings: settings,
+                projectId: projectId,
+                projectTitle: projectTitle,
+                deckTitle: deckTitle
+            )
+        } else {
+            // No vinyl set / unresolved scale — plain marker toggle, no snapshot.
+            markProjectVinylOrderedPlain(projectId: projectId, userId: userId)
+        }
+    }
+
+    /// Freeze the confirmed order (from the confirm sheet) and mark the project.
+    private func confirmProjectVinylOrder(_ ctx: PendingVinylOrderConfirm, _ confirmed: DeckMaterialsOrderConfirmation) {
+        guard let userId = currentUserId else { return }
+        isUpdatingProjectMarker = true
+        statusMessage = nil
+        errorMessage = nil
+        let service = DeckMaterialsOrderService(userId: userId) { pid, fields in
+            try await dataController.updateProjectFields(projectId: pid, fields: fields)
+        }
+        Task { @MainActor in
+            do {
+                try await service.markOrdered(
+                    projectId: ctx.projectId,
+                    design: ctx.design,
+                    materials: ctx.materials,
+                    settings: ctx.settings,
+                    vinylSettings: ctx.vinylSettings,
+                    confirmed: confirmed
+                )
+                isUpdatingProjectMarker = false
+                statusMessage = "VINYL MARKED ORDERED"
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } catch {
+                print("[VinylOrderSheet] Vinyl marker update failed: \(error)")
+                isUpdatingProjectMarker = false
+                errorMessage = "VINYL STATUS FAILED"
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
+        }
+    }
+
+    /// No materials list resolved — mark the project ordered without a snapshot.
+    private func markProjectVinylOrderedPlain(projectId: String, userId: String) {
+        isUpdatingProjectMarker = true
+        Task { @MainActor in
+            do {
+                try await dataController.updateProjectFields(
+                    projectId: projectId,
+                    fields: [
+                        ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
+                        ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(Date())),
+                        ProjectVinylOrderFields.orderedBy: .string(userId)
+                    ]
+                )
+                isUpdatingProjectMarker = false
+                statusMessage = "VINYL MARKED ORDERED"
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } catch {
+                print("[VinylOrderSheet] Vinyl marker update failed: \(error)")
+                isUpdatingProjectMarker = false
+                errorMessage = "VINYL STATUS FAILED"
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
+        }
+    }
+
+    private func clearProjectVinylOrdered(projectId: String, userId: String) {
+        isUpdatingProjectMarker = true
         let service = DeckMaterialsOrderService(userId: userId) { pid, fields in
             try await dataController.updateProjectFields(projectId: pid, fields: fields)
         }
         let design = viewModel.deckDesign
-        let data = viewModel.drawingData
-        let materialsSettings = data.materialsSettings ?? DeckMaterialsSettings()
-        let vinylSettings = settings
-
         Task { @MainActor in
             do {
-                if ordered {
-                    // Resolve the full materials list over the whole drawing (same
-                    // detection the deck tab uses) so the frozen snapshot's vinyl set
-                    // matches the tab's live recompute and never false-flags drift.
-                    let resolved = DeckMaterialsResolver.resolve(
-                        data: data,
-                        settings: materialsSettings,
-                        vinylSettings: vinylSettings,
-                        taskTypeDisplays: projectTaskTypeDisplays(projectId: projectId),
-                        vinylHintByProductId: vinylHintByProductId()
-                    )
-                    if let materials = resolved.materials {
-                        try await service.markOrdered(
-                            projectId: projectId,
-                            design: design,
-                            materials: materials,
-                            settings: materialsSettings,
-                            vinylSettings: vinylSettings
-                        )
-                    } else {
-                        // No vinyl set / unresolved scale — marker only, no snapshot.
-                        try await dataController.updateProjectFields(
-                            projectId: projectId,
-                            fields: [
-                                ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
-                                ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(Date())),
-                                ProjectVinylOrderFields.orderedBy: .string(userId)
-                            ]
-                        )
-                    }
-                } else {
-                    try await service.clearOrdered(projectId: projectId, design: design)
-                }
+                try await service.clearOrdered(projectId: projectId, design: design)
                 isUpdatingProjectMarker = false
-                statusMessage = ordered ? "VINYL MARKED ORDERED" : "VINYL MARK CLEARED"
+                statusMessage = "VINYL MARK CLEARED"
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
             } catch {
                 print("[VinylOrderSheet] Vinyl marker update failed: \(error)")

@@ -61,7 +61,12 @@ struct DeckMaterialsOrderService {
             ninetyFeet: materials.ninetyFlash.exactFeet,
             ninetySticks: materials.ninetyFlash.sticks,
             glueAreaSqFt: materials.glueAreaSqFt,
-            glueBuckets: materials.glueBuckets
+            glueBuckets: materials.glueBuckets,
+            // Populate from the LIVE materials so the snapshot and the tab's live
+            // recompute count vinyl surfaces identically — reconstructing this
+            // from `cutGroups` (shared labels collapse, degenerate faces drop)
+            // would false-flag drift the instant the design was ordered.
+            vinylSurfaceCount: materials.driftKey.vinylSurfaceCount
         )
 
         // (1) Local-first snapshot — the accessor marks needsSync + updatedAt.

@@ -117,6 +117,13 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
     var ninetySticks: Int
     var glueAreaSqFt: Double
     var glueBuckets: Int
+    /// Count of vinyl-classified surfaces at order time — the live materials'
+    /// `driftKey.vinylSurfaceCount` (i.e. `vinylInputs.count`). Stored EXPLICITLY
+    /// because it cannot be reconstructed from `cutGroups`: two surfaces sharing
+    /// a label collapse to one group, and a degenerate surface produces no cuts
+    /// at all — either would make a rebuilt count diverge from the live side and
+    /// false-flag DESIGN CHANGED SINCE ORDER the instant the design was ordered.
+    var vinylSurfaceCount: Int
 
     enum CodingKeys: String, CodingKey {
         case orderedAt
@@ -135,6 +142,7 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         case ninetySticks
         case glueAreaSqFt
         case glueBuckets
+        case vinylSurfaceCount
     }
 
     init(
@@ -153,7 +161,8 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         ninetyFeet: Double,
         ninetySticks: Int,
         glueAreaSqFt: Double,
-        glueBuckets: Int
+        glueBuckets: Int,
+        vinylSurfaceCount: Int
     ) {
         self.orderedAt = orderedAt
         self.orderedBy = orderedBy
@@ -171,6 +180,7 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         self.ninetySticks = ninetySticks
         self.glueAreaSqFt = glueAreaSqFt
         self.glueBuckets = glueBuckets
+        self.vinylSurfaceCount = vinylSurfaceCount
     }
 
     init(from decoder: Decoder) throws {
@@ -194,5 +204,11 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         self.ninetySticks = try c.decodeIfPresent(Int.self, forKey: .ninetySticks) ?? 0
         self.glueAreaSqFt = try c.decodeIfPresent(Double.self, forKey: .glueAreaSqFt) ?? 0
         self.glueBuckets = try c.decodeIfPresent(Int.self, forKey: .glueBuckets) ?? 0
+        // Additive field. A legacy snapshot (none exist in prod) has no stored
+        // count, so fall back to the old distinct-label reconstruction — that
+        // leaves any such snapshot byte-for-byte unchanged in behavior; every
+        // snapshot written since carries the explicit count.
+        self.vinylSurfaceCount = try c.decodeIfPresent(Int.self, forKey: .vinylSurfaceCount)
+            ?? Set(self.cutGroups.map(\.surfaceLabel)).count
     }
 }

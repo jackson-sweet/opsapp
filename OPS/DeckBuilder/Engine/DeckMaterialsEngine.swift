@@ -62,7 +62,11 @@ struct DeckMaterialsDriftKey: Equatable {
         self.dripExactFeet = snapshot.dripEdgeFeet
         self.ninetyExactFeet = snapshot.ninetyFeet
         self.glueAreaSqFt = snapshot.glueAreaSqFt
-        self.vinylSurfaceCount = DeckMaterialsDriftKey.surfaceCount(in: snapshot.cutGroups)
+        // Read the count the snapshot STORED at order time — the live side sets
+        // it from `vinylInputs.count`, so both agree. Reconstructing it from
+        // `cutGroups` here would diverge whenever two surfaces share a label or a
+        // degenerate surface dropped out of the plan, false-flagging drift.
+        self.vinylSurfaceCount = snapshot.vinylSurfaceCount
     }
 
     init(cutPairs: [CutPair], dripExactFeet: Double, ninetyExactFeet: Double, glueAreaSqFt: Double, vinylSurfaceCount: Int) {
@@ -76,12 +80,6 @@ struct DeckMaterialsDriftKey: Equatable {
     static func cutPairOrder(_ a: CutPair, _ b: CutPair) -> Bool {
         if abs(a.lengthInches - b.lengthInches) > 0.0001 { return a.lengthInches < b.lengthInches }
         return a.rollWidthInches < b.rollWidthInches
-    }
-
-    /// Distinct surface labels among the snapshot's cut groups — the ordered-time
-    /// vinyl surface count (every vinyl surface produces at least one cut).
-    private static func surfaceCount(in groups: [DeckMaterialsSnapshot.CutGroup]) -> Int {
-        Set(groups.map(\.surfaceLabel)).count
     }
 }
 

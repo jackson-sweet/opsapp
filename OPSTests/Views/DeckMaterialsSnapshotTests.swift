@@ -101,7 +101,8 @@ final class DeckMaterialsSnapshotTests: XCTestCase {
             dripEdgeFeet: 44, dripSticks: 6,
             clipFeet: 44, clipSticks: 5,
             ninetyFeet: 20, ninetySticks: 3,
-            glueAreaSqFt: 240, glueBuckets: 1
+            glueAreaSqFt: 240, glueBuckets: 1,
+            vinylSurfaceCount: 1
         )
     }
 

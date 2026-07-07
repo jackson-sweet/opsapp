@@ -34,6 +34,58 @@ final class DeckMaterialsOrderServiceTests: XCTestCase {
         )
     }
 
+    /// A rectangular vinyl surface (feet → inches at scale 1) that yields real cut
+    /// geometry. `houseEdgeIndex` marks one boundary as a house edge (90 flash);
+    /// the rest are open edges (drip + clip).
+    private func rectSurface(
+        id: String,
+        label: String,
+        width: Double,
+        height: Double,
+        houseEdgeIndex: Int? = nil
+    ) -> VinylOrderSurfaceInput {
+        let p = [
+            CGPoint(x: 0, y: 0),
+            CGPoint(x: width, y: 0),
+            CGPoint(x: width, y: height),
+            CGPoint(x: 0, y: height)
+        ]
+        let vids = (0..<4).map { "\(id)-v\($0)" }
+        let dims = [width, height, width, height]
+        let edges = (0..<4).map { i in
+            VinylOrderSurfaceEdge(
+                id: "\(id)-e\(i)", start: p[i], end: p[(i + 1) % 4],
+                edgeType: i == houseEdgeIndex ? .houseEdge : .deckEdge, label: nil,
+                startVertexId: vids[i], endVertexId: vids[(i + 1) % 4],
+                isParapet: false, dimensionInches: dims[i]
+            )
+        }
+        return VinylOrderSurfaceInput(id: id, label: label, levelName: nil, positions: p, scaleFactor: 1.0, edges: edges)
+    }
+
+    /// A degenerate surface (< 3 positions): `VinylCutListEngine.makePlan` drops it
+    /// (no cuts, no cut group), but it still counts toward `vinylInputs.count`.
+    private func degenerateSurface(id: String, label: String) -> VinylOrderSurfaceInput {
+        VinylOrderSurfaceInput(
+            id: id, label: label, levelName: nil,
+            positions: [CGPoint(x: 0, y: 0), CGPoint(x: 10, y: 0)],
+            scaleFactor: 1.0, edges: []
+        )
+    }
+
+    private func markOrderedSnapshot(_ materials: DeckMaterialsList) async throws -> DeckMaterialsSnapshot {
+        let design = DeckDesign(companyId: "co-1")
+        let service = DeckMaterialsOrderService(userId: "user-1") { _, _ in }
+        try await service.markOrdered(
+            projectId: "proj-1",
+            design: design,
+            materials: materials,
+            settings: DeckMaterialsSettings(),
+            vinylSettings: .default
+        )
+        return try XCTUnwrap(design.drawingData.orderedMaterials)
+    }
+
     func testMarkOrderedWritesSnapshotAndTrio() async throws {
         let design = DeckDesign(companyId: "co-1")
         var captured: [String: AnyJSON]?
@@ -108,5 +160,75 @@ final class DeckMaterialsOrderServiceTests: XCTestCase {
         try await service.clearOrdered(projectId: "proj-1", design: nil)
         XCTAssertEqual(captured?[ProjectVinylOrderFields.status], .string("not_ordered"))
         XCTAssertEqual(captured?[ProjectVinylOrderFields.orderedAt], .null)
+    }
+
+    // MARK: - Defect ② — drift key parity at order time
+
+    /// (a) Two vinyl surfaces sharing a label, ordered → NO false drift. Their cut
+    /// groups collapse to one label, so the old snapshot-side reconstruction read
+    /// 1 while the live side counted 2 — flagging DESIGN CHANGED the instant the
+    /// design was ordered. The stored count keeps both sides at 2.
+    func testTwoVinylSurfacesSharingLabelNoFalseDrift() async throws {
+        let materials = DeckMaterialsEngine.compute(
+            vinylInputs: [
+                rectSurface(id: "s1", label: "Main", width: 144, height: 240, houseEdgeIndex: 3),
+                rectSurface(id: "s2", label: "Main", width: 120, height: 120)
+            ],
+            allDetectedFacesByLevel: [],
+            settings: DeckMaterialsSettings(),
+            vinylSettings: .default
+        )
+        XCTAssertEqual(materials.driftKey.vinylSurfaceCount, 2)
+
+        let snapshot = try await markOrderedSnapshot(materials)
+        // Both surfaces collapse to a single label — the old reconstruction read 1.
+        XCTAssertEqual(Set(snapshot.cutGroups.map(\.surfaceLabel)).count, 1)
+        XCTAssertEqual(snapshot.vinylSurfaceCount, 2)
+        XCTAssertEqual(DeckMaterialsDriftKey(snapshot: snapshot), materials.driftKey)
+    }
+
+    /// (b) A vinyl set containing a degenerate surface, ordered → NO false drift.
+    /// The degenerate surface drops out of the cut plan (no cut group), but still
+    /// counts toward the vinyl surface count.
+    func testDegenerateVinylSurfaceNoFalseDrift() async throws {
+        let materials = DeckMaterialsEngine.compute(
+            vinylInputs: [
+                rectSurface(id: "s1", label: "Main", width: 144, height: 240, houseEdgeIndex: 3),
+                degenerateSurface(id: "s2", label: "Sliver")
+            ],
+            allDetectedFacesByLevel: [],
+            settings: DeckMaterialsSettings(),
+            vinylSettings: .default
+        )
+        XCTAssertEqual(materials.driftKey.vinylSurfaceCount, 2)
+
+        let snapshot = try await markOrderedSnapshot(materials)
+        // Only the non-degenerate surface produced cuts.
+        XCTAssertEqual(Set(snapshot.cutGroups.map(\.surfaceLabel)), ["Main"])
+        XCTAssertEqual(snapshot.vinylSurfaceCount, 2)
+        XCTAssertEqual(DeckMaterialsDriftKey(snapshot: snapshot), materials.driftKey)
+    }
+
+    /// (c) A real vertex move that changes cut geometry → drift TRUE. The stored
+    /// count fix must not mask genuine design change.
+    func testGeometryChangeFlagsDrift() async throws {
+        let ordered = DeckMaterialsEngine.compute(
+            vinylInputs: [rectSurface(id: "s1", label: "Main", width: 144, height: 240, houseEdgeIndex: 3)],
+            allDetectedFacesByLevel: [],
+            settings: DeckMaterialsSettings(),
+            vinylSettings: .default
+        )
+        let snapshot = try await markOrderedSnapshot(ordered)
+        // Sanity: the unchanged design reads no drift.
+        XCTAssertEqual(DeckMaterialsDriftKey(snapshot: snapshot), ordered.driftKey)
+
+        // The deck grew 20'→30' deep — a real geometry change.
+        let moved = DeckMaterialsEngine.compute(
+            vinylInputs: [rectSurface(id: "s1", label: "Main", width: 144, height: 360, houseEdgeIndex: 3)],
+            allDetectedFacesByLevel: [],
+            settings: DeckMaterialsSettings(),
+            vinylSettings: .default
+        )
+        XCTAssertNotEqual(DeckMaterialsDriftKey(snapshot: snapshot), moved.driftKey)
     }
 }

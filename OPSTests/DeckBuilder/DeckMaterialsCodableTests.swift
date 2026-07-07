@@ -42,11 +42,31 @@ final class DeckMaterialsCodableTests: XCTestCase {
             dripEdgeFeet: 44, dripSticks: 6,
             clipFeet: 44, clipSticks: 5,
             ninetyFeet: 20, ninetySticks: 3,
-            glueAreaSqFt: 240, glueBuckets: 1
+            glueAreaSqFt: 240, glueBuckets: 1,
+            vinylSurfaceCount: 2
         )
         let decoded = try XCTUnwrap(DeckDrawingData.fromJSON(data.toJSON()))
         XCTAssertEqual(decoded.materialsSettings, data.materialsSettings)
         XCTAssertEqual(decoded.orderedMaterials, data.orderedMaterials)
+        // The explicit surface count survives the round-trip (not reconstructed).
+        XCTAssertEqual(decoded.orderedMaterials?.vinylSurfaceCount, 2)
+    }
+
+    /// A snapshot JSON written before `vinylSurfaceCount` existed decodes with the
+    /// old distinct-label reconstruction — additive-field discipline, no crash,
+    /// legacy behavior unchanged. (Two cut groups share the label "Main" → 1.)
+    func testSnapshotWithoutSurfaceCountFallsBackToLabelCount() throws {
+        let json = """
+        {
+          "orderedAt": 1780000000,
+          "cutGroups": [
+            {"surfaceLabel": "Main", "count": 2, "lengthInches": 252, "rollWidthInches": 72},
+            {"surfaceLabel": "Main", "count": 1, "lengthInches": 144, "rollWidthInches": 72}
+          ]
+        }
+        """
+        let snapshot = try JSONDecoder().decode(DeckMaterialsSnapshot.self, from: Data(json.utf8))
+        XCTAssertEqual(snapshot.vinylSurfaceCount, 1)
     }
 
     func testVinylOrderSettingsCodableRoundTrip() throws {

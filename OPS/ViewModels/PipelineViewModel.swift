@@ -248,6 +248,21 @@ class PipelineViewModel: ObservableObject {
         }
     }
 
+    /// Discard a junk lead — move it to the terminal `.discarded` stage. Unlike
+    /// mark-lost, records no reason: this was never a real deal. Rides the same
+    /// atomic `move_opportunity_stage` RPC (writes the stage_transitions audit
+    /// row) and flips the local model so the lead drops out of the triage
+    /// buckets (terminal stages are excluded).
+    func discard(opportunityId: String) async throws {
+        guard let repo = repository else { return }
+        _ = try await repo.moveToStage(opportunityId: opportunityId, to: .discarded, userId: currentUserId)
+        if let idx = allOpportunities.firstIndex(where: { $0.id == opportunityId }) {
+            allOpportunities[idx].stage = .discarded
+            allOpportunities[idx].stageEnteredAt = Date()
+            allOpportunities[idx].stageManuallySet = true
+        }
+    }
+
     func softDelete(opportunityId: String) async throws {
         guard let repo = repository else { return }
         try await repo.softDelete(opportunityId)

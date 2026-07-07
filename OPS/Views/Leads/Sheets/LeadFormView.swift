@@ -20,7 +20,7 @@
 //    7. STAGE (chip group, 6 open stages, default newLead)
 //    8. PRIORITY (chip group, LOW/MEDIUM/HIGH, default MEDIUM)
 //    9. NOTES (textarea, 3 rows)
-//   10. DANGER ZONE (Edit-only — archive + delete buttons)
+//   10. DANGER ZONE (Edit-only — archive button)
 //
 
 import SwiftUI
@@ -91,7 +91,6 @@ struct LeadFormView: View {
 
     var isEdit: Bool = false
     var onArchive: (() -> Void)? = nil
-    var onDelete: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -244,23 +243,13 @@ struct LeadFormView: View {
             .kerning(1.6)
             .textCase(.uppercase)
 
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                SheetCTAButton(
-                    label: "ARCHIVE",
-                    icon: "archivebox",
-                    variant: .outline,
-                    action: { onArchive?() }
-                )
-                .frame(maxWidth: .infinity)
-
-                SheetCTAButton(
-                    label: "DELETE",
-                    icon: "trash",
-                    variant: .destructive,
-                    action: { onDelete?() }
-                )
-                .frame(maxWidth: .infinity)
-            }
+            SheetCTAButton(
+                label: "ARCHIVE",
+                icon: "archivebox",
+                variant: .outline,
+                action: { onArchive?() }
+            )
+            .frame(maxWidth: .infinity)
         }
     }
 }

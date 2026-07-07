@@ -320,6 +320,7 @@ enum Feedback {
 
     enum Lead {
         static let archived      = Toast(label: "// LEAD ARCHIVED", tone: .warning)
+        static let discarded     = Toast(label: "// LEAD DISCARDED", tone: .warning)
         static let stageAdvanced = Toast(label: "// STAGE ADVANCED", tone: .success)
     }
 

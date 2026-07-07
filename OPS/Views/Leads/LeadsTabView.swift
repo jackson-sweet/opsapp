@@ -71,6 +71,7 @@ struct LeadsTabView: View {
     @State private var activeSheet: LeadsSheet?
     @State private var footerStage: PipelineStage?
     @State private var activeSiteVisitLead: Opportunity?
+    @State private var discardTarget: Opportunity?
 
     /// Guards the deep-link drain so a single tap resolves once even if both
     /// the `.task` load and the `pendingLeadDeepLinkId` change fire.
@@ -147,6 +148,10 @@ struct LeadsTabView: View {
                     .safeAreaInset(edge: .bottom) {
                         Color.clear.frame(height: 120)
                     }
+                    .leadDiscardFlow(
+                        target: $discardTarget,
+                        perform: { lead in try await viewModel.discard(opportunityId: lead.id) }
+                    )
                 }
             }
             .navigationBarHidden(true)
@@ -400,17 +405,20 @@ struct LeadsTabView: View {
             onLost:    { activeSheet = .lost(lead) }
         )
         .contextMenu {
-            if canManage {
-                Button { activeSheet = .edit(lead) } label: { Label("Edit", systemImage: "pencil") }
-                Button {
+            LeadCardContextMenu(
+                lead: lead,
+                canManage: canManage,
+                onEdit: { activeSheet = .edit(lead) },
+                onArchive: {
                     Task {
                         do {
                             try await viewModel.archive(opportunityId: lead.id)
                             ToastCenter.shared.present(Feedback.Lead.archived)
                         } catch {}
                     }
-                } label: { Label("Archive", systemImage: "archivebox") }
-            }
+                },
+                onDiscard: { discardTarget = lead }
+            )
         }
     }
 

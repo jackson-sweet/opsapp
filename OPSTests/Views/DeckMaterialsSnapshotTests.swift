@@ -114,19 +114,25 @@ final class DeckMaterialsSnapshotTests: XCTestCase {
         resolved: DeckMaterialsResolver.Resolved?,
         drift: Bool
     ) {
-        let view = ZStack(alignment: .top) {
-            OPSStyle.Colors.background.ignoresSafeArea()
-            DeckMaterialsSection(
-                design: design,
-                project: project(),
-                injectedResolved: resolved,
-                driftFlagged: drift
-            )
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
+        renderToPNG(name) {
+            ZStack(alignment: .top) {
+                OPSStyle.Colors.background.ignoresSafeArea()
+                DeckMaterialsSection(
+                    design: design,
+                    project: project(),
+                    injectedResolved: resolved,
+                    driftFlagged: drift
+                )
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+            }
+            .frame(width: frameSize.width, height: frameSize.height)
         }
-        .frame(width: frameSize.width, height: frameSize.height)
+    }
 
-        let host = UIHostingController(rootView: view)
+    /// Render any view to a PNG at `frameSize` via UIHostingController + UIWindow +
+    /// drawHierarchy (dark mode) and stash it for inspection + docs/artifacts copy.
+    private func renderToPNG(_ name: String, @ViewBuilder _ make: () -> some View) {
+        let host = UIHostingController(rootView: make().frame(width: frameSize.width, height: frameSize.height))
         host.overrideUserInterfaceStyle = .dark
         host.view.frame = CGRect(origin: .zero, size: frameSize)
         host.view.backgroundColor = .black
@@ -169,6 +175,34 @@ final class DeckMaterialsSnapshotTests: XCTestCase {
 
         // 2 · Confirm dimensions — vinyl set but unresolved scale.
         snapshot("deck-materials-confirm-dims", design: design(), resolved: confirmDimsResolved(), drift: false)
+    }
+
+    /// The order-confirm sheet in both modes — cut-list (ORDER SQ FT) and full
+    /// roll (ROLLS + ≈ SQ FT echo). Editable quantities pre-filled from the calc.
+    func testRenderOrderConfirmSheet() {
+        let cutListCalc = DeckMaterialsOrderConfirmation(
+            orderMode: .cutList, fullRollLengthFeet: 75,
+            vinylOrderedSqFt: 260, rollCount: 0,
+            dripSticks: 6, clipSticks: 5, ninetySticks: 3, glueBuckets: 1
+        )
+        renderToPNG("deck-materials-confirm-sheet") {
+            VinylOrderConfirmSheet(
+                projectTitle: "MERIDIAN DECK", deckTitle: "MAIN LEVEL",
+                rollWidthInches: 72, calculated: cutListCalc, onConfirm: { _ in }
+            )
+        }
+
+        let rollCalc = DeckMaterialsOrderConfirmation(
+            orderMode: .fullRolls, fullRollLengthFeet: 75,
+            vinylOrderedSqFt: 312, rollCount: 3,
+            dripSticks: 6, clipSticks: 5, ninetySticks: 3, glueBuckets: 1
+        )
+        renderToPNG("deck-materials-confirm-sheet-rolls") {
+            VinylOrderConfirmSheet(
+                projectTitle: "MERIDIAN DECK", deckTitle: "MAIN LEVEL",
+                rollWidthInches: 72, calculated: rollCalc, onConfirm: { _ in }
+            )
+        }
     }
 }
 #endif

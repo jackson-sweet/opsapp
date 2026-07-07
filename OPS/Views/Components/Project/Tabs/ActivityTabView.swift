@@ -450,31 +450,52 @@ struct ActivityTabView: View {
 
 private struct ProjectDescriptionPinnedEntryView: View {
     let description: String
+    @State private var isExpanded = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                Text("PINNED")
-                    .font(OPSStyle.Typography.microLabel)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            Button {
+                withAnimation(OPSStyle.Animation.panel) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Text("PINNED")
+                        .font(OPSStyle.Typography.microLabel)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                Rectangle()
-                    .fill(OPSStyle.Colors.cardBorder)
-                    .frame(height: OPSStyle.Layout.Border.standard)
+                    Rectangle()
+                        .fill(OPSStyle.Colors.cardBorder)
+                        .frame(height: OPSStyle.Layout.Border.standard)
 
-                Text("PROJECT DESCRIPTION")
-                    .font(OPSStyle.Typography.microLabel)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    Text("PROJECT DESCRIPTION")
+                        .font(OPSStyle.Typography.microLabel)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                    Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
+                        .font(OPSStyle.Typography.microLabel)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                        .accessibilityHidden(true)
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(PlainButtonStyle())
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            .accessibilityLabel("Project description")
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
 
-            Text(description)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .fixedSize(horizontal: false, vertical: true)
+            if isExpanded {
+                Text(description)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity)
+            }
         }
         .padding(OPSStyle.Layout.spacing3)
         .glassSurface()
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 }
 

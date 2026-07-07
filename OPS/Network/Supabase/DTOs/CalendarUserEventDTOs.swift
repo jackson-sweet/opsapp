@@ -113,6 +113,8 @@ struct CreateCalendarUserEventDTO: Codable {
     let allDay: Bool
     let notes: String?
     let status: String
+    var reviewedBy: String? = nil
+    var reviewedAt: String? = nil
     var address: String? = nil
     var teamMemberIds: [String]? = nil
     var seriesId: String? = nil
@@ -127,6 +129,8 @@ struct CreateCalendarUserEventDTO: Codable {
         case allDay = "all_day"
         case notes
         case status
+        case reviewedBy = "reviewed_by"
+        case reviewedAt = "reviewed_at"
         case address
         case teamMemberIds = "team_member_ids"
         case seriesId = "series_id"

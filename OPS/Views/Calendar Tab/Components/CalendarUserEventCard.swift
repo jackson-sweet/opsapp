@@ -3,8 +3,8 @@
 //  OPS
 //
 //  Card for personal events and time-off requests in the day canvas.
-//  Personal events: dashed border, dark fill.
-//  Time-off requests: amber fill + border, status badge.
+//  Personal events: dashed custom-event treatment.
+//  Time-off: semantic status treatment with clock badge.
 //
 
 import SwiftUI
@@ -19,8 +19,9 @@ struct CalendarUserEventCard: View {
     var onResizeSpan: ((Int) -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Content
+        HStack(spacing: OPSStyle.Layout.spacing3) {
+            iconTile
+
             VStack(alignment: .leading, spacing: 5) {
                 Text(event.title.isEmpty ? eventTypeFallback : event.title)
                     .font(OPSStyle.Typography.bodyEmphasis)
@@ -33,17 +34,11 @@ struct CalendarUserEventCard: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
 
-            // Status/type badge (top-right)
-            VStack {
-                statusBadge
-                Spacer()
-            }
-            .padding(.top, 14)
-            .padding(.trailing, 14)
+            statusBadge
         }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing3)
         .frame(minHeight: 64)
         .background(cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius))
@@ -76,32 +71,48 @@ struct CalendarUserEventCard: View {
 
     // MARK: - Subviews
 
+    private var iconTile: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
+                .fill(iconBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
+                        .stroke(iconBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+
+            Image(systemName: iconName)
+                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                .foregroundColor(iconColor)
+        }
+        .frame(width: 34, height: 34)
+    }
+
     @ViewBuilder
     private var statusBadge: some View {
         if event.isTimeOff {
             Text(statusLabel)
                 .font(OPSStyle.Typography.miniLabel)
                 .foregroundColor(statusColor)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
+                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                .padding(.vertical, OPSStyle.Layout.spacing1)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                        .fill(statusColor.opacity(0.12))
+                        .fill(statusBackground)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                        .stroke(statusColor.opacity(0.35), lineWidth: 0.5)
+                        .stroke(statusBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         } else {
-            Text("PERSONAL")
+            Text("CUSTOM")
                 .font(OPSStyle.Typography.miniLabel)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
+                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                .padding(.vertical, OPSStyle.Layout.spacing1)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                         .stroke(OPSStyle.Colors.secondaryText.opacity(0.4),
-                                style: StrokeStyle(lineWidth: 0.5, dash: [3, 2]))
+                                style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.standard, dash: [3, 2]))
                 )
         }
     }
@@ -109,11 +120,9 @@ struct CalendarUserEventCard: View {
     @ViewBuilder
     private var cardBackground: some View {
         if event.isTimeOff {
-            // Amber tint for time-off
-            Color(red: 196/255, green: 168/255, blue: 104/255).opacity(0.12)
+            statusBackground
         } else {
-            // One step darker than cardBackgroundDark for personal events
-            Color(red: 13/255, green: 13/255, blue: 13/255)
+            OPSStyle.Colors.surfaceInput
         }
     }
 
@@ -121,13 +130,11 @@ struct CalendarUserEventCard: View {
     private var cardBorder: some View {
         if event.isTimeOff {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                .stroke(Color(red: 196/255, green: 168/255, blue: 104/255).opacity(0.35),
-                        lineWidth: 0.5)
+                .stroke(statusBorder, lineWidth: OPSStyle.Layout.Border.standard)
         } else {
-            // Dashed border for personal events
             RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                .stroke(Color.white.opacity(0.25),
-                        style: StrokeStyle(lineWidth: 0.5, dash: [4, 3]))
+                .stroke(OPSStyle.Colors.cardBorder,
+                        style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.standard, dash: [4, 3]))
         }
     }
 
@@ -135,6 +142,18 @@ struct CalendarUserEventCard: View {
 
     private var eventTypeFallback: String {
         event.isTimeOff ? "TIME OFF REQUEST" : "PERSONAL EVENT"
+    }
+
+    private var iconName: String {
+        if event.isTimeOff {
+            switch event.eventStatus {
+            case .pending:  return "clock.badge.questionmark"
+            case .approved: return "clock.badge.checkmark"
+            case .denied:   return "clock.badge.xmark"
+            case .none:     return "clock"
+            }
+        }
+        return "calendar.badge.plus"
     }
 
     private var statusLabel: String {
@@ -148,11 +167,41 @@ struct CalendarUserEventCard: View {
 
     private var statusColor: Color {
         switch event.eventStatus {
-        case .pending:  return Color(red: 196/255, green: 168/255, blue: 104/255)  // amber
-        case .approved: return Color(red: 165/255, green: 179/255, blue: 104/255)  // muted green
-        case .denied:   return Color(red: 147/255, green: 50/255,  blue: 26/255)   // error red
-        case .none:     return Color(red: 196/255, green: 168/255, blue: 104/255)
+        case .pending:  return OPSStyle.Colors.tanTextM
+        case .approved: return OPSStyle.Colors.oliveTextM
+        case .denied:   return OPSStyle.Colors.roseTextM
+        case .none:     return OPSStyle.Colors.tanTextM
         }
+    }
+
+    private var statusBackground: Color {
+        switch event.eventStatus {
+        case .pending:  return OPSStyle.Colors.tanFillM
+        case .approved: return OPSStyle.Colors.oliveFillM
+        case .denied:   return OPSStyle.Colors.roseFillM
+        case .none:     return OPSStyle.Colors.tanFillM
+        }
+    }
+
+    private var statusBorder: Color {
+        switch event.eventStatus {
+        case .pending:  return OPSStyle.Colors.tanLineM
+        case .approved: return OPSStyle.Colors.oliveLineM
+        case .denied:   return OPSStyle.Colors.roseLineM
+        case .none:     return OPSStyle.Colors.tanLineM
+        }
+    }
+
+    private var iconColor: Color {
+        event.isTimeOff ? statusColor : OPSStyle.Colors.primaryAccent
+    }
+
+    private var iconBackground: Color {
+        event.isTimeOff ? statusBackground : OPSStyle.Colors.surfaceInput
+    }
+
+    private var iconBorder: Color {
+        event.isTimeOff ? statusBorder : OPSStyle.Colors.cardBorder
     }
 
     private var dateRangeString: String {

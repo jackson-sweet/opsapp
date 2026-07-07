@@ -102,7 +102,6 @@ struct LeadsTabView: View {
         NavigationStack {
             ZStack(alignment: .top) {
                 OPSStyle.Colors.background.ignoresSafeArea()
-                Atmosphere(tone: atmosphereTone)
 
                 VStack(spacing: 0) {
                     AppHeader(
@@ -514,13 +513,6 @@ struct LeadsTabView: View {
     }
 
     // MARK: - Helpers
-
-    private var atmosphereTone: Atmosphere.Tone {
-        if buckets.overdue.count > 0 { return .rose }
-        if buckets.dueToday.count > 0 { return .tan }
-        if !buckets.unconvertedWon.isEmpty { return .olive }
-        return .steel
-    }
 
     private var unconvertedWonValue: Double {
         buckets.unconvertedWon.reduce(0) { $0 + ($1.actualValue ?? $1.estimatedValue ?? 0) }

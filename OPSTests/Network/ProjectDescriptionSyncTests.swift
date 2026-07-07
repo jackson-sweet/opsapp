@@ -57,6 +57,26 @@ final class ProjectDescriptionSyncTests: XCTestCase {
         XCTAssertTrue(payload?["description"] is NSNull)
     }
 
+    func testProjectAutoNamerRefreshesAddressComponentInsideCustomTitle() {
+        let title = ProjectAutoNamer.titleReplacingAddressComponent(
+            in: "Deck 1 - 110 Fort Street",
+            previousAddress: "110 Fort Street, Victoria, BC",
+            nextAddress: "115 Quadra Street, Victoria, BC"
+        )
+
+        XCTAssertEqual(title, "Deck 1 - 115 Quadra Street")
+    }
+
+    func testProjectAutoNamerLeavesManualTitleUntouchedWhenOldAddressIsNotPresent() {
+        let title = ProjectAutoNamer.titleReplacingAddressComponent(
+            in: "Deck 1 - Site visit",
+            previousAddress: "110 Fort Street, Victoria, BC",
+            nextAddress: "115 Quadra Street, Victoria, BC"
+        )
+
+        XCTAssertNil(title)
+    }
+
     func testUpdateTaskFieldsSwitchingTaskTypeMirrorsLocalRelationshipAndSyncPayload() async throws {
         UserDefaults.standard.set(false, forKey: "feature.useDataActor")
 

@@ -101,6 +101,11 @@ struct UserEventSheet: View {
     @State private var selectedTeamMemberIds: Set<String> = []
     @State private var showingTeamPicker: Bool = false
 
+    // Time off target selection. Approvers can book for any active company
+    // member; everyone else submits for themselves only.
+    @State private var selectedTimeOffTargetIds: Set<String> = []
+    @State private var showingTimeOffTargetPicker: Bool = false
+
     // Bug a5001a70 — Time of day (active when allDay == false)
     @State private var startTime: Date
     @State private var endTime: Date
@@ -125,19 +130,45 @@ struct UserEventSheet: View {
     private var isEditing: Bool { editingEvent != nil }
 
     /// Gates every schedule mutation in this sheet (create-save, edit-save, and
-    /// the calendar date-cell tap). Gated on calendar.edit, scope-aware: in edit
-    /// mode an own-scope user may only edit personal events they own or
-    /// participate in; in create mode the new event belongs to the current user,
-    /// so any grant suffices. Crew + Unassigned lack the grant, so the sheet
-    /// renders read-only — SAVE disabled, recurrence + time pickers hidden. Uses
-    /// the singleton directly (no @EnvironmentObject injection risk).
+    /// the calendar date-cell tap). Personal events stay schedule-gated. Time
+    /// off create mode is different: any signed-in team member can submit for
+    /// self, and `time_off.approve` unlocks direct booking for others.
     private var canModify: Bool {
         if let event = editingEvent {
             return PermissionStore.shared.canEditSchedule(
                 assigneeIds: [event.userId] + (event.teamMemberIds ?? [])
             )
         }
-        return PermissionStore.shared.canEditAnySchedule
+        switch mode {
+        case .personalEvent:
+            return PermissionStore.shared.canEditAnySchedule
+        case .timeOff:
+            return dataController.currentUser != nil
+        }
+    }
+
+    private var canBookTimeOffForOthers: Bool {
+        PermissionStore.shared.can("time_off.approve")
+    }
+
+    private var companyMembers: [User] {
+        guard let companyId = dataController.currentUser?.companyId else { return [] }
+        var members = dataController.getTeamMembers(companyId: companyId)
+        if let currentUser = dataController.currentUser,
+           !members.contains(where: { $0.id == currentUser.id }) {
+            members.append(currentUser)
+        }
+        return members.sorted { $0.fullName.localizedCaseInsensitiveCompare($1.fullName) == .orderedAscending }
+    }
+
+    private var resolvedTimeOffTargets: [User] {
+        guard mode == .timeOff else { return [] }
+        if canBookTimeOffForOthers {
+            let selected = companyMembers.filter { selectedTimeOffTargetIds.contains($0.id) }
+            if !selected.isEmpty { return selected }
+        }
+        if let currentUser = dataController.currentUser { return [currentUser] }
+        return []
     }
 
     // MARK: - Init
@@ -214,7 +245,7 @@ struct UserEventSheet: View {
         case .personalEvent:
             return !title.trimmingCharacters(in: .whitespaces).isEmpty
         case .timeOff:
-            return true
+            return !resolvedTimeOffTargets.isEmpty
         }
     }
 
@@ -229,7 +260,10 @@ struct UserEventSheet: View {
 
     private var actionButtonText: String {
         if isEditing { return "SAVE" }
-        return mode == .personalEvent ? "SAVE" : "SUBMIT"
+        switch mode {
+        case .personalEvent: return "SAVE"
+        case .timeOff:       return canBookTimeOffForOthers ? "BOOK" : "SUBMIT"
+        }
     }
 
     private var sheetTitle: String {
@@ -240,7 +274,8 @@ struct UserEventSheet: View {
             case .allEvents:      return "EDIT ALL EVENTS"
             }
         }
-        return mode == .personalEvent ? "NEW EVENT" : "REQUEST TIME OFF"
+        if mode == .personalEvent { return "NEW EVENT" }
+        return canBookTimeOffForOthers ? "BOOK TIME OFF" : "REQUEST TIME OFF"
     }
 
     /// Default workday start (8:00 AM) used when "All Day" is toggled off.
@@ -253,6 +288,12 @@ struct UserEventSheet: View {
     private static func defaultEndTime() -> Date {
         let calendar = Calendar.current
         return calendar.date(bySettingHour: 17, minute: 0, second: 0, of: Date()) ?? Date()
+    }
+
+    private func ensureTimeOffTargetSeed() {
+        guard selectedTimeOffTargetIds.isEmpty,
+              let currentUserId = dataController.currentUser?.id else { return }
+        selectedTimeOffTargetIds = [currentUserId]
     }
 
     // MARK: - Body
@@ -313,8 +354,8 @@ struct UserEventSheet: View {
             .standardSheetToolbar(
                 title: sheetTitle,
                 actionText: actionButtonText,
-                // `canModify` disables SAVE/SUBMIT for non-editors — the sheet
-                // stays viewable but read-only.
+                // Personal events stay schedule-edit gated. Time-off create
+                // mode is self-submit by default, with approver booking above it.
                 isActionEnabled: canModify && isFormValid && hasDateRange,
                 isSaving: isSaving,
                 onCancel: { isPresented = false },
@@ -324,6 +365,7 @@ struct UserEventSheet: View {
         .interactiveDismissDisabled()
         .colorScheme(.dark)
         .onAppear {
+            ensureTimeOffTargetSeed()
             loadExistingEvents()
         }
         .animation(OPSStyle.Animation.standard, value: mode)
@@ -339,6 +381,12 @@ struct UserEventSheet: View {
                     allTeamMembers: members
                 )
             }
+        }
+        .sheet(isPresented: $showingTimeOffTargetPicker) {
+            TeamMemberPickerSheet(
+                selectedTeamMemberIds: $selectedTimeOffTargetIds,
+                allTeamMembers: companyMembers
+            )
         }
         // Bug 68123654 — first-event-save iPhone Calendar Mirror permission ask.
         .sheet(isPresented: $showingMirrorPrompt) {
@@ -359,7 +407,10 @@ struct UserEventSheet: View {
                 Button {
                     withAnimation(OPSStyle.Animation.fast) {
                         mode = eventMode
-                        if eventMode == .timeOff { allDay = true }
+                        if eventMode == .timeOff {
+                            allDay = true
+                            ensureTimeOffTargetSeed()
+                        }
                     }
                 } label: {
                     Text(eventMode.rawValue)
@@ -410,21 +461,22 @@ struct UserEventSheet: View {
 
     private var timeOffBanner: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image(systemName: canBookTimeOffForOthers ? "checkmark.shield.fill" : "clock.badge.questionmark.fill")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                .foregroundColor(OPSStyle.Colors.warningStatus)
+                .foregroundColor(canBookTimeOffForOthers ? OPSStyle.Colors.oliveTextM : OPSStyle.Colors.tanTextM)
 
-            Text("REQUEST WILL BE SENT TO YOUR ADMIN FOR APPROVAL.")
+            Text(canBookTimeOffForOthers ? "TIME OFF WILL BE BOOKED AS APPROVED." : "REQUEST WILL BE SENT FOR APPROVAL.")
                 .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.warningStatus)
+                .foregroundColor(canBookTimeOffForOthers ? OPSStyle.Colors.oliveTextM : OPSStyle.Colors.tanTextM)
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.warningStatus.opacity(0.08))
+        .background(canBookTimeOffForOthers ? OPSStyle.Colors.oliveFillM : OPSStyle.Colors.tanFillM)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.warningStatus.opacity(0.20), lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(canBookTimeOffForOthers ? OPSStyle.Colors.oliveLineM : OPSStyle.Colors.tanLineM,
+                        lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -432,6 +484,10 @@ struct UserEventSheet: View {
 
     private var detailsContent: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+            if mode == .timeOff {
+                timeOffTargetRow
+            }
+
             // Title / Reason field
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text(mode == .personalEvent ? "TITLE" : "REASON (OPTIONAL)")
@@ -482,8 +538,7 @@ struct UserEventSheet: View {
                 )
 
                 // Bug a5001a70 — start/end time pickers (only when not all-day).
-                // Hidden for non-editors — the sheet is read-only for them, so
-                // there's nothing to pick.
+                // Hidden for users who cannot modify the active event.
                 if !allDay && canModify {
                     timePickerRow(label: "STARTS", time: $startTime)
                     timePickerRow(label: "ENDS", time: $endTime)
@@ -491,8 +546,8 @@ struct UserEventSheet: View {
             }
 
             // Bug a5001a70 — team invite picker (personal event only).
-            // Time-off requests don't invite the crew — they belong to the
-            // requester only.
+            // Time-off targets are selected in their own row. Team invites stay
+            // personal-event only.
             if mode == .personalEvent {
                 teamInviteRow
             }
@@ -590,6 +645,82 @@ struct UserEventSheet: View {
             }
             .buttonStyle(PlainButtonStyle())
         }
+    }
+
+    // MARK: - Time Off Target Row
+
+    @ViewBuilder
+    private var timeOffTargetRow: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("FOR")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            if canBookTimeOffForOthers {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showingTimeOffTargetPicker = true
+                } label: {
+                    timeOffTargetContent
+                }
+                .buttonStyle(PlainButtonStyle())
+            } else {
+                timeOffTargetContent
+            }
+        }
+    }
+
+    private var timeOffTargetContent: some View {
+        let targets = resolvedTimeOffTargets
+        let summary = targets.count <= 1
+            ? (targets.first?.fullName ?? "You")
+            : "\(targets.count) team members"
+
+        return HStack(spacing: OPSStyle.Layout.spacing2_5) {
+            HStack(spacing: -6) {
+                ForEach(Array(targets.prefix(3)), id: \.id) { user in
+                    UserAvatar(user: user, size: 28)
+                        .overlay(
+                            Circle()
+                                .stroke(OPSStyle.Colors.background, lineWidth: OPSStyle.Layout.Border.standard)
+                        )
+                }
+
+                if targets.count > 3 {
+                    Text("+\(targets.count - 3)")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .padding(.leading, OPSStyle.Layout.spacing2)
+                }
+            }
+
+            Text(summary)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer()
+
+            if canBookTimeOffForOthers {
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            } else {
+                Text("YOU")
+                    .font(OPSStyle.Typography.miniLabel)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+        }
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .frame(minHeight: 52)
+        .background(OPSStyle.Colors.surfaceInput)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
 
     // MARK: - Recurrence Row (Bug a5001a70)
@@ -741,7 +872,7 @@ struct UserEventSheet: View {
             // only). In edit mode we deliberately hide it: changing the
             // recurrence rule on an existing series is a structural change
             // that's better handled by deleting + recreating the series.
-            // Also hidden for non-editors — read-only sheet has nothing to set.
+            // Also hidden for users who cannot modify the active event.
             if mode == .personalEvent && !isEditing && canModify {
                 recurrenceRow
             }
@@ -951,11 +1082,19 @@ struct UserEventSheet: View {
 
         // Load user events from SwiftData
         guard let context = dataController.modelContext,
-              let userId = dataController.currentUser?.id else { return }
+              let userId = dataController.currentUser?.id,
+              let companyId = dataController.currentUser?.companyId else { return }
         let descriptor = FetchDescriptor<CalendarUserEvent>(
-            predicate: #Predicate { $0.userId == userId && $0.deletedAt == nil }
+            predicate: #Predicate { $0.companyId == companyId && $0.deletedAt == nil }
         )
-        userEvents = (try? context.fetch(descriptor)) ?? []
+        let canViewAllCalendar = PermissionStore.shared.can("calendar.view", requiredScope: "all")
+        let canApproveTimeOff = PermissionStore.shared.can("time_off.approve")
+        userEvents = ((try? context.fetch(descriptor)) ?? []).filter { event in
+            if canViewAllCalendar { return true }
+            if event.userId == userId { return true }
+            if event.teamMemberIds?.contains(userId) == true { return true }
+            return canApproveTimeOff && event.isTimeOff
+        }
     }
 
     // MARK: - Calendar Helpers
@@ -1012,9 +1151,8 @@ struct UserEventSheet: View {
     // MARK: - Save
 
     private func save() {
-        // Schedule-mutation gate — non-editors (Crew/Unassigned) can view
-        // this sheet but cannot persist new events. SAVE is also disabled in
-        // the toolbar; this guard is the hard backstop.
+        // Schedule-mutation gate. Personal events require schedule-edit; time
+        // off create mode allows self-submit and approver booking.
         guard canModify else { return }
         guard !isSaving else { return }
         guard let userId = dataController.currentUser?.id,
@@ -1034,17 +1172,44 @@ struct UserEventSheet: View {
         let eventTitle: String
         let eventStatus: String
         let eventNotes: String?
+        let reviewedBy: String?
+        let reviewedAt: Date?
 
         switch mode {
         case .personalEvent:
             eventTitle = title.trimmingCharacters(in: .whitespaces)
             eventStatus = CalendarUserEventStatus.none.rawValue
             eventNotes = notes.isEmpty ? nil : notes
+            reviewedBy = nil
+            reviewedAt = nil
         case .timeOff:
             let trimmed = title.trimmingCharacters(in: .whitespaces)
-            eventTitle = trimmed.isEmpty ? "Time Off Request" : trimmed
-            eventStatus = CalendarUserEventStatus.pending.rawValue
+            eventTitle = trimmed.isEmpty ? (canBookTimeOffForOthers ? "Time Off" : "Time Off Request") : trimmed
+            eventStatus = canBookTimeOffForOthers
+                ? CalendarUserEventStatus.approved.rawValue
+                : CalendarUserEventStatus.pending.rawValue
             eventNotes = trimmed.isEmpty ? nil : trimmed
+            reviewedBy = canBookTimeOffForOthers ? userId : nil
+            reviewedAt = canBookTimeOffForOthers ? Date() : nil
+        }
+
+        let effectiveTargets: [User]
+        if mode == .timeOff {
+            if canBookTimeOffForOthers {
+                effectiveTargets = resolvedTimeOffTargets
+            } else if let currentUser = dataController.currentUser {
+                effectiveTargets = [currentUser]
+            } else {
+                effectiveTargets = []
+            }
+        } else if let currentUser = dataController.currentUser {
+            effectiveTargets = [currentUser]
+        } else {
+            effectiveTargets = []
+        }
+        guard !effectiveTargets.isEmpty else {
+            isSaving = false
+            return
         }
 
         let isAllDay = mode == .timeOff ? true : allDay
@@ -1093,29 +1258,40 @@ struct UserEventSheet: View {
             return
         }
 
+        struct PreparedUserEvent {
+            let event: CalendarUserEvent
+            let target: User
+            let occurrence: (start: Date, end: Date)
+        }
+
         // Insert all occurrences locally up front so the calendar reflects
         // them immediately even if Supabase sync fails.
-        var localEvents: [CalendarUserEvent] = []
-        for occurrence in occurrences {
-            let event = CalendarUserEvent(
-                userId: userId,
-                companyId: companyId,
-                type: eventType,
-                title: eventTitle,
-                startDate: occurrence.start,
-                endDate: occurrence.end,
-                allDay: isAllDay,
-                notes: eventNotes,
-                address: nil,
-                teamMemberIds: teamIds,
-                seriesId: seriesId
-            )
-            event.status = eventStatus
-            event.needsSync = true
-            context.insert(event)
-            localEvents.append(event)
+        var preparedEvents: [PreparedUserEvent] = []
+        for target in effectiveTargets {
+            for occurrence in occurrences {
+                let event = CalendarUserEvent(
+                    userId: mode == .timeOff ? target.id : userId,
+                    companyId: companyId,
+                    type: eventType,
+                    title: eventTitle,
+                    startDate: occurrence.start,
+                    endDate: occurrence.end,
+                    allDay: isAllDay,
+                    notes: eventNotes,
+                    address: nil,
+                    teamMemberIds: teamIds,
+                    seriesId: seriesId
+                )
+                event.status = eventStatus
+                event.reviewedBy = reviewedBy
+                event.reviewedAt = reviewedAt
+                event.needsSync = true
+                context.insert(event)
+                preparedEvents.append(PreparedUserEvent(event: event, target: target, occurrence: occurrence))
+            }
         }
         try? context.save()
+        let requesterName = dataController.currentUser?.fullName ?? "A team member"
 
         // Sync to Supabase — one row per occurrence, all sharing the same
         // series_id. Editing a single occurrence will detach it (set
@@ -1124,30 +1300,61 @@ struct UserEventSheet: View {
         Task {
             let repo = CalendarUserEventRepository(companyId: companyId)
             let iso = ISO8601DateFormatter()
+            let reviewedAtString = reviewedAt.map { iso.string(from: $0) }
 
-            for (index, occurrence) in occurrences.enumerated() {
+            for item in preparedEvents {
                 let dto = CreateCalendarUserEventDTO(
-                    userId: userId,
+                    userId: item.event.userId,
                     companyId: companyId,
                     type: eventType.rawValue,
                     title: eventTitle,
-                    startDate: iso.string(from: occurrence.start),
-                    endDate: iso.string(from: occurrence.end),
+                    startDate: iso.string(from: item.occurrence.start),
+                    endDate: iso.string(from: item.occurrence.end),
                     allDay: isAllDay,
                     notes: eventNotes,
                     status: eventStatus,
+                    reviewedBy: reviewedBy,
+                    reviewedAt: reviewedAtString,
                     address: nil,
                     teamMemberIds: teamIds,
                     seriesId: seriesId
                 )
+                var resolvedEventId = item.event.id
                 if let saved = try? await repo.create(dto) {
                     let savedId = saved.id
+                    resolvedEventId = savedId
                     await MainActor.run {
-                        guard index < localEvents.count else { return }
-                        localEvents[index].id = savedId
-                        localEvents[index].needsSync = false
-                        localEvents[index].lastSyncedAt = Date()
+                        item.event.id = savedId
+                        item.event.needsSync = false
+                        item.event.lastSyncedAt = Date()
                         try? context.save()
+                    }
+                }
+
+                if mode == .timeOff {
+                    if canBookTimeOffForOthers {
+                        await notifyBookedTimeOff(
+                            companyId: companyId,
+                            requesterId: userId,
+                            requesterName: requesterName,
+                            targetUserId: item.target.id,
+                            targetName: item.target.fullName,
+                            startDate: item.occurrence.start,
+                            endDate: item.occurrence.end,
+                            eventId: resolvedEventId
+                        )
+                    } else {
+                        await notifyAdminsOfTimeOffRequest(
+                            companyId: companyId,
+                            requesterId: userId,
+                            requesterName: requesterName,
+                            targetUserId: item.target.id,
+                            targetName: item.target.fullName,
+                            eventTitle: eventTitle,
+                            startDate: item.occurrence.start,
+                            endDate: item.occurrence.end,
+                            eventId: resolvedEventId
+                        )
                     }
                 }
             }
@@ -1167,6 +1374,156 @@ struct UserEventSheet: View {
                 }
             }
         }
+    }
+
+    // MARK: - Time Off Notifications
+
+    private func notifyBookedTimeOff(
+        companyId: String,
+        requesterId: String,
+        requesterName: String,
+        targetUserId: String,
+        targetName: String,
+        startDate: Date,
+        endDate: Date,
+        eventId: String
+    ) async {
+        let dateRange = notificationDateRange(startDate: startDate, endDate: endDate)
+        let isSelfBooking = requesterId == targetUserId
+        let title = "Time Off Booked"
+        let body = isSelfBooking
+            ? "Your time off for \(dateRange) is on the schedule."
+            : "\(requesterName) booked you off for \(dateRange)."
+
+        let dto = NotificationRepository.CreateNotificationDTO(
+            userId: targetUserId,
+            companyId: companyId,
+            type: "time_off_booked",
+            title: title,
+            body: body,
+            projectId: nil,
+            noteId: nil,
+            expenseId: nil,
+            batchId: nil,
+            deepLinkType: "schedule"
+        )
+        try? await NotificationRepository().createNotification(dto)
+
+        if !isSelfBooking {
+            try? await OneSignalService.shared.sendToUser(
+                userId: targetUserId,
+                title: title,
+                body: body,
+                data: [
+                    "type": "time_off_booked",
+                    "eventId": eventId,
+                    "screen": "schedule"
+                ]
+            )
+        }
+
+        print("[UserEventSheet] Time off booked for \(targetName): \(dateRange)")
+    }
+
+    private func notifyAdminsOfTimeOffRequest(
+        companyId: String,
+        requesterId: String,
+        requesterName: String,
+        targetUserId: String,
+        targetName: String,
+        eventTitle: String,
+        startDate: Date,
+        endDate: Date,
+        eventId: String
+    ) async {
+        let approverIds = (try? await RecipientLookupService.usersWithPermission(
+            companyId: companyId,
+            permission: "time_off.approve"
+        )) ?? []
+        let recipientIds = approverIds.filter { $0 != requesterId && $0 != targetUserId }
+
+        let dateRange = notificationDateRange(startDate: startDate, endDate: endDate)
+        let isSelfRequest = requesterId == targetUserId
+        let notifRepo = NotificationRepository()
+
+        let confirmation = NotificationRepository.CreateNotificationDTO(
+            userId: requesterId,
+            companyId: companyId,
+            type: "time_off_requested",
+            title: "Time Off Submitted",
+            body: isSelfRequest
+                ? "Your request for \(dateRange) is pending review."
+                : "Submitted for \(targetName): \(dateRange) (pending review).",
+            projectId: nil,
+            noteId: nil,
+            expenseId: nil,
+            batchId: nil,
+            deepLinkType: "schedule"
+        )
+        try? await notifRepo.createNotification(confirmation)
+
+        if !isSelfRequest {
+            let targetNotification = NotificationRepository.CreateNotificationDTO(
+                userId: targetUserId,
+                companyId: companyId,
+                type: "time_off_requested",
+                title: "Time Off Submitted For You",
+                body: "\(requesterName) submitted a time-off request on your behalf for \(dateRange).",
+                projectId: nil,
+                noteId: nil,
+                expenseId: nil,
+                batchId: nil,
+                deepLinkType: "schedule"
+            )
+            try? await notifRepo.createNotification(targetNotification)
+        }
+
+        guard !recipientIds.isEmpty else {
+            print("[UserEventSheet] No other schedulers to notify")
+            return
+        }
+
+        let approvalBody = isSelfRequest
+            ? "\(requesterName) requested time off: \(dateRange)"
+            : "\(requesterName) requested time off for \(targetName): \(dateRange)"
+
+        for recipientId in recipientIds {
+            let approvalNotification = NotificationRepository.CreateNotificationDTO(
+                userId: recipientId,
+                companyId: companyId,
+                type: "time_off_requested",
+                title: "Time Off Request",
+                body: approvalBody,
+                projectId: nil,
+                noteId: nil,
+                expenseId: nil,
+                batchId: nil,
+                deepLinkType: "schedule"
+            )
+            try? await notifRepo.createNotification(approvalNotification)
+        }
+
+        try? await OneSignalService.shared.sendToUsers(
+            userIds: recipientIds,
+            title: "Time Off Request",
+            body: approvalBody,
+            data: [
+                "type": "time_off_requested",
+                "eventId": eventId,
+                "screen": "schedule"
+            ]
+        )
+
+        print("[UserEventSheet] Time-off request push sent to \(recipientIds.count) scheduler(s) for \(eventTitle)")
+    }
+
+    private func notificationDateRange(startDate: Date, endDate: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        if Calendar.current.isDate(startDate, inSameDayAs: endDate) {
+            return formatter.string(from: startDate)
+        }
+        return "\(formatter.string(from: startDate)) - \(formatter.string(from: endDate))"
     }
 
     // MARK: - Recurrence Helpers (Bug a5001a70)

@@ -36,6 +36,31 @@ enum ProjectAutoNamer {
         streetLine(from: address) ?? "New project"
     }
 
+    static func titleReplacingAddressComponent(
+        in title: String,
+        previousAddress: String?,
+        nextAddress: String
+    ) -> String? {
+        guard
+            let previousAddress,
+            let previousStreet = streetLine(from: previousAddress),
+            let nextStreet = streetLine(from: nextAddress),
+            previousStreet != nextStreet
+        else {
+            return nil
+        }
+
+        if let range = title.range(of: previousStreet) {
+            return title.replacingCharacters(in: range, with: nextStreet)
+        }
+
+        if let range = title.range(of: previousStreet, options: [.caseInsensitive, .diacriticInsensitive]) {
+            return title.replacingCharacters(in: range, with: nextStreet)
+        }
+
+        return nil
+    }
+
     static func streetLine(from fullAddress: String) -> String? {
         let trimmed = fullAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -5034,6 +5059,7 @@ class DataController: ObservableObject {
         // trip up downstream consumers (MapKit geocoder, Mapbox label
         // rendering, Supabase JSON encoding).
         let sanitized = Self.sanitizeAddressInput(address)
+        let previousAddress = project.address
 
         // Apply address locally
         project.address = sanitized
@@ -5046,6 +5072,13 @@ class DataController: ObservableObject {
             project.title = nextTitle
             changedFields["title"] = nextTitle
             changedFields["title_is_auto"] = true
+        } else if let nextTitle = ProjectAutoNamer.titleReplacingAddressComponent(
+            in: project.title,
+            previousAddress: previousAddress,
+            nextAddress: sanitized
+        ) {
+            project.title = nextTitle
+            changedFields["title"] = nextTitle
         }
 
         // Geocode the address to update lat/long for map display.

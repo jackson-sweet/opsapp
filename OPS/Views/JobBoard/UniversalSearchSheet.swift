@@ -15,6 +15,14 @@
 import SwiftUI
 import SwiftData
 
+enum UniversalSearchVisibilityPolicy {
+    private static let inactiveProjectStatuses: Set<Status> = [.closed, .archived]
+
+    static func isInactiveProject(_ project: Project) -> Bool {
+        inactiveProjectStatuses.contains(project.status)
+    }
+}
+
 struct UniversalSearchSheet: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
@@ -300,19 +308,15 @@ struct UniversalSearchSheet: View {
     // visible but collapsed stops old projects from drowning out the two
     // active jobs the field user actually needs to pull up.
 
-    /// Project statuses that are considered archived — hidden behind a
-    /// disclosure in search results.
-    private static let inactiveProjectStatuses: Set<Status> = [.completed, .closed, .archived]
-
     /// Task statuses that are considered archived — hidden behind a disclosure.
     private static let inactiveTaskStatuses: Set<TaskStatus> = [.completed, .cancelled]
 
     private var matchingActiveProjects: [Project] {
-        matchingProjects.filter { !Self.inactiveProjectStatuses.contains($0.status) }
+        matchingProjects.filter { !UniversalSearchVisibilityPolicy.isInactiveProject($0) }
     }
 
     private var matchingInactiveProjects: [Project] {
-        matchingProjects.filter { Self.inactiveProjectStatuses.contains($0.status) }
+        matchingProjects.filter { UniversalSearchVisibilityPolicy.isInactiveProject($0) }
     }
 
     private var matchingActiveTasks: [ProjectTask] {

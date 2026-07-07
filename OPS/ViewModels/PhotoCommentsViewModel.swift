@@ -29,6 +29,7 @@ class PhotoCommentsViewModel: ObservableObject {
     private var currentUserId: String?
     private var allTeamMembers: [TeamMember] = []
     private var modelContext: ModelContext?
+    private weak var dataController: DataController?
     private var loadTask: Task<Void, Never>?
     private var notificationObserver: NSObjectProtocol?
 
@@ -43,11 +44,12 @@ class PhotoCommentsViewModel: ObservableObject {
         }
     }
 
-    func setup(companyId: String, currentUserId: String, teamMembers: [TeamMember], modelContext: ModelContext) {
+    func setup(companyId: String, currentUserId: String, teamMembers: [TeamMember], modelContext: ModelContext, dataController: DataController? = nil) {
         self.companyId = companyId
         self.currentUserId = currentUserId
         self.allTeamMembers = teamMembers
         self.modelContext = modelContext
+        self.dataController = dataController
         self.repository = ProjectNoteRepository(companyId: companyId)
 
         // Listen for realtime note updates
@@ -84,10 +86,15 @@ class PhotoCommentsViewModel: ObservableObject {
                     let noteId = dto.id
                     let descriptor = FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == noteId })
                     if let existing = try? context.fetch(descriptor).first {
+                        // Bug f9e00eb9 — never clobber an un-pushed local change
+                        // (pending delete/edit) with a stale server snapshot.
+                        if existing.needsSync { continue }
                         existing.content = model.content
                         existing.attachmentsJSON = model.attachmentsJSON
                         existing.mentionedUserIdsString = model.mentionedUserIdsString
                         existing.photoURL = model.photoURL
+                        existing.eventKind = model.eventKind
+                        existing.contentMetadataJSON = model.contentMetadataJSON
                         existing.updatedAt = model.updatedAt
                         existing.deletedAt = model.deletedAt
                         existing.lastSyncedAt = Date()
@@ -168,6 +175,9 @@ class PhotoCommentsViewModel: ObservableObject {
             try? context.save()
         }
         loadCommentsFromLocal()
+        // Bugs 488778ac / 4353812f — the feed's ProjectNotesViewModel must learn
+        // about this comment immediately, not on next project reopen.
+        ProjectNoteChangeSignal.post(projectId: projectId)
         newCommentText = ""
         showMentionPicker = false
         showAllTeamOption = false
@@ -192,6 +202,7 @@ class PhotoCommentsViewModel: ObservableObject {
                 try? context.save()
             }
             loadCommentsFromLocal()
+            ProjectNoteChangeSignal.post(projectId: projectId)
 
             // Send notifications
             await sendMentionNotifications(mentionedIds: mentionedIds, noteText: text, noteId: created.id)
@@ -220,21 +231,30 @@ class PhotoCommentsViewModel: ObservableObject {
     // MARK: - Delete
 
     func deleteComment(_ note: ProjectNote) async {
+        // Durable path — queue the tombstone so it survives a timeout/offline
+        // and retries (bug f9e00eb9). The merge guard stops a concurrent fetch
+        // from resurrecting the pending delete.
+        if let dataController = dataController {
+            dataController.deleteProjectNote(note: note)
+            loadCommentsFromLocal()
+            ProjectNoteChangeSignal.post(projectId: projectId)
+            return
+        }
+
+        // Fallback — direct path with optimistic revert.
         guard let repo = repository else { return }
         note.deletedAt = Date()
-        if let context = modelContext {
-            try? context.save()
-        }
+        try? modelContext?.save()
         loadCommentsFromLocal()
+        ProjectNoteChangeSignal.post(projectId: projectId)
 
         do {
             try await repo.softDelete(note.id)
         } catch {
             note.deletedAt = nil
-            if let context = modelContext {
-                try? context.save()
-            }
+            try? modelContext?.save()
             loadCommentsFromLocal()
+            ProjectNoteChangeSignal.post(projectId: projectId)
             if !(error is CancellationError) {
                 self.error = FieldErrorHandler.userFriendlyMessage(for: error)
             }
@@ -263,6 +283,17 @@ class PhotoCommentsViewModel: ObservableObject {
         let descriptor = FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == noteId })
         guard let note = try? context.fetch(descriptor).first else { return }
 
+        // Durable path — queue the edit so it retries and survives offline.
+        if let dataController = dataController {
+            dataController.updateProjectNoteContent(note: note, content: newContent)
+            loadCommentsFromLocal()
+            editingNoteId = nil
+            editText = ""
+            ProjectNoteChangeSignal.post(projectId: projectId)
+            return
+        }
+
+        // Fallback — direct path with optimistic revert.
         let oldContent = note.content
         note.content = newContent
         note.updatedAt = Date()
@@ -270,6 +301,7 @@ class PhotoCommentsViewModel: ObservableObject {
         loadCommentsFromLocal()
         editingNoteId = nil
         editText = ""
+        ProjectNoteChangeSignal.post(projectId: projectId)
 
         do {
             try await repo.updateContent(noteId, content: newContent)
@@ -277,6 +309,7 @@ class PhotoCommentsViewModel: ObservableObject {
             note.content = oldContent
             try? context.save()
             loadCommentsFromLocal()
+            ProjectNoteChangeSignal.post(projectId: projectId)
             if !(error is CancellationError) {
                 self.error = FieldErrorHandler.userFriendlyMessage(for: error)
             }

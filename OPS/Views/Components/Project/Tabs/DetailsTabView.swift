@@ -3,7 +3,13 @@
 //  OPS
 //
 //  Project metadata organized in card sections — the Details tab.
-//  Sections: Client, Team, Tasks, Schedule, Description, Address, Delete.
+//  Sections are permission-scoped: each renders only for viewers who hold the
+//  permission that governs its data (clients.view → CLIENT, team.view → TEAM,
+//  catalog.orders.view → VINYL ordering, projects.edit → edit/delete
+//  affordances). A field-crew member is left with a focused where/what/when
+//  view — status, timeline, client contact, address, tasks, reminders,
+//  description — and none of the owner/office management depth that read as
+//  "way too much" on site. Gating is by permission, never by role name.
 //
 
 import SwiftUI
@@ -55,6 +61,11 @@ struct DetailsTabView: View {
         vinylOrderMarkers.first { $0.projectId == project.id }
     }
 
+    /// Permission-scoped section visibility for this viewer (never role-based).
+    private var access: DetailsTabAccess {
+        DetailsTabAccess(permissions: .shared)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
             // STATUS — current project status + manual change control.
@@ -71,15 +82,18 @@ struct DetailsTabView: View {
                 ProjectTimelineSection(project: project)
             }
 
-            // CLIENT
-            ClientSection(
-                project: project,
-                canEdit: viewModel.canEditProject,
-                onContactTap: onClientTap,
-                onCall: { if let p = project.effectiveClientPhone { viewModel.callPhone(p) } },
-                onEmail: { if let e = project.effectiveClientEmail { viewModel.sendEmail(e) } },
-                onAssignClient: onClientLongPress
-            )
+            // CLIENT — crew keep it for site coordination; roles without any
+            // clients.view grant (e.g. Unassigned) don't. See DetailsTabAccess.
+            if access.showsClient {
+                ClientSection(
+                    project: project,
+                    canEdit: viewModel.canEditProject,
+                    onContactTap: onClientTap,
+                    onCall: { if let p = project.effectiveClientPhone { viewModel.callPhone(p) } },
+                    onEmail: { if let e = project.effectiveClientEmail { viewModel.sendEmail(e) } },
+                    onAssignClient: onClientLongPress
+                )
+            }
 
             // ADDRESS (below client)
             AddressSection(
@@ -93,8 +107,9 @@ struct DetailsTabView: View {
                 }
             )
 
-            if PermissionStore.shared.isFeatureEnabled("deck_builder")
-                && PermissionStore.shared.can("deck_builder.view", requiredScope: "assigned") {
+            // VINYL ORDER MARKER — order tracking is a purchasing/office concern,
+            // not an on-site one; hidden from field crew. See DetailsTabAccess.
+            if access.showsVinylOrder {
                 VinylOrderMarkerSection(
                     marker: vinylOrderMarker,
                     canEdit: viewModel.canEditVinylOrderMarker,
@@ -132,12 +147,15 @@ struct DetailsTabView: View {
                 onSave: { viewModel.saveDescription() }
             )
 
-            // TEAM (at bottom)
-            TeamSection(
-                teamMembers: resolvedProjectTeam,
-                canEdit: viewModel.canEditProject,
-                onMemberTap: onTeamMemberTap
-            )
+            // TEAM (at bottom) — the roster is management context, hidden from
+            // field crew (no team.view). See DetailsTabAccess.
+            if access.showsTeam {
+                TeamSection(
+                    teamMembers: resolvedProjectTeam,
+                    canEdit: viewModel.canEditProject,
+                    onMemberTap: onTeamMemberTap
+                )
+            }
 
             // DELETE PROJECT (admin only)
             if viewModel.canEditProject {
@@ -180,6 +198,39 @@ struct DetailsTabView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
+    }
+}
+
+// MARK: - Permission-Scoped Section Visibility
+
+/// Decides which Details-tab sections a viewer may see, purely from granular
+/// permissions — never a role name. One place answers "what does this viewer
+/// see", so the field-crew view (bug 71213e3b — "Jake doesn't even need to see
+/// the details tab") and the owner/admin view derive from the same rules and stay
+/// testable in isolation.
+///
+/// Every viewer who can open the project keeps the where/what/when essentials —
+/// status, timeline, address + directions, their tasks, reminders, description
+/// (governed by projects.view / tasks.view, which put them on the tab at all).
+/// What's scoped away by permission:
+///   • CLIENT contact → needs `clients.view` (assigned scope — they're on the
+///     project). Crew keep it for site coordination; Unassigned lose it.
+///   • VINYL ordering → needs `catalog.orders.view` (an office/purchasing
+///     concern) on top of the deck feature. Crew can't order and don't need the
+///     status, so it's hidden; operators/office keep it.
+///   • TEAM roster    → needs `team.view` (management context). Crew lack it.
+///   • edit / delete  → governed by `projects.edit` inside the sections.
+struct DetailsTabAccess {
+    let showsClient: Bool
+    let showsVinylOrder: Bool
+    let showsTeam: Bool
+
+    init(permissions: PermissionStore) {
+        showsClient = permissions.can("clients.view", requiredScope: "assigned")
+        showsVinylOrder = permissions.isFeatureEnabled("deck_builder")
+            && permissions.can("deck_builder.view", requiredScope: "assigned")
+            && permissions.can("catalog.orders.view")
+        showsTeam = permissions.can("team.view")
     }
 }
 

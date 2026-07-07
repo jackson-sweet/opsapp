@@ -20,14 +20,7 @@ struct TaskReadyBadge: View {
             .foregroundColor(OPSStyle.Colors.successStatus)
             .padding(.horizontal, OPSStyle.Layout.spacing2)
             .padding(.vertical, OPSStyle.Layout.spacing1)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .fill(OPSStyle.Colors.successStatus.opacity(0.1))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.successStatus, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .frostedBadgeFill(OPSStyle.Colors.successStatus, cornerRadius: OPSStyle.Layout.cardCornerRadius)
             .accessibilityLabel("Ready to start")
     }
 }

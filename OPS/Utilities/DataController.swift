@@ -15,6 +15,7 @@ import GoogleSignIn
 import Supabase
 import FirebaseAuth
 import FirebaseCrashlytics
+import os
 
 private enum ProjectTeamAssignmentSyncError: LocalizedError {
     case missingServerUpdatedAt
@@ -27,6 +28,22 @@ private enum ProjectTeamAssignmentSyncError: LocalizedError {
         case .missingAssignmentTaskId:
             return "Project team update could not create an assignment task."
         }
+    }
+}
+
+enum ProjectAutoNamer {
+    static func derivedTitle(from address: String) -> String {
+        streetLine(from: address) ?? "New project"
+    }
+
+    static func streetLine(from fullAddress: String) -> String? {
+        let trimmed = fullAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let components = trimmed.components(separatedBy: ",")
+        if let street = components.first?.trimmingCharacters(in: .whitespaces), !street.isEmpty {
+            return street
+        }
+        return nil
     }
 }
 
@@ -51,6 +68,24 @@ class DataController: ObservableObject {
     @Published var isPerformingInitialSync = false // Track post-login initial sync
     @Published var syncStatusMessage = "" // Console-style sync status messages
     @Published var scheduledTasksDidChange = false // Toggle to refresh calendar views
+
+    /// Instruments signposts for the schedule-commit path (bug b954065e —
+    /// "scheduling a job glitches out and slows the whole app"). Profile the
+    /// commit with the os_signpost instrument under subsystem "com.ops.scheduling"
+    /// to measure before/after on device.
+    private let scheduleSignposter = OSSignposter(subsystem: "com.ops.scheduling", category: "ScheduleCommit")
+
+    /// Coalesced calendar-refresh signal. Every schedule mutation ultimately
+    /// flips `scheduledTasksDidChange`, which fans out to five observing surfaces
+    /// (Schedule, JobBoard, FAB, MonthGrid, week strip), each doing a full
+    /// reload. A cascade used to fire this once *per* moved task — N×5 reloads —
+    /// so callers that move many tasks pass `deferBroadcast: true` and call this
+    /// once at the end instead.
+    private func notifyScheduledTasksChanged() {
+        DispatchQueue.main.async { [weak self] in
+            self?.scheduledTasksDidChange.toggle()
+        }
+    }
     private var hasCompletedInitialConnectionCheck = false // Track if we've done initial setup
     private var lastSyncRestoredAlertTime: Date? // Cooldown to prevent repeated banners
 
@@ -3894,7 +3929,10 @@ class DataController: ObservableObject {
 
     /// Update task schedule dates - SINGLE SOURCE OF TRUTH for task scheduling updates
     @MainActor
-    func updateTaskSchedule(task: ProjectTask, startDate: Date, endDate: Date, manualEdit: Bool = true) async throws {
+    func updateTaskSchedule(task: ProjectTask, startDate: Date, endDate: Date, manualEdit: Bool = true, deferBroadcast: Bool = false) async throws {
+        let commitInterval = scheduleSignposter.beginInterval("updateTaskSchedule", id: scheduleSignposter.makeSignpostID())
+        defer { scheduleSignposter.endInterval("updateTaskSchedule", commitInterval) }
+
         let project = task.project
 
         // Capture previous dates to detect actual changes
@@ -3922,9 +3960,12 @@ class DataController: ObservableObject {
             await CalendarMirrorService.shared.mirrorEvent(opsId: mirrorTaskId, source: .projectTask)
         }
 
-        // Notify calendar views to refresh immediately
-        DispatchQueue.main.async { [weak self] in
-            self?.scheduledTasksDidChange.toggle()
+        // Notify calendar views to refresh immediately. Cascade callers defer this
+        // and fire a single coalesced refresh at the end instead of one per moved
+        // task (bug b954065e — N per-task broadcasts × 5 observing surfaces was a
+        // core cause of "scheduling slows the whole app").
+        if !deferBroadcast {
+            notifyScheduledTasksChanged()
         }
 
         // Record for async sync
@@ -4161,16 +4202,19 @@ class DataController: ObservableObject {
             uniquingKeysWith: { current, _ in current }
         )
 
-        // Apply the pushed task's new dates
-        try await updateTaskSchedule(task: task, startDate: plan.pushedNewStart, endDate: plan.pushedNewEnd)
+        // Apply the pushed task's new dates. The whole cascade defers the calendar
+        // broadcast and fires it once at the end (bug b954065e) — otherwise each of
+        // the N moved tasks refreshes all five calendar surfaces on its own.
+        try await updateTaskSchedule(task: task, startDate: plan.pushedNewStart, endDate: plan.pushedNewEnd, deferBroadcast: true)
 
         // Apply every cascaded change (crew + dependency).
         for change in plan.cascade.changes {
             if let affectedTask = applyLookup[change.id] {
-                try await updateTaskSchedule(task: affectedTask, startDate: change.newStartDate, endDate: change.newEndDate, manualEdit: false)
+                try await updateTaskSchedule(task: affectedTask, startDate: change.newStartDate, endDate: change.newEndDate, manualEdit: false, deferBroadcast: true)
             }
         }
 
+        notifyScheduledTasksChanged()
         return plan.cascade
     }
 
@@ -4183,8 +4227,8 @@ class DataController: ObservableObject {
         let descriptor = FetchDescriptor<ProjectTask>(predicate: predicate)
         guard let originalTask = try ctx.fetch(descriptor).first else { return }
 
-        // Restore original task
-        try await updateTaskSchedule(task: originalTask, startDate: originalStart, endDate: originalEnd)
+        // Restore original task (single coalesced calendar refresh at the end).
+        try await updateTaskSchedule(task: originalTask, startDate: originalStart, endDate: originalEnd, deferBroadcast: true)
 
         // Restore cascaded tasks. Crew shifts can be cross-project, so restore
         // from the company-wide set (any status — a task may have changed state
@@ -4194,9 +4238,10 @@ class DataController: ObservableObject {
             if let task = restoreTasks.first(where: { $0.id == change.id }),
                let oldStart = change.oldStartDate,
                let oldEnd = change.oldEndDate {
-                try await updateTaskSchedule(task: task, startDate: oldStart, endDate: oldEnd, manualEdit: false)
+                try await updateTaskSchedule(task: task, startDate: oldStart, endDate: oldEnd, manualEdit: false, deferBroadcast: true)
             }
         }
+        notifyScheduledTasksChanged()
     }
 
     // MARK: - Drag-and-drop reschedule
@@ -4282,13 +4327,14 @@ class DataController: ObservableObject {
             getCompanyTasks().map { ($0.id, $0) },
             uniquingKeysWith: { current, _ in current })
 
-        try await updateTaskSchedule(task: task, startDate: plan.pushedNewStart, endDate: plan.pushedNewEnd)
+        try await updateTaskSchedule(task: task, startDate: plan.pushedNewStart, endDate: plan.pushedNewEnd, deferBroadcast: true)
         for change in plan.cascade.changes {
             if let affected = applyLookup[change.id] {
                 try await updateTaskSchedule(task: affected, startDate: change.newStartDate,
-                                             endDate: change.newEndDate, manualEdit: false)
+                                             endDate: change.newEndDate, manualEdit: false, deferBroadcast: true)
             }
         }
+        notifyScheduledTasksChanged()
         return plan.cascade
     }
 
@@ -4331,8 +4377,11 @@ class DataController: ObservableObject {
 
         for placement in result.placements {
             if let task = unscheduled.first(where: { $0.id == placement.id }) {
-                try await updateTaskSchedule(task: task, startDate: placement.startDate, endDate: placement.endDate, manualEdit: false)
+                try await updateTaskSchedule(task: task, startDate: placement.startDate, endDate: placement.endDate, manualEdit: false, deferBroadcast: true)
             }
+        }
+        if !result.placements.isEmpty {
+            notifyScheduledTasksChanged()
         }
 
         return result
@@ -4416,7 +4465,8 @@ class DataController: ObservableObject {
     /// Tasks are ordered by startDate (earliest = 0), with unscheduled tasks at the end
     @MainActor
     func recalculateTaskIndices(for project: Project, deferPush: Bool = false) async throws {
-        print("[TASK_INDEX] 🔢 Recalculating task indices for project: \(project.title)")
+        let indexInterval = scheduleSignposter.beginInterval("recalculateTaskIndices", id: scheduleSignposter.makeSignpostID())
+        defer { scheduleSignposter.endInterval("recalculateTaskIndices", indexInterval) }
 
         let allTasks = project.tasks
 
@@ -4463,26 +4513,34 @@ class DataController: ObservableObject {
             currentIndex += 1
         }
 
+        // Nothing moved — skip the redundant main-thread save. Every schedule
+        // commit calls this, and re-indexing usually finds the order already
+        // correct (rescheduling a task within its existing slot is the common
+        // case), so the unconditional save here was pure per-commit overhead that
+        // fed the "scheduling slows the whole app" glitch (bug b954065e).
+        guard !tasksToSync.isEmpty else {
+            print("[TASK_INDEX] ✅ Indices already in order — no changes, no save")
+            return
+        }
+
         print("[TASK_INDEX] ✅ Updated \(allTasks.count) task indices")
 
         // Save changes locally
         try modelContext?.save()
 
         // Record task index updates for async sync (use display_order — the actual Supabase column)
-        if !tasksToSync.isEmpty {
-            print("[TASK_INDEX] 🔄 Recording \(tasksToSync.count) task index updates for sync...")
-            for (task, index) in tasksToSync {
-                syncEngine.recordOperation(
-                    entityType: .projectTask,
-                    entityId: task.id,
-                    operationType: "update",
-                    changedFields: ["display_order": index],
-                    deferPush: deferPush
-                )
-                print("[TASK_INDEX]   ✅ Recorded displayOrder=\(index) for task '\(task.displayTitle)'")
-            }
-            print("[TASK_INDEX] ✅ Task index updates recorded for sync")
+        print("[TASK_INDEX] 🔄 Recording \(tasksToSync.count) task index updates for sync...")
+        for (task, index) in tasksToSync {
+            syncEngine.recordOperation(
+                entityType: .projectTask,
+                entityId: task.id,
+                operationType: "update",
+                changedFields: ["display_order": index],
+                deferPush: deferPush
+            )
+            print("[TASK_INDEX]   ✅ Recorded displayOrder=\(index) for task '\(task.displayTitle)'")
         }
+        print("[TASK_INDEX] ✅ Task index updates recorded for sync")
     }
 
     // MARK: - Team Member Operations
@@ -4854,6 +4912,14 @@ class DataController: ObservableObject {
         if let photoURL = note.photoURL { changedFields["photo_url"] = photoURL }
         if !note.attachments.isEmpty { changedFields["attachments"] = note.attachments }
         if !note.mentionedUserIds.isEmpty { changedFields["mentioned_user_ids"] = note.mentionedUserIds }
+        // System-event notes (e.g. the site-visit packet) carry a discriminator
+        // and structured metadata so the outbound create writes both columns.
+        if let eventKind = note.eventKind { changedFields["event_kind"] = eventKind }
+        if let metadataJSON = note.contentMetadataJSON,
+           let data = metadataJSON.data(using: .utf8),
+           let object = try? JSONSerialization.jsonObject(with: data) {
+            changedFields["content_metadata"] = object
+        }
 
         syncEngine.recordOperation(
             entityType: .projectNote,
@@ -4974,6 +5040,13 @@ class DataController: ObservableObject {
         project.needsSync = true
 
         var changedFields: [String: Any] = ["address": sanitized]
+
+        if project.titleIsAuto {
+            let nextTitle = ProjectAutoNamer.derivedTitle(from: sanitized)
+            project.title = nextTitle
+            changedFields["title"] = nextTitle
+            changedFields["title_is_auto"] = true
+        }
 
         // Geocode the address to update lat/long for map display.
         // Three outcomes — each one syncs a consistent lat/lng to the server
@@ -5967,7 +6040,7 @@ class DataController: ObservableObject {
         // Apply locally for known fields
         let descriptor = FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id == taskId })
         if let task = try? context.fetch(descriptor).first {
-            applyTaskFieldsLocally(task: task, fields: fields)
+            applyTaskFieldsLocally(task: task, fields: fields, context: context)
             task.needsSync = true
             try? context.save()
         }
@@ -5984,17 +6057,35 @@ class DataController: ObservableObject {
     }
 
     /// Apply AnyJSON field values to a local ProjectTask model
-    private func applyTaskFieldsLocally(task: ProjectTask, fields: [String: AnyJSON]) {
+    private func applyTaskFieldsLocally(task: ProjectTask, fields: [String: AnyJSON], context: ModelContext) {
         for (key, value) in fields {
             switch key {
             case "status":
                 if case .string(let v) = value { task.status = TaskStatus(rawValue: v) ?? task.status }
             case "task_notes":
                 if case .string(let v) = value { task.taskNotes = v }
+                if case .null = value { task.taskNotes = nil }
             case "custom_title":
                 if case .string(let v) = value { task.customTitle = v }
+                if case .null = value { task.customTitle = nil }
             case "task_color":
                 if case .string(let v) = value { task.taskColor = v }
+            case "task_type_id":
+                guard case .string(let v) = value else { break }
+                task.taskTypeId = v
+                let taskTypeId = v
+                let descriptor = FetchDescriptor<TaskType>(predicate: #Predicate { $0.id == taskTypeId })
+                if let taskType = try? context.fetch(descriptor).first {
+                    task.taskType = taskType
+                    if fields["task_color"] == nil {
+                        task.taskColor = taskType.color
+                    }
+                } else {
+                    task.taskType = nil
+                }
+            case "dependency_overrides":
+                if case .string(let v) = value { task.dependencyOverridesJSON = v }
+                if case .null = value { task.dependencyOverridesJSON = nil }
             case "team_member_ids":
                 if case .string(let v) = value { task.teamMemberIdsString = v }
             case "display_order":

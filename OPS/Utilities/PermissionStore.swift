@@ -205,7 +205,15 @@ class PermissionStore: ObservableObject {
             async let flagsFetch = FeatureFlagService.fetchFlags(userId: userId)
 
             let payload = try await permissionsFetch
-            let flagResult = await flagsFetch
+
+            // A failed feature-flag fetch is "unknown", NOT "all flags off".
+            // fetchFlags throws when it can't reach the server — and it's two
+            // extra round-trips, so it drops out well before a weak connection
+            // fully fails. On a throw we KEEP the last-known-good flag state
+            // instead of failing closed, which would otherwise hide DECK /
+            // pipeline / estimates / accounting the moment reception wavers —
+            // the "tab disappears as if it's live-syncing my permissions" bug.
+            let freshFlags: FeatureFlagResult? = try? await flagsFetch
 
             await MainActor.run {
                 // Detect role change to trigger Spotlight re-index with the new scope
@@ -217,13 +225,25 @@ class PermissionStore: ObservableObject {
                 self.roleName = payload.roleName
                 self.roleHierarchy = payload.roleHierarchy
                 self.roleId = payload.roleId
-                self.blockedByFlags = flagResult.blockedPermissions
-                self.disabledFlags = flagResult.disabledFlags
+
+                // Cache-first flag resolution: keep the flags we already trust
+                // when the fresh fetch couldn't complete; a fresh result wins.
+                let lastKnownFlags = FeatureFlagResult(
+                    blockedPermissions: self.blockedByFlags,
+                    disabledFlags: self.disabledFlags
+                )
+                let resolvedFlags = FeatureFlagService.resolve(fresh: freshFlags, lastKnown: lastKnownFlags)
+                self.blockedByFlags = resolvedFlags.blockedPermissions
+                self.disabledFlags = resolvedFlags.disabledFlags
+                if freshFlags == nil {
+                    print("[PERMISSIONS] Feature-flag fetch failed — preserving last-known-good flag state (\(resolvedFlags.disabledFlags.count) disabled, \(resolvedFlags.blockedPermissions.count) blocked)")
+                }
+
                 self.initialized = true
                 self.saveToCache(userId: userId)
                 UserDefaults.standard.set(payload.roleId, forKey: lastRoleKey)
 
-                print("[PERMISSIONS] Fetched \(payload.permissions.count) permissions from Supabase (role: \(payload.roleName), \(flagResult.blockedPermissions.count) flag-blocked, \(flagResult.disabledFlags.count) flags disabled)")
+                print("[PERMISSIONS] Fetched \(payload.permissions.count) permissions from Supabase (role: \(payload.roleName), \(resolvedFlags.blockedPermissions.count) flag-blocked, \(resolvedFlags.disabledFlags.count) flags disabled)")
 
                 if roleChanged {
                     print("[PERMISSIONS] Role changed from \(previousRoleId ?? "nil") to \(payload.roleId) — requesting Spotlight re-index")

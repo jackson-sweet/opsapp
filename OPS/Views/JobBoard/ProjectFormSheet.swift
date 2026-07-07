@@ -1005,15 +1005,12 @@ struct ProjectFormSheet: View {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button {
-                    advanceToNextField()
+                    focusedField = nil
                 } label: {
-                    HStack(spacing: OPSStyle.Layout.spacing1) {
-                        Text("Enter")
-                        Image(systemName: "return")
-                    }
+                    Text("DONE")
                 }
                 .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .foregroundColor(OPSStyle.Colors.primaryText)
             }
         }
         // Bug 4890bdee — single inline-task-row sheet attached to the
@@ -1511,9 +1508,7 @@ struct ProjectFormSheet: View {
     /// Street line a blank-name project resolves to: substring before the first
     /// comma of the address, trimmed; "New project" when there's no address.
     private var autoDerivedNamePreview: String {
-        if let street = extractStreetNumber(from: address) { return street }
-        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "New project" : trimmed
+        ProjectAutoNamer.derivedTitle(from: address)
     }
 
     /// Quick-fill chips for project name based on client and address
@@ -1567,13 +1562,7 @@ struct ProjectFormSheet: View {
 
     /// Extract street number and name from an address string (e.g. "123 Main St, City, ST" → "123 Main St")
     private func extractStreetNumber(from fullAddress: String) -> String? {
-        let trimmed = fullAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let components = trimmed.components(separatedBy: ",")
-        if let street = components.first?.trimmingCharacters(in: .whitespaces), !street.isEmpty {
-            return street
-        }
-        return nil
+        ProjectAutoNamer.streetLine(from: fullAddress)
     }
 
     private var statusField: some View {

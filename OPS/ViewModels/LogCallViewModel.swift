@@ -213,7 +213,7 @@ final class LogCallViewModel: ObservableObject {
         guard let companyId, let repo = repository, canSave else { return false }
 
         // Flush any in-flight dictation into the body first.
-        if speech.state == .recording {
+        if speech.state == .recording || speech.state == .stopping {
             speech.stopRecording()
             applyTranscription()
         }

@@ -85,7 +85,7 @@ struct LogCallSheet: View {
         }
         .onDisappear { vm.teardown() }
         .onChange(of: vm.speech.state) { oldState, newState in
-            if oldState == .recording && newState == .idle {
+            if (oldState == .recording || oldState == .stopping) && newState == .idle {
                 vm.applyTranscription()
             }
         }

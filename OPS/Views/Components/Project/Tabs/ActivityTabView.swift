@@ -78,8 +78,36 @@ struct ActivityTabView: View {
         return items.sorted { $0.createdAt > $1.createdAt }
     }
 
+    private var pinnedProjectDescription: String? {
+        let trimmed = (project.projectDescription ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// Comment count per photo URL for the carousel badge (bug e1f073ed).
+    /// Explicit photo comments (photoURL set) always count; a feed note that
+    /// attached this photo counts only when it carries text (a caption is a
+    /// comment on the photo; a bare "added a photo" post is not).
+    private var commentCountsByPhoto: [String: Int] {
+        var counts: [String: Int] = [:]
+        for note in notesViewModel.notes {
+            if let url = note.photoURL, !url.isEmpty {
+                counts[url, default: 0] += 1
+                continue
+            }
+            guard !note.content.isEmpty else { continue }
+            for url in note.attachments where !url.isEmpty {
+                counts[url, default: 0] += 1
+            }
+        }
+        return counts
+    }
+
     private var notesFeed: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            if let pinnedProjectDescription {
+                ProjectDescriptionPinnedEntryView(description: pinnedProjectDescription)
+            }
+
             if notesViewModel.isLoading && notesViewModel.notes.isEmpty && notesViewModel.annotations.isEmpty {
                 HStack {
                     Spacer()
@@ -88,7 +116,7 @@ struct ActivityTabView: View {
                     Spacer()
                 }
                 .padding(.vertical, OPSStyle.Layout.spacing4)
-            } else if feedItems.isEmpty {
+            } else if feedItems.isEmpty && pinnedProjectDescription == nil {
                 // Empty state
                 VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: "note.text")
@@ -107,21 +135,38 @@ struct ActivityTabView: View {
                 ForEach(feedItems) { item in
                     switch item {
                     case .note(let note):
-                        ActivityEntryView(
-                            note: note,
-                            authorName: notesViewModel.authorName(for: note.authorId),
-                            teamMember: notesViewModel.teamMember(for: note.authorId),
-                            isOwnNote: notesViewModel.isOwnNote(note),
-                            mentionNames: notesViewModel.mentionNames,
-                            allTeamMembers: notesViewModel.allTeamMembers,
-                            onDelete: { deletePhoto in
-                                Task { await notesViewModel.deleteNote(note, deletePhoto: deletePhoto) }
-                            },
-                            onEdit: { newContent in
-                                Task { await notesViewModel.updateNoteContent(note, newContent: newContent) }
-                            },
-                            onPhotoTap: onPhotoTap
-                        )
+                        // System events (written with an event_kind) render as
+                        // their own feed grammar; user notes/comments render as
+                        // the standard entry card.
+                        switch note.eventKind {
+                        case "site_visit":
+                            SiteVisitPacketEntryView(
+                                note: note,
+                                authorName: notesViewModel.authorName(for: note.authorId),
+                                teamMember: notesViewModel.teamMember(for: note.authorId)
+                            )
+                        case "status_change":
+                            StatusChangeEntryView(
+                                note: note,
+                                authorName: notesViewModel.authorName(for: note.authorId)
+                            )
+                        default:
+                            ActivityEntryView(
+                                note: note,
+                                authorName: notesViewModel.authorName(for: note.authorId),
+                                teamMember: notesViewModel.teamMember(for: note.authorId),
+                                isOwnNote: notesViewModel.isOwnNote(note),
+                                mentionNames: notesViewModel.mentionNames,
+                                allTeamMembers: notesViewModel.allTeamMembers,
+                                onDelete: { deletePhoto in
+                                    Task { await notesViewModel.deleteNote(note, deletePhoto: deletePhoto) }
+                                },
+                                onEdit: { newContent in
+                                    Task { await notesViewModel.updateNoteContent(note, newContent: newContent) }
+                                },
+                                onPhotoTap: onPhotoTap
+                            )
+                        }
                     case .annotation(let annotation):
                         AnnotationEntryView(
                             annotation: annotation,
@@ -342,6 +387,7 @@ struct ActivityTabView: View {
             ProjectPhotosCarousel(
                 project: project,
                 imageSyncManager: imageSyncManager,
+                commentCounts: commentCountsByPhoto,
                 onPhotoTap: { index in onProjectPhotoTap?(index) }
             )
             .padding(.top, OPSStyle.Layout.spacing3)
@@ -383,6 +429,13 @@ struct ActivityTabView: View {
                                 PhotoThumbnail(url: url, project: project)
                                     .frame(width: 72, height: 72)
                                     .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+                                    .overlay(alignment: .bottomLeading) {
+                                        if let count = commentCountsByPhoto[url], count > 0 {
+                                            PhotoCommentCountBadge(count: count)
+                                                .offset(x: 4, y: -4)
+                                                .allowsHitTesting(false)
+                                        }
+                                    }
                             }
                             .buttonStyle(PlainButtonStyle())
                             .wizardTarget(index == 0 ? "view_photo" : "")
@@ -392,6 +445,36 @@ struct ActivityTabView: View {
                 }
             }
         }
+    }
+}
+
+private struct ProjectDescriptionPinnedEntryView: View {
+    let description: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Text("PINNED")
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Rectangle()
+                    .fill(OPSStyle.Colors.cardBorder)
+                    .frame(height: OPSStyle.Layout.Border.standard)
+
+                Text("PROJECT DESCRIPTION")
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
+
+            Text(description)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -447,19 +530,22 @@ private struct AnnotationEntryView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(authorName)
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    // Name + timestamp inline — same position as every other
+                    // feed card (was far-right here, in the ellipsis slot).
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Text(authorName)
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        Text(relativeTimestamp)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
                     Text(AnnotationFeedPolicy.actionLabel(annotationURL: annotation.annotationURL))
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
 
                 Spacer()
-
-                Text(relativeTimestamp)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
 
             // Photo thumbnail + note side by side
@@ -520,6 +606,9 @@ private struct AnnotationEntryView: View {
 private struct ProjectPhotosCarousel: View {
     let project: Project
     @ObservedObject var imageSyncManager: ImageSyncManager
+    /// Comment count per photo URL (bug e1f073ed) — drives the per-thumbnail
+    /// comment badge. Keyed by full photo URL.
+    let commentCounts: [String: Int]
     let onPhotoTap: (Int) -> Void
 
     @EnvironmentObject private var dataController: DataController
@@ -538,9 +627,10 @@ private struct ProjectPhotosCarousel: View {
         PermissionStore.shared.can("projects.edit")
     }
 
-    init(project: Project, imageSyncManager: ImageSyncManager, onPhotoTap: @escaping (Int) -> Void) {
+    init(project: Project, imageSyncManager: ImageSyncManager, commentCounts: [String: Int], onPhotoTap: @escaping (Int) -> Void) {
         self.project = project
         self.imageSyncManager = imageSyncManager
+        self.commentCounts = commentCounts
         self.onPhotoTap = onPhotoTap
         let pid = project.id
         _syncedPhotos = Query(
@@ -550,9 +640,10 @@ private struct ProjectPhotosCarousel: View {
     }
 
     var body: some View {
-        // Canonical gallery list: synced project_photos ∪ legacy CSV, deduped.
-        // @Query keeps it live as inbound/realtime sync lands teammates' photos.
-        let photos = project.mergedGalleryImageURLs(syncedPhotoURLs: syncedPhotos.galleryURLs())
+        // Canonical gallery list: synced project_photos ∪ legacy CSV, deduped,
+        // newest-first (bug e7ef2c88). @Query keeps it live as inbound/realtime
+        // sync lands teammates' photos.
+        let photos = project.mergedGalleryImageURLs(syncedPhotos: syncedPhotos)
         // Server-generated thumbnail per full URL — PhotoThumbnail fetches the
         // small rendition instead of the multi-MB original when one exists.
         let thumbnailByURL: [String: String] = Dictionary(
@@ -613,6 +704,32 @@ private struct ProjectPhotosCarousel: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: OPSStyle.Layout.spacing2) {
+                        // In-flight upload placeholders ride at the FRONT so a
+                        // pick appears at the newest position and stays there
+                        // when it resolves (gallery is newest-first, bug e7ef2c88).
+                        // Failed tiles stay rendered with a red badge (May-12
+                        // auto-bug follow-up) — tap retries, long-press dismisses.
+                        ForEach(pending) { upload in
+                            UploadingPhotoTile(
+                                upload: upload,
+                                onRetry: {
+                                    Task {
+                                        await imageSyncManager.retryFailedInFlightUpload(
+                                            id: upload.id,
+                                            for: project.id
+                                        )
+                                    }
+                                },
+                                onDismiss: {
+                                    imageSyncManager.dismissFailedInFlightUpload(
+                                        id: upload.id,
+                                        for: project.id
+                                    )
+                                }
+                            )
+                            .transition(.opacity)
+                        }
+
                         ForEach(Array(photos.enumerated()), id: \.element) { index, url in
                             ZStack(alignment: .topTrailing) {
                                 PhotoThumbnail(url: url, project: project, remoteThumbnailURL: thumbnailByURL[url])
@@ -650,6 +767,17 @@ private struct ProjectPhotosCarousel: View {
                                                 .allowsHitTesting(false)
                                         }
                                     }
+                                    .overlay(alignment: .bottomLeading) {
+                                        // Bug e1f073ed — comment badge on photos
+                                        // that carry a comment thread. Hidden in
+                                        // edit mode (delete affordance owns the
+                                        // tile) and when there are no comments.
+                                        if !isEditing, let count = commentCounts[url], count > 0 {
+                                            PhotoCommentCountBadge(count: count)
+                                                .offset(x: 4, y: -4)
+                                                .allowsHitTesting(false)
+                                        }
+                                    }
 
                                 // Per-photo client-portal visibility toggle.
                                 // Hidden in edit mode so the delete affordance
@@ -664,36 +792,6 @@ private struct ProjectPhotosCarousel: View {
                                 }
                             }
                             .wiggle(isActive: isEditing, seed: index, reduceMotion: reduceMotion)
-                            .transition(.opacity)
-                        }
-
-                        // In-flight placeholders ride after the saved
-                        // photos so the user sees their pick land on
-                        // the right side of the carousel and slide left
-                        // into the row once the upload finishes.
-                        //
-                        // Auto-bug-reporting (May-12 follow-up): failed
-                        // tiles stay rendered with a red badge so the
-                        // user knows the photo did NOT make it. Tap
-                        // retries (transient) or dismisses (permanent).
-                        ForEach(pending) { upload in
-                            UploadingPhotoTile(
-                                upload: upload,
-                                onRetry: {
-                                    Task {
-                                        await imageSyncManager.retryFailedInFlightUpload(
-                                            id: upload.id,
-                                            for: project.id
-                                        )
-                                    }
-                                },
-                                onDismiss: {
-                                    imageSyncManager.dismissFailedInFlightUpload(
-                                        id: upload.id,
-                                        for: project.id
-                                    )
-                                }
-                            )
                             .transition(.opacity)
                         }
                     }
@@ -734,6 +832,32 @@ private struct ProjectPhotosCarousel: View {
         Task {
             await imageSyncManager.deleteProjectPhoto(url, from: project, dataController: dataController)
         }
+    }
+}
+
+// MARK: - Photo Comment Badge (Bug e1f073ed)
+
+/// Bottom-leading badge on a carousel thumbnail marking a photo that carries a
+/// comment thread. A bubble glyph + mono count on the same dark fill as the
+/// delete badge; informational only (the tile tap opens the viewer thread).
+private struct PhotoCommentCountBadge: View {
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "bubble.left.fill")
+                .font(.system(size: 9, weight: .semibold))
+            Text("\(count)")
+                .font(OPSStyle.Typography.smallCaption)
+        }
+        .foregroundColor(OPSStyle.Colors.primaryText)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color.black.opacity(0.65))
+        )
+        .accessibilityLabel("\(count) comment\(count == 1 ? "" : "s")")
     }
 }
 

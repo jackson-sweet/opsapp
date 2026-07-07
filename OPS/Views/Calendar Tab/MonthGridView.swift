@@ -887,7 +887,7 @@ struct MonthGridView: View {
                 }
             }
             .sheet(item: $sheetDate) { identifiableDate in
-                DayDetailsSheet(date: identifiableDate.date, viewModel: viewModel, cache: cache)
+                DayDetailsSheet(date: identifiableDate.date, viewModel: viewModel)
                     .opsSheet(detents: [.medium, .large])
             }
             .sheet(isPresented: $showMonthPicker) {
@@ -1533,24 +1533,19 @@ private struct MonthGridReschedulePresenter: View {
 struct DayDetailsSheet: View {
     let date: Date
     @ObservedObject var viewModel: CalendarViewModel
-    @ObservedObject var cache: MonthGridCache
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var dataController: DataController
     @EnvironmentObject var appState: AppState
 
-    private var eventPreviews: [ScheduledTaskPreview] {
-        cache.events(for: date)
-    }
-
     private var scheduledTasks: [ProjectTask] {
-        // User-event entries use a "userevent:" prefix on eventId — skip them
-        // here so they don't get resolved against the task store (Bug 1).
-        let taskIds = Set(eventPreviews
-            .map { $0.eventId }
-            .filter { !$0.hasPrefix("userevent:") })
-        return taskIds.compactMap { id in
-            dataController.getTask(id: id)
-        }
+        // Resolve from the calendar's source of truth — the same path day/week
+        // view uses — not the month grid's derived cache. That cache is built
+        // asynchronously and only rebuilt on a handful of triggers, so it can be
+        // empty or stale the moment the sheet reads it, which surfaced as "the day
+        // sheet is not picking up any events in month view" while day view worked.
+        // scheduledTasks(for:) is scope- and filter-aware and always current, so
+        // the month day sheet now matches day view exactly.
+        viewModel.scheduledTasks(for: date)
     }
 
     /// User-owned events overlapping this date (Bug 1 — surface time-off /
@@ -1729,6 +1724,10 @@ struct EventDetailCard: View {
     @State private var isLongPressing = false
     @State private var hasTriggeredHaptic = false
     @State private var isPressed = false
+    @State private var showingCascadePreview = false
+    @State private var pendingCascadePlan: DataController.CascadePlan?
+    @State private var pendingCascadeDays = 0
+    @AppStorage("showCascadePreview") private var showCascadePreviewPref = true
 
     // Reschedule is a schedule mutation — gated on calendar.edit, scope-aware on
     // this task (own-scope → only the user's own tasks). Crew / Unassigned (no
@@ -1825,7 +1824,31 @@ struct EventDetailCard: View {
         }
         .confirmationDialog("Quick Actions", isPresented: $showingQuickActions, titleVisibility: .hidden) {
             if canModify {
-                Button("Reschedule") {
+                Button("Push 1 day") {
+                    pushTask(days: 1)
+                }
+                Button("Push 3 days") {
+                    pushTask(days: 3)
+                }
+                Button("Push 1 week") {
+                    pushTask(days: 7)
+                }
+                Button("Extend 1 day") {
+                    extendTask(days: 1)
+                }
+                Button("Extend 3 days") {
+                    extendTask(days: 3)
+                }
+                Button("Extend 1 week") {
+                    extendTask(days: 7)
+                }
+                Button("Cascade 1 day") {
+                    pushTaskWithCascade(days: 1)
+                }
+                Button("Cascade 3 days") {
+                    pushTaskWithCascade(days: 3)
+                }
+                Button("Pick new date") {
                     showingReschedule = true
                 }
             }
@@ -1852,6 +1875,28 @@ struct EventDetailCard: View {
             )
             .environmentObject(dataController)
         }
+        .sheet(isPresented: $showingCascadePreview) {
+            if let plan = pendingCascadePlan {
+                CascadePreviewSheet(
+                    pushedTaskName: task.displayTitle,
+                    pushedTaskOldStart: task.startDate,
+                    pushedTaskNewStart: plan.pushedNewStart,
+                    pushedTaskNewEnd: plan.pushedNewEnd,
+                    cascadeChanges: plan.cascade.changes,
+                    onConfirm: {
+                        Task {
+                            _ = try? await dataController.pushTaskWithCascade(task, byDays: pendingCascadeDays)
+                            await MainActor.run {
+                                postScheduleBanner(newDate: plan.pushedNewStart, action: "pushed to")
+                            }
+                        }
+                    },
+                    onCancel: { }
+                )
+                .environmentObject(dataController)
+                .presentationDetents([.medium])
+            }
+        }
     }
 
     private func updateTaskSchedule(startDate: Date, endDate: Date) {
@@ -1865,5 +1910,80 @@ struct EventDetailCard: View {
                 print("Error updating task schedule: \(error)")
             }
         }
+    }
+
+    private func extendTask(days: Int) {
+        guard canModify,
+              let start = task.startDate,
+              let end = task.endDate,
+              let newEnd = Calendar.current.date(byAdding: .day, value: days, to: end) else { return }
+
+        Task {
+            do {
+                try await dataController.updateTaskSchedule(task: task, startDate: start, endDate: newEnd)
+                await MainActor.run {
+                    postScheduleBanner(newDate: newEnd, action: "extended to")
+                    ToastCenter.shared.present(Feedback.Task.scheduledFor(start: start, end: newEnd))
+                }
+            } catch {
+                await MainActor.run {
+                    ToastCenter.shared.present(Toast(label: Feedback.Err.operationFailed, tone: .error))
+                }
+            }
+        }
+    }
+
+    private func pushTask(days: Int) {
+        guard canModify else { return }
+        let preserveCalendarWeek = days != 0 && days % 7 == 0
+        let result = preserveCalendarWeek
+            ? SchedulingEngine.pushByCalendarWeeks(task: task, weeks: days / 7)
+            : SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: dataController.currentCompanySkipsWeekends)
+
+        Task {
+            do {
+                try await dataController.pushTask(task, byDays: days, preserveCalendarWeeks: preserveCalendarWeek)
+                await MainActor.run {
+                    postScheduleBanner(newDate: result.newStart, action: "pushed to")
+                    ToastCenter.shared.present(Feedback.Task.scheduledFor(start: result.newStart, end: result.newEnd))
+                }
+            } catch {
+                await MainActor.run {
+                    ToastCenter.shared.present(Toast(label: Feedback.Err.operationFailed, tone: .error))
+                }
+            }
+        }
+    }
+
+    private func pushTaskWithCascade(days: Int) {
+        guard canModify, let plan = dataController.planCascade(for: task, byDays: days) else { return }
+
+        if showCascadePreviewPref && !plan.cascade.changes.isEmpty {
+            pendingCascadePlan = plan
+            pendingCascadeDays = days
+            showingCascadePreview = true
+        } else {
+            Task {
+                _ = try? await dataController.pushTaskWithCascade(task, byDays: days)
+                await MainActor.run {
+                    postScheduleBanner(newDate: plan.pushedNewStart, action: "pushed to")
+                }
+            }
+        }
+    }
+
+    private func postScheduleBanner(newDate: Date, action: String) {
+        let projectName = task.project?.title ?? task.displayTitle
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        let dateStr = formatter.string(from: newDate)
+
+        NotificationCenter.default.post(
+            name: Notification.Name("ShowScheduleBanner"),
+            object: nil,
+            userInfo: [
+                "title": "\(projectName) \(action) \(dateStr)"
+            ]
+        )
     }
 }

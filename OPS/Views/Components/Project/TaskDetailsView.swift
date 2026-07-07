@@ -27,6 +27,7 @@ struct TaskDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var permissionStore: PermissionStore
     @Query private var users: [User]
+    @Query private var allTaskTypes: [TaskType]
     
     @State private var showingClientContact = false
     @State private var showingProjectDetails = false
@@ -45,6 +46,9 @@ struct TaskDetailsView: View {
     @State private var showingScheduler = false
     @State private var refreshTrigger = false  // Toggle to force view refresh
     @State private var showingDeleteConfirmation = false
+    @State private var pendingTaskTypeSwitch: TaskType?
+    @State private var taskTypeSwitchConflicts: [String] = []
+    @State private var showingTaskTypeConflictAlert = false
     @State private var materialHistory: TaskMaterialHistory = .empty
     @State private var materialHistoryLoadState: MaterialHistoryLoadState = .idle
     /// Company inventory operating mode. The Material History card only exists
@@ -164,6 +168,8 @@ struct TaskDetailsView: View {
                         // Task info sections - matching ProjectDetailsView card style
                         infoSection
 
+                        taskTypeSection
+
                         // Material History is meaningless when the company
                         // doesn't track inventory — hide the whole card rather
                         // than render an empty em-dash for off-mode companies.
@@ -278,6 +284,18 @@ struct TaskDetailsView: View {
         } message: {
             Text("This will permanently delete this task. This action cannot be undone.")
         }
+        .alert("Task type conflict", isPresented: $showingTaskTypeConflictAlert) {
+            Button("Switch Anyway", role: .destructive) {
+                guard let pendingTaskTypeSwitch else { return }
+                Task { await applyTaskTypeSwitch(to: pendingTaskTypeSwitch) }
+            }
+            Button("Cancel", role: .cancel) {
+                pendingTaskTypeSwitch = nil
+                taskTypeSwitchConflicts = []
+            }
+        } message: {
+            Text(taskTypeSwitchConflicts.joined(separator: "\n"))
+        }
     }
 
     // MARK: - Location Section
@@ -350,6 +368,155 @@ struct TaskDetailsView: View {
             }
         }
         .padding(.horizontal)
+    }
+
+    private var taskTypeSection: some View {
+        SectionCard(
+            icon: OPSStyle.Icons.taskType,
+            title: "Task Type"
+        ) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+                Menu {
+                    ForEach(availableTaskTypes, id: \.id) { type in
+                        Button {
+                            requestTaskTypeSwitch(to: type)
+                        } label: {
+                            HStack {
+                                Text(type.display)
+                                if type.id == task.taskTypeId {
+                                    Spacer()
+                                    Image(systemName: OPSStyle.Icons.checkmark)
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                        Circle()
+                            .fill(Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent)
+                            .frame(width: OPSStyle.Layout.Indicator.dotMD, height: OPSStyle.Layout.Indicator.dotMD)
+
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                            Text((task.taskType?.display ?? "Task").uppercased())
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .lineLimit(1)
+
+                            Text("SWITCH TYPE")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(canModify ? OPSStyle.Colors.secondaryText : OPSStyle.Colors.tertiaryText)
+                        }
+
+                        Spacer()
+
+                        if canModify {
+                            Image(systemName: OPSStyle.Icons.chevronDown)
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                    }
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .background(OPSStyle.Colors.surfaceInput)
+                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                }
+                .disabled(!canModify || availableTaskTypes.isEmpty)
+
+                if !taskTypeConflictPreview.isEmpty {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                        ForEach(taskTypeConflictPreview, id: \.self) { conflict in
+                            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
+                                Image(systemName: OPSStyle.Icons.alert)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                                    .foregroundColor(OPSStyle.Colors.tanTextM)
+                                Text(conflict)
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    private var availableTaskTypes: [TaskType] {
+        allTaskTypes
+            .filter { $0.deletedAt == nil && $0.companyId == task.companyId }
+            .sorted {
+                if $0.displayOrder != $1.displayOrder {
+                    return $0.displayOrder < $1.displayOrder
+                }
+                return $0.display.localizedCaseInsensitiveCompare($1.display) == .orderedAscending
+            }
+    }
+
+    private var taskTypeConflictPreview: [String] {
+        guard let currentType = task.taskType else { return [] }
+        return dependencyConflicts(for: currentType)
+    }
+
+    private func requestTaskTypeSwitch(to type: TaskType) {
+        guard canModify, type.id != task.taskTypeId else { return }
+        let conflicts = dependencyConflicts(for: type)
+        if conflicts.isEmpty {
+            Task { await applyTaskTypeSwitch(to: type) }
+        } else {
+            pendingTaskTypeSwitch = type
+            taskTypeSwitchConflicts = conflicts
+            showingTaskTypeConflictAlert = true
+        }
+    }
+
+    private func dependencyConflicts(for type: TaskType) -> [String] {
+        type.dependencies.compactMap { dependency in
+            let predecessorType = allTaskTypes.first { $0.id == dependency.dependsOnTaskTypeId }
+            let predecessorName = predecessorType?.display ?? "Required predecessor"
+            let predecessors = project.tasks.filter {
+                $0.deletedAt == nil &&
+                $0.id != task.id &&
+                $0.taskTypeId == dependency.dependsOnTaskTypeId
+            }
+            if predecessors.isEmpty {
+                return "\(predecessorName) is missing."
+            }
+            if predecessors.allSatisfy({ $0.status != .completed }) {
+                return "\(predecessorName) is not complete."
+            }
+            return nil
+        }
+    }
+
+    @MainActor
+    private func applyTaskTypeSwitch(to type: TaskType) async {
+        task.taskTypeId = type.id
+        task.taskType = type
+        task.taskColor = type.color
+        task.dependencyOverridesJSON = nil
+        task.needsSync = true
+        try? modelContext.save()
+
+        do {
+            try await dataController.updateTaskFields(
+                taskId: task.id,
+                fields: [
+                    "task_type_id": .string(type.id),
+                    "task_color": .string(type.color),
+                    "dependency_overrides": .null
+                ]
+            )
+            pendingTaskTypeSwitch = nil
+            taskTypeSwitchConflicts = []
+            ToastCenter.shared.present(Feedback.updated("task type"))
+        } catch {
+            ToastCenter.shared.present(Toast(label: Feedback.Err.operationFailed, tone: .error))
+        }
     }
 
     private var materialHistorySection: some View {

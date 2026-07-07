@@ -71,6 +71,10 @@ class ProjectDetailsViewModel: ObservableObject {
     @Published var isGeocodingAddress = false
     @Published var isDeleting = false
     @Published var isUpdatingVinylOrderMarker = false
+    /// Set when MARK ORDERED (Details-tab marker) resolves a materials list —
+    /// drives the order-confirm sheet so the operator confirms the actual
+    /// quantities before the freeze. nil when no confirm is pending.
+    @Published var pendingVinylOrderConfirm: PendingVinylOrderConfirm?
 
     // MARK: - Photo State
 
@@ -441,38 +445,130 @@ class ProjectDetailsViewModel: ObservableObject {
             return
         }
 
-        let now = Date()
-        let fields: [String: AnyJSON]
-        if ordered {
-            fields = [
-                ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
-                ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(now)),
-                ProjectVinylOrderFields.orderedBy: .string(userId)
-            ]
-        } else {
-            fields = [
-                ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.notOrdered.rawValue),
-                ProjectVinylOrderFields.orderedAt: .null,
-                ProjectVinylOrderFields.orderedBy: .null
-            ]
+        // MARK ORDERED with a resolvable materials list → confirm the actual order
+        // first (present the confirm sheet). The freeze happens in
+        // `confirmVinylOrder` on CONFIRM ORDERED, so both entry points behave
+        // identically: MARK ORDERED always means "confirm the actual order".
+        if ordered,
+           let design = resolveDeckDesignForMaterials(),
+           let materials = resolveMaterialsForOrder(design: design) {
+            pendingVinylOrderConfirm = PendingVinylOrderConfirm(
+                design: design,
+                materials: materials,
+                settings: design.drawingData.materialsSettings ?? DeckMaterialsSettings(),
+                vinylSettings: .default,
+                projectId: project.id,
+                projectTitle: project.title,
+                deckTitle: design.title
+            )
+            return
         }
 
+        // No materials resolved (non-vinyl / no scale) or a CLEAR — plain marker.
+        performVinylMarkerUpdate(userId: userId, dataController: dataController, ordered: ordered)
+    }
+
+    /// Freeze the confirmed order (from the confirm sheet) and mark the project.
+    func confirmVinylOrder(_ ctx: PendingVinylOrderConfirm, _ confirmed: DeckMaterialsOrderConfirmation) {
+        guard let dataController,
+              let userId = dataController.currentUser?.id
+                    ?? SupabaseService.shared.currentUserId
+                    ?? UserDefaults.standard.string(forKey: "currentUserId") else {
+            return
+        }
         isUpdatingVinylOrderMarker = true
-        Task {
+        let service = DeckMaterialsOrderService(userId: userId) { pid, fields in
+            try await dataController.updateProjectFields(projectId: pid, fields: fields)
+        }
+        Task { @MainActor in
             do {
-                try await dataController.updateProjectFields(projectId: project.id, fields: fields)
-                await MainActor.run {
-                    isUpdatingVinylOrderMarker = false
-                    ToastCenter.shared.present(Feedback.saved("vinyl status"))
-                }
+                try await service.markOrdered(
+                    projectId: ctx.projectId,
+                    design: ctx.design,
+                    materials: ctx.materials,
+                    settings: ctx.settings,
+                    vinylSettings: ctx.vinylSettings,
+                    confirmed: confirmed
+                )
+                isUpdatingVinylOrderMarker = false
+                ToastCenter.shared.present(Feedback.saved("vinyl status"))
             } catch {
-                await MainActor.run {
-                    isUpdatingVinylOrderMarker = false
-                    networkError = "VINYL STATUS FAILED"
+                isUpdatingVinylOrderMarker = false
+                networkError = "VINYL STATUS FAILED"
+                print("[PROJECT_DETAILS] Failed to confirm vinyl order: \(error)")
+            }
+        }
+    }
+
+    /// Plain project-marker write — MARK ORDERED without a snapshot, or CLEAR
+    /// ORDERED (which also removes any snapshot via the shared service).
+    private func performVinylMarkerUpdate(userId: String, dataController: DataController, ordered: Bool) {
+        isUpdatingVinylOrderMarker = true
+        let service = DeckMaterialsOrderService(userId: userId) { pid, fields in
+            try await dataController.updateProjectFields(projectId: pid, fields: fields)
+        }
+        let design = resolveDeckDesignForMaterials()
+        Task { @MainActor in
+            do {
+                if ordered {
+                    try await dataController.updateProjectFields(
+                        projectId: project.id,
+                        fields: [
+                            ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
+                            ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(Date())),
+                            ProjectVinylOrderFields.orderedBy: .null
+                        ]
+                    )
+                } else {
+                    try await service.clearOrdered(projectId: project.id, design: design)
                 }
+                isUpdatingVinylOrderMarker = false
+                ToastCenter.shared.present(Feedback.saved("vinyl status"))
+            } catch {
+                isUpdatingVinylOrderMarker = false
+                networkError = "VINYL STATUS FAILED"
                 print("[PROJECT_DETAILS] Failed to update vinyl marker: \(error)")
             }
         }
+    }
+
+    /// Most-recent renderable deck design for this project, or nil.
+    private func resolveDeckDesignForMaterials() -> DeckDesign? {
+        guard let context = dataController?.modelContext else { return nil }
+        let descriptor = FetchDescriptor<DeckDesign>()
+        guard let designs = try? context.fetch(descriptor) else { return nil }
+        return DeckDesign.displayCandidate(in: designs, forProjectId: project.id)
+    }
+
+    /// Full materials list for the design via the shared detection pipeline, or
+    /// nil when there is no vinyl set or the scale can't be resolved.
+    private func resolveMaterialsForOrder(design: DeckDesign) -> DeckMaterialsList? {
+        guard let context = dataController?.modelContext else { return nil }
+        let data = design.drawingData
+        let pid = project.id
+        let taskDescriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate { $0.projectId == pid && $0.deletedAt == nil }
+        )
+        let taskDisplays = ((try? context.fetch(taskDescriptor)) ?? []).compactMap { $0.taskType?.display }
+
+        let cid = project.companyId
+        let productDescriptor = FetchDescriptor<Product>(
+            predicate: #Predicate { $0.companyId == cid }
+        )
+        let catalogDescriptor = FetchDescriptor<CatalogItem>(
+            predicate: #Predicate { $0.companyId == cid && $0.deletedAt == nil }
+        )
+        let products = (try? context.fetch(productDescriptor)) ?? []
+        let catalogItems = (try? context.fetch(catalogDescriptor)) ?? []
+        let hints = DeckVinylHintBuilder.build(products: products, catalogItems: catalogItems)
+
+        return DeckMaterialsResolver.resolve(
+            data: data,
+            settings: data.materialsSettings ?? DeckMaterialsSettings(),
+            vinylSettings: .default,
+            taskTypeDisplays: taskDisplays,
+            vinylHintByProductId: hints
+        ).materials
     }
 
     // MARK: - Address

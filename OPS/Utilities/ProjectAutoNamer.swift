@@ -22,6 +22,9 @@
 import Foundation
 
 enum ProjectAutoNamer {
+    static func derivedTitle(from address: String) -> String {
+        streetLine(from: address) ?? "New project"
+    }
 
     /// Mirrors `private.derive_project_name(p_address, p_client_name)`.
     static func derive(address: String?, clientName: String?) -> String {
@@ -33,6 +36,31 @@ enum ProjectAutoNamer {
             return "\(trimmedClient)'s Project"
         }
         return "New project"
+    }
+
+    static func titleReplacingAddressComponent(
+        in title: String,
+        previousAddress: String?,
+        nextAddress: String
+    ) -> String? {
+        guard
+            let previousAddress,
+            let previousStreet = streetLine(from: previousAddress),
+            let nextStreet = streetLine(from: nextAddress),
+            previousStreet != nextStreet
+        else {
+            return nil
+        }
+
+        if let range = title.range(of: previousStreet) {
+            return title.replacingCharacters(in: range, with: nextStreet)
+        }
+
+        if let range = title.range(of: previousStreet, options: [.caseInsensitive, .diacriticInsensitive]) {
+            return title.replacingCharacters(in: range, with: nextStreet)
+        }
+
+        return nil
     }
 
     /// The street line an address resolves to, or nil when the address is

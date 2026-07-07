@@ -45,6 +45,7 @@ struct BuiltInMaterial: Identifiable, Equatable {
         BuiltInMaterial(id: "std.decking.cedar",              name: "Cedar Decking",       subtitle: "Western red cedar boards",       icon: "square.grid.3x3"),
         BuiltInMaterial(id: "std.decking.hardwood",           name: "Hardwood Decking",    subtitle: "Ipe, mahogany, garapa",          icon: "square.grid.3x3"),
         BuiltInMaterial(id: "std.surface.concrete",           name: "Concrete Pad",        subtitle: "Stamped or broom finish",        icon: "square.grid.3x3"),
-        BuiltInMaterial(id: "std.surface.pavers",             name: "Pavers",              subtitle: "Stone or concrete unit pavers",  icon: "square.grid.3x3")
+        BuiltInMaterial(id: "std.surface.pavers",             name: "Pavers",              subtitle: "Stone or concrete unit pavers",  icon: "square.grid.3x3"),
+        BuiltInMaterial(id: "std.decking.vinyl",              name: "Vinyl Membrane",      subtitle: "Duradek, Tufdek style sheet vinyl", icon: "square.grid.3x3")
     ]
 }

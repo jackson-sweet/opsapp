@@ -31,22 +31,6 @@ private enum ProjectTeamAssignmentSyncError: LocalizedError {
     }
 }
 
-enum ProjectAutoNamer {
-    static func derivedTitle(from address: String) -> String {
-        streetLine(from: address) ?? "New project"
-    }
-
-    static func streetLine(from fullAddress: String) -> String? {
-        let trimmed = fullAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let components = trimmed.components(separatedBy: ",")
-        if let street = components.first?.trimmingCharacters(in: .whitespaces), !street.isEmpty {
-            return street
-        }
-        return nil
-    }
-}
-
 /// Main controller for managing data, authentication, and app state
 class DataController: ObservableObject {
     // MARK: - Preview Detection
@@ -5034,6 +5018,7 @@ class DataController: ObservableObject {
         // trip up downstream consumers (MapKit geocoder, Mapbox label
         // rendering, Supabase JSON encoding).
         let sanitized = Self.sanitizeAddressInput(address)
+        let previousAddress = project.address
 
         // Apply address locally
         project.address = sanitized
@@ -5046,6 +5031,13 @@ class DataController: ObservableObject {
             project.title = nextTitle
             changedFields["title"] = nextTitle
             changedFields["title_is_auto"] = true
+        } else if let nextTitle = ProjectAutoNamer.titleReplacingAddressComponent(
+            in: project.title,
+            previousAddress: previousAddress,
+            nextAddress: sanitized
+        ) {
+            project.title = nextTitle
+            changedFields["title"] = nextTitle
         }
 
         // Geocode the address to update lat/long for map display.

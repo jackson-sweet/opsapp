@@ -187,6 +187,17 @@ struct DetailsTabView: View {
         .onAppear {
             NotificationCenter.default.post(name: Notification.Name("WizardDetailsTabViewed"), object: nil)
         }
+        .sheet(item: $viewModel.pendingVinylOrderConfirm) { ctx in
+            VinylOrderConfirmSheet(
+                projectTitle: ctx.projectTitle,
+                deckTitle: ctx.deckTitle,
+                rollWidthInches: ctx.rollWidthInches,
+                calculated: ctx.calculated,
+                onConfirm: { confirmed in viewModel.confirmVinylOrder(ctx, confirmed) }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
     }
 }
 

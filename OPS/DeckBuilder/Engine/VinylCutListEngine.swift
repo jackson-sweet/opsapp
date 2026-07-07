@@ -3,7 +3,7 @@
 import CoreGraphics
 import Foundation
 
-enum VinylLayoutDirection: String, CaseIterable, Identifiable {
+enum VinylLayoutDirection: String, Codable, CaseIterable, Identifiable {
     case automatic
     case lengthwise
     case widthwise
@@ -19,7 +19,7 @@ enum VinylLayoutDirection: String, CaseIterable, Identifiable {
     }
 }
 
-enum VinylPatternMode: String, CaseIterable, Identifiable {
+enum VinylPatternMode: String, Codable, CaseIterable, Identifiable {
     case solid
     case linear
 
@@ -33,7 +33,7 @@ enum VinylPatternMode: String, CaseIterable, Identifiable {
     }
 }
 
-struct VinylOrderSettings: Equatable {
+struct VinylOrderSettings: Equatable, Codable {
     var color: String
     var catalogItemId: String?
     var catalogVariantId: String?
@@ -46,6 +46,19 @@ struct VinylOrderSettings: Equatable {
     /// Minimum leftover width (inches) for a remnant to be worth banking as an
     /// offcut. Below this it is treated as scrap and neither reused nor banked.
     var offcutMinWidthInches: Double
+
+    enum CodingKeys: String, CodingKey {
+        case color
+        case catalogItemId
+        case catalogVariantId
+        case rollWidthInches
+        case seamOverlapInches
+        case edgeWrapInches
+        case direction
+        case patternMode
+        case allowsDirectionalChanges
+        case offcutMinWidthInches
+    }
 
     init(
         color: String,
@@ -69,6 +82,23 @@ struct VinylOrderSettings: Equatable {
         self.patternMode = patternMode
         self.allowsDirectionalChanges = allowsDirectionalChanges
         self.offcutMinWidthInches = offcutMinWidthInches
+    }
+
+    /// Custom decode so partial / legacy JSON round-trips with `.default`'s
+    /// values instead of throwing on a missing key (DeckGeometry house style).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.color = try c.decodeIfPresent(String.self, forKey: .color) ?? ""
+        self.catalogItemId = try c.decodeIfPresent(String.self, forKey: .catalogItemId)
+        self.catalogVariantId = try c.decodeIfPresent(String.self, forKey: .catalogVariantId)
+        self.rollWidthInches = try c.decodeIfPresent(Double.self, forKey: .rollWidthInches) ?? 72
+        self.seamOverlapInches = try c.decodeIfPresent(Double.self, forKey: .seamOverlapInches) ?? 1.5
+        self.edgeWrapInches = try c.decodeIfPresent(Double.self, forKey: .edgeWrapInches) ?? 6
+        self.direction = try c.decodeIfPresent(VinylLayoutDirection.self, forKey: .direction) ?? .automatic
+        let rawPatternMode = try c.decodeIfPresent(String.self, forKey: .patternMode)
+        self.patternMode = rawPatternMode.flatMap(VinylPatternMode.init(rawValue:)) ?? .solid
+        self.allowsDirectionalChanges = try c.decodeIfPresent(Bool.self, forKey: .allowsDirectionalChanges) ?? false
+        self.offcutMinWidthInches = try c.decodeIfPresent(Double.self, forKey: .offcutMinWidthInches) ?? 6
     }
 
     static let `default` = VinylOrderSettings(
@@ -117,6 +147,40 @@ struct VinylOrderSurfaceEdge: Identifiable, Equatable {
     let end: CGPoint
     let edgeType: EdgeType
     let label: String?
+    /// Boundary vertex ids for this segment (face order). Used by
+    /// `DeckMaterialsEngine`'s interior-seam test — a pair shared by two faces is
+    /// an interior seam and gets no flashing. Nil ⇒ never treated as interior
+    /// (preview fallback edges carry no vertex identity).
+    let startVertexId: String?
+    let endVertexId: String?
+    /// True when the matched deck edge carries a parapet-wall railing — parapet
+    /// edges get 90° flash like a house edge.
+    let isParapet: Bool
+    /// The matched deck edge's real-world dimension (inches) when > 0, else nil.
+    /// `DeckMaterialsEngine` falls back to canvas length ÷ scale when nil.
+    let dimensionInches: Double?
+
+    init(
+        id: String,
+        start: CGPoint,
+        end: CGPoint,
+        edgeType: EdgeType,
+        label: String?,
+        startVertexId: String? = nil,
+        endVertexId: String? = nil,
+        isParapet: Bool = false,
+        dimensionInches: Double? = nil
+    ) {
+        self.id = id
+        self.start = start
+        self.end = end
+        self.edgeType = edgeType
+        self.label = label
+        self.startVertexId = startVertexId
+        self.endVertexId = endVertexId
+        self.isParapet = isParapet
+        self.dimensionInches = dimensionInches
+    }
 }
 
 /// A remnant the cut plan produces — leftover roll width × the strip length —
@@ -190,7 +254,9 @@ struct VinylCutPlan: Equatable {
         return summaries.allSatisfy { $0 == first } ? first : "MIXED"
     }
 
-    func orderNotes(projectTitle: String, deckTitle: String) -> String {
+    /// `rolls` (e.g. "3 ROLLS @ 75'") is appended as a ROLLS line when the order
+    /// is placed in full-roll mode; nil/empty leaves the note cut-list-identical.
+    func orderNotes(projectTitle: String, deckTitle: String, rolls: String? = nil) -> String {
         var lines: [String] = []
         lines.append("// VINYL ORDER")
         lines.append("PROJECT: \(projectTitle)")
@@ -200,6 +266,9 @@ struct VinylCutPlan: Equatable {
         lines.append("SEAM OVERLAP: \(vinylFormatInches(settings.seamOverlapInches))")
         lines.append("EDGE WRAP: \(vinylFormatInches(settings.edgeWrapInches))")
         lines.append("RUN: \(runDirectionSummary)")
+        if let rolls, !rolls.isEmpty {
+            lines.append("ROLLS: \(rolls)")
+        }
         lines.append("ORDER AREA: \(totalOrderedSqFt) SQ FT")
         lines.append("SURFACE AREA: \(vinylFormatSqFt(totalSurfaceAreaSqFt)) SQ FT")
         if totalReusedCutAreaSqFt > 0 {
@@ -227,14 +296,16 @@ struct VinylCutPlan: Equatable {
         messageTemplate: String = VinylCutListTextTemplate.defaultMessageTemplate,
         cutTemplate: String = VinylCutListTextTemplate.defaultCutTemplate,
         cutSeparator: VinylCutListSeparator = .lines,
-        projectTitle: String = ""
+        projectTitle: String = "",
+        rolls: String = ""
     ) -> String {
         VinylCutListTextTemplate.render(
             messageTemplate: messageTemplate,
             cutTemplate: cutTemplate,
             cutSeparator: cutSeparator,
             projectTitle: projectTitle,
-            plan: self
+            plan: self,
+            rolls: rolls
         )
     }
 
@@ -278,7 +349,8 @@ enum VinylCutListTextTemplate {
         cutTemplate rawCutTemplate: String,
         cutSeparator: VinylCutListSeparator,
         projectTitle: String = "",
-        plan: VinylCutPlan
+        plan: VinylCutPlan,
+        rolls: String = ""
     ) -> String {
         let trimmedMessageTemplate = rawMessageTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
         let messageTemplate = trimmedMessageTemplate.isEmpty ? defaultMessageTemplate : rawMessageTemplate
@@ -291,7 +363,10 @@ enum VinylCutListTextTemplate {
                 "color": color,
                 "cuts": cuts,
                 "cut_count": "\(plan.totalPurchasedStripCount)",
-                "project": projectTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                "project": projectTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+                // Full-roll summary (e.g. "3 ROLLS @ 75'"); empty in cut-list mode
+                // so a [rolls] token in a custom template quietly disappears.
+                "rolls": rolls
             ]
         )
             .trimmingCharacters(in: .whitespacesAndNewlines)

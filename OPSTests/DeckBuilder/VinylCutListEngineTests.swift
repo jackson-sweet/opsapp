@@ -831,4 +831,39 @@ final class VinylCutListEngineTests: XCTestCase {
             variantDeleted: false
         )
     }
+
+    // MARK: - Full-roll ordering (spec § 5.3)
+
+    /// The `[rolls]` message token fills with the supplied roll summary in roll
+    /// mode; the cut-list default ("") makes the token disappear, leaving every
+    /// existing template byte-identical.
+    func testTextMessageBodyRollsToken() {
+        let surface = rectangle(id: "main", label: "Main deck", width: 96, height: 36)
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: VinylOrderSettings(color: "Slate", rollWidthInches: 72, seamOverlapInches: 0, edgeWrapInches: 0, direction: .lengthwise)
+        )
+
+        let rollBody = plan.textMessageBody(messageTemplate: "ROLLS [rolls]\n[cuts]", rolls: "3 ROLLS @ 75'")
+        XCTAssertTrue(rollBody.contains("3 ROLLS @ 75'"))
+
+        // Cut-list default resolves [rolls] to empty — no roll length leaks in.
+        let cutBody = plan.textMessageBody(messageTemplate: "ROLLS [rolls]\n[cuts]")
+        XCTAssertFalse(cutBody.contains("75'"))
+    }
+
+    /// `orderNotes` adds a ROLLS line only when a roll summary is supplied.
+    func testOrderNotesRollsLine() {
+        let surface = rectangle(id: "main", label: "Main deck", width: 96, height: 36)
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: VinylOrderSettings(color: "Slate", rollWidthInches: 72, seamOverlapInches: 0, edgeWrapInches: 0, direction: .lengthwise)
+        )
+
+        let rollNotes = plan.orderNotes(projectTitle: "P", deckTitle: "D", rolls: "3 ROLLS @ 75'")
+        XCTAssertTrue(rollNotes.contains("ROLLS: 3 ROLLS @ 75'"))
+
+        let cutNotes = plan.orderNotes(projectTitle: "P", deckTitle: "D")
+        XCTAssertFalse(cutNotes.contains("ROLLS:"))
+    }
 }

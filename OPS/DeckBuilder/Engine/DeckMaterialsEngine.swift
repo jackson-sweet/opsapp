@@ -49,11 +49,14 @@ struct DeckMaterialsDriftKey: Equatable {
             && abs(lhs.glueAreaSqFt - rhs.glueAreaSqFt) <= 0.1
     }
 
-    /// Builds a drift key from a stored ordered snapshot. Its `cutGroups` are
-    /// purchased-only, which equals the read-only tab's cut set (no offcut seeds
-    /// there). Clip mirrors drip, so only drip + 90 feet are compared.
+    /// Builds a drift key from a stored ordered snapshot. Uses `driftCutGroups`
+    /// (ALL cut pieces — purchased + intra-job reused), NOT the purchased-only
+    /// `cutGroups`: the live drift key counts every cut piece, so comparing
+    /// against purchased-only would drop intra-job reused strips and false-flag
+    /// DESIGN CHANGED the instant a reuse deck is ordered. Clip mirrors drip, so
+    /// only drip + 90 feet are compared.
     init(snapshot: DeckMaterialsSnapshot) {
-        self.cutPairs = snapshot.cutGroups
+        self.cutPairs = snapshot.driftCutGroups
             .flatMap { group in
                 Array(repeating: CutPair(lengthInches: group.lengthInches, rollWidthInches: group.rollWidthInches),
                       count: max(0, group.count))

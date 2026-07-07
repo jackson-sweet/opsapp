@@ -146,16 +146,12 @@ struct DeckMaterialsOrderService {
         let isOrderedEdited = confirmation.differs(fromCalculated: calc)
 
         // Purchased cut groups only — the snapshot shows "what was ordered".
-        let purchasedGroups = VinylCutGroup
-            .groups(from: materials.vinylPlan.surfaces.flatMap(\.purchasedCuts))
-            .map { group in
-                DeckMaterialsSnapshot.CutGroup(
-                    surfaceLabel: group.surfaceLabel,
-                    count: group.count,
-                    lengthInches: group.lengthInches,
-                    rollWidthInches: group.rollWidthInches
-                )
-            }
+        let purchasedGroups = snapshotGroups(from: materials.vinylPlan.surfaces.flatMap(\.purchasedCuts))
+        // ALL cut pieces (purchased + intra-job reused) — the drift basis. The
+        // live drift key counts every cut piece, so the snapshot must store the
+        // full set or a reuse deck false-flags DESIGN CHANGED the instant it is
+        // ordered.
+        let driftGroups = snapshotGroups(from: materials.vinylPlan.surfaces.flatMap(\.cuts))
 
         let snapshot = DeckMaterialsSnapshot(
             orderedAt: now,
@@ -186,7 +182,8 @@ struct DeckMaterialsOrderService {
             orderMode: confirmation.orderMode,
             fullRollLengthFeet: confirmation.fullRollLengthFeet,
             orderedRollCount: confirmation.orderMode == .fullRolls ? confirmation.rollCount : nil,
-            isOrderedEdited: isOrderedEdited
+            isOrderedEdited: isOrderedEdited,
+            driftCutGroups: driftGroups
         )
 
         // (1) Local-first snapshot — the accessor marks needsSync + updatedAt.
@@ -236,6 +233,20 @@ struct DeckMaterialsOrderService {
         next.orderedMaterials = updated
         design.drawingData = next
         return true
+    }
+
+    /// Group cut pieces into the snapshot's `CutGroup` shape (surface label,
+    /// count, length, roll width). Used for both the purchased display groups and
+    /// the all-cuts drift groups.
+    private func snapshotGroups(from cuts: [VinylCutPiece]) -> [DeckMaterialsSnapshot.CutGroup] {
+        VinylCutGroup.groups(from: cuts).map { group in
+            DeckMaterialsSnapshot.CutGroup(
+                surfaceLabel: group.surfaceLabel,
+                count: group.count,
+                lengthInches: group.lengthInches,
+                rollWidthInches: group.rollWidthInches
+            )
+        }
     }
 
     /// Clear the ordered snapshot and the project marker. Reverts the local

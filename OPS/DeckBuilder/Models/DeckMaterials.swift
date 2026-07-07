@@ -125,7 +125,16 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
     var vinylColor: String                       // "" → FIELD CONFIRM
     var vinylOrderedSqFt: Int
     var vinylSurfaceAreaSqFt: Double
-    var cutGroups: [CutGroup]                    // purchased-only
+    var cutGroups: [CutGroup]                    // purchased-only (display: "what was ordered")
+    /// ALL cut pieces at order time — purchased PLUS intra-job reused (a strip
+    /// sourced from another surface's leftover offcut). Used SOLELY to reconstruct
+    /// the geometry drift key. The live `DeckMaterialsDriftKey` counts every cut
+    /// piece (`plan.surfaces.flatMap(\.cuts)`), so drift must compare against the
+    /// full set — reconstructing it from the purchased-only `cutGroups` above
+    /// would drop the reused pieces and false-flag DESIGN CHANGED SINCE ORDER the
+    /// instant a reuse deck is ordered. Defaults to `cutGroups` for any legacy
+    /// snapshot that predates this field (none exist in prod).
+    var driftCutGroups: [CutGroup]
     var dripEdgeFeet: Double
     var dripSticks: Int
     var clipFeet: Double
@@ -163,6 +172,7 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         case vinylOrderedSqFt
         case vinylSurfaceAreaSqFt
         case cutGroups
+        case driftCutGroups
         case dripEdgeFeet
         case dripSticks
         case clipFeet
@@ -199,7 +209,8 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         orderMode: VinylOrderMode = .cutList,
         fullRollLengthFeet: Double = 75,
         orderedRollCount: Int? = nil,
-        isOrderedEdited: Bool = false
+        isOrderedEdited: Bool = false,
+        driftCutGroups: [CutGroup]? = nil
     ) {
         self.orderedAt = orderedAt
         self.orderedBy = orderedBy
@@ -209,6 +220,10 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         self.vinylOrderedSqFt = vinylOrderedSqFt
         self.vinylSurfaceAreaSqFt = vinylSurfaceAreaSqFt
         self.cutGroups = cutGroups
+        // Legacy / display-only constructions omit driftCutGroups → fall back to
+        // the purchased cutGroups (unchanged behavior). The order service passes
+        // the real all-cuts set.
+        self.driftCutGroups = driftCutGroups ?? cutGroups
         self.dripEdgeFeet = dripEdgeFeet
         self.dripSticks = dripSticks
         self.clipFeet = clipFeet
@@ -237,6 +252,10 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         self.vinylOrderedSqFt = try c.decodeIfPresent(Int.self, forKey: .vinylOrderedSqFt) ?? 0
         self.vinylSurfaceAreaSqFt = try c.decodeIfPresent(Double.self, forKey: .vinylSurfaceAreaSqFt) ?? 0
         self.cutGroups = try c.decodeIfPresent([CutGroup].self, forKey: .cutGroups) ?? []
+        // Additive drift field — a snapshot written before it existed falls back to
+        // the purchased cutGroups (its prior, pre-fix behavior). Must decode AFTER
+        // `cutGroups` so the fallback sees the decoded value.
+        self.driftCutGroups = try c.decodeIfPresent([CutGroup].self, forKey: .driftCutGroups) ?? self.cutGroups
         self.dripEdgeFeet = try c.decodeIfPresent(Double.self, forKey: .dripEdgeFeet) ?? 0
         self.dripSticks = try c.decodeIfPresent(Int.self, forKey: .dripSticks) ?? 0
         self.clipFeet = try c.decodeIfPresent(Double.self, forKey: .clipFeet) ?? 0

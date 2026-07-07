@@ -253,6 +253,67 @@ final class DeckMaterialsOrderServiceTests: XCTestCase {
         XCTAssertNotEqual(DeckMaterialsDriftKey(snapshot: snapshot), moved.driftKey)
     }
 
+    // MARK: - Offcut-reuse drift (adversarial-review regression)
+
+    /// A deck where a small surface's strip is cut from a larger surface's leftover
+    /// offcut (intra-job reuse, NO banked offcuts) must NOT false-flag DESIGN
+    /// CHANGED the instant it is ordered. The live drift key counts every cut piece
+    /// (purchased + reused); the snapshot stores the full set in `driftCutGroups`
+    /// so the reconstructed key matches. The purchased-only `cutGroups` (display)
+    /// stay smaller. A real geometry change still flags drift.
+    func testIntraJobReuseDeckDoesNotFalseFlagDrift() async throws {
+        let vinyl = VinylOrderSettings(color: "", rollWidthInches: 72, seamOverlapInches: 2, edgeWrapInches: 0, direction: .lengthwise)
+        let materials = DeckMaterialsEngine.compute(
+            vinylInputs: [
+                rectSurface(id: "main", label: "Main", width: 288, height: 132),
+                rectSurface(id: "landing", label: "Landing", width: 96, height: 8)
+            ],
+            allDetectedFacesByLevel: [],
+            settings: DeckMaterialsSettings(),
+            vinylSettings: vinyl
+        )
+        // The config must actually produce intra-job reuse to exercise the fix.
+        XCTAssertGreaterThan(materials.vinylPlan.totalReusedCutAreaSqFt, 0)
+
+        let design = DeckDesign(companyId: "co-1")
+        let service = DeckMaterialsOrderService(userId: "u") { _, _ in }
+        try await service.markOrdered(projectId: "p", design: design, materials: materials, settings: DeckMaterialsSettings(), vinylSettings: vinyl)
+        let snapshot = try XCTUnwrap(design.drawingData.orderedMaterials)
+
+        // No false drift at the order instant — the reconstructed key equals live.
+        XCTAssertEqual(DeckMaterialsDriftKey(snapshot: snapshot), materials.driftKey)
+        // The display cut list is purchased-only, strictly fewer than the drift set.
+        let purchasedCount = snapshot.cutGroups.reduce(0) { $0 + $1.count }
+        let driftCount = snapshot.driftCutGroups.reduce(0) { $0 + $1.count }
+        XCTAssertLessThan(purchasedCount, driftCount)
+
+        // A real geometry change (Main grows 11'→15' deep) still flags drift.
+        let moved = DeckMaterialsEngine.compute(
+            vinylInputs: [
+                rectSurface(id: "main", label: "Main", width: 288, height: 180),
+                rectSurface(id: "landing", label: "Landing", width: 96, height: 8)
+            ],
+            allDetectedFacesByLevel: [],
+            settings: DeckMaterialsSettings(),
+            vinylSettings: vinyl
+        )
+        XCTAssertNotEqual(DeckMaterialsDriftKey(snapshot: snapshot), moved.driftKey)
+    }
+
+    /// A legacy snapshot written before `driftCutGroups` existed decodes with the
+    /// field falling back to the purchased `cutGroups` — its prior behavior, no
+    /// crash (additive-field discipline).
+    func testLegacySnapshotDriftGroupsFallBackToCutGroups() throws {
+        let json = """
+        {
+          "orderedAt": 1780000000,
+          "cutGroups": [{"surfaceLabel": "Main", "count": 3, "lengthInches": 252, "rollWidthInches": 72}]
+        }
+        """
+        let snapshot = try JSONDecoder().decode(DeckMaterialsSnapshot.self, from: Data(json.utf8))
+        XCTAssertEqual(snapshot.driftCutGroups, snapshot.cutGroups)
+    }
+
     // MARK: - Editable ordered record (spec § 3.3 / § 6)
 
     /// Confirming with hand-edited quantities freezes the EDITED values and flags

@@ -31,6 +31,9 @@ struct DeckMaterialsSection: View {
     @State private var driftFlagged = false
     /// Test seam: when true, `recompute()` is skipped so injected state stands.
     @State private var isInjected = false
+    /// Presents the order-confirm sheet for EDIT ORDER (correct an ordered record
+    /// without CLEAR + re-order).
+    @State private var showingEditOrder = false
 
     init(design: DeckDesign, project: Project) {
         self.design = design
@@ -53,6 +56,29 @@ struct DeckMaterialsSection: View {
         }
         .task { if !isInjected { recompute() } }
         .onChange(of: design.drawingDataJSON) { _, _ in if !isInjected { recompute() } }
+        .sheet(isPresented: $showingEditOrder) { editOrderSheet }
+    }
+
+    /// EDIT ORDER re-opens the confirm sheet pre-filled with the CURRENT snapshot
+    /// values (RESET still targets the calculator). Confirming rewrites the order
+    /// via the service — geometry/drift preserved — then refreshes the drift flag.
+    @ViewBuilder
+    private var editOrderSheet: some View {
+        if let snapshot = design.drawingData.orderedMaterials {
+            VinylOrderConfirmSheet(
+                projectTitle: project.title,
+                deckTitle: design.title,
+                rollWidthInches: snapshot.vinylSettings.rollWidthInches,
+                calculated: DeckMaterialsOrderConfirmation.calculated(fromSnapshot: snapshot),
+                initial: DeckMaterialsOrderConfirmation.stored(fromSnapshot: snapshot),
+                onConfirm: { confirmed in
+                    DeckMaterialsOrderService.editOrder(design: design, confirmed: confirmed)
+                    if !isInjected { recompute() }
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     // MARK: - Card shell
@@ -84,9 +110,18 @@ struct DeckMaterialsSection: View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             vinylBlock(
                 color: materials.vinylPlan.settings.color,
-                cuts: liveCutLines(materials),
-                orderedSqFt: materials.vinylPlan.totalOrderedSqFt
+                headline: vinylHeadline(
+                    orderMode: currentSettings.orderMode,
+                    orderedSqFt: materials.vinylPlan.totalOrderedSqFt,
+                    rollCount: materials.rollCount,
+                    rollLengthFeet: currentSettings.fullRollLengthFeet,
+                    rollWidthInches: materials.vinylPlan.settings.rollWidthInches
+                ),
+                cuts: liveCutLines(materials)
             )
+            if materials.overlengthStripCount > 0 {
+                banner(text: "CUT LONGER THAN ROLL", color: OPSStyle.Colors.warningStatus)
+            }
             metricList([
                 MaterialRow(label: "DRIP EDGE", value: flashingValue(exactFeet: materials.dripEdge.exactFeet, sticks: materials.dripEdge.sticks, stickFeet: materials.dripEdge.stickFeet)),
                 MaterialRow(label: "CLIP", value: flashingValue(exactFeet: materials.clip.exactFeet, sticks: materials.clip.sticks, stickFeet: materials.clip.stickFeet)),
@@ -104,8 +139,14 @@ struct DeckMaterialsSection: View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             vinylBlock(
                 color: snapshot.vinylColor,
-                cuts: snapshotCutLines(snapshot),
-                orderedSqFt: snapshot.vinylOrderedSqFt
+                headline: vinylHeadline(
+                    orderMode: snapshot.orderMode,
+                    orderedSqFt: snapshot.vinylOrderedSqFt,
+                    rollCount: snapshot.orderedRollCount ?? 0,
+                    rollLengthFeet: snapshot.fullRollLengthFeet,
+                    rollWidthInches: snapshot.vinylSettings.rollWidthInches
+                ),
+                cuts: snapshotCutLines(snapshot)
             )
             metricList([
                 MaterialRow(label: "DRIP EDGE", value: flashingValue(exactFeet: snapshot.dripEdgeFeet, sticks: snapshot.dripSticks, stickFeet: snapshot.settings.dripStickFeet)),
@@ -114,20 +155,57 @@ struct DeckMaterialsSection: View {
                 MaterialRow(label: "GLUE", value: glueValue(buckets: snapshot.glueBuckets, coverage: snapshot.settings.glueCoverageSqFt))
             ])
 
-            Text("ORDERED \(DateHelper.simpleDateString(from: snapshot.orderedAt).uppercased())")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.successStatus)
-                .padding(.top, OPSStyle.Layout.spacing1)
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Text("ORDERED \(DateHelper.simpleDateString(from: snapshot.orderedAt).uppercased())")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.successStatus)
+                if snapshot.isOrderedEdited {
+                    Text("ADJUSTED")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .tracking(0.8)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.top, OPSStyle.Layout.spacing1)
 
             if driftFlagged {
                 banner(text: "DESIGN CHANGED SINCE ORDER", color: OPSStyle.Colors.warningStatus)
             }
+
+            editOrderButton
         }
+    }
+
+    /// Re-open the confirm sheet to correct an ordered record without CLEAR +
+    /// re-order. Subtle bordered action — the ordered card stays a scan surface.
+    private var editOrderButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showingEditOrder = true
+        } label: {
+            Text("EDIT ORDER")
+                .font(OPSStyle.Typography.buttonLabel)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+        }
+        .buttonStyle(.plain)
+        .padding(.top, OPSStyle.Layout.spacing1)
     }
 
     // MARK: - Rows
 
-    private func vinylBlock(color: String, cuts: [String], orderedSqFt: Int) -> some View {
+    /// The vinyl block. `headline` is the order line — `ORDER 260 SQ FT` in
+    /// cut-list mode, `3 ROLLS @ 75' × 72"` in full-roll mode. The itemized cut
+    /// lines always stay below as the on-site cutting guide.
+    private func vinylBlock(color: String, headline: String, cuts: [String]) -> some View {
         let trimmedColor = color.trimmingCharacters(in: .whitespacesAndNewlines)
         return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
@@ -135,10 +213,11 @@ struct DeckMaterialsSection: View {
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Spacer(minLength: 0)
-                Text("ORDER \(orderedSqFt) SQ FT")
+                Text(headline)
                     .font(OPSStyle.Typography.dataValue)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .monospacedDigit()
+                    .multilineTextAlignment(.trailing)
             }
             Text(trimmedColor.isEmpty ? "FIELD CONFIRM" : trimmedColor.uppercased())
                 .font(OPSStyle.Typography.captionBold)
@@ -160,6 +239,12 @@ struct DeckMaterialsSection: View {
         .padding(OPSStyle.Layout.spacing2)
         .background(OPSStyle.Colors.subtleBackground)
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+    }
+
+    /// Order headline for a given mode. Roll mode reads `N ROLLS @ L' × W"`.
+    private func vinylHeadline(orderMode: VinylOrderMode, orderedSqFt: Int, rollCount: Int, rollLengthFeet: Double, rollWidthInches: Double) -> String {
+        guard orderMode == .fullRolls else { return "ORDER \(orderedSqFt) SQ FT" }
+        return "\(rollCount) ROLL\(rollCount == 1 ? "" : "S") @ \(Int(rollLengthFeet))' × \(Int(rollWidthInches.rounded()))\""
     }
 
     /// One label/value line in the materials list. `label` is unique per list,
@@ -234,12 +319,59 @@ struct DeckMaterialsSection: View {
 
     private func steppers() -> some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
+            orderModeControl()
+            if currentSettings.orderMode == .fullRolls {
+                stepperRow(label: "ROLL LENGTH", value: presetBinding(\.fullRollLengthFeet), range: 25...300, step: 5) { "\(Int($0))'" }
+            }
             stepperRow(label: "DRIP STICK", value: presetBinding(\.dripStickFeet), range: 4...20, step: 1) { "\(Int($0))'" }
             stepperRow(label: "90 STICK", value: presetBinding(\.ninetyStickFeet), range: 4...20, step: 1) { "\(Int($0))'" }
             stepperRow(label: "CLIP STICK", value: presetBinding(\.clipStickFeet), range: 4...20, step: 1) { "\(Int($0))'" }
             stepperRow(label: "COVERAGE", value: presetBinding(\.glueCoverageSqFt), range: 100...1000, step: 25) { "\(Int($0)) SQ FT" }
         }
         .padding(.top, OPSStyle.Layout.spacing1)
+    }
+
+    /// `CUT LIST | FULL ROLLS` segmented control — the vinyl purchasing mode.
+    /// Writes `materialsSettings.orderMode` (syncs company-wide), light haptic.
+    private func orderModeControl() -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Text("ORDER")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .frame(width: Self.presetLabelWidth, alignment: .leading)
+
+            HStack(spacing: 0) {
+                ForEach(VinylOrderMode.allCases, id: \.self) { mode in
+                    Button {
+                        setOrderMode(mode)
+                    } label: {
+                        Text(mode.presetLabel)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(currentSettings.orderMode == mode ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: OPSStyle.Layout.touchTargetMin)
+                            .background(currentSettings.orderMode == mode ? OPSStyle.Colors.surfaceActive : Color.clear)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .background(OPSStyle.Colors.subtleBackground)
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+    }
+
+    private func setOrderMode(_ mode: VinylOrderMode) {
+        guard currentSettings.orderMode != mode else { return }
+        var settings = currentSettings
+        settings.orderMode = mode
+        var data = design.drawingData
+        data.materialsSettings = settings
+        design.drawingData = data
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     private func stepperRow(

@@ -16,4 +16,13 @@ import Foundation
 enum VinylOrderMode: String, Codable, CaseIterable {
     case cutList
     case fullRolls
+
+    /// Segmented-control label (UPPERCASE authority) shown in the materials card
+    /// presets and the Vinyl Order sheet SETTINGS — the single wording for both.
+    var presetLabel: String {
+        switch self {
+        case .cutList: return "CUT LIST"
+        case .fullRolls: return "FULL ROLLS"
+        }
+    }
 }

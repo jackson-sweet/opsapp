@@ -63,6 +63,57 @@ struct DeckMaterialsOrderConfirmation: Equatable {
             || ninetySticks != calc.ninetySticks
             || glueBuckets != calc.glueBuckets
     }
+
+    /// The calculator's quantities implied by a FROZEN snapshot's own geometry —
+    /// the RESET target and the isOrderedEdited baseline when re-editing an order.
+    /// Derived from the never-edited geometry fields (cut groups, flashing exact
+    /// feet, glue area), so it is stable across edits and matches order-time calc.
+    static func calculated(fromSnapshot s: DeckMaterialsSnapshot) -> DeckMaterialsOrderConfirmation {
+        func sticks(_ feet: Double, _ stickFeet: Double) -> Int {
+            (feet > 0 && stickFeet > 0) ? max(0, Int(ceil(feet / stickFeet))) : 0
+        }
+        let stripFeet = snapshotStripLengthsFeet(s)
+        let calcSqFt = Int(ceil(s.cutGroups.reduce(0.0) {
+            $0 + Double(max(0, $1.count)) * $1.lengthInches * $1.rollWidthInches / 144.0
+        }))
+        let rollPack = VinylRollPacker.rollsNeeded(stripLengthsFeet: stripFeet, rollLengthFeet: s.fullRollLengthFeet)
+        return DeckMaterialsOrderConfirmation(
+            orderMode: s.orderMode,
+            fullRollLengthFeet: s.fullRollLengthFeet,
+            vinylOrderedSqFt: calcSqFt,
+            rollCount: rollPack.rollCount,
+            dripSticks: sticks(s.dripEdgeFeet, s.settings.dripStickFeet),
+            clipSticks: sticks(s.clipFeet, s.settings.clipStickFeet),
+            ninetySticks: sticks(s.ninetyFeet, s.settings.ninetyStickFeet),
+            glueBuckets: (s.glueAreaSqFt > 0 && s.settings.glueCoverageSqFt > 0)
+                ? Int(ceil(s.glueAreaSqFt / s.settings.glueCoverageSqFt)) : 0
+        )
+    }
+
+    /// The order's CONFIRMED quantities as currently stored — the confirm sheet's
+    /// pre-fill when re-opened via EDIT ORDER.
+    static func stored(fromSnapshot s: DeckMaterialsSnapshot) -> DeckMaterialsOrderConfirmation {
+        let fallbackRolls = VinylRollPacker.rollsNeeded(
+            stripLengthsFeet: snapshotStripLengthsFeet(s), rollLengthFeet: s.fullRollLengthFeet
+        ).rollCount
+        return DeckMaterialsOrderConfirmation(
+            orderMode: s.orderMode,
+            fullRollLengthFeet: s.fullRollLengthFeet,
+            vinylOrderedSqFt: s.vinylOrderedSqFt,
+            rollCount: s.orderedRollCount ?? fallbackRolls,
+            dripSticks: s.dripSticks,
+            clipSticks: s.clipSticks,
+            ninetySticks: s.ninetySticks,
+            glueBuckets: s.glueBuckets
+        )
+    }
+
+    /// Purchased strip lengths (feet) reconstructed from a snapshot's cut groups.
+    private static func snapshotStripLengthsFeet(_ s: DeckMaterialsSnapshot) -> [Double] {
+        s.cutGroups.flatMap { group in
+            Array(repeating: group.lengthInches / 12.0, count: max(0, group.count))
+        }
+    }
 }
 
 @MainActor
@@ -156,6 +207,35 @@ struct DeckMaterialsOrderService {
             design.drawingData = revert
             throw error
         }
+    }
+
+    /// Re-write ONLY the confirmed quantities on an existing ordered snapshot — a
+    /// correction that never needs CLEAR + re-order (spec § 6). The frozen geometry
+    /// (cut groups, flashing exact feet, glue area, surface count), the order
+    /// timestamp and orderer are preserved verbatim, so `DeckMaterialsDriftKey`
+    /// is byte-identical — an edit can never clear or raise DESIGN CHANGED SINCE
+    /// ORDER. Local-only (the project is already marked ordered), so no remote
+    /// write and no compensation are needed.
+    @discardableResult
+    static func editOrder(design: DeckDesign, confirmed: DeckMaterialsOrderConfirmation) -> Bool {
+        guard let existing = design.drawingData.orderedMaterials else { return false }
+        let calc = DeckMaterialsOrderConfirmation.calculated(fromSnapshot: existing)
+
+        var updated = existing
+        updated.vinylOrderedSqFt = confirmed.vinylOrderedSqFt
+        updated.dripSticks = confirmed.dripSticks
+        updated.clipSticks = confirmed.clipSticks
+        updated.ninetySticks = confirmed.ninetySticks
+        updated.glueBuckets = confirmed.glueBuckets
+        updated.orderMode = confirmed.orderMode
+        updated.fullRollLengthFeet = confirmed.fullRollLengthFeet
+        updated.orderedRollCount = confirmed.orderMode == .fullRolls ? confirmed.rollCount : nil
+        updated.isOrderedEdited = confirmed.differs(fromCalculated: calc)
+
+        var next = design.drawingData
+        next.orderedMaterials = updated
+        design.drawingData = next
+        return true
     }
 
     /// Clear the ordered snapshot and the project marker. Reverts the local

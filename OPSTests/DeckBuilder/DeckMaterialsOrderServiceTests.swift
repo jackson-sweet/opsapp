@@ -352,4 +352,69 @@ final class DeckMaterialsOrderServiceTests: XCTestCase {
         XCTAssertTrue(snapshot.isOrderedEdited)
         XCTAssertEqual(DeckMaterialsDriftKey(snapshot: snapshot), materials.driftKey)
     }
+
+    // MARK: - EDIT ORDER (spec § 6)
+
+    /// EDIT ORDER rewrites the confirmed quantities but leaves the geometry drift
+    /// key, the order timestamp and the orderer byte-identical — a correction can
+    /// never clear or raise DESIGN CHANGED SINCE ORDER.
+    func testEditOrderRewritesQuantitiesButPreservesDriftKeyAndStamp() async throws {
+        let materials = rectMaterials()
+        let (design, original) = try await markOrderedSnapshot(materials, confirmed: nil, settings: DeckMaterialsSettings())
+        let originalDrift = DeckMaterialsDriftKey(snapshot: original)
+
+        var edited = DeckMaterialsOrderConfirmation.stored(fromSnapshot: original)
+        edited.dripSticks = original.dripSticks + 3
+        edited.glueBuckets = original.glueBuckets + 1
+        let didEdit = DeckMaterialsOrderService.editOrder(design: design, confirmed: edited)
+        XCTAssertTrue(didEdit)
+
+        let updated = try XCTUnwrap(design.drawingData.orderedMaterials)
+        XCTAssertEqual(updated.dripSticks, original.dripSticks + 3)
+        XCTAssertEqual(updated.glueBuckets, original.glueBuckets + 1)
+        XCTAssertTrue(updated.isOrderedEdited)
+        XCTAssertEqual(DeckMaterialsDriftKey(snapshot: updated), originalDrift)
+        XCTAssertEqual(updated.orderedAt, original.orderedAt)
+        XCTAssertEqual(updated.orderedBy, original.orderedBy)
+    }
+
+    /// Editing back to the calculated values clears the ADJUSTED flag.
+    func testEditOrderBackToCalculatedClearsEditedFlag() async throws {
+        let materials = rectMaterials()
+        var confirmation = DeckMaterialsOrderConfirmation.calculated(from: materials, settings: DeckMaterialsSettings())
+        confirmation.dripSticks += 3
+        let (design, edited) = try await markOrderedSnapshot(materials, confirmed: confirmation, settings: DeckMaterialsSettings())
+        XCTAssertTrue(edited.isOrderedEdited)
+
+        let calc = DeckMaterialsOrderConfirmation.calculated(fromSnapshot: edited)
+        DeckMaterialsOrderService.editOrder(design: design, confirmed: calc)
+        let updated = try XCTUnwrap(design.drawingData.orderedMaterials)
+        XCTAssertFalse(updated.isOrderedEdited)
+        XCTAssertEqual(updated.dripSticks, materials.dripEdge.sticks)
+    }
+
+    /// EDIT ORDER on a design with no ordered snapshot is a no-op.
+    func testEditOrderNoSnapshotIsNoOp() {
+        let design = DeckDesign(companyId: "co-1")
+        let confirmation = DeckMaterialsOrderConfirmation.calculated(from: rectMaterials(), settings: DeckMaterialsSettings())
+        XCTAssertFalse(DeckMaterialsOrderService.editOrder(design: design, confirmed: confirmation))
+        XCTAssertNil(design.drawingData.orderedMaterials)
+    }
+
+    /// `stored(fromSnapshot:)` reflects the CONFIRMED values (the sheet pre-fill);
+    /// `calculated(fromSnapshot:)` reflects the calculator (the RESET target).
+    func testStoredVsCalculatedFromSnapshot() async throws {
+        let materials = rectMaterials()
+        var confirmation = DeckMaterialsOrderConfirmation.calculated(from: materials, settings: DeckMaterialsSettings())
+        confirmation.ninetySticks += 2
+        let (_, snapshot) = try await markOrderedSnapshot(materials, confirmed: confirmation, settings: DeckMaterialsSettings())
+
+        let stored = DeckMaterialsOrderConfirmation.stored(fromSnapshot: snapshot)
+        XCTAssertEqual(stored.ninetySticks, confirmation.ninetySticks)   // confirmed (edited)
+
+        let calc = DeckMaterialsOrderConfirmation.calculated(fromSnapshot: snapshot)
+        XCTAssertEqual(calc.ninetySticks, materials.ninetyFlash.sticks)  // calculator
+        XCTAssertEqual(calc.dripSticks, materials.dripEdge.sticks)
+        XCTAssertEqual(calc.vinylOrderedSqFt, materials.vinylPlan.totalOrderedSqFt)
+    }
 }

@@ -38,14 +38,24 @@ final class DeckMaterialsSnapshotTests: XCTestCase {
         Project(id: "proj-1", title: "MERIDIAN DECK", status: .inProgress)
     }
 
-    private func design(orderedMaterials: DeckMaterialsSnapshot? = nil) -> DeckDesign {
+    private func design(
+        materialsSettings: DeckMaterialsSettings? = nil,
+        orderedMaterials: DeckMaterialsSnapshot? = nil
+    ) -> DeckDesign {
         let design = DeckDesign(companyId: "co-1", title: "MERIDIAN DECK")
-        if let orderedMaterials {
-            var data = design.drawingData
-            data.orderedMaterials = orderedMaterials
-            design.drawingData = data
-        }
+        var data = design.drawingData
+        if let materialsSettings { data.materialsSettings = materialsSettings }
+        if let orderedMaterials { data.orderedMaterials = orderedMaterials }
+        design.drawingData = data
         return design
+    }
+
+    /// Full-roll materials settings — 75' rolls.
+    private func rollModeSettings() -> DeckMaterialsSettings {
+        var s = DeckMaterialsSettings()
+        s.orderMode = .fullRolls
+        s.fullRollLengthFeet = 75
+        return s
     }
 
     /// 12'×20' rect, one 20' house edge, "Sandstone" vinyl → drip 44/6, clip 44/5,
@@ -79,6 +89,37 @@ final class DeckMaterialsSnapshotTests: XCTestCase {
         return DeckMaterialsResolver.Resolved(scale: 1.0, vinylInputs: [input], materials: materials)
     }
 
+    /// Same 12'×20' rect, computed in full-roll mode → materials.rollCount > 0 so
+    /// the live vinyl block reads `N ROLLS @ 75' × 72"`.
+    private func liveResolvedRollMode() -> DeckMaterialsResolver.Resolved {
+        let p = [
+            CGPoint(x: 0, y: 0),
+            CGPoint(x: 144, y: 0),
+            CGPoint(x: 144, y: 240),
+            CGPoint(x: 0, y: 240)
+        ]
+        let ids = ["v1", "v2", "v3", "v4"]
+        let dims = [144.0, 240.0, 144.0, 240.0]
+        let edges = (0..<4).map { i in
+            VinylOrderSurfaceEdge(
+                id: "e\(i)", start: p[i], end: p[(i + 1) % 4],
+                edgeType: i == 3 ? .houseEdge : .deckEdge, label: nil,
+                startVertexId: ids[i], endVertexId: ids[(i + 1) % 4],
+                isParapet: false, dimensionInches: dims[i]
+            )
+        }
+        let input = VinylOrderSurfaceInput(id: "s1", label: "Main", levelName: nil, positions: p, scaleFactor: 1.0, edges: edges)
+        var vinyl = VinylOrderSettings.default
+        vinyl.color = "Sandstone"
+        let materials = DeckMaterialsEngine.compute(
+            vinylInputs: [input],
+            allDetectedFacesByLevel: [],
+            settings: rollModeSettings(),
+            vinylSettings: vinyl
+        )
+        return DeckMaterialsResolver.Resolved(scale: 1.0, vinylInputs: [input], materials: materials)
+    }
+
     /// Vinyl set present but no resolvable scale — CONFIRM ONE EDGE LENGTH.
     private func confirmDimsResolved() -> DeckMaterialsResolver.Resolved {
         let input = VinylOrderSurfaceInput(id: "s1", label: "Main", levelName: nil, positions: [], scaleFactor: 1.0, edges: [])
@@ -104,6 +145,25 @@ final class DeckMaterialsSnapshotTests: XCTestCase {
             glueAreaSqFt: 240, glueBuckets: 1,
             vinylSurfaceCount: 1
         )
+    }
+
+    /// Ordered in full-roll mode → `3 ROLLS @ 75' × 72"` headline, cut guide below.
+    private func orderedSnapshotRollMode() -> DeckMaterialsSnapshot {
+        var s = orderedSnapshot()
+        s.orderMode = .fullRolls
+        s.fullRollLengthFeet = 75
+        s.orderedRollCount = 3
+        s.vinylOrderedSqFt = 312
+        return s
+    }
+
+    /// Ordered with hand-edited quantities → subtle ADJUSTED tag by the stamp.
+    private func orderedSnapshotAdjusted() -> DeckMaterialsSnapshot {
+        var s = orderedSnapshot()
+        s.isOrderedEdited = true
+        s.dripSticks = 8      // operator bought spare sticks
+        s.glueBuckets = 2
+        return s
     }
 
     // MARK: - Render
@@ -175,6 +235,15 @@ final class DeckMaterialsSnapshotTests: XCTestCase {
 
         // 2 · Confirm dimensions — vinyl set but unresolved scale.
         snapshot("deck-materials-confirm-dims", design: design(), resolved: confirmDimsResolved(), drift: false)
+
+        // 3b · Live full-roll — ROLLS headline + cut guide + ORDER preset.
+        snapshot("deck-materials-live-rolls", design: design(materialsSettings: rollModeSettings()), resolved: liveResolvedRollMode(), drift: false)
+
+        // 4b · Ordered full-roll — N ROLLS @ L' × W".
+        snapshot("deck-materials-ordered-rolls", design: design(orderedMaterials: orderedSnapshotRollMode()), resolved: nil, drift: false)
+
+        // 4c · Ordered adjusted — ADJUSTED tag by the ORDERED stamp.
+        snapshot("deck-materials-ordered-adjusted", design: design(orderedMaterials: orderedSnapshotAdjusted()), resolved: nil, drift: false)
     }
 
     /// The order-confirm sheet in both modes — cut-list (ORDER SQ FT) and full

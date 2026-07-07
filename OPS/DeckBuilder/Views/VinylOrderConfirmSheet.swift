@@ -26,13 +26,15 @@ struct VinylOrderConfirmSheet: View {
     let deckTitle: String
     /// Roll width (inches) of the ordered vinyl — drives the roll-mode ≈ SQ FT echo.
     let rollWidthInches: Double
-    /// The calculator's suggestion — the pre-fill baseline and RESET target.
+    /// The calculator's suggestion — the RESET target and the isEdited baseline.
     let calculated: DeckMaterialsOrderConfirmation
     let onConfirm: (DeckMaterialsOrderConfirmation) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
-    /// The operator's working copy, seeded from `calculated`.
+    /// The operator's working copy. Seeded from `initial` — which equals
+    /// `calculated` on a first order, or the stored order values when re-opened
+    /// via EDIT ORDER (spec § 6: pre-fill with the current snapshot, not the calc).
     @State private var draft: DeckMaterialsOrderConfirmation
 
     init(
@@ -40,6 +42,7 @@ struct VinylOrderConfirmSheet: View {
         deckTitle: String,
         rollWidthInches: Double,
         calculated: DeckMaterialsOrderConfirmation,
+        initial: DeckMaterialsOrderConfirmation? = nil,
         onConfirm: @escaping (DeckMaterialsOrderConfirmation) -> Void
     ) {
         self.projectTitle = projectTitle
@@ -47,7 +50,7 @@ struct VinylOrderConfirmSheet: View {
         self.rollWidthInches = rollWidthInches
         self.calculated = calculated
         self.onConfirm = onConfirm
-        self._draft = State(initialValue: calculated)
+        self._draft = State(initialValue: initial ?? calculated)
     }
 
     private var isRollMode: Bool { draft.orderMode == .fullRolls }

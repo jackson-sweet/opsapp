@@ -87,10 +87,12 @@ struct DeckMaterialsSection: View {
                 cuts: liveCutLines(materials),
                 orderedSqFt: materials.vinylPlan.totalOrderedSqFt
             )
-            flashingRow(label: "DRIP EDGE", exactFeet: materials.dripEdge.exactFeet, sticks: materials.dripEdge.sticks, stickFeet: materials.dripEdge.stickFeet)
-            flashingRow(label: "CLIP", exactFeet: materials.clip.exactFeet, sticks: materials.clip.sticks, stickFeet: materials.clip.stickFeet)
-            flashingRow(label: "90 FLASH", exactFeet: materials.ninetyFlash.exactFeet, sticks: materials.ninetyFlash.sticks, stickFeet: materials.ninetyFlash.stickFeet)
-            glueRow(buckets: materials.glueBuckets, coverage: currentSettings.glueCoverageSqFt)
+            metricList([
+                MaterialRow(label: "DRIP EDGE", value: flashingValue(exactFeet: materials.dripEdge.exactFeet, sticks: materials.dripEdge.sticks, stickFeet: materials.dripEdge.stickFeet)),
+                MaterialRow(label: "CLIP", value: flashingValue(exactFeet: materials.clip.exactFeet, sticks: materials.clip.sticks, stickFeet: materials.clip.stickFeet)),
+                MaterialRow(label: "90 FLASH", value: flashingValue(exactFeet: materials.ninetyFlash.exactFeet, sticks: materials.ninetyFlash.sticks, stickFeet: materials.ninetyFlash.stickFeet)),
+                MaterialRow(label: "GLUE", value: glueValue(buckets: materials.glueBuckets, coverage: currentSettings.glueCoverageSqFt))
+            ])
             steppers()
         }
     }
@@ -105,10 +107,12 @@ struct DeckMaterialsSection: View {
                 cuts: snapshotCutLines(snapshot),
                 orderedSqFt: snapshot.vinylOrderedSqFt
             )
-            flashingRow(label: "DRIP EDGE", exactFeet: snapshot.dripEdgeFeet, sticks: snapshot.dripSticks, stickFeet: snapshot.settings.dripStickFeet)
-            flashingRow(label: "CLIP", exactFeet: snapshot.clipFeet, sticks: snapshot.clipSticks, stickFeet: snapshot.settings.clipStickFeet)
-            flashingRow(label: "90 FLASH", exactFeet: snapshot.ninetyFeet, sticks: snapshot.ninetySticks, stickFeet: snapshot.settings.ninetyStickFeet)
-            glueRow(buckets: snapshot.glueBuckets, coverage: snapshot.settings.glueCoverageSqFt)
+            metricList([
+                MaterialRow(label: "DRIP EDGE", value: flashingValue(exactFeet: snapshot.dripEdgeFeet, sticks: snapshot.dripSticks, stickFeet: snapshot.settings.dripStickFeet)),
+                MaterialRow(label: "CLIP", value: flashingValue(exactFeet: snapshot.clipFeet, sticks: snapshot.clipSticks, stickFeet: snapshot.settings.clipStickFeet)),
+                MaterialRow(label: "90 FLASH", value: flashingValue(exactFeet: snapshot.ninetyFeet, sticks: snapshot.ninetySticks, stickFeet: snapshot.settings.ninetyStickFeet)),
+                MaterialRow(label: "GLUE", value: glueValue(buckets: snapshot.glueBuckets, coverage: snapshot.settings.glueCoverageSqFt))
+            ])
 
             Text("ORDERED \(DateHelper.simpleDateString(from: snapshot.orderedAt).uppercased())")
                 .font(OPSStyle.Typography.smallCaption)
@@ -158,19 +162,39 @@ struct DeckMaterialsSection: View {
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
     }
 
-    private func flashingRow(label: String, exactFeet: Double, sticks: Int, stickFeet: Double) -> some View {
+    /// One label/value line in the materials list. `label` is unique per list,
+    /// so it doubles as the stable identity.
+    private struct MaterialRow: Identifiable {
+        let label: String
         let value: String
-        if exactFeet <= 0 {
-            value = "—"
-        } else {
-            value = "\(Int(ceil(exactFeet))) FT · \(sticks) STICK\(sticks == 1 ? "" : "S") @ \(Int(stickFeet))'"
-        }
-        return metricRow(label, value)
+        var id: String { label }
     }
 
-    private func glueRow(buckets: Int, coverage: Double) -> some View {
-        let value = buckets <= 0 ? "—" : "\(buckets) BUCKET\(buckets == 1 ? "" : "S") · 1 PER \(Int(coverage)) SQ FT"
-        return metricRow("GLUE", value)
+    /// The flashing + glue lines, each given a little vertical room and parted by
+    /// a single hairline so every item reads as its own scannable line
+    /// (glass + hairlines — DESIGN.md). Hairlines sit BETWEEN rows only, never
+    /// leading or trailing.
+    private func metricList(_ rows: [MaterialRow]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                metricRow(row.label, row.value)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                if index < rows.count - 1 {
+                    Rectangle()
+                        .fill(OPSStyle.Colors.line)
+                        .frame(height: OPSStyle.Layout.Border.standard)
+                }
+            }
+        }
+    }
+
+    private func flashingValue(exactFeet: Double, sticks: Int, stickFeet: Double) -> String {
+        guard exactFeet > 0 else { return "—" }
+        return "\(Int(ceil(exactFeet))) FT · \(sticks) STICK\(sticks == 1 ? "" : "S") @ \(Int(stickFeet))'"
+    }
+
+    private func glueValue(buckets: Int, coverage: Double) -> String {
+        buckets <= 0 ? "—" : "\(buckets) BUCKET\(buckets == 1 ? "" : "S") · 1 PER \(Int(coverage)) SQ FT"
     }
 
     private func metricRow(_ label: String, _ value: String) -> some View {

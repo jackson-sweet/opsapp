@@ -32,18 +32,110 @@ final class ProjectTeamSyncPayloadTests: XCTestCase {
         let payload: [String: Any] = [
             "vinyl_order_status": "ordered",
             "vinyl_ordered_at": "2026-06-15T00:00:00Z",
-            "vinyl_ordered_by": "user-1"
+            "vinyl_ordered_by": "283d49df-90a1-4abb-b94c-3e9f17f02c0d"
         ]
 
         let legacy = OutboundProcessor.sanitizedProjectPayloadForSync(payload)
         XCTAssertEqual(legacy["vinyl_order_status"] as? String, "ordered")
         XCTAssertEqual(legacy["vinyl_ordered_at"] as? String, "2026-06-15T00:00:00Z")
-        XCTAssertEqual(legacy["vinyl_ordered_by"] as? String, "user-1")
+        XCTAssertEqual(legacy["vinyl_ordered_by"] as? String, "283d49df-90a1-4abb-b94c-3e9f17f02c0d")
 
         let active = DataActor.sanitizedProjectPayloadForSync(payload)
         XCTAssertEqual(active["vinyl_order_status"] as? String, "ordered")
         XCTAssertEqual(active["vinyl_ordered_at"] as? String, "2026-06-15T00:00:00Z")
-        XCTAssertEqual(active["vinyl_ordered_by"] as? String, "user-1")
+        XCTAssertEqual(active["vinyl_ordered_by"] as? String, "283d49df-90a1-4abb-b94c-3e9f17f02c0d")
+    }
+
+    /// Bug 0f86b9b0: `projects.vinyl_ordered_by` is a Postgres `uuid` column, but
+    /// the Vinyl Order sheet historically stamped the Firebase UID (a 28-char
+    /// alphanumeric, e.g. "8SUXPDPJG0QdQVghxKuMpnvq7yx1"). The server rejects the
+    /// whole PATCH with 22P02, so the queued op can never drain and the marker
+    /// silently never reaches the server. Both sanitizers must null a non-UUID
+    /// attribution instead of letting it poison the write.
+    func testProjectSyncPayloadNullsNonUuidVinylOrderedBy() throws {
+        let payload: [String: Any] = [
+            "vinyl_order_status": "ordered",
+            "vinyl_ordered_by": "8SUXPDPJG0QdQVghxKuMpnvq7yx1"
+        ]
+
+        let legacy = OutboundProcessor.sanitizedProjectPayloadForSync(payload)
+        XCTAssertEqual(legacy["vinyl_order_status"] as? String, "ordered")
+        XCTAssertTrue(legacy["vinyl_ordered_by"] is NSNull, "non-UUID attribution must be nulled, not sent")
+
+        let active = DataActor.sanitizedProjectPayloadForSync(payload)
+        XCTAssertEqual(active["vinyl_order_status"] as? String, "ordered")
+        XCTAssertTrue(active["vinyl_ordered_by"] is NSNull, "non-UUID attribution must be nulled, not sent")
+    }
+
+    /// Clearing the marker sends explicit nulls — they must pass through both
+    /// sanitizers untouched.
+    func testProjectSyncPayloadKeepsNullVinylOrderedBy() throws {
+        let payload: [String: Any] = [
+            "vinyl_order_status": "not_ordered",
+            "vinyl_ordered_at": NSNull(),
+            "vinyl_ordered_by": NSNull()
+        ]
+
+        let legacy = OutboundProcessor.sanitizedProjectPayloadForSync(payload)
+        XCTAssertTrue(legacy["vinyl_ordered_by"] is NSNull)
+        XCTAssertTrue(legacy["vinyl_ordered_at"] is NSNull)
+
+        let active = DataActor.sanitizedProjectPayloadForSync(payload)
+        XCTAssertTrue(active["vinyl_ordered_by"] is NSNull)
+        XCTAssertTrue(active["vinyl_ordered_at"] is NSNull)
+    }
+
+    /// Regression (bug bbc2d228): `title_is_auto` was present in
+    /// OutboundProcessor's allowlist but missing from DataActor's copy, so a
+    /// rename pushed through the default path lost the `title_is_auto: false`
+    /// flip and the server's `projects_autoname` trigger re-derived the old
+    /// address title over the user's rename. Both paths must keep it (and
+    /// `priority_rank`, which drifted the same way).
+    func testProjectSyncPayloadKeepsTitleAutoFlagOnBothPaths() throws {
+        let payload: [String: Any] = [
+            "title": "Harbour house reroof",
+            "title_is_auto": false,
+            "priority_rank": 4
+        ]
+
+        let legacy = OutboundProcessor.sanitizedProjectPayloadForSync(payload)
+        XCTAssertEqual(legacy["title_is_auto"] as? Bool, false)
+        XCTAssertEqual(legacy["priority_rank"] as? Int, 4)
+
+        let active = DataActor.sanitizedProjectPayloadForSync(payload)
+        XCTAssertEqual(active["title_is_auto"] as? Bool, false)
+        XCTAssertEqual(active["priority_rank"] as? Int, 4)
+    }
+
+    /// Drift tripwire: both outbound project sanitizers must accept the SAME
+    /// column set. Feeds a probe payload covering the full union of known
+    /// server columns plus local-only keys; if one allowlist gains or loses a
+    /// column the other doesn't, the surviving key sets diverge and this fails
+    /// — the exact failure mode that let `title_is_auto` drift unnoticed.
+    func testProjectSanitizerAllowlistsDoNotDrift() throws {
+        let probeColumns: [String] = [
+            "id", "bubble_id", "company_id", "client_id", "opportunity_id",
+            "title", "title_is_auto", "status", "address", "latitude", "longitude",
+            "start_date", "end_date", "duration", "notes", "description",
+            "all_day", "project_images", "completed_at",
+            "vinyl_order_status", "vinyl_ordered_at", "vinyl_ordered_by",
+            "deleted_at", "created_at", "updated_at", "priority_rank",
+            // Local-only keys — both paths must strip these.
+            "needs_sync", "team_member_ids", "task_index", "last_synced_at"
+        ]
+        let payload = Dictionary(uniqueKeysWithValues: probeColumns.map { ($0, "probe" as Any) })
+
+        let legacyKeys = Set(OutboundProcessor.sanitizedProjectPayloadForSync(payload).keys)
+        let activeKeys = Set(DataActor.sanitizedProjectPayloadForSync(payload).keys)
+
+        XCTAssertEqual(
+            legacyKeys, activeKeys,
+            "OutboundProcessor and DataActor project allowlists drifted: " +
+            "only-legacy=\(legacyKeys.subtracting(activeKeys).sorted()) " +
+            "only-active=\(activeKeys.subtracting(legacyKeys).sorted())"
+        )
+        XCTAssertFalse(legacyKeys.contains("needs_sync"))
+        XCTAssertFalse(legacyKeys.contains("team_member_ids"))
     }
 
     func testProjectTaskSyncPayloadKeepsTaskTeamMemberIds() throws {

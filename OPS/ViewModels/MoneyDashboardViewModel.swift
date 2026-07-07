@@ -98,6 +98,43 @@ class MoneyDashboardViewModel: ObservableObject {
         }
     }
 
+    // MARK: - A/R Aging (single source of truth)
+
+    /// The four canonical A/R aging buckets. Not-yet-due and undated invoices
+    /// fall in `current`, so the buckets ALWAYS sum to the outstanding total:
+    /// every receivables surface — the command-grid tile and the drill-down
+    /// sheet it opens — reconciles to the same figure, and an
+    /// all-empty-buckets-but-positive-total state is impossible.
+    struct ARAgingBuckets: Equatable {
+        var current: Double = 0   // ≤ 30 days past due, incl. not-yet-due & undated
+        var d30: Double = 0       // 31–60 days
+        var d60: Double = 0       // 61–90 days
+        var d90: Double = 0       // 90+ days
+        var total: Double { current + d30 + d60 + d90 }
+    }
+
+    /// Split outstanding receivables into aging buckets off each item's due date
+    /// (thresholds 31/61/91). `asOf` is injectable for tests; production passes
+    /// the current date. Nil or future due dates land in `current` so the split
+    /// reconciles to the dollar total of `breakdown` by construction — the reason
+    /// both the receivables tile and its drill-down sheet always agree.
+    nonisolated static func agingBuckets(
+        from breakdown: [BreakdownItem],
+        asOf now: Date = Date()
+    ) -> ARAgingBuckets {
+        var b = ARAgingBuckets()
+        for item in breakdown {
+            let days = item.date.map { Int(now.timeIntervalSince($0) / 86_400) } ?? 0
+            switch days {
+            case ..<31:   b.current += item.amount
+            case 31...60: b.d30 += item.amount
+            case 61...90: b.d60 += item.amount
+            default:      b.d90 += item.amount
+            }
+        }
+        return b
+    }
+
     // MARK: - Published Properties
 
     @Published var selectedPeriod: Period = .month {

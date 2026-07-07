@@ -9,6 +9,7 @@ import Foundation
 import SwiftData
 import SwiftUI
 import UIKit
+import CoreLocation
 
 @MainActor
 final class SiteVisitCaptureViewModel: ObservableObject {
@@ -118,6 +119,17 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     var visitProjectTitle: String {
         currentOpportunity?.title
             ?? "\(visitDisplayName) Project"
+    }
+
+    /// The name the server's `projects_autoname` trigger will derive when this
+    /// visit converts to a project. Shown in the review sheet so the operator
+    /// sees the real outcome (the convert sheet that follows owns renaming).
+    /// Mirrors `private.derive_project_name` via ProjectAutoNamer.
+    var projectedProjectName: String {
+        ProjectAutoNamer.derive(
+            address: editableCaptureAddress.trimmedNilIfEmpty,
+            clientName: currentOpportunity?.displayContactName ?? identityDraft?.displayName
+        )
     }
 
     var deckDesignTitle: String {
@@ -536,12 +548,11 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         return true
     }
 
-    func projectPayload(projectTitle: String) -> SiteVisitProjectPayload? {
+    func projectPayload() -> SiteVisitProjectPayload? {
         guard let visit = siteVisit, let opportunityId = activeOpportunityId else { return nil }
         return SiteVisitProjectPayloadBuilder.payload(
             siteVisitId: visit.id,
             opportunityId: opportunityId,
-            projectTitle: projectTitle,
             address: identityDraft?.address.trimmedNilIfEmpty ?? visit.address ?? currentOpportunity?.address,
             artifacts: artifacts,
             checklistAnswers: checklistAnswers
@@ -752,11 +763,16 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         draft.phoneNumber = phoneNumber
-        draft.address = address
+        // Canonicalize comma-less hand-typed addresses at the persistence
+        // boundary ("972 Lyall St Esquimalt" → "972 Lyall St, Esquimalt") so
+        // the server's comma-splitting derive_project_name produces the same
+        // street-line project name iOS previews.
+        let canonicalAddress = ProjectAutoNamer.canonicalizedAddress(address)
+        draft.address = canonicalAddress
         draft.notes = notes
         draft.touch()
 
-        if let normalizedAddress = address.trimmedNilIfEmpty {
+        if let normalizedAddress = canonicalAddress.trimmedNilIfEmpty {
             siteVisit?.address = normalizedAddress
             if currentOpportunity?.address?.trimmedNilIfEmpty == nil {
                 currentOpportunity?.address = normalizedAddress
@@ -766,8 +782,20 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         objectWillChange.send()
     }
 
-    func updateVisitAddress(_ rawAddress: String, persistToLead: Bool) async {
-        let trimmed = rawAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// An autocomplete selection is a deliberate commit (unlike keystrokes):
+    /// persist it through to the visit, the draft, and the bound lead's
+    /// server row immediately — coordinates included, so the converted
+    /// project gets its map pin.
+    func applySelectedSiteAddress(_ rawAddress: String, coordinate: CLLocationCoordinate2D?) {
+        Task { await updateVisitAddress(rawAddress, persistToLead: true, coordinate: coordinate) }
+    }
+
+    func updateVisitAddress(
+        _ rawAddress: String,
+        persistToLead: Bool,
+        coordinate: CLLocationCoordinate2D? = nil
+    ) async {
+        let trimmed = ProjectAutoNamer.canonicalizedAddress(rawAddress)
         let normalized = trimmed.isEmpty ? nil : trimmed
 
         guard let visit = requireVisit() else { return }
@@ -783,7 +811,11 @@ final class SiteVisitCaptureViewModel: ObservableObject {
 
         guard persistToLead, let opportunity = currentOpportunity else { return }
         do {
-            let patch = OpportunityAddressPatch(address: normalized)
+            let patch = OpportunityAddressPatch(
+                address: normalized,
+                latitude: coordinate?.latitude,
+                longitude: coordinate?.longitude
+            )
             let updatedDTO = try await OpportunityRepository(companyId: companyId)
                 .update(opportunity.id, patch: patch)
             let updated = updatedDTO.toModel()
@@ -1377,13 +1409,22 @@ private enum SiteVisitCaptureViewModelError: Error {
 
 private struct OpportunityAddressPatch: Encodable {
     let address: String?
+    var latitude: Double? = nil
+    var longitude: Double? = nil
 
     enum CodingKeys: String, CodingKey {
         case address
+        case latitude
+        case longitude
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        // Address always encodes (null clears it); coordinates only ride
+        // along when a geocoded selection supplied them — never null out a
+        // pin the web side set.
         try container.encode(address, forKey: .address)
+        try container.encodeIfPresent(latitude, forKey: .latitude)
+        try container.encodeIfPresent(longitude, forKey: .longitude)
     }
 }

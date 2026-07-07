@@ -51,6 +51,9 @@ struct BooksTabView: View {
     @State private var expandedCard: HeroCarousel.CardID?
     @State private var showCashflowForecast = false
     @State private var showBatchReview = false
+    /// Batch to auto-open inside the pushed review hub (set by a batch-scoped
+    /// expense deep link). Bug 7cdbe7bb.
+    @State private var pendingBatchReviewId: String? = nil
 
     // Ledger detail-push selection is held here (not in BooksLedger) so the
     // navigationDestination modifiers can sit outside the ScrollView's
@@ -236,7 +239,7 @@ struct BooksTabView: View {
                 CashflowForecastScreen(viewModel: cashflowVM)
             }
             .navigationDestination(isPresented: $showBatchReview) {
-                ExpensesListView()
+                ExpensesListView(deepLinkBatchId: pendingBatchReviewId)
             }
             // Ledger detail pushes — placed OUTSIDE the ScrollView's LazyVStack
             // (a navigationDestination inside a lazy container is ignored by the
@@ -275,6 +278,15 @@ struct BooksTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenCashflowForecast"))) { _ in
             guard hasFinances else { return }
             showCashflowForecast = true
+        }
+        // Bug 7cdbe7bb — batch-scoped expense deep link. Push the review hub and
+        // hand it the batch to auto-open. Gated on the same review permission as
+        // the review-batches link; without it the user just lands on the
+        // expenses segment (via the sibling BooksSelectSegment post).
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("BooksOpenBatchReview"))) { note in
+            guard canReviewBatches else { return }
+            pendingBatchReviewId = note.userInfo?["batchId"] as? String
+            showBatchReview = true
         }
     }
 

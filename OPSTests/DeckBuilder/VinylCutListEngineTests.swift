@@ -25,6 +25,103 @@ final class VinylCutListEngineTests: XCTestCase {
         XCTAssertEqual(plan.totalWasteSqFt, 66, accuracy: 0.01)
     }
 
+    func testAutomaticSolidUsesDiagonalRunOnlyWhenItClearlyReducesWaste() {
+        let surface = rotatedRectangle(
+            id: "main",
+            label: "Main deck",
+            width: 300,
+            height: 48,
+            angleDegrees: 45,
+            edgeType: .deckEdge
+        )
+
+        let axisOnlyPlan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 0,
+                edgeWrapInches: 0,
+                direction: .lengthwise
+            )
+        )
+        let angleAwarePlan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 0,
+                edgeWrapInches: 0,
+                direction: .automatic,
+                patternMode: .solid
+            )
+        )
+
+        let axisOnly = try! XCTUnwrap(axisOnlyPlan.surfaces.first)
+        let angleAware = try! XCTUnwrap(angleAwarePlan.surfaces.first)
+        XCTAssertEqual(angleAware.runDirectionLabel, "MIN WASTE")
+        XCTAssertEqual(angleAware.runAngleDegrees, 135, accuracy: 0.1)
+        XCTAssertLessThan(angleAware.cutAreaSqFt, axisOnly.cutAreaSqFt * 0.75)
+    }
+
+    func testAutomaticLinearUsesDominantHouseEdgeAcrossSurfaces() {
+        let main = rotatedRectangle(
+            id: "main",
+            label: "Main deck",
+            width: 300,
+            height: 96,
+            angleDegrees: 45,
+            edgeType: .houseEdge
+        )
+        let landing = rotatedRectangle(
+            id: "landing",
+            label: "Landing",
+            width: 96,
+            height: 48,
+            angleDegrees: 0,
+            edgeType: .deckEdge
+        )
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [main, landing],
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 0,
+                edgeWrapInches: 0,
+                direction: .automatic,
+                patternMode: .linear
+            )
+        )
+
+        XCTAssertEqual(plan.surfaces.count, 2)
+        XCTAssertTrue(plan.surfaces.allSatisfy { $0.runDirectionLabel == "HOUSE EDGE" })
+        XCTAssertTrue(plan.surfaces.allSatisfy { abs($0.runAngleDegrees - 45) < 0.1 })
+    }
+
+    func testAutomaticLinearFallsBackToExistingAutoWhenNoVisualAxisExists() {
+        let surface = rectangle(id: "main", width: 288, height: 192)
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 1.5,
+                edgeWrapInches: 6,
+                direction: .automatic,
+                patternMode: .linear
+            )
+        )
+
+        let cut = try! XCTUnwrap(plan.surfaces.first)
+        XCTAssertEqual(cut.resolvedDirection, .lengthwise)
+        XCTAssertEqual(cut.runDirectionLabel, "MIN WASTE")
+        XCTAssertEqual(cut.runAngleDegrees, 0, accuracy: 0.1)
+        XCTAssertEqual(cut.stripCount, 3)
+        XCTAssertEqual(plan.totalOrderedSqFt, 450)
+    }
+
     func testSettingsChangeStripCountAndOrderLineLength() {
         let surface = rectangle(id: "main", width: 240, height: 120)
         let settings = VinylOrderSettings(
@@ -146,6 +243,52 @@ final class VinylCutListEngineTests: XCTestCase {
         XCTAssertFalse(body.contains("SQ FT"))
         XCTAssertFalse(body.contains(" X 72\""))
         XCTAssertFalse(body.contains("240\""))
+    }
+
+    /// Bug 2cb701e4: the operator can drop the project name into the supplier
+    /// message with a [project] token. Absent the token the project name never
+    /// leaks (existing templates are unaffected).
+    func testTextMessageBodyInsertsProjectNameToken() {
+        let surface = rectangle(id: "main", label: "Main deck", width: 96, height: 36)
+        let settings = VinylOrderSettings(
+            color: "Slate",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .lengthwise
+        )
+
+        let plan = VinylCutListEngine.makePlan(surfaces: [surface], settings: settings)
+
+        let body = plan.textMessageBody(
+            messageTemplate: "Order for [project] in [color]:\n[cuts]",
+            cutTemplate: "[quantity] @ [length]",
+            cutSeparator: .lines,
+            projectTitle: "Rear deck rebuild"
+        )
+
+        XCTAssertEqual(body, """
+        Order for Rear deck rebuild in Slate:
+        1 @ 8'
+        """)
+    }
+
+    func testTextMessageBodyProjectTokenEmptyWhenNoTitle() {
+        let surface = rectangle(id: "main", label: "Main deck", width: 96, height: 36)
+        let settings = VinylOrderSettings(
+            color: "Slate",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .lengthwise
+        )
+
+        let plan = VinylCutListEngine.makePlan(surfaces: [surface], settings: settings)
+
+        // Default template carries no [project] token, so the existing text-cuts
+        // flow is untouched even though the parameter now exists.
+        let body = plan.textMessageBody(projectTitle: "Rear deck rebuild")
+        XCTAssertFalse(body.contains("Rear deck rebuild"))
     }
 
     func testTextMessageBodyUsesCustomTemplate() {
@@ -412,6 +555,144 @@ final class VinylCutListEngineTests: XCTestCase {
         XCTAssertEqual(match?.variantId, "variant-alpha")
     }
 
+    // MARK: - U-shape (bug 3ab9c10b)
+
+    /// Bug 3ab9c10b: with all rolls horizontal, a band crossing the U's two
+    /// upstands must produce a separate cut per upstand — never one cut spanning
+    /// the centre void. U: 240 × 192 overall, 72"-wide upstands, 96 × 120 void.
+    /// Optimal horizontal plan (72" roll, no seam/wrap) aligns a band edge with
+    /// the base line: 4 upstand cuts @ 6' + 1 base cut @ 20' = 264 sq ft.
+    /// The void-spanning algorithm produced 3 cuts @ 20' = 360 sq ft instead.
+    func testUShapedDeckHorizontalRunsCutEachUpstandSeparately() {
+        let surface = uShape(
+            id: "main",
+            width: 240,
+            height: 192,
+            upstandWidth: 72,
+            voidDepth: 120
+        )
+        let settings = VinylOrderSettings(
+            color: "",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .lengthwise
+        )
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: settings
+        )
+
+        let cut = try! XCTUnwrap(plan.surfaces.first)
+        XCTAssertEqual(cut.stripCount, 5, cut.orderLine)
+        XCTAssertEqual(cut.cutAreaSqFt, 264, accuracy: 0.01)
+        XCTAssertTrue(cut.orderLine.contains("4 CUTS @ 6'"), cut.orderLine)
+        XCTAssertTrue(cut.orderLine.contains("1 CUT @ 20'"), cut.orderLine)
+        // Exactly one full-width cut (the base). Any second 20' cut means a
+        // band bridged the void.
+        XCTAssertEqual(cut.cuts.filter { abs($0.lengthInches - 240) < 0.01 }.count, 1)
+        // A sane single-surface plan at zero wrap never exceeds the bounding
+        // box (240 × 192 = 320 sq ft); the void-spanning plan did (360).
+        XCTAssertLessThan(plan.totalPurchasedCutAreaSqFt, 320)
+    }
+
+    func testUShapedDeckDoesNotChargeTheVoidAsWaste() {
+        let surface = uShape(
+            id: "main",
+            width: 240,
+            height: 192,
+            upstandWidth: 72,
+            voidDepth: 120
+        )
+        let settings = VinylOrderSettings(
+            color: "",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .lengthwise
+        )
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: settings
+        )
+
+        // Surface area: 240×192 − 96×120 void = 240 sq ft. Real cut waste is the
+        // 24 sq ft of roll overhang on the upstand bands — NOT the 120 sq ft the
+        // void-spanning algorithm charged (void treated as purchased material).
+        XCTAssertEqual(plan.totalSurfaceAreaSqFt, 240, accuracy: 0.01)
+        XCTAssertEqual(plan.totalWasteSqFt, 24, accuracy: 0.01)
+    }
+
+    /// The two upstand cuts inside one band are symmetric (identical length and
+    /// width), so their ids must still be unique and their run geometry must
+    /// stay per-upstand — an id collision would silently drop one cut during
+    /// offcut assignment.
+    func testUShapedDeckCutsCarrySeparateRunGeometryPerUpstand() {
+        let surface = uShape(
+            id: "main",
+            width: 240,
+            height: 192,
+            upstandWidth: 72,
+            voidDepth: 120
+        )
+        let settings = VinylOrderSettings(
+            color: "",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .lengthwise
+        )
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: settings
+        )
+
+        let cut = try! XCTUnwrap(plan.surfaces.first)
+        XCTAssertEqual(Set(cut.cuts.map(\.id)).count, cut.cuts.count, "cut ids must be unique")
+
+        let upstandCuts = cut.cuts.filter { abs($0.lengthInches - 72) < 0.01 }
+        XCTAssertEqual(upstandCuts.count, 4, cut.orderLine)
+        let leftCuts = upstandCuts.filter { abs($0.runStartInches - 0) < 0.01 && abs($0.runEndInches - 72) < 0.01 }
+        let rightCuts = upstandCuts.filter { abs($0.runStartInches - 168) < 0.01 && abs($0.runEndInches - 240) < 0.01 }
+        XCTAssertEqual(leftCuts.count, 2)
+        XCTAssertEqual(rightCuts.count, 2)
+    }
+
+    /// A band that genuinely contains connected material (part base, part
+    /// upstands) stays ONE cut — splitting applies only to truly disjoint
+    /// material. At offset 0 the middle band [72,144) touches the base strip
+    /// below y=120, so its material is connected and one 20' piece is correct.
+    /// The optimiser must still land on the aligned 5-cut plan, proving the
+    /// split logic never fragments connected bands to game the area metric.
+    func testUShapedDeckKeepsConnectedBandsAsSingleCuts() {
+        let surface = uShape(
+            id: "main",
+            width: 240,
+            height: 192,
+            upstandWidth: 72,
+            voidDepth: 120
+        )
+        let settings = VinylOrderSettings(
+            color: "",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .lengthwise
+        )
+
+        let plan = VinylCutListEngine.makePlan(surfaces: [surface], settings: settings)
+        let cut = try! XCTUnwrap(plan.surfaces.first)
+
+        // The base band is a single full-width piece; upstand bands are pairs.
+        let fullWidth = cut.cuts.filter { abs($0.lengthInches - 240) < 0.01 }
+        XCTAssertEqual(fullWidth.count, 1)
+        XCTAssertEqual(fullWidth.first?.runStartInches ?? -1, 0, accuracy: 0.01)
+        XCTAssertEqual(fullWidth.first?.runEndInches ?? -1, 240, accuracy: 0.01)
+    }
+
     private func rectangle(
         id: String,
         label: String = "Surface",
@@ -424,6 +705,78 @@ final class VinylCutListEngineTests: XCTestCase {
             levelName: nil,
             positions: [
                 CGPoint(x: 0, y: 0),
+                CGPoint(x: width, y: 0),
+                CGPoint(x: width, y: height),
+                CGPoint(x: 0, y: height)
+            ],
+            scaleFactor: 1
+        )
+    }
+
+    private func rotatedRectangle(
+        id: String,
+        label: String = "Surface",
+        width: Double,
+        height: Double,
+        angleDegrees: Double,
+        edgeType: EdgeType
+    ) -> VinylOrderSurfaceInput {
+        let radians = angleDegrees * .pi / 180
+        let run = CGVector(dx: cos(radians), dy: sin(radians))
+        let cross = CGVector(dx: -sin(radians), dy: cos(radians))
+        func point(_ runDistance: Double, _ crossDistance: Double) -> CGPoint {
+            CGPoint(
+                x: (run.dx * runDistance) + (cross.dx * crossDistance),
+                y: (run.dy * runDistance) + (cross.dy * crossDistance)
+            )
+        }
+
+        let positions = [
+            point(0, 0),
+            point(width, 0),
+            point(width, height),
+            point(0, height)
+        ]
+        let edges = positions.indices.map { index in
+            VinylOrderSurfaceEdge(
+                id: "\(id)-edge-\(index)",
+                start: positions[index],
+                end: positions[(index + 1) % positions.count],
+                edgeType: index == 0 ? edgeType : .deckEdge,
+                label: nil
+            )
+        }
+
+        return VinylOrderSurfaceInput(
+            id: id,
+            label: label,
+            levelName: nil,
+            positions: positions,
+            scaleFactor: 1,
+            edges: edges
+        )
+    }
+
+    /// U-shape opening toward y=0: two upstands (left/right) flanking a centre
+    /// void of `width − 2×upstandWidth` by `voidDepth`, joined by a base strip.
+    private func uShape(
+        id: String,
+        label: String = "Surface",
+        width: Double,
+        height: Double,
+        upstandWidth: Double,
+        voidDepth: Double
+    ) -> VinylOrderSurfaceInput {
+        VinylOrderSurfaceInput(
+            id: id,
+            label: label,
+            levelName: nil,
+            positions: [
+                CGPoint(x: 0, y: 0),
+                CGPoint(x: upstandWidth, y: 0),
+                CGPoint(x: upstandWidth, y: voidDepth),
+                CGPoint(x: width - upstandWidth, y: voidDepth),
+                CGPoint(x: width - upstandWidth, y: 0),
                 CGPoint(x: width, y: 0),
                 CGPoint(x: width, y: height),
                 CGPoint(x: 0, y: height)

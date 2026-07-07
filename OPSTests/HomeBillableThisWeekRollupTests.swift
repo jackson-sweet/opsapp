@@ -42,6 +42,68 @@ final class HomeBillableThisWeekRollupTests: XCTestCase {
         XCTAssertEqual(rollup.readyToBill.first?.estimateId, "est-ready")
     }
 
+    /// Bug 588b3e19 — a project with no attached invoice/estimate value is
+    /// "no data" (nil amount), never $0. A week of only unvalued jobs must
+    /// report hasKnownAmounts == false so the card renders the em-dash empty
+    /// state instead of a lying "$0"; one valued job flips it true and the
+    /// total sums only the known amounts.
+    func testUnvaluedProjectsCarryNilAmountsNotZero() {
+        let today = date(2026, 5, 25)
+        let unvalued = makeProject(id: "unvalued", title: "No paper yet", status: .inProgress)
+        makeTask(id: "unvalued-task", project: unvalued, status: .active, end: date(2026, 5, 27))
+
+        let bare = HomeBillableThisWeekRollupEngine.compute(
+            projects: [unvalued],
+            invoices: [],
+            estimates: [],
+            today: today,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(bare.projectCount, 1)
+        XCTAssertNil(bare.allItems.first?.amount)
+        XCTAssertFalse(bare.hasKnownAmounts)
+        XCTAssertEqual(bare.totalKnownAmount, 0)
+
+        let valued = makeProject(id: "valued", title: "Invoiced deck", status: .inProgress)
+        makeTask(id: "valued-task", project: valued, status: .active, end: date(2026, 5, 28))
+        let draft = makeInvoice(id: "inv-valued", projectId: valued.id, status: .draft, total: 5_200)
+
+        let mixed = HomeBillableThisWeekRollupEngine.compute(
+            projects: [unvalued, valued],
+            invoices: [draft],
+            estimates: [],
+            today: today,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(mixed.projectCount, 2)
+        XCTAssertTrue(mixed.hasKnownAmounts)
+        XCTAssertEqual(mixed.totalKnownAmount, 5_200, accuracy: 0.001)
+        XCTAssertEqual(mixed.allItems.compactMap(\.amount), [5_200])
+    }
+
+    /// A zero-total draft invoice is still "no data" — the amount source
+    /// filters on total > 0, so it must not masquerade as a $0 value.
+    func testZeroTotalInvoiceDoesNotCountAsKnownAmount() {
+        let today = date(2026, 5, 25)
+        let project = makeProject(id: "zeroed", title: "Zero draft", status: .inProgress)
+        makeTask(id: "zeroed-task", project: project, status: .active, end: date(2026, 5, 27))
+        let zeroDraft = makeInvoice(id: "inv-zero", projectId: project.id, status: .draft, total: 0)
+
+        let rollup = HomeBillableThisWeekRollupEngine.compute(
+            projects: [project],
+            invoices: [zeroDraft],
+            estimates: [],
+            today: today,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(rollup.projectCount, 1)
+        XCTAssertNil(rollup.allItems.first?.amount)
+        XCTAssertFalse(rollup.hasKnownAmounts)
+    }
+
     func testPostedInvoiceExcludesProjectFromRollup() {
         let today = date(2026, 5, 25)
         let project = makeProject(id: "posted", title: "Posted", status: .completed)

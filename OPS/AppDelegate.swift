@@ -130,6 +130,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         let invoiceId = additionalData?["invoiceId"] as? String
         let estimateId = additionalData?["estimateId"] as? String
         let leadId = (additionalData?["leadId"] as? String) ?? (additionalData?["opportunityId"] as? String)
+        let batchId = additionalData?["batchId"] as? String
         let screen = additionalData?["screen"] as? String
 
         print("[ONESIGNAL] Type: \(notificationType ?? "unknown")")
@@ -208,7 +209,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
             if let screen = screen {
                 self.routeToScreen(screen, projectId: projectId, taskId: taskId, leadId: leadId)
             } else if let type = notificationType {
-                self.routeByType(type, projectId: projectId, taskId: taskId, leadId: leadId)
+                self.routeByType(type, projectId: projectId, taskId: taskId, leadId: leadId, batchId: batchId)
             } else if let projectId = projectId {
                 self.openProjectViaCoordinator(projectId)
             }
@@ -469,6 +470,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         let projectId = userInfo["projectId"] as? String
         let taskId = userInfo["taskId"] as? String
         let leadId = (userInfo["leadId"] as? String) ?? (userInfo["opportunityId"] as? String)
+        let batchId = userInfo["batchId"] as? String
         let screen = userInfo["screen"] as? String
 
         print("[PUSH] Type: \(notificationType ?? "unknown")")
@@ -481,7 +483,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         if let screen = screen {
             routeToScreen(screen, projectId: projectId, taskId: taskId, leadId: leadId)
         } else if let type = notificationType {
-            routeByType(type, projectId: projectId, taskId: taskId, leadId: leadId)
+            routeByType(type, projectId: projectId, taskId: taskId, leadId: leadId, batchId: batchId)
         } else if let leadId = leadId {
             // A bare lead/opportunity id with no screen/type still routes.
             NotificationCenter.default.post(
@@ -572,7 +574,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
     }
 
     /// Route based on notification type
-    private func routeByType(_ type: String, projectId: String?, taskId: String?, leadId: String?) {
+    private func routeByType(_ type: String, projectId: String?, taskId: String?, leadId: String?, batchId: String? = nil) {
         switch type {
         case "leads_waiting", "pipeline_complete",
              "lead", "leads", "opportunity", "opportunities",
@@ -615,10 +617,21 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 object: nil
             )
         case "expense_submitted", "expense_approved", "expense_rejected":
-            NotificationCenter.default.post(
-                name: Notification.Name("OpenExpenses"),
-                object: nil
-            )
+            // Bug 7cdbe7bb — a batch-scoped expense push opens that specific
+            // batch's review detail; without a batchId it falls back to the
+            // Expenses surface. MainTabView handles the tab/permission split.
+            if let batchId = batchId, !batchId.isEmpty {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenExpenseBatch"),
+                    object: nil,
+                    userInfo: ["batchId": batchId]
+                )
+            } else {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenExpenses"),
+                    object: nil
+                )
+            }
         case "invoice_approved", "invoice_revisions", "invoice_overdue":
             // Bug bb63c37e — invoice notifications were previously routed
             // to OpenExpenses, which landed the user on the wrong list.

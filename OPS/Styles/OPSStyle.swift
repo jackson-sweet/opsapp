@@ -63,6 +63,7 @@ enum OPSStyle {
         static let cardBorder = Color.white.opacity(0.09) // Glass panel edge — was 0.2, aligned to --glass-border
         static let cardBorderSubtle = Color.white.opacity(0.05) // Subtle card border for less prominent cards
         static let inputFieldBorder = Color.white.opacity(0.10) // Input fields, text editors — was 0.2, aligned to --line
+        static let inputFieldBorderFocus = Color.white.opacity(0.20) // Focused input border — brighter white per DESIGN.md §9 (never accent)
         static let buttonBorder = Color.white.opacity(0.10) // Secondary action buttons — was 0.4, aligned to --line
         static let darkBorder = Color.black.opacity(0.5) // Dark borders; used by GracePeriodBanner
         

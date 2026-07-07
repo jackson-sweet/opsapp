@@ -37,6 +37,7 @@
 import Foundation
 import SwiftData
 import Network
+import UIKit
 
 extension Notification.Name {
     /// Posted when the photo prefetch service pauses because adding the next
@@ -503,8 +504,13 @@ final class PhotoPrefetchService: ObservableObject {
 
         let photos = report.photosRemaining
         let photoPhrase = photos == 1 ? "1 photo" : "\(photos) photos"
-        let title = "Photo storage limit reached"
-        let body = "\(photoPhrase) couldn't download. Open Settings → Photo Storage to raise your limit or free up space."
+        // Name the device so the notification is actionable when read on the
+        // web rail / another device — the storage cap is a per-device local
+        // cache limit, and the user needs to know which one filled up (bug
+        // d5da3d51). @MainActor class, so UIDevice.current is safe to read.
+        let deviceName = UIDevice.current.name
+        let title = "Photo storage limit reached on \(deviceName)"
+        let body = "\(photoPhrase) couldn't download to \(deviceName). On that device, open Settings → Photo Storage to raise the limit or free up space."
 
         let dto = NotificationRepository.CreateNotificationDTO(
             userId: userId,

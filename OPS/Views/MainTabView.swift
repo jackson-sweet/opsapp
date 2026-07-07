@@ -141,6 +141,11 @@ struct MainTabView: View {
     private let openExpensesObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenExpenses"))
 
+    // Bug 7cdbe7bb — a batch-scoped expense notification opens that specific
+    // batch's review detail, not just the Expenses tab. Carries `batchId`.
+    private let openExpenseBatchObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenExpenseBatch"))
+
     private let openInvoicesObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenInvoices"))
 
@@ -756,6 +761,33 @@ struct MainTabView: View {
                     name: Notification.Name("BooksSelectSegment"),
                     object: nil,
                     userInfo: ["segment": BooksSection.expenses.rawValue]
+                )
+            }
+        }
+
+        // Bug 7cdbe7bb — batch-scoped expense deep link. Switch to BOOKS, select
+        // the expenses segment, then ask BooksTabView to push the review hub and
+        // auto-open the specific batch (BooksTabView gates on review permission).
+        .onReceive(openExpenseBatchObserver) { note in
+            print("[PUSH_NAVIGATION] Opening expense batch")
+            guard hasBooksAccess, let idx = booksTabIndex else {
+                print("[PUSH_NAVIGATION] No books access — expense-batch deep link suppressed")
+                return
+            }
+            let batchId = note.userInfo?["batchId"] as? String
+            withAnimation(OPSStyle.Animation.fast) {
+                selectedTab = idx
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                NotificationCenter.default.post(
+                    name: Notification.Name("BooksSelectSegment"),
+                    object: nil,
+                    userInfo: ["segment": BooksSection.expenses.rawValue]
+                )
+                NotificationCenter.default.post(
+                    name: Notification.Name("BooksOpenBatchReview"),
+                    object: nil,
+                    userInfo: batchId.map { ["batchId": $0] } ?? [:]
                 )
             }
         }

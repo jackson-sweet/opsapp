@@ -43,13 +43,37 @@ final class BugReportPresenter: NSObject {
     // MARK: - Present
 
     func present(screenshot: UIImage?, appState: AppState, dataController: DataController) {
-        guard !isPresenting else { return }
+        if isPresenting {
+            // Self-heal (bug 70087050): a dismissal whose completion never
+            // fired (animated dismissal racing a backgrounding), or a
+            // presentation that landed on a scene that then died, strands
+            // isPresenting = true with no sheet actually on screen — which
+            // used to kill shake-to-report for the rest of the app session.
+            // Rather than trusting the latch, verify the sheet is genuinely
+            // up; if it isn't, tear the corpse down and present fresh.
+            let alive = Self.isPresentationAlive(
+                hasWindow: window != nil,
+                windowHidden: window?.isHidden ?? true,
+                sceneAlive: window?.windowScene != nil
+                    && window?.windowScene?.activationState != .unattached,
+                sheetUp: window?.rootViewController?.presentedViewController != nil
+            )
+            if alive { return }
+            DebugLogger.shared.log(
+                "Bug report: recovered a stuck presenter latch (window: \(window != nil ? "present" : "nil"))",
+                level: .warning, category: "BugReport"
+            )
+            teardown()
+        }
 
-        // Prefer the foreground-active scene; fall back to any window scene so
-        // a shake during a scene transition still resolves a target.
+        // Only present into a scene the user can actually see. Foreground-
+        // inactive is allowed (transient during app-switcher / transitions);
+        // presenting into a background scene produced an invisible sheet that
+        // latched isPresenting forever.
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        guard let scene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first else {
-            DebugLogger.shared.log("Bug report: no window scene available", level: .error, category: "BugReport")
+        guard let scene = scenes.first(where: { $0.activationState == .foregroundActive })
+                ?? scenes.first(where: { $0.activationState == .foregroundInactive }) else {
+            DebugLogger.shared.log("Bug report: no foreground scene available", level: .error, category: "BugReport")
             return
         }
 
@@ -98,6 +122,19 @@ final class BugReportPresenter: NSObject {
             presented.dismiss(animated: true) { [weak self] in
                 self?.teardown()
             }
+            // Failsafe: UIKit drops the dismissal completion when the
+            // animation is interrupted (e.g. the app backgrounds mid-swipe),
+            // which stranded the latch. If this exact window is still ours
+            // after the animation window has long passed, tear it down anyway.
+            let dismissedWindow = window
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                guard let self, self.window === dismissedWindow else { return }
+                DebugLogger.shared.log(
+                    "Bug report: dismissal completion never fired — failsafe teardown",
+                    level: .warning, category: "BugReport"
+                )
+                self.teardown()
+            }
         } else {
             teardown()
         }
@@ -107,6 +144,20 @@ final class BugReportPresenter: NSObject {
         window?.isHidden = true
         window = nil
         isPresenting = false
+    }
+
+    // MARK: - Latch health
+
+    /// Whether a presentation the latch claims is up is REALLY on screen.
+    /// Pure decision logic, unit-tested in BugReportPresenterLatchTests —
+    /// `present()` recovers (tears down + re-presents) whenever this is false.
+    nonisolated static func isPresentationAlive(
+        hasWindow: Bool,
+        windowHidden: Bool,
+        sceneAlive: Bool,
+        sheetUp: Bool
+    ) -> Bool {
+        hasWindow && !windowHidden && sceneAlive && sheetUp
     }
 }
 

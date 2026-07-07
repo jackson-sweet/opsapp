@@ -214,6 +214,23 @@ class AuthManager {
                 }
 
                 print("[AUTH] Firebase UID backfill not yet verified for \(usersTableId) (attempt \(attempt)/\(maxAttempts))")
+
+                // The direct self-update above is RLS-dead for exactly the
+                // rows that need healing: users RLS keys writes on
+                // private.resolve_uid() (JWT sub vs auth_id/firebase_uid),
+                // and an unlinked row matches neither — the UPDATE touches
+                // zero rows and the read-back stays stale. The SECURITY
+                // DEFINER RPC links by the Firebase-signed VERIFIED email
+                // instead (docs/superpowers/migrations/
+                // 2026-07-03-heal-user-identity-rpc.sql). Until that
+                // migration is applied the call fails and is deliberately
+                // swallowed — same best-effort contract as this whole loop.
+                // The next loop iteration re-verifies.
+                do {
+                    try await SupabaseService.shared.client.rpc("heal_user_identity").execute()
+                } catch {
+                    print("[AUTH] heal_user_identity RPC unavailable/failed: \(error.localizedDescription)")
+                }
             } catch {
                 // Non-fatal — backfill is best-effort
                 print("[AUTH] Firebase UID backfill attempt \(attempt)/\(maxAttempts) failed: \(error.localizedDescription)")

@@ -1410,17 +1410,29 @@ actor DataActor {
                 ]
             )
 
+            // Annotations don't write SyncOperation rows, so acceptableFields
+            // can't protect a not-yet-pushed tombstone from a live-row echo —
+            // without this guard the pending delete is silently reverted and
+            // never retried (prod 2026-06-24, bugs 452bab04/0415504f).
+            let preserveLocalTombstone = PhotoAnnotationMergePolicy.shouldPreserveLocalTombstone(
+                localNeedsSync: existing.needsSync,
+                localDeletedAt: existing.deletedAt,
+                incomingDeletedAt: dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+            )
+
             if accept.contains("annotationURL") { existing.annotationURL = dto.annotationUrl }
             if accept.contains("renderedPhotoURL") { existing.renderedPhotoURL = dto.renderedPhotoUrl }
             if accept.contains("note") { existing.note = dto.note ?? "" }
             if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
-            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("deletedAt"), !preserveLocalTombstone {
+                existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+            }
             if accept.contains("dimensions"), let dimensionsData = dto.dimensionsData {
                 existing.dimensionsData = dimensionsData
             }
 
             existing.lastSyncedAt = Date()
-            if !hasPendingOperations(entityType: .photoAnnotation, entityId: existing.id) {
+            if !hasPendingOperations(entityType: .photoAnnotation, entityId: existing.id), !preserveLocalTombstone {
                 existing.needsSync = false
             }
         } else {
@@ -4586,7 +4598,11 @@ actor DataActor {
     /// on PostgREST. Ported verbatim from OutboundProcessor.validXxxColumns.
     private static let validProjectColumns: Set<String> = [
         "id", "bubble_id", "company_id", "client_id", "opportunity_id",
-        "title", "status", "address", "latitude", "longitude",
+        // `title_is_auto` MUST ride along with `title`: the server's
+        // `projects_autoname` BEFORE-UPDATE trigger re-derives the title from
+        // the address whenever title_is_auto is true, so a rename that loses
+        // the `title_is_auto: false` flip is silently reverted server-side.
+        "title", "title_is_auto", "status", "address", "latitude", "longitude",
         "start_date", "end_date", "duration", "notes", "description",
         "all_day", "project_images", "completed_at",
         // Deck Builder vinyl-order marker columns. These live on `projects` but
@@ -4595,7 +4611,7 @@ actor DataActor {
         // silently stripped before push and the optimistic marker reverts on the
         // next sync. Keep in sync with ProjectVinylOrderFields + the inbound DTO.
         "vinyl_order_status", "vinyl_ordered_at", "vinyl_ordered_by",
-        "deleted_at", "created_at", "updated_at"
+        "deleted_at", "created_at", "updated_at", "priority_rank"
     ]
 
     /// Filters an outbound project payload to columns that exist on the server
@@ -4603,7 +4619,13 @@ actor DataActor {
     /// `OutboundProcessor.sanitizedProjectPayloadForSync`) so both outbound paths
     /// are covered by the same regression assertions and cannot drift unnoticed.
     nonisolated static func sanitizedProjectPayloadForSync(_ payload: [String: Any]) -> [String: Any] {
-        payload.filter { validProjectColumns.contains($0.key) }
+        // `vinyl_ordered_by` is a Postgres uuid column; a non-UUID attribution
+        // (historic Firebase-UID writes, bug 0f86b9b0) would 22P02 the whole
+        // PATCH and wedge the queued op. Null it instead of poisoning the write.
+        SupabaseUUID.nullingNonUuidValue(
+            forKey: "vinyl_ordered_by",
+            in: payload.filter { validProjectColumns.contains($0.key) }
+        )
     }
 
     private static let validProjectTaskColumns: Set<String> = [

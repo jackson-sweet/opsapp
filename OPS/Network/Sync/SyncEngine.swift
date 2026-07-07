@@ -1064,6 +1064,12 @@ final class SyncEngine {
             return
         }
         await dimensionedPendingSyncer.syncPendingDimensions(modelContext: modelContext)
+        // Pending PencilKit annotation writes (offline edits + soft-delete
+        // tombstones) track `PhotoAnnotation.needsSync` the same way but
+        // previously only retried when a photo viewer happened to open —
+        // drain them on this same sweep so a stuck tombstone converges on
+        // the next sync cycle instead of waiting for a viewer visit.
+        await PhotoAnnotationSyncManager.shared.syncPendingAnnotations(modelContext: modelContext)
         refreshPendingCount()
     }
 

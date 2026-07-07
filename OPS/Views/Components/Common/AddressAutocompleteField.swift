@@ -2,7 +2,9 @@
 //  AddressAutocompleteField.swift
 //  OPS
 //
-//  Created for providing address autocomplete functionality using MapKit
+//  MapKit-backed address autocomplete with a "use my location" reverse-
+//  geocode affordance. Shared by every address input in the app (profile,
+//  company setup, org details, clients, projects, site visits).
 //
 
 import SwiftUI
@@ -23,6 +25,7 @@ struct AddressAutocompleteField: View {
     @StateObject private var locationManager = LocationManager()
     @State private var searchDebouncer = PassthroughSubject<String, Never>()
     @State private var isGettingLocation = false
+    @State private var locationTimeoutTask: Task<Void, Never>?
     @FocusState private var isFocused: Bool
 
     init(address: Binding<String>,
@@ -32,11 +35,11 @@ struct AddressAutocompleteField: View {
         self.placeholder = placeholder
         self.onAddressSelected = onAddressSelected
     }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Input field
-            HStack {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 TextField("", text: $searchText)
                     .placeholder(when: searchText.isEmpty) {
                         Text(placeholder)
@@ -58,21 +61,29 @@ struct AddressAutocompleteField: View {
                         }
                     }
 
-                // Use My Location button
+                // Use my location — reverse-geocodes the current position into
+                // the field. Monochrome per the icon rules; accent is CTA-only.
                 Button(action: {
                     useCurrentLocation()
                 }) {
-                    if isGettingLocation {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                            .frame(width: 20, height: 20)
-                    } else {
-                        Image(systemName: "location.fill")
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    Group {
+                        if isGettingLocation {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "location.fill")
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
                     }
+                    .frame(
+                        width: OPSStyle.Layout.touchTargetMin,
+                        height: OPSStyle.Layout.touchTargetMin
+                    )
+                    .contentShape(Rectangle())
                 }
                 .disabled(isGettingLocation)
+                .accessibilityLabel("Use my location")
 
                 if !searchText.isEmpty {
                     Button(action: {
@@ -83,18 +94,30 @@ struct AddressAutocompleteField: View {
                     }) {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .frame(
+                                width: OPSStyle.Layout.touchTargetMin,
+                                height: OPSStyle.Layout.touchTargetMin
+                            )
+                            .contentShape(Rectangle())
                     }
+                    .accessibilityLabel("Clear address")
                 }
             }
-            .padding(.vertical, OPSStyle.Layout.spacing2_5)
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .background(Color.clear)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
+            .padding(.leading, OPSStyle.Layout.spacing3)
+            .padding(.trailing, OPSStyle.Layout.spacing1)
+            .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(isFocused ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .fill(OPSStyle.Colors.surfaceInput)
             )
-            
+            .overlay(
+                // Focus brightens the hairline — never accent (DESIGN.md §9).
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(
+                        isFocused ? OPSStyle.Colors.inputFieldBorderFocus : OPSStyle.Colors.inputFieldBorder,
+                        lineWidth: OPSStyle.Layout.Border.standard
+                    )
+            )
+
             // Search results
             if showingResults && !searchResults.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
@@ -145,6 +168,7 @@ struct AddressAutocompleteField: View {
         }
         .onDisappear {
             completer.delegate = nil
+            locationTimeoutTask?.cancel()
         }
         .onReceive(
             searchDebouncer
@@ -160,7 +184,7 @@ struct AddressAutocompleteField: View {
             }
         }
     }
-    
+
     private func setupCompleter() {
         completer.delegate = searchCompleterDelegate
         completer.resultTypes = .address
@@ -176,7 +200,7 @@ struct AddressAutocompleteField: View {
             searchResults = results
         }
     }
-    
+
     private func selectAddress(_ result: MKLocalSearchCompletion) {
         // Update the search text and bound address
         let fullAddress = result.title + (result.subtitle.isEmpty ? "" : ", " + result.subtitle)
@@ -184,16 +208,16 @@ struct AddressAutocompleteField: View {
         address = fullAddress
         showingResults = false
         searchResults = []
-        
+
         // Try to get coordinates for the selected address
         geocodeAddress(result) { coordinate in
             onAddressSelected?(fullAddress, coordinate)
         }
-        
+
         // Dismiss keyboard
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
-    
+
     private func geocodeAddress(_ completion: MKLocalSearchCompletion,
                                completionHandler: @escaping (CLLocationCoordinate2D?) -> Void) {
         let searchRequest = MKLocalSearch.Request(completion: completion)
@@ -216,26 +240,57 @@ struct AddressAutocompleteField: View {
         // Request permission and check if we already have a location
         locationManager.requestPermissionIfNeeded(requestAlways: false) { granted in
             if granted {
-                // Check if we already have a location available
+                // Already have a fix → geocode immediately; otherwise the
+                // onChange(currentLocation) handler catches the first fix.
                 if let location = locationManager.currentLocation {
                     reverseGeocode(location: location)
+                } else {
+                    startLocationTimeout()
                 }
-                // If no location yet, the onChange handler will catch it when it arrives
             } else {
                 DispatchQueue.main.async {
                     isGettingLocation = false
-                    // Location permission denied - could show alert here
+                    // Permission denied — name the problem and hand the user
+                    // the path to fix it. Never a silent no-op.
+                    ToastCenter.shared.present(Toast(
+                        label: "// LOCATION OFF — ENABLE IN SETTINGS",
+                        tone: .warning,
+                        action: ToastAction(label: "SETTINGS") {
+                            guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                            UIApplication.shared.open(url)
+                        }
+                    ))
                 }
             }
         }
     }
 
+    /// GPS can dither indefinitely indoors — don't spin forever. After 10s
+    /// without a fix, stop and say so.
+    private func startLocationTimeout() {
+        locationTimeoutTask?.cancel()
+        locationTimeoutTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            guard !Task.isCancelled, isGettingLocation else { return }
+            isGettingLocation = false
+            ToastCenter.shared.present(Toast(
+                label: "// LOCATION UNAVAILABLE — TRY AGAIN",
+                tone: .error
+            ))
+        }
+    }
+
     private func reverseGeocode(location: CLLocation) {
+        locationTimeoutTask?.cancel()
         let geocoder = CLGeocoder()
         geocoder.reverseGeocodeLocation(location) { placemarks, error in
             guard let placemark = placemarks?.first else {
                 DispatchQueue.main.async {
                     isGettingLocation = false
+                    ToastCenter.shared.present(Toast(
+                        label: "// LOCATION UNAVAILABLE — TRY AGAIN",
+                        tone: .error
+                    ))
                 }
                 return
             }
@@ -288,4 +343,3 @@ class SearchCompleterDelegate: NSObject, ObservableObject, MKLocalSearchComplete
     func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
     }
 }
-

@@ -150,6 +150,13 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
     /// version-scoped at this boundary (frozen `OPSSchemaLegacySiteVisitV11`
     /// for V11–V14, live `SiteVisit` for V15+) so the widening does not rewrite
     /// every V11–V14 schema's `SiteVisit` fingerprint.
+    ///
+    /// This boundary ALSO introduces `PhotoAnnotation`'s two retry-hygiene columns
+    /// (`syncFailureCount`, `syncParkedAt`), which were added to the live model
+    /// in-place after V10 shipped. `PhotoAnnotation` is version-scoped here too
+    /// (frozen `OPSSchemaLegacyPhotoAnnotation` for V1–V14, live for V15+) so V10's
+    /// shipped fingerprint is preserved; both additions ride this single lightweight
+    /// stage (new optional/defaulted columns, additive only).
     static let addSiteVisitActivityLinkV14toV15 = MigrationStage.lightweight(
         fromVersion: OPSSchemaV14.self,
         toVersion: OPSSchemaV15.self

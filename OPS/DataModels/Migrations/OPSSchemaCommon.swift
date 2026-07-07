@@ -638,6 +638,57 @@ enum OPSSchemaLegacyProjectNote {
     }
 }
 
+/// Frozen `PhotoAnnotation` shape as it shipped through V1–V14 — WITHOUT the
+/// `syncFailureCount` / `syncParkedAt` retry-hygiene columns. Those two stored
+/// properties were added to the live `PhotoAnnotation` (durable photo-markup
+/// soft-delete + retry, 2026-07-03) AFTER the V10 ship point, but `PhotoAnnotation`
+/// was in `unchangedModels`, so the live class silently shifted V10's (and every
+/// historical schema's) persistent fingerprint — a real V10 store on a shipped
+/// device would no longer match any VersionedSchema and be destructively wiped.
+/// Version-scoping it (mirror of `OPSSchemaLegacyProjectNote`) freezes the
+/// pre-widening shape for V1–V14 and introduces the two columns at V14→V15.
+/// Migration-fingerprint only — runtime code always uses the top-level model.
+enum OPSSchemaLegacyPhotoAnnotation {
+    @Model
+    final class PhotoAnnotation: Identifiable {
+        @Attribute(.unique) var id: String
+        var projectId: String
+        var companyId: String
+        var photoURL: String
+        var annotationURL: String?
+        var note: String
+        var authorId: String
+        var createdAt: Date
+        var updatedAt: Date?
+        var deletedAt: Date?
+        var renderedPhotoURL: String?
+        var lastSyncedAt: Date?
+        var needsSync: Bool = false
+        var localDrawingData: Data?
+        var dimensionsData: Data?
+        var localDepthMapPath: String?
+        var localSidecarPath: String?
+        var localCaptureFinishedAt: Date?
+
+        init(
+            id: String = UUID().uuidString,
+            projectId: String,
+            companyId: String,
+            photoURL: String,
+            authorId: String,
+            createdAt: Date = Date()
+        ) {
+            self.id = id
+            self.projectId = projectId
+            self.companyId = companyId
+            self.photoURL = photoURL
+            self.note = ""
+            self.authorId = authorId
+            self.createdAt = createdAt
+        }
+    }
+}
+
 enum OPSSchemaCommon {
     /// Models present in both V2 and V3 (and unchanged across the V2→V3
     /// boundary). The inventory entities live only in V2; the catalog/product-
@@ -681,7 +732,12 @@ enum OPSSchemaCommon {
         // the frozen `OPSSchemaLegacyProjectNote.ProjectNote` (no system-event
         // columns) backs V1–V12 and the live `ProjectNote` backs V13+. See
         // `v1ToV12ProjectNoteModel` / `v13ProjectNoteModel`.
-        PhotoAnnotation.self,
+        // NOTE: PhotoAnnotation is intentionally NOT here. The live model gained
+        // two retry-hygiene columns (`syncFailureCount`, `syncParkedAt`) after the
+        // V10 ship point, so it is version-scoped: the frozen
+        // `OPSSchemaLegacyPhotoAnnotation.PhotoAnnotation` (pre-widening) backs
+        // V1–V14 and the live `PhotoAnnotation` backs V15+. See
+        // `v1ToV14PhotoAnnotationModel` / `v15PhotoAnnotationModel`.
         CalendarUserEvent.self,
 
         // Offline-first sync models
@@ -841,6 +897,22 @@ enum OPSSchemaCommon {
     /// payload for system entries). Mirror of `v13ActivityModel`.
     static let v13ProjectNoteModel: [any PersistentModel.Type] = [
         ProjectNote.self
+    ]
+
+    /// PhotoAnnotation as it shipped through V1–V14 — frozen, WITHOUT the
+    /// `syncFailureCount` / `syncParkedAt` retry-hygiene columns. Pulled out of
+    /// `unchangedModels` so those two columns (added in-place after the V10 ship
+    /// point) do not silently drift V10's fingerprint and destructively wipe real
+    /// shipped stores. Mirror of `v1ToV12ProjectNoteModel`.
+    static let v1ToV14PhotoAnnotationModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacyPhotoAnnotation.PhotoAnnotation.self
+    ]
+
+    /// PhotoAnnotation from V15 onward — the live model with the added
+    /// `syncFailureCount` / `syncParkedAt` retry-hygiene columns. Mirror of
+    /// `v13ProjectNoteModel`.
+    static let v15PhotoAnnotationModel: [any PersistentModel.Type] = [
+        PhotoAnnotation.self
     ]
 
     /// V11 site-visit capture packet. Additive over V10 — captures evidence,

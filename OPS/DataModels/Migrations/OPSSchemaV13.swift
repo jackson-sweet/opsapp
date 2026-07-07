@@ -26,6 +26,7 @@ enum OPSSchemaV13: VersionedSchema {
     static var models: [any PersistentModel.Type] {
         OPSSchemaCommon.unchangedModels
             + OPSSchemaCommon.v13ProjectNoteModel
+            + OPSSchemaCommon.v1ToV14PhotoAnnotationModel
             + OPSSchemaCommon.v1ToV12ActivityModel
             + OPSSchemaCommon.v11SiteVisitModel
             + OPSSchemaCommon.v4CoreModels

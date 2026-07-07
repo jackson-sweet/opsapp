@@ -1103,20 +1103,21 @@ struct VinylOrderSheet: View {
     }
 
     private func setProjectVinylOrdered(_ ordered: Bool) {
-        guard canToggleProjectMarker, let projectId else { return }
+        guard canToggleProjectMarker, let projectId, let userId = currentUserId else { return }
 
         let now = Date()
         let fields: [String: AnyJSON]
         if ordered {
-            // Persist status + timestamp; leave `vinyl_ordered_by` NULL. That
-            // column FKs to auth.users(id), which a Firebase-bridged user's
-            // public.users.id can never satisfy — writing a real id FK-fails and
-            // a Firebase UID 22P02s (bug 0f86b9b0). The "who" is never surfaced,
-            // so NULL loses nothing the UI shows.
+            // Attribute to the operator's public.users.id (never the Firebase
+            // UID — a 28-char UID 22P02s the uuid column; bug 0f86b9b0).
+            // `vinyl_ordered_by` FKs to public.users(id) (retargeted from the
+            // template's auth.users default, which the Firebase bridge could
+            // never satisfy). The SupabaseUUID guard nulls any non-uuid before
+            // it reaches Postgres, so a legacy queued write can't wedge the sync.
             fields = [
                 ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
                 ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(now)),
-                ProjectVinylOrderFields.orderedBy: .null
+                ProjectVinylOrderFields.orderedBy: .string(userId)
             ]
         } else {
             fields = [

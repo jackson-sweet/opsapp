@@ -236,13 +236,14 @@ struct JobBoardProjectListView: View {
     }
 
     /// Commits vinyl-ordered state via the same synced field path the Vinyl Order
-    /// sheet uses (projects.vinyl_order_*). Persists status + timestamp; leaves
-    /// `vinyl_ordered_by` NULL — that column FKs to auth.users(id), which a
-    /// Firebase-bridged user's public.users.id can never satisfy, and the "who"
-    /// is never surfaced anyway. (Send NULL, never the Firebase UID or a
-    /// public.users.id: the former 22P02s, the latter FK-fails — bug 0f86b9b0.)
+    /// sheet uses (projects.vinyl_order_*). Persists status + timestamp and
+    /// attributes to the operator's public.users.id — never the Firebase UID (a
+    /// 28-char UID 22P02s the uuid column; bug 0f86b9b0). `vinyl_ordered_by` FKs
+    /// to public.users(id); the SupabaseUUID guard nulls any non-uuid before it
+    /// reaches Postgres so a legacy queued write can't wedge the sync.
     private func markVinylOrdered(_ project: Project) {
         guard canMarkVinyl, !markingVinylProjectIds.contains(project.id) else { return }
+        guard let userId = dataController.currentUser?.id.lowercased() else { return }
 
         markingVinylProjectIds.insert(project.id)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -250,7 +251,7 @@ struct JobBoardProjectListView: View {
         let fields: [String: AnyJSON] = [
             ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
             ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(Date())),
-            ProjectVinylOrderFields.orderedBy: .null
+            ProjectVinylOrderFields.orderedBy: .string(userId)
         ]
 
         Task {

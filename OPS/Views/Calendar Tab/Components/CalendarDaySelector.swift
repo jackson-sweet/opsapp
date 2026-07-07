@@ -432,8 +432,8 @@ struct CalendarDaySelector: View {
 
         // Bug 1 — Include user events (time off + personal) so the week strip
         // shows their span bars alongside project tasks.
-        let timeOffColor = Color(red: 196/255, green: 168/255, blue: 104/255)
-        let personalColor = Color(white: 0.55)
+        let timeOffColor = OPSStyle.Colors.tanTextM
+        let personalColor = OPSStyle.Colors.secondaryText
         var processedUserEventIds = Set<String>()
         for dayIndex in 0..<weekDays.count {
             let events = viewModel.userEvents(for: weekDays[dayIndex])

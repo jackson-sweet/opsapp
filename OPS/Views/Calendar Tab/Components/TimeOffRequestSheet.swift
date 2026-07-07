@@ -25,7 +25,7 @@ struct TimeOffRequestSheet: View {
 
     /// Bug 81470acd — the set of users this request applies to. Defaults
     /// to the current user (self-request, every role's default behaviour).
-    /// When the role has `team.manage`, the "FOR" row becomes tappable
+    /// When the role has `time_off.approve`, the "FOR" row becomes tappable
     /// and the user can pick one or more crew to request on behalf of.
     @State private var targetUserIds: Set<String> = []
     @State private var showingTargetPicker: Bool = false
@@ -38,11 +38,11 @@ struct TimeOffRequestSheet: View {
     }
 
     /// Roles permitted to request time off on behalf of other crew members.
-    /// `team.manage` is the canonical permission for managing the team.
-    /// Crew without it can only request time off for themselves — same as
+    /// `time_off.approve` is the canonical permission for booking/reviewing
+    /// crew time off. Crew without it can only request time off for themselves — same as
     /// the previous (single-user) behaviour.
     private var canRequestForOthers: Bool {
-        PermissionStore.shared.can("team.manage")
+        PermissionStore.shared.can("time_off.approve")
     }
 
     /// Roster filtered to the current company, sorted alphabetically. The
@@ -72,21 +72,20 @@ struct TimeOffRequestSheet: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        // Amber info banner
-                        HStack(spacing: 10) {
+                        HStack(spacing: OPSStyle.Layout.spacing2_5) {
                             Image(systemName: "clock.badge.questionmark")
-                                .foregroundColor(Color(red: 196/255, green: 168/255, blue: 104/255))
+                                .foregroundColor(OPSStyle.Colors.tanTextM)
                             Text("Request will be sent to your admin for approval.")
                                 .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(Color(red: 196/255, green: 168/255, blue: 104/255).opacity(0.85))
+                                .foregroundColor(OPSStyle.Colors.tanTextM)
                         }
-                        .padding(14)
+                        .padding(OPSStyle.Layout.spacing3_5)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(red: 196/255, green: 168/255, blue: 104/255).opacity(0.10))
+                        .background(OPSStyle.Colors.tanFillM)
                         .overlay(
                             Rectangle()
-                                .frame(height: 0.5)
-                                .foregroundColor(Color(red: 196/255, green: 168/255, blue: 104/255).opacity(0.35)),
+                                .frame(height: OPSStyle.Layout.Border.standard)
+                                .foregroundColor(OPSStyle.Colors.tanLineM),
                             alignment: .bottom
                         )
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -129,12 +128,12 @@ struct TimeOffRequestSheet: View {
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
-                            .padding(14)
+                            .padding(OPSStyle.Layout.spacing3_5)
                             .background(OPSStyle.Colors.surfaceInput)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                             .padding(.bottom, OPSStyle.Layout.spacing5)
@@ -144,16 +143,16 @@ struct TimeOffRequestSheet: View {
                             HStack {
                                 Spacer()
                                 if isSaving {
-                                    ProgressView().tint(.black)
+                                    ProgressView().tint(OPSStyle.Colors.invertedText)
                                 } else {
                                     Text("SUBMIT REQUEST")
                                         .font(OPSStyle.Typography.button)
-                                        .foregroundColor(.black)
+                                        .foregroundColor(OPSStyle.Colors.invertedText)
                                 }
                                 Spacer()
                             }
-                            .frame(height: 52)
-                            .background(Color(red: 196/255, green: 168/255, blue: 104/255))
+                            .frame(height: OPSStyle.Layout.touchTargetStandard)
+                            .background(OPSStyle.Colors.tan)
                             .cornerRadius(OPSStyle.Layout.progressBarRadius)
                         }
                         .disabled(isSaving)
@@ -245,7 +244,7 @@ struct TimeOffRequestSheet: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
         }
-        .padding(14)
+        .padding(OPSStyle.Layout.spacing3_5)
         .glassSurface()
     }
 
@@ -263,7 +262,7 @@ struct TimeOffRequestSheet: View {
               let context = dataController.modelContext else { return }
 
         // Bug 81470acd — defense-in-depth: enforce the permission gate at
-        // submit time too. Roles without team.manage that somehow hold a
+        // submit time too. Roles without time_off.approve that somehow hold a
         // multi-user selection (stale state, accessibility shortcut) get
         // collapsed back to themselves so they can't write events for
         // anyone else.

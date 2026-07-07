@@ -157,14 +157,14 @@ class MonthGridCache: ObservableObject {
                 let daySpan = calendar.dateComponents([.day], from: evStart, to: evEnd).day ?? 0
                 let totalDays = max(daySpan + 1, 1)
 
-                // Time off uses amber, personal uses neutral grey so they
-                // visually distinguish from project task badges.
+                // Time off uses the tan event lane; custom events use a neutral
+                // lane so they do not read as work/task badges.
                 let displayColor = event.isTimeOff
                     ? "#C4A868"  // amber
                     : "#7A7A7A"  // neutral grey
 
                 let label = event.title.isEmpty
-                    ? (event.isTimeOff ? "Time Off" : "Personal")
+                    ? (event.isTimeOff ? "Time Off" : "Custom")
                     : event.title
 
                 var currentDate = evStart
@@ -190,7 +190,7 @@ class MonthGridCache: ObservableObject {
                         isFirst: isFirst,
                         isLast: isLast,
                         isFirstInWeek: isFirstInWeek,
-                        taskTypeDisplay: event.isTimeOff ? "TIME OFF" : "PERSONAL"
+                        taskTypeDisplay: event.isTimeOff ? "TIME OFF" : "CUSTOM"
                     )
 
                     if cache[dateKey] == nil { cache[dateKey] = [] }

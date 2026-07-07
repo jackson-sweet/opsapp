@@ -573,21 +573,48 @@ class CalendarViewModel: ObservableObject {
         return false
     }
     
-    /// Load CalendarUserEvents for the current user from local SwiftData store
+    /// Load CalendarUserEvents visible to the current user from local SwiftData store.
+    /// Own rows always appear; team-invited personal rows appear for assignees;
+    /// users with calendar.view(all) see the company calendar; users with
+    /// time_off.approve see company time off so booked crew absences do not
+    /// disappear after save.
     func loadUserEvents() {
         guard let dataController = dataController,
               let context = dataController.modelContext,
-              let userId = dataController.currentUser?.id else { return }
+              let userId = dataController.currentUser?.id,
+              let companyId = dataController.currentUser?.companyId else { return }
 
         let descriptor = FetchDescriptor<CalendarUserEvent>(
             predicate: #Predicate { event in
-                event.userId == userId && event.deletedAt == nil
+                event.companyId == companyId && event.deletedAt == nil
             }
         )
-        let events = (try? context.fetch(descriptor)) ?? []
+        let canViewAllCalendar = PermissionStore.shared.can("calendar.view", requiredScope: "all")
+        let canApproveTimeOff = PermissionStore.shared.can("time_off.approve")
+        let events = ((try? context.fetch(descriptor)) ?? [])
+            .filter { event in
+                isUserEventVisible(
+                    event,
+                    currentUserId: userId,
+                    canViewAllCalendar: canViewAllCalendar,
+                    canApproveTimeOff: canApproveTimeOff
+                )
+            }
         DispatchQueue.main.async {
             self.userEventsForCurrentPeriod = events
         }
+    }
+
+    private func isUserEventVisible(
+        _ event: CalendarUserEvent,
+        currentUserId: String,
+        canViewAllCalendar: Bool,
+        canApproveTimeOff: Bool
+    ) -> Bool {
+        if canViewAllCalendar { return true }
+        if event.userId == currentUserId { return true }
+        if event.teamMemberIds?.contains(currentUserId) == true { return true }
+        return canApproveTimeOff && event.isTimeOff
     }
 
     /// User events overlapping a given date

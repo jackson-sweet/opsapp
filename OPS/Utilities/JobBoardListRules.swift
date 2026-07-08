@@ -48,6 +48,75 @@ struct JobBoardTaskFiltering {
 }
 
 struct JobBoardProjectFiltering {
+    static func sortedProjects(_ projects: [Project], sortOption: ProjectSortOption) -> [Project] {
+        switch sortOption {
+        case .latestEdited:
+            return projects.sorted { lhs, rhs in
+                recencyStamp(for: lhs) > recencyStamp(for: rhs)
+            }
+        case .earliestEdited:
+            return projects.sorted { lhs, rhs in
+                recencyStamp(for: lhs) < recencyStamp(for: rhs)
+            }
+        case .scheduledDateDescending:
+            return projects.sorted { lhs, rhs in
+                let lhsUnscheduled = isUnscheduledActiveProject(lhs)
+                let rhsUnscheduled = isUnscheduledActiveProject(rhs)
+                let lhsUnassigned = isUnassignedActiveProject(lhs)
+                let rhsUnassigned = isUnassignedActiveProject(rhs)
+
+                if lhsUnscheduled != rhsUnscheduled { return lhsUnscheduled }
+                if lhsUnassigned != rhsUnassigned { return lhsUnassigned }
+                return (lhs.startDate ?? Date.distantPast) > (rhs.startDate ?? Date.distantPast)
+            }
+        case .scheduledDateAscending:
+            return projects.sorted { lhs, rhs in
+                let lhsUnscheduled = isUnscheduledActiveProject(lhs)
+                let rhsUnscheduled = isUnscheduledActiveProject(rhs)
+                let lhsUnassigned = isUnassignedActiveProject(lhs)
+                let rhsUnassigned = isUnassignedActiveProject(rhs)
+
+                if lhsUnscheduled != rhsUnscheduled { return lhsUnscheduled }
+                if lhsUnassigned != rhsUnassigned { return lhsUnassigned }
+                return (lhs.startDate ?? Date.distantPast) < (rhs.startDate ?? Date.distantPast)
+            }
+        case .statusAscending:
+            return projects.sorted { lhs, rhs in
+                let lhsUnscheduled = isUnscheduledActiveProject(lhs)
+                let rhsUnscheduled = isUnscheduledActiveProject(rhs)
+                let lhsUnassigned = isUnassignedActiveProject(lhs)
+                let rhsUnassigned = isUnassignedActiveProject(rhs)
+
+                if lhsUnscheduled != rhsUnscheduled { return lhsUnscheduled }
+                if lhsUnassigned != rhsUnassigned { return lhsUnassigned }
+                return lhs.status.sortOrder < rhs.status.sortOrder
+            }
+        case .statusDescending:
+            return projects.sorted { lhs, rhs in
+                let lhsUnscheduled = isUnscheduledActiveProject(lhs)
+                let rhsUnscheduled = isUnscheduledActiveProject(rhs)
+                let lhsUnassigned = isUnassignedActiveProject(lhs)
+                let rhsUnassigned = isUnassignedActiveProject(rhs)
+
+                if lhsUnscheduled != rhsUnscheduled { return lhsUnscheduled }
+                if lhsUnassigned != rhsUnassigned { return lhsUnassigned }
+                return lhs.status.sortOrder > rhs.status.sortOrder
+            }
+        }
+    }
+
+    static func projectSections(
+        from projects: [Project],
+        sortOption: ProjectSortOption
+    ) -> JobBoardProjectSections {
+        let sorted = sortedProjects(projects, sortOption: sortOption)
+        return JobBoardProjectSections(
+            active: sorted.filter { $0.status != .closed && $0.status != .archived },
+            closed: sorted.filter { $0.status == .closed },
+            archived: sorted.filter { $0.status == .archived }
+        )
+    }
+
     static func kanbanProjects(
         from projects: [Project],
         activeOnly: Bool = false,
@@ -80,6 +149,31 @@ struct JobBoardProjectFiltering {
 
         return filtered
     }
+
+    /// Bug 70a4d9fd — "most recently touched" stamp for the latest/earliest
+    /// edited sorts. Prefers the server-maintained `updatedAt`; falls back
+    /// to `createdAt` for legacy rows synced before that column was plumbed.
+    private static func recencyStamp(for project: Project) -> Date {
+        max(project.updatedAt ?? .distantPast, project.createdAt ?? .distantPast)
+    }
+
+    private static func isUnscheduledActiveProject(_ project: Project) -> Bool {
+        (project.startDate == nil || project.endDate == nil) &&
+            project.status != .closed &&
+            project.status != .archived
+    }
+
+    private static func isUnassignedActiveProject(_ project: Project) -> Bool {
+        project.teamMembers.isEmpty &&
+            project.status != .closed &&
+            project.status != .archived
+    }
+}
+
+struct JobBoardProjectSections {
+    let active: [Project]
+    let closed: [Project]
+    let archived: [Project]
 }
 
 struct ProjectListOrdering {

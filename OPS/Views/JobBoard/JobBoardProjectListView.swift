@@ -126,93 +126,26 @@ struct JobBoardProjectListView: View {
             }
         }
 
-        switch sortOption.wrappedValue {
-        case .latestEdited:
-            return filtered.sorted { p1, p2 in
-                // Bug 70a4d9fd — "most recently touched" means the
-                // server-side `projects.updated_at`, which is bumped on
-                // every write. `lastSyncedAt` (previous proxy) shifts on
-                // every inbound sync regardless of who edited what, and
-                // `startDate` is the scheduled day, not a recency signal.
-                // Take max(updatedAt, createdAt) so legacy rows synced
-                // before updated_at was plumbed still rank by their
-                // creation time instead of falling to the bottom.
-                return Self.recencyStamp(for: p1) > Self.recencyStamp(for: p2)
-            }
-        case .earliestEdited:
-            return filtered.sorted { p1, p2 in
-                return Self.recencyStamp(for: p1) < Self.recencyStamp(for: p2)
-            }
-        case .scheduledDateDescending:
-            return filtered.sorted { p1, p2 in
-                let p1Unscheduled = (p1.startDate == nil || p1.endDate == nil) && p1.status != .closed && p1.status != .archived
-                let p2Unscheduled = (p2.startDate == nil || p2.endDate == nil) && p2.status != .closed && p2.status != .archived
-                let p1Unassigned = p1.teamMembers.isEmpty && p1.status != .closed && p1.status != .archived
-                let p2Unassigned = p2.teamMembers.isEmpty && p2.status != .closed && p2.status != .archived
+        return filtered
+    }
 
-                if p1Unscheduled != p2Unscheduled { return p1Unscheduled }
-                if p1Unassigned != p2Unassigned { return p1Unassigned }
-                return (p1.startDate ?? Date.distantPast) > (p2.startDate ?? Date.distantPast)
-            }
-        case .scheduledDateAscending:
-            return filtered.sorted { p1, p2 in
-                let p1Unscheduled = (p1.startDate == nil || p1.endDate == nil) && p1.status != .closed && p1.status != .archived
-                let p2Unscheduled = (p2.startDate == nil || p2.endDate == nil) && p2.status != .closed && p2.status != .archived
-                let p1Unassigned = p1.teamMembers.isEmpty && p1.status != .closed && p1.status != .archived
-                let p2Unassigned = p2.teamMembers.isEmpty && p2.status != .closed && p2.status != .archived
-
-                if p1Unscheduled != p2Unscheduled { return p1Unscheduled }
-                if p1Unassigned != p2Unassigned { return p1Unassigned }
-                return (p1.startDate ?? Date.distantPast) < (p2.startDate ?? Date.distantPast)
-            }
-        case .statusAscending:
-            return filtered.sorted { p1, p2 in
-                let p1Unscheduled = (p1.startDate == nil || p1.endDate == nil) && p1.status != .closed && p1.status != .archived
-                let p2Unscheduled = (p2.startDate == nil || p2.endDate == nil) && p2.status != .closed && p2.status != .archived
-                let p1Unassigned = p1.teamMembers.isEmpty && p1.status != .closed && p1.status != .archived
-                let p2Unassigned = p2.teamMembers.isEmpty && p2.status != .closed && p2.status != .archived
-
-                if p1Unscheduled != p2Unscheduled { return p1Unscheduled }
-                if p1Unassigned != p2Unassigned { return p1Unassigned }
-                return p1.status.sortOrder < p2.status.sortOrder
-            }
-        case .statusDescending:
-            return filtered.sorted { p1, p2 in
-                let p1Unscheduled = (p1.startDate == nil || p1.endDate == nil) && p1.status != .closed && p1.status != .archived
-                let p2Unscheduled = (p2.startDate == nil || p2.endDate == nil) && p2.status != .closed && p2.status != .archived
-                let p1Unassigned = p1.teamMembers.isEmpty && p1.status != .closed && p1.status != .archived
-                let p2Unassigned = p2.teamMembers.isEmpty && p2.status != .closed && p2.status != .archived
-
-                if p1Unscheduled != p2Unscheduled { return p1Unscheduled }
-                if p1Unassigned != p2Unassigned { return p1Unassigned }
-                return p1.status.sortOrder > p2.status.sortOrder
-            }
-        }
+    private var projectSections: JobBoardProjectSections {
+        JobBoardProjectFiltering.projectSections(
+            from: filteredProjects,
+            sortOption: sortOption.wrappedValue
+        )
     }
 
     private var activeProjects: [Project] {
-        filteredProjects
-            .filter { $0.status != .closed && $0.status != .archived }
-            .sorted { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
+        projectSections.active
     }
 
     private var closedProjects: [Project] {
-        filteredProjects
-            .filter { $0.status == .closed }
-            .sorted { ($0.completedAt ?? $0.endDate ?? .distantPast) > ($1.completedAt ?? $1.endDate ?? .distantPast) }
+        projectSections.closed
     }
 
     private var archivedProjects: [Project] {
-        filteredProjects
-            .filter { $0.status == .archived }
-            .sorted { ($0.completedAt ?? $0.endDate ?? .distantPast) > ($1.completedAt ?? $1.endDate ?? .distantPast) }
-    }
-
-    /// Bug 70a4d9fd — "most recently touched" stamp for the latest/earliest
-    /// edited sorts. Prefers the server-maintained `updatedAt`; falls back
-    /// to `createdAt` for legacy rows synced before that column was plumbed.
-    private static func recencyStamp(for project: Project) -> Date {
-        max(project.updatedAt ?? .distantPast, project.createdAt ?? .distantPast)
+        projectSections.archived
     }
 
     /// Task-type ids that read as vinyl work, scoped to the current company.

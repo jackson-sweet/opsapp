@@ -93,6 +93,41 @@ final class JobBoardListBehaviorTests: XCTestCase {
         XCTAssertEqual(result.map(\.id), [visible.id])
     }
 
+    func testJobBoardProjectSectionsPreserveLatestEditedOrderInsideEachSection() {
+        let oldScheduledFreshEdit = makeProject(
+            id: "old-scheduled-fresh-edit",
+            status: .accepted,
+            start: Date(timeIntervalSince1970: 100),
+            updatedAt: Date(timeIntervalSince1970: 900)
+        )
+        let newScheduledStaleEdit = makeProject(
+            id: "new-scheduled-stale-edit",
+            status: .accepted,
+            start: Date(timeIntervalSince1970: 800),
+            updatedAt: Date(timeIntervalSince1970: 200)
+        )
+        let freshClosed = makeProject(
+            id: "fresh-closed",
+            status: .closed,
+            completedAt: Date(timeIntervalSince1970: 300),
+            updatedAt: Date(timeIntervalSince1970: 700)
+        )
+        let staleClosed = makeProject(
+            id: "stale-closed",
+            status: .closed,
+            completedAt: Date(timeIntervalSince1970: 900),
+            updatedAt: Date(timeIntervalSince1970: 400)
+        )
+
+        let sections = JobBoardProjectFiltering.projectSections(
+            from: [newScheduledStaleEdit, staleClosed, oldScheduledFreshEdit, freshClosed],
+            sortOption: .latestEdited
+        )
+
+        XCTAssertEqual(sections.active.map(\.id), ["old-scheduled-fresh-edit", "new-scheduled-stale-edit"])
+        XCTAssertEqual(sections.closed.map(\.id), ["fresh-closed", "stale-closed"])
+    }
+
     func testDragClassifierRequiresHorizontalDominanceBeforeSwipe() {
         XCTAssertEqual(
             DirectionalDragClassifier.axis(forTranslation: CGSize(width: 44, height: 20)),
@@ -112,11 +147,17 @@ final class JobBoardListBehaviorTests: XCTestCase {
         id: String,
         status: Status,
         start: Date? = nil,
-        deletedAt: Date? = nil
+        deletedAt: Date? = nil,
+        completedAt: Date? = nil,
+        createdAt: Date? = nil,
+        updatedAt: Date? = nil
     ) -> Project {
         let project = Project(id: id, title: id, status: status)
         project.startDate = start
         project.deletedAt = deletedAt
+        project.completedAt = completedAt
+        project.createdAt = createdAt
+        project.updatedAt = updatedAt
         return project
     }
 

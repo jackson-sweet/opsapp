@@ -20,11 +20,10 @@ struct ProjectsWithoutTasksReviewView: View {
 
     @State private var projects: [Project] = []
 
-    /// Bug fa5010b0 — id of the project whose inline quick-add composer
-    /// is currently expanded. Only one composer at a time; tapping a
-    /// different row collapses the previous one. `nil` means every row
-    /// is in its collapsed default state.
+    /// Id of the project whose inline details + quick-add composer are
+    /// currently expanded. Only one card opens at a time.
     @State private var expandedProjectId: String? = nil
+    @State private var addedTaskCountsByProjectId: [String: Int] = [:]
 
     // MARK: - Motion (spec: one curve, no spring; reduce-motion → fade only)
 
@@ -99,23 +98,7 @@ struct ProjectsWithoutTasksReviewView: View {
             ScrollView {
                 LazyVStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach(projects, id: \.id) { project in
-                        VStack(spacing: 0) {
-                            Button(action: { toggleExpansion(for: project) }) {
-                                row(project)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-
-                            if expandedProjectId == project.id {
-                                InlineQuickTaskComposer(
-                                    project: project,
-                                    allTaskTypes: allTaskTypes,
-                                    onSaved: { handleTaskSaved() },
-                                    onCancel: { collapseRow() }
-                                )
-                                .padding(.top, OPSStyle.Layout.spacing2)
-                                .transition(composerTransition)
-                            }
-                        }
+                        projectCard(project)
                     }
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -141,51 +124,120 @@ struct ProjectsWithoutTasksReviewView: View {
 
     // MARK: - Row
 
-    private func row(_ project: Project) -> some View {
-        return HStack(spacing: OPSStyle.Layout.spacing2_5) {
-            Circle()
-                .fill(project.status.color.opacity(0.25))
-                .frame(width: 32, height: 32)
-                .overlay(
-                    Circle()
-                        .stroke(project.status.color, lineWidth: OPSStyle.Layout.Border.standard)
-                )
-                .overlay(
-                    Image(systemName: "folder")
-                        .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
-                        .foregroundColor(project.status.color)
-                )
+    private func projectCard(_ project: Project) -> some View {
+        let isExpanded = expandedProjectId == project.id
 
-            VStack(alignment: .leading, spacing: 2) {
+        return VStack(alignment: .leading, spacing: 0) {
+            Button(action: { toggleExpansion(for: project) }) {
+                projectCardHeader(project, isExpanded: isExpanded)
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+                    Divider()
+                        .overlay(OPSStyle.Colors.line)
+                        .padding(.top, OPSStyle.Layout.spacing1)
+
+                    projectDetails(project)
+
+                    InlineQuickTaskComposer(
+                        project: project,
+                        allTaskTypes: allTaskTypes,
+                        savedCount: addedTaskCount(for: project),
+                        onSaved: { handleTaskSaved(for: project) },
+                        onCancel: { finishProjectReview(project) }
+                    )
+                }
+                .padding(.top, OPSStyle.Layout.spacing2)
+                .transition(composerTransition)
+            }
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface(
+            borderColor: isExpanded
+                ? OPSStyle.Colors.line
+                : OPSStyle.Colors.glassBorder
+        )
+        .contentShape(Rectangle())
+    }
+
+    private func projectCardHeader(_ project: Project, isExpanded: Bool) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
+            projectStatusGlyph(project)
+
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(project.title.uppercased())
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
 
                 HStack(spacing: OPSStyle.Layout.spacing1) {
-                    Text(project.status.displayName.uppercased())
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(project.status.color)
-
-                    Text("·")
+                    Text(daysSinceLabel(project).uppercased())
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                    Text(daysSinceLabel(project))
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    if addedTaskCount(for: project) > 0 {
+                        Text("·")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.textMute)
+
+                        Text(taskAddedLabel(for: project))
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.oliveTextM)
+                    }
                 }
             }
 
-            Spacer()
+            Spacer(minLength: OPSStyle.Layout.spacing2)
 
-            Image(systemName: OPSStyle.Icons.chevronRight)
-                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+            StatusBadge.forJobStatus(project.status, size: .small)
+
+            Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
+                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
         }
-        .padding(OPSStyle.Layout.spacing3)
-        .glassSurface()
         .contentShape(Rectangle())
+    }
+
+    private func projectStatusGlyph(_ project: Project) -> some View {
+        Circle()
+            .fill(project.status.color.opacity(0.20))
+            .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            .overlay(
+                Circle()
+                    .stroke(project.status.color.opacity(0.75), lineWidth: OPSStyle.Layout.Border.standard)
+            )
+            .overlay(
+                Image(systemName: "folder")
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                    .foregroundColor(project.status.color)
+            )
+    }
+
+    private func projectDetails(_ project: Project) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
+                ProjectReviewDetailCell(label: "CLIENT", value: cleanDetail(project.effectiveClientName))
+                ProjectReviewDetailCell(label: "CREW", value: crewLabel(for: project))
+            }
+
+            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
+                ProjectReviewDetailCell(label: "START", value: dateLabel(project.startDate))
+                ProjectReviewDetailCell(label: "ADDRESS", value: cleanDetail(project.address))
+            }
+
+            if let phone = project.effectiveClientPhone, !phone.isEmpty {
+                ProjectReviewDetailLine(label: "PHONE", value: phone)
+            }
+
+            if let email = project.effectiveClientEmail, !email.isEmpty {
+                ProjectReviewDetailLine(label: "EMAIL", value: email)
+            }
+        }
+        .padding(OPSStyle.Layout.spacing2_5)
+        .nestedCard()
     }
 
     // MARK: - Row helpers
@@ -199,6 +251,37 @@ struct ProjectsWithoutTasksReviewView: View {
         if days < 30 { return "\(days) days ago" }
         let months = days / 30
         return "\(months)mo ago"
+    }
+
+    private func addedTaskCount(for project: Project) -> Int {
+        addedTaskCountsByProjectId[project.id] ?? 0
+    }
+
+    private func taskAddedLabel(for project: Project) -> String {
+        let count = addedTaskCount(for: project)
+        return "\(count) TASK\(count == 1 ? "" : "S") ADDED"
+    }
+
+    private func crewLabel(for project: Project) -> String {
+        let names = project.teamMembers
+            .map(\.fullName)
+            .filter { !$0.isEmpty }
+
+        if names.isEmpty { return "—" }
+        if names.count == 1 { return names[0] }
+        return "\(names.count) CREW"
+    }
+
+    private func cleanDetail(_ value: String?) -> String {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return "—"
+        }
+        return value
+    }
+
+    private func dateLabel(_ date: Date?) -> String {
+        guard let date = date else { return "—" }
+        return DateHelper.simpleDateString(from: date).uppercased()
     }
 
     // MARK: - Empty State
@@ -231,46 +314,83 @@ struct ProjectsWithoutTasksReviewView: View {
         projects = ProjectsWithoutTasksDetector.projectsWithoutTasks(from: all)
     }
 
-    /// Bug fa5010b0 — tap toggles the inline composer instead of
-    /// navigating away. The operator wants to fix the "no tasks" state
-    /// without leaving the review list; bouncing into project details
-    /// just to drop in a single task was friction.
     private func toggleExpansion(for project: Project) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         if expandedProjectId == project.id {
-            expandedProjectId = nil
+            finishProjectReview(project)
         } else {
             expandedProjectId = project.id
         }
     }
 
-    private func collapseRow() {
+    private func finishProjectReview(_ project: Project) {
         expandedProjectId = nil
+        if addedTaskCount(for: project) > 0 {
+            addedTaskCountsByProjectId[project.id] = nil
+            recomputeProjects()
+        }
     }
 
-    private func handleTaskSaved() {
+    private func handleTaskSaved(for project: Project) {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        expandedProjectId = nil
-        // The project just got a task — it should drop out of the
-        // "needs tasks" list on the next pass. Recompute against the
-        // latest local state.
-        recomputeProjects()
+        addedTaskCountsByProjectId[project.id, default: 0] += 1
+    }
+}
+
+private struct ProjectReviewDetailCell: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            Text(label)
+                .font(OPSStyle.Typography.microLabel)
+                .foregroundColor(OPSStyle.Colors.text3)
+
+            Text(value)
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(value == "—" ? OPSStyle.Colors.text3 : OPSStyle.Colors.text)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct ProjectReviewDetailLine: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
+            Text(label)
+                .font(OPSStyle.Typography.microLabel)
+                .foregroundColor(OPSStyle.Colors.text3)
+                .frame(width: OPSStyle.Layout.touchTargetStandard, alignment: .leading)
+
+            Text(value)
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.text)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+        }
     }
 }
 
 // MARK: - Inline Quick-Task Composer (bug fa5010b0)
 
-/// Single-shot inline task creator embedded inside each expandable row
-/// of `ProjectsWithoutTasksReviewView`. Mirrors the chip-based inline
-/// composer used in `ProjectFormSheet` so the two flows feel like the
-/// same control: pick a task type, pick a crew, pick a date, save.
+/// Inline task creator embedded inside each expandable project card.
+/// Mirrors the chip-based composer used in `ProjectFormSheet`: pick a
+/// task type, pick a crew, pick a date, add the task, keep going.
 ///
 /// On save the composer constructs a `ProjectTask`, persists it via
 /// `DataController.createTask`, and calls back so the parent can
-/// collapse + refresh.
+/// update its in-session added count while this card stays open.
 private struct InlineQuickTaskComposer: View {
     let project: Project
     let allTaskTypes: [TaskType]
+    let savedCount: Int
     let onSaved: () -> Void
     let onCancel: () -> Void
 
@@ -289,37 +409,39 @@ private struct InlineQuickTaskComposer: View {
     @State private var saving = false
     @State private var saveError: String? = nil
 
-    init(project: Project, allTaskTypes: [TaskType], onSaved: @escaping () -> Void, onCancel: @escaping () -> Void) {
+    init(project: Project, allTaskTypes: [TaskType], savedCount: Int, onSaved: @escaping () -> Void, onCancel: @escaping () -> Void) {
         self.project = project
         self.allTaskTypes = allTaskTypes
+        self.savedCount = savedCount
         self.onSaved = onSaved
         self.onCancel = onCancel
-        _draftTask = State(initialValue: LocalTask(
-            id: UUID(),
-            taskTypeId: "",
-            customTitle: nil,
-            status: .active,
-            teamMemberIds: [],
-            startDate: nil,
-            endDate: nil
-        ))
+        _draftTask = State(initialValue: Self.blankDraftTask())
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
+                Text("// ADD TASK")
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(OPSStyle.Colors.text3)
+
+                Spacer()
+
+                if savedCount > 0 {
+                    Text("\(savedCount) ADDED")
+                        .font(OPSStyle.Typography.microLabel)
+                        .foregroundColor(OPSStyle.Colors.oliveTextM)
+                }
+            }
+
             InlineTaskRow(
                 task: draftTask,
                 availableTaskTypes: allTaskTypes,
                 teamMemberCount: draftTask.teamMemberIds.count,
+                surfaceStyle: .nested,
                 isEnabled: !saving,
                 onTaskTypeChange: { newTypeId in
                     draftTask.taskTypeId = newTypeId
-                    // Bug fa5010b0 — clear any crew the user picked
-                    // before they chose a type so the "recent for type"
-                    // suggestions get a clean slate on the next tap.
-                    if assignSelectedIds.isEmpty == false && draftTask.teamMemberIds.isEmpty {
-                        // no-op — keep the user's prior selection if any
-                    }
                 },
                 onCreateNewTaskType: { /* inline composer doesn't surface task-type creation */ },
                 onTeamTap: { presentCrewPicker() },
@@ -338,19 +460,9 @@ private struct InlineQuickTaskComposer: View {
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 Button(action: onCancel) {
-                    Text("CANCEL")
-                        .font(OPSStyle.Typography.captionBold)
-                        .tracking(0.8)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                        .background(Color.clear)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
+                    Text(savedCount > 0 ? "DONE" : "CANCEL")
                 }
-                .buttonStyle(PlainButtonStyle())
+                .opsSecondaryButtonStyle()
                 .disabled(saving)
 
                 Button(action: { Task { await saveTask() } }) {
@@ -360,22 +472,14 @@ private struct InlineQuickTaskComposer: View {
                                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.invertedText))
                                 .scaleEffect(0.8)
                         }
-                        Text(saving ? "SAVING" : "SAVE TASK")
-                            .font(OPSStyle.Typography.captionBold)
-                            .tracking(0.8)
-                            .foregroundColor(OPSStyle.Colors.invertedText)
+                        Text(saving ? "ADDING" : "ADD TASK")
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                    .background(canSave ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
-                .buttonStyle(PlainButtonStyle())
+                .opsPrimaryButtonStyle(isDisabled: !canSave || saving)
                 .disabled(!canSave || saving)
             }
         }
-        .padding(OPSStyle.Layout.spacing3)
-        .glassSurface(borderColor: OPSStyle.Colors.primaryAccent.opacity(0.5))
+        .padding(OPSStyle.Layout.spacing2_5)
         .onAppear { loadTeamUsers() }
         .sheet(isPresented: $showCrewPicker, onDismiss: { handleCrewPickerDismiss() }) {
             crewPickerSheet
@@ -390,6 +494,18 @@ private struct InlineQuickTaskComposer: View {
     private var canSave: Bool {
         !draftTask.taskTypeId.isEmpty &&
         allTaskTypes.contains(where: { $0.id == draftTask.taskTypeId })
+    }
+
+    private static func blankDraftTask() -> LocalTask {
+        LocalTask(
+            id: UUID(),
+            taskTypeId: "",
+            customTitle: nil,
+            status: .active,
+            teamMemberIds: [],
+            startDate: nil,
+            endDate: nil
+        )
     }
 
     // MARK: - Team picker
@@ -537,6 +653,12 @@ private struct InlineQuickTaskComposer: View {
         do {
             try await dataController.createTask(task: task)
             saving = false
+            draftTask = Self.blankDraftTask()
+            assignSelectedIds = []
+            schedulerConfirmed = false
+            schedulerDatesExisted = false
+            schedulerStart = Date()
+            schedulerEnd = schedulerStart
             onSaved()
         } catch {
             saving = false

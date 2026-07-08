@@ -30,6 +30,12 @@ import SwiftUI
 /// All tokens come from `OPSStyle`; no hardcoded colors, fonts, spacing,
 /// or motion values. Reduced-motion is respected via `accessibleEaseInOut`.
 struct InlineTaskRow: View {
+    enum SurfaceStyle {
+        case glass
+        case nested
+        case none
+    }
+
     // MARK: - Inputs
 
     let task: LocalTask
@@ -39,6 +45,7 @@ struct InlineTaskRow: View {
     let teamMemberCount: Int
 
     /// When false (tutorial gating), chips do not respond to taps.
+    var surfaceStyle: SurfaceStyle = .glass
     let isEnabled: Bool
 
     // MARK: - Callbacks (parent owns mutation)
@@ -87,7 +94,8 @@ struct InlineTaskRow: View {
     // MARK: - Body
 
     var body: some View {
-        HStack(spacing: 0) {
+        styledSurface(
+            HStack(spacing: 0) {
             // Color rail
             Rectangle()
                 .fill(typeColor)
@@ -106,9 +114,9 @@ struct InlineTaskRow: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing2_5)
             .padding(.vertical, OPSStyle.Layout.spacing2)
-        }
-        .frame(minHeight: OPSStyle.Layout.touchTargetLarge)
-        .glassSurface()
+            }
+            .frame(minHeight: OPSStyle.Layout.touchTargetLarge)
+        )
         .opacity(isTerminal ? OPSStyle.Layout.Opacity.strong : 1.0)
         .contentShape(Rectangle())
         .onTapGesture {
@@ -119,6 +127,18 @@ struct InlineTaskRow: View {
             contextMenuContent
         }
         .allowsHitTesting(isEnabled)
+    }
+
+    @ViewBuilder
+    private func styledSurface<Content: View>(_ content: Content) -> some View {
+        switch surfaceStyle {
+        case .glass:
+            content.glassSurface()
+        case .nested:
+            content.nestedCard()
+        case .none:
+            content
+        }
     }
 
     // MARK: - Type chip (Menu)

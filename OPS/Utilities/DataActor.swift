@@ -620,6 +620,7 @@ actor DataActor {
                 entityId: id,
                 fields: [
                     "firstName", "lastName", "email", "phone", "homeAddress",
+                    "companyId", "specialPermissions",
                     "profileImageURL", "userColor", "role", "userType",
                     "hasCompletedAppOnboarding", "hasCompletedAppTutorial",
                     "devPermission", "latitude", "longitude", "locationName",
@@ -633,6 +634,8 @@ actor DataActor {
             if accept.contains("email"), let email = dto.email { existing.email = email }
             if accept.contains("phone") { existing.phone = dto.phone }
             if accept.contains("homeAddress") { existing.homeAddress = dto.homeAddress }
+            if accept.contains("companyId") { existing.companyId = dto.companyId }
+            if accept.contains("specialPermissions") { existing.specialPermissions = dto.specialPermissions ?? [] }
             if accept.contains("profileImageURL") { existing.profileImageURL = dto.profileImageUrl }
             if accept.contains("userColor") { existing.userColor = dto.userColor }
             if accept.contains("role") {

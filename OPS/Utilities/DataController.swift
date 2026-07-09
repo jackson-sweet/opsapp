@@ -6551,6 +6551,8 @@ class DataController: ObservableObject {
             if let email = model.email { existing.email = email }
             existing.phone = model.phone
             existing.homeAddress = model.homeAddress
+            existing.companyId = model.companyId
+            existing.specialPermissions = model.specialPermissions
             existing.profileImageURL = model.profileImageURL
             existing.userColor = model.userColor
             existing.role = model.role

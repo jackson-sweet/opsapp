@@ -1079,11 +1079,18 @@ struct ExpenseFormSheet: View {
     /// no receipt) when neither is present. Only gates submits — saving a draft
     /// or an in-place edit never blocks.
     private func receiptGatePassed(submit: Bool) -> Bool {
-        guard submit, viewModel.settings?.requireReceiptPhoto == true else { return true }
-        if hasReceipt || noReceiptReason != nil { return true }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        showReceiptRequiredDialog = true
-        return false
+        let passed = ExpenseSubmissionGate.passes(
+            submit: submit,
+            required: viewModel.settings?.requireReceiptPhoto == true,
+            hasArtifact: hasReceipt,
+            hasReason: noReceiptReason != nil
+        )
+        guard passed else {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showReceiptRequiredDialog = true
+            return false
+        }
+        return true
     }
 
     /// A project is present when at least one allocation resolves to a real
@@ -1095,11 +1102,18 @@ struct ExpenseFormSheet: View {
     /// A submit needs either a project or an explicit no-project reason when
     /// the company requires one. Same submit-only gate as receipts.
     private func projectGatePassed(submit: Bool) -> Bool {
-        guard submit, viewModel.settings?.requireProjectAssignment == true else { return true }
-        if hasProject || noProjectReason != nil { return true }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        showProjectRequiredDialog = true
-        return false
+        let passed = ExpenseSubmissionGate.passes(
+            submit: submit,
+            required: viewModel.settings?.requireProjectAssignment == true,
+            hasArtifact: hasProject,
+            hasReason: noProjectReason != nil
+        )
+        guard passed else {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showProjectRequiredDialog = true
+            return false
+        }
+        return true
     }
 
     /// 'Add Project' from the fork — append a blank allocation and open the

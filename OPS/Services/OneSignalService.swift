@@ -418,32 +418,8 @@ class OneSignalService {
         print("[ONESIGNAL SERVICE] Dependency completion notification sent to \(filteredUserIds.count) users")
     }
 
-    /// Notify admins that an expense invoice has been submitted for review
-    func notifyExpenseSubmitted(
-        adminUserIds: [String],
-        submitterName: String,
-        batchNumber: String,
-        batchId: String
-    ) async throws {
-        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
-        let filtered = adminUserIds.filter { $0 != currentUserId }
-        guard !filtered.isEmpty else { return }
-
-        try await sendToUsers(
-            userIds: filtered,
-            title: "Invoice Submitted",
-            body: "\(submitterName) submitted invoice \(batchNumber) for review",
-            data: [
-                "type": "expense_submitted",
-                "batchId": batchId,
-                "screen": "expenses"
-            ]
-        )
-        print("[ONESIGNAL SERVICE] Expense submitted notification sent to \(filtered.count) admins")
-    }
-
-    /// Notify a crew member that their invoice has been approved
-    func notifyInvoiceApproved(
+    /// Notify a crew member that their expense batch was approved.
+    func notifyBatchApproved(
         userId: String,
         batchNumber: String,
         batchId: String
@@ -454,19 +430,19 @@ class OneSignalService {
 
         try await sendToUser(
             userId: userId,
-            title: "Invoice Approved",
-            body: "Your invoice \(batchNumber) has been approved",
+            title: "Expenses Approved",
+            body: "Your batch \(batchNumber) was approved",
             data: [
-                "type": "invoice_approved",
+                "type": "expense_approved",
                 "batchId": batchId,
                 "screen": "expenses"
             ]
         )
-        print("[ONESIGNAL SERVICE] Invoice approved notification sent to user: \(userId)")
+        print("[ONESIGNAL SERVICE] Batch approved notification sent to user: \(userId)")
     }
 
-    /// Notify a crew member that their invoice needs revisions
-    func notifyInvoiceRevisions(
+    /// Notify a crew member that flagged lines on their batch were sent back.
+    func notifyBatchSentBack(
         userId: String,
         batchNumber: String,
         batchId: String,
@@ -478,15 +454,39 @@ class OneSignalService {
 
         try await sendToUser(
             userId: userId,
-            title: "Invoice Revisions Needed",
-            body: "\(flaggedCount) expense\(flaggedCount == 1 ? "" : "s") on \(batchNumber) need\(flaggedCount == 1 ? "s" : "") revision",
+            title: "Expenses Sent Back",
+            body: "\(flaggedCount) expense\(flaggedCount == 1 ? "" : "s") on \(batchNumber) need\(flaggedCount == 1 ? "s" : "") fixes",
             data: [
-                "type": "invoice_revisions",
+                "type": "expense_rejected",
                 "batchId": batchId,
                 "screen": "expenses"
             ]
         )
-        print("[ONESIGNAL SERVICE] Invoice revisions notification sent to user: \(userId)")
+        print("[ONESIGNAL SERVICE] Batch sent-back notification sent to user: \(userId)")
+    }
+
+    /// Notify a crew member that their approved batch was paid out.
+    /// Copy matches the OPS-Web dispatch exactly.
+    func notifyBatchPaid(
+        userId: String,
+        batchNumber: String,
+        batchId: String
+    ) async throws {
+        if userId == UserDefaults.standard.string(forKey: "currentUserId") {
+            return
+        }
+
+        try await sendToUser(
+            userId: userId,
+            title: "Expenses Paid Out",
+            body: "Your expense batch \(batchNumber) has been paid out",
+            data: [
+                "type": "expense_paid",
+                "batchId": batchId,
+                "screen": "expenses"
+            ]
+        )
+        print("[ONESIGNAL SERVICE] Batch paid notification sent to user: \(userId)")
     }
 
     // MARK: - Private Implementation

@@ -32,6 +32,8 @@ class ExpenseViewModel: ObservableObject {
     private var storedUserName: String?
     private let ocrService: ExpenseOCRServiceProtocol = AppleVisionOCRService()
     private let notificationRepo = NotificationRepository()
+    /// Debounce for realtime-driven console reloads (`.expenseUpdated` bursts).
+    private var realtimeRefreshTask: Task<Void, Never>?
 
     enum ExpenseFilter: String, CaseIterable {
         case all      = "ALL"
@@ -495,16 +497,227 @@ class ExpenseViewModel: ObservableObject {
     }
 
 
-    // MARK: - Invoice Review
+    // MARK: - Batch Console (four-bucket review)
 
-    func loadBatchesForReview() async {
+    /// One console load: every company batch + every company line + settings,
+    /// in parallel. The strip and the queue derive from the SAME two datasets
+    /// so the numbers can never disagree with the list beneath them.
+    func loadConsole() async {
         guard let repo = repository else { return }
         isLoading = true
         defer { isLoading = false }
         do {
-            reviewBatches = try await repo.fetchBatches()
+            async let batchesTask = repo.fetchBatches()
+            async let linesTask = repo.fetchAll()
+            async let settingsTask = repo.fetchSettings()
+            let (batches, lines, loadedSettings) = try await (batchesTask, linesTask, settingsTask)
+            reviewBatches = batches
+            expenses = lines
+            settings = loadedSettings
+        } catch {
+            if !error.isCancellation { self.error = error.localizedDescription }
+        }
+    }
+
+    /// Debounced realtime refresh. RealtimeProcessor posts `.expenseUpdated`
+    /// for every `expenses` / `expense_batches` change — coalesce bursts
+    /// (an approval flips a batch plus each of its lines) into one reload.
+    func scheduleRealtimeRefresh() {
+        realtimeRefreshTask?.cancel()
+        realtimeRefreshTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            await self?.loadConsole()
+        }
+    }
+
+    /// Per-batch line counts + flag counts for the loaded company lines.
+    var consoleLineStats: [String: ExpenseBatchLineStats] {
+        ExpenseBuckets.lineStats(expenses)
+    }
+
+    /// The four working sets, each in its canonical order.
+    var consoleSplit: ExpenseBucketSplit {
+        ExpenseBuckets.split(reviewBatches, lineStats: consoleLineStats)
+    }
+
+    /// Everything the instrument strip shows.
+    var consoleMetrics: ExpenseConsoleMetrics {
+        ExpenseBuckets.computeMetrics(batches: reviewBatches, expenses: expenses, now: Date())
+    }
+
+    // MARK: - Batch actions (RPC-backed)
+
+    /// Atomic whole-batch approve — `approve_expense_batch` sets the batch and
+    /// its non-rejected lines approved and recalculates in one transaction,
+    /// then accounting sync fires best-effort per approved line (web parity).
+    /// `silent` suppresses the per-batch toast for bulk runs.
+    @discardableResult
+    func approveBatch(_ batch: ExpenseBatchDTO, silent: Bool = false) async -> Bool {
+        guard let repo = repository else { return false }
+        do {
+            try await repo.approveBatchAtomic(batch.id)
+            let lines = (try? await repo.fetchBatchExpenses(batch.id)) ?? []
+            for line in lines where ExpenseStatus(rawValue: line.status) == .approved {
+                await repo.triggerAccountingSync(expenseId: line.id)
+            }
+            notifySubmitter(of: batch, notice: .approved)
+            if !silent {
+                ToastCenter.shared.present(Feedback.Batch.approved)
+                await loadConsole()
+            }
+            return true
         } catch {
             self.error = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Bulk approve — sequential atomic RPCs (each batch approves whole or
+    /// not at all). Stops on the first failure; everything already approved
+    /// stays approved. Returns how many went through.
+    @discardableResult
+    func approveBatches(_ batches: [ExpenseBatchDTO]) async -> Int {
+        var approvedCount = 0
+        for batch in batches {
+            let ok = await approveBatch(batch, silent: true)
+            if !ok { break }
+            approvedCount += 1
+        }
+        if approvedCount > 0 {
+            ToastCenter.shared.present(Feedback.Batch.allApproved)
+        }
+        await loadConsole()
+        return approvedCount
+    }
+
+    /// Record a payout — `mark_expense_batch_paid` stamps paid_at/paid_by and
+    /// flips the batch's approved lines to `reimbursed` ("paid" in the app).
+    /// The toast carries UNDO (mis-tap recovery, web parity).
+    @discardableResult
+    func markPaid(_ batch: ExpenseBatchDTO, silent: Bool = false) async -> Bool {
+        guard let repo = repository else { return false }
+        do {
+            try await repo.markBatchPaid(batch.id)
+            notifySubmitter(of: batch, notice: .paid)
+            if !silent {
+                ToastCenter.shared.present(Toast(
+                    label: "// PAID OUT · \(batch.batchNumber)",
+                    tone: .success,
+                    action: ToastAction(label: "UNDO") { [weak self] in
+                        Task { await self?.unmarkPaid(batch) }
+                    }
+                ))
+                await loadConsole()
+            }
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Bulk payout — sequential RPCs, one summary toast (no bulk undo; each
+    /// batch's detail keeps UNDO). Returns how many went through.
+    @discardableResult
+    func markPaidBatches(_ batches: [ExpenseBatchDTO]) async -> Int {
+        var paidCount = 0
+        for batch in batches {
+            let ok = await markPaid(batch, silent: true)
+            if !ok { break }
+            paidCount += 1
+        }
+        if paidCount > 0 {
+            ToastCenter.shared.present(Feedback.Batch.allPaid)
+        }
+        await loadConsole()
+        return paidCount
+    }
+
+    /// Reverse a payout recording — clears paid_at/paid_by and returns the
+    /// lines to `approved`. No notification (web parity).
+    func unmarkPaid(_ batch: ExpenseBatchDTO) async {
+        guard let repo = repository else { return }
+        do {
+            try await repo.unmarkBatchPaid(batch.id)
+            ToastCenter.shared.present(Feedback.Batch.paidUndone)
+            await loadConsole()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// Early-clear one line while its envelope is still filling. The server
+    /// approves the line, leaves the envelope open, recalculates, and
+    /// notifies the submitter itself.
+    func earlyClearLine(_ expenseId: String, batchId: String) async {
+        guard let repo = repository else { return }
+        do {
+            try await repo.earlyClearLine(expenseId)
+            ToastCenter.shared.present(Feedback.Batch.lineCleared)
+            await loadBatchExpenses(batchId)
+            await loadConsole()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    // MARK: - Submitter notifications (batch vocabulary)
+
+    private enum BatchNotice {
+        case approved
+        case sentBack(count: Int)
+        case paid
+    }
+
+    /// In-app row + push to the batch's submitter. Skips self-notification
+    /// (the acting approver's feedback is the toast).
+    private func notifySubmitter(of batch: ExpenseBatchDTO, notice: BatchNotice) {
+        guard let submitterId = batch.submittedBy, !submitterId.isEmpty,
+              let companyId = storedCompanyId, !companyId.isEmpty,
+              submitterId != storedUserId else { return }
+        let capturedRepo = notificationRepo
+        let batchNumber = batch.batchNumber
+        let batchId = batch.id
+        Task {
+            let type: String
+            let title: String
+            let body: String
+            switch notice {
+            case .approved:
+                type = "expense_approved"
+                title = "Expenses Approved"
+                body = "Your batch \(batchNumber) was approved"
+            case .sentBack(let count):
+                type = "expense_rejected"
+                title = "Expenses Sent Back"
+                body = "\(count) expense\(count == 1 ? "" : "s") on \(batchNumber) need\(count == 1 ? "s" : "") fixes"
+            case .paid:
+                type = "expense_paid"
+                title = "Expenses Paid Out"
+                body = "Your expense batch \(batchNumber) has been paid out"
+            }
+            let dto = NotificationRepository.CreateNotificationDTO(
+                userId: submitterId,
+                companyId: companyId,
+                type: type,
+                title: title,
+                body: body,
+                batchId: batchId,
+                deepLinkType: "expense"
+            )
+            try? await capturedRepo.createNotification(dto)
+            switch notice {
+            case .approved:
+                try? await OneSignalService.shared.notifyBatchApproved(
+                    userId: submitterId, batchNumber: batchNumber, batchId: batchId)
+            case .sentBack(let count):
+                try? await OneSignalService.shared.notifyBatchSentBack(
+                    userId: submitterId, batchNumber: batchNumber, batchId: batchId, flaggedCount: count)
+            case .paid:
+                try? await OneSignalService.shared.notifyBatchPaid(
+                    userId: submitterId, batchNumber: batchNumber, batchId: batchId)
+            }
         }
     }
 
@@ -570,66 +783,6 @@ class ExpenseViewModel: ObservableObject {
         }
     }
 
-    func approveInvoice(_ batchId: String, reviewedBy: String) async {
-        guard let repo = repository else { return }
-        do {
-            let approvedAmount = selectedBatchExpenses.reduce(0.0) { $0 + $1.amount }
-            _ = try await repo.updateBatchStatus(
-                batchId,
-                status: ExpenseBatchStatus.approved.rawValue,
-                reviewedBy: reviewedBy,
-                approvedAmount: approvedAmount
-            )
-            for expense in selectedBatchExpenses {
-                _ = try await repo.approve(expense.id, approvedBy: reviewedBy)
-                await repo.triggerAccountingSync(expenseId: expense.id)
-            }
-
-            // Notify the crew member who submitted the invoice
-            let matchingBatch = reviewBatches.first(where: { $0.id == batchId })
-            if let submittedBy = matchingBatch?.submittedBy,
-               let companyId = storedCompanyId {
-                let capturedNotificationRepo = notificationRepo
-                let capturedBatchNumber = matchingBatch?.batchNumber ?? batchId
-                Task {
-                    // Create in-app notification
-                    let dto = NotificationRepository.CreateNotificationDTO(
-                        userId: submittedBy,
-                        companyId: companyId,
-                        type: "invoice_approved",
-                        title: "Invoice Approved",
-                        body: "Your invoice \(capturedBatchNumber) has been approved",
-                        projectId: nil,
-                        noteId: nil,
-                        expenseId: nil,
-                        batchId: batchId,
-                        deepLinkType: "invoice_detail"
-                    )
-                    try? await capturedNotificationRepo.createNotification(dto)
-                    // Send push
-                    try? await OneSignalService.shared.notifyInvoiceApproved(
-                        userId: submittedBy,
-                        batchNumber: capturedBatchNumber,
-                        batchId: batchId
-                    )
-                }
-
-                // Schedule local notification for immediate feedback
-                NotificationManager.shared.scheduleExpenseNotification(
-                    category: .invoiceApproved,
-                    title: "Invoice Approved",
-                    body: "Your invoice \(capturedBatchNumber) has been approved",
-                    batchId: batchId
-                )
-            }
-
-            ToastCenter.shared.present(Feedback.Invoice.approved)
-            await loadBatchesForReview()
-        } catch {
-            self.error = error.localizedDescription
-        }
-    }
-
     func sendRevisions(batchId: String, batch: ExpenseBatchDTO, reviewedBy: String, reviewNotes: String?) async {
         guard let repo = repository else { return }
         do {
@@ -680,47 +833,11 @@ class ExpenseViewModel: ObservableObject {
             flaggedExpenseIds.removeAll()
             flagComments.removeAll()
 
-            // Notify the crew member about revisions needed
-            if let submittedBy = batch.submittedBy,
-               let companyId = storedCompanyId {
-                let capturedNotificationRepo = notificationRepo
-                let capturedBatchNumber = batch.batchNumber
-                let flaggedCount = flagged.count
-                Task {
-                    // Create in-app notification
-                    let dto = NotificationRepository.CreateNotificationDTO(
-                        userId: submittedBy,
-                        companyId: companyId,
-                        type: "invoice_revisions",
-                        title: "Invoice Revisions Needed",
-                        body: "\(flaggedCount) expense\(flaggedCount == 1 ? "" : "s") on \(capturedBatchNumber) need\(flaggedCount == 1 ? "s" : "") revision",
-                        projectId: nil,
-                        noteId: nil,
-                        expenseId: nil,
-                        batchId: batchId,
-                        deepLinkType: "invoice_detail"
-                    )
-                    try? await capturedNotificationRepo.createNotification(dto)
-                    // Send push
-                    try? await OneSignalService.shared.notifyInvoiceRevisions(
-                        userId: submittedBy,
-                        batchNumber: capturedBatchNumber,
-                        batchId: batchId,
-                        flaggedCount: flaggedCount
-                    )
-                }
+            // Tell the submitter their flagged lines came back (in-app + push).
+            notifySubmitter(of: batch, notice: .sentBack(count: flagged.count))
 
-                // Schedule local notification for immediate feedback
-                NotificationManager.shared.scheduleExpenseNotification(
-                    category: .invoiceRevisions,
-                    title: "Invoice Revisions Needed",
-                    body: "\(flaggedCount) expense\(flaggedCount == 1 ? "" : "s") on \(capturedBatchNumber) need\(flaggedCount == 1 ? "s" : "") revision",
-                    batchId: batchId
-                )
-            }
-
-            ToastCenter.shared.present(Feedback.Estimate.revisionsSent)
-            await loadBatchesForReview()
+            ToastCenter.shared.present(Feedback.Batch.sentBack)
+            await loadConsole()
         } catch {
             self.error = error.localizedDescription
         }

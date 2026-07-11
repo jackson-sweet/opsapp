@@ -88,6 +88,17 @@ enum Feedback {
         static let revisionsSent   = Toast(label: "// REVISIONS SENT", tone: .success)
     }
 
+    // MARK: - Expense Batches (review console)
+
+    enum Batch {
+        static let approved    = Toast(label: "// BATCH APPROVED", tone: .success)
+        static let allApproved = Toast(label: "// ALL CLEAR", tone: .success)
+        static let paidUndone  = Toast(label: "// PAYOUT UNDONE", tone: .success)
+        static let allPaid     = Toast(label: "// PAID OUT", tone: .success)
+        static let sentBack    = Toast(label: "// SENT BACK", tone: .warning)
+        static let lineCleared = Toast(label: "// LINE CLEARED", tone: .success)
+    }
+
     // MARK: - Expenses
 
     enum Expense {

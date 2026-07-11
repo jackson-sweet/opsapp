@@ -264,6 +264,10 @@ struct ExpenseBatchDTO: Codable, Identifiable {
     /// Project this batch is scoped to. Non-nil only for companies with
     /// review_frequency = 'per_job'; nil for period-mode batches.
     let scopeProjectId: String?
+    /// Payout stage (2026-07-10). Non-nil once the office records the batch as
+    /// paid out — an approved batch with `paidAt == nil` is money still owed.
+    let paidAt: String?
+    let paidBy: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -282,6 +286,8 @@ struct ExpenseBatchDTO: Codable, Identifiable {
         case reviewNotes     = "review_notes"
         case createdAt       = "created_at"
         case scopeProjectId  = "scope_project_id"
+        case paidAt          = "paid_at"
+        case paidBy          = "paid_by"
     }
 }
 
@@ -318,6 +324,10 @@ struct ExpenseSettingsDTO: Codable {
     var adminApprovalThreshold: Double?
     var requireReceiptPhoto: Bool?
     var requireProjectAssignment: Bool?
+    /// Days after a period ends before the server sweep auto-sends its
+    /// envelope for review (default 7). Powers the console's
+    /// "AUTO-SENDS <date>" foresight on filling envelopes.
+    var autoSubmitGraceDays: Int?
 
     enum CodingKeys: String, CodingKey {
         case companyId                = "company_id"
@@ -326,6 +336,7 @@ struct ExpenseSettingsDTO: Codable {
         case adminApprovalThreshold   = "admin_approval_threshold"
         case requireReceiptPhoto      = "require_receipt_photo"
         case requireProjectAssignment = "require_project_assignment"
+        case autoSubmitGraceDays      = "auto_submit_grace_days"
     }
 }
 

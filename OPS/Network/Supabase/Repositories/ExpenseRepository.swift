@@ -271,6 +271,43 @@ class ExpenseRepository {
             .value
     }
 
+    // MARK: - Approval + Payout RPCs (SECURITY DEFINER, `expenses.approve`-gated)
+
+    /// Atomic whole-batch approve — `approve_expense_batch` sets the batch and
+    /// its non-rejected lines `approved` and recalculates the total in one
+    /// transaction. Replaces the legacy two-direct-write path.
+    func approveBatchAtomic(_ batchId: String) async throws {
+        try await client
+            .rpc("approve_expense_batch", params: ["p_batch_id": batchId])
+            .execute()
+    }
+
+    /// Record a payout — `mark_expense_batch_paid` stamps `paid_at`/`paid_by`
+    /// (session-derived caller) and flips the batch's approved lines to
+    /// `reimbursed`, which the app renders as "paid".
+    func markBatchPaid(_ batchId: String) async throws {
+        try await client
+            .rpc("mark_expense_batch_paid", params: ["p_batch_id": batchId])
+            .execute()
+    }
+
+    /// Payout undo (mis-tap recovery) — clears `paid_at`/`paid_by` and returns
+    /// the batch's `reimbursed` lines to `approved`.
+    func unmarkBatchPaid(_ batchId: String) async throws {
+        try await client
+            .rpc("unmark_expense_batch_paid", params: ["p_batch_id": batchId])
+            .execute()
+    }
+
+    /// Early-clear a single line while its envelope is still filling —
+    /// approves the line, leaves the envelope `open`, recalculates, and
+    /// notifies the submitter server-side.
+    func earlyClearLine(_ expenseId: String) async throws {
+        try await client
+            .rpc("early_clear_expense_line", params: ["p_expense_id": expenseId])
+            .execute()
+    }
+
     func updateBatchStatus(_ batchId: String, status: String, reviewedBy: String? = nil, reviewNotes: String? = nil, approvedAmount: Double? = nil) async throws -> ExpenseBatchDTO {
         var fields: [String: String] = ["status": status]
         if let reviewedBy {

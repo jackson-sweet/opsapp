@@ -24,6 +24,10 @@ struct ExpenseDTO: Codable, Identifiable {
     let paymentMethod: String?
     let receiptImageUrl: String?
     let receiptThumbnailUrl: String?
+    let receiptMissingReason: String?
+    let receiptMissingNote: String?
+    let projectMissingReason: String?
+    let projectMissingNote: String?
     let ocrRawData: [String: String]?
     let ocrConfidence: Double?
     let batchId: String?
@@ -59,6 +63,10 @@ struct ExpenseDTO: Codable, Identifiable {
         case paymentMethod        = "payment_method"
         case receiptImageUrl      = "receipt_image_url"
         case receiptThumbnailUrl  = "receipt_thumbnail_url"
+        case receiptMissingReason = "receipt_missing_reason"
+        case receiptMissingNote   = "receipt_missing_note"
+        case projectMissingReason = "project_missing_reason"
+        case projectMissingNote   = "project_missing_note"
         case ocrRawData           = "ocr_raw_data"
         case ocrConfidence        = "ocr_confidence"
         case batchId              = "batch_id"
@@ -97,6 +105,10 @@ struct CreateExpenseDTO: Codable {
     let paymentMethod: String?
     let receiptImageUrl: String?
     let receiptThumbnailUrl: String?
+    let receiptMissingReason: String?
+    let receiptMissingNote: String?
+    let projectMissingReason: String?
+    let projectMissingNote: String?
     let ocrRawData: [String: String]?
     let ocrConfidence: Double?
 
@@ -114,6 +126,10 @@ struct CreateExpenseDTO: Codable {
         case paymentMethod        = "payment_method"
         case receiptImageUrl      = "receipt_image_url"
         case receiptThumbnailUrl  = "receipt_thumbnail_url"
+        case receiptMissingReason = "receipt_missing_reason"
+        case receiptMissingNote   = "receipt_missing_note"
+        case projectMissingReason = "project_missing_reason"
+        case projectMissingNote   = "project_missing_note"
         case ocrRawData           = "ocr_raw_data"
         case ocrConfidence        = "ocr_confidence"
     }
@@ -130,6 +146,10 @@ struct UpdateExpenseDTO: Codable {
     var paymentMethod: String?
     var receiptImageUrl: String?
     var receiptThumbnailUrl: String?
+    var receiptMissingReason: String?
+    var receiptMissingNote: String?
+    var projectMissingReason: String?
+    var projectMissingNote: String?
     var status: String?
     var batchId: String?
 
@@ -144,6 +164,10 @@ struct UpdateExpenseDTO: Codable {
         case paymentMethod        = "payment_method"
         case receiptImageUrl      = "receipt_image_url"
         case receiptThumbnailUrl  = "receipt_thumbnail_url"
+        case receiptMissingReason = "receipt_missing_reason"
+        case receiptMissingNote   = "receipt_missing_note"
+        case projectMissingReason = "project_missing_reason"
+        case projectMissingNote   = "project_missing_note"
         case status
         case batchId              = "batch_id"
     }

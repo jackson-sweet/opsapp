@@ -82,18 +82,14 @@ class ExpenseViewModel: ObservableObject {
         monthKeyFormatter.dateFormat = "yyyy-MM"
         let monthLabelFormatter = DateFormatter()
         monthLabelFormatter.dateFormat = "MMMM yyyy"
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withFullDate]
-        let isoFull = ISO8601DateFormatter()
 
-        // Parse date for each expense, group by month key
+        // Parse date for each expense, group by month key. Date-only strings
+        // anchor to LOCAL midnight (ExpenseBuckets.parseDate) so a line from
+        // the 1st never groups under the previous month west of Greenwich.
         var monthBuckets: [String: (label: String, expenses: [ExpenseDTO])] = [:]
         for expense in source {
             let dateString = expense.expenseDate ?? expense.createdAt
-            var date: Date?
-            date = iso.date(from: dateString)
-            if date == nil { date = isoFull.date(from: dateString) }
-            let resolvedDate = date ?? Date()
+            let resolvedDate = ExpenseBuckets.parseDate(dateString) ?? Date()
 
             let key = monthKeyFormatter.string(from: resolvedDate)
             let label = monthLabelFormatter.string(from: resolvedDate).uppercased()

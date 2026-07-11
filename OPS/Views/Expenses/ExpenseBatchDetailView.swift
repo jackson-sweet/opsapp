@@ -725,43 +725,23 @@ struct ExpenseBatchDetailView: View {
         return formatter.string(from: NSNumber(value: amount)) ?? "$0.00"
     }
 
+    // Date-only strings parse at LOCAL midnight (ExpenseBuckets.parseDate) —
+    // the old UTC-midnight parse showed period bounds and expense dates one
+    // day early for anyone west of Greenwich.
+
     private func formatPeriodDate(_ dateString: String) -> String {
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withFullDate]
-        let isoFull = ISO8601DateFormatter()
-        var date: Date?
-        date = iso.date(from: dateString)
-        if date == nil { date = isoFull.date(from: dateString) }
-        guard let resolved = date else { return dateString }
+        guard let resolved = ExpenseBuckets.parseDate(dateString) else { return dateString }
         let fmt = DateFormatter()
         fmt.dateFormat = "MMM d"
         return fmt.string(from: resolved)
     }
 
     private func formatShortDate(_ dateString: String) -> String {
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withFullDate]
-        let isoFull = ISO8601DateFormatter()
-        var date: Date?
-        date = iso.date(from: dateString)
-        if date == nil { date = isoFull.date(from: dateString) }
-        guard let resolved = date else { return dateString }
-        let fmt = DateFormatter()
-        fmt.dateFormat = "MMM d"
-        return fmt.string(from: resolved).uppercased()
+        formatPeriodDate(dateString).uppercased()
     }
 
     private func formatExpenseDate(_ dateString: String) -> String {
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withFullDate]
-        let isoFull = ISO8601DateFormatter()
-        var date: Date?
-        date = iso.date(from: dateString)
-        if date == nil { date = isoFull.date(from: dateString) }
-        guard let resolved = date else { return dateString }
-        let fmt = DateFormatter()
-        fmt.dateFormat = "MMM d"
-        return fmt.string(from: resolved)
+        formatPeriodDate(dateString)
     }
 }
 

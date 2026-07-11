@@ -66,24 +66,15 @@ struct ExpenseCard: View {
     }
 
     private var formattedDate: String {
-        guard let dateString = expense.expenseDate ?? Optional(expense.createdAt) else {
-            return ""
-        }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withFullDate]
-        if let date = formatter.date(from: dateString) {
-            let display = DateFormatter()
-            display.dateFormat = "MMM d"
-            return display.string(from: date)
-        }
-        // Fallback: try the full createdAt string
-        let fallback = ISO8601DateFormatter()
-        if let date = fallback.date(from: expense.createdAt) {
-            let display = DateFormatter()
-            display.dateFormat = "MMM d"
-            return display.string(from: date)
-        }
-        return ""
+        // Local-midnight parse for date-only strings (ExpenseBuckets.parseDate)
+        // — the old UTC-midnight parse showed every expense date one day early
+        // for anyone west of Greenwich.
+        let dateString = expense.expenseDate ?? expense.createdAt
+        guard let date = ExpenseBuckets.parseDate(dateString)
+                ?? ExpenseBuckets.parseDate(expense.createdAt) else { return "" }
+        let display = DateFormatter()
+        display.dateFormat = "MMM d"
+        return display.string(from: date)
     }
 
     var body: some View {

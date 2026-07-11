@@ -13,6 +13,7 @@ struct ExpenseBatchDetailView: View {
     let batch: ExpenseBatchDTO
     @ObservedObject var viewModel: ExpenseViewModel
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query private var teamMembers: [TeamMember]
@@ -33,10 +34,34 @@ struct ExpenseBatchDetailView: View {
         viewModel.flaggedExpenseIds.count
     }
 
+    private var canApprove: Bool { permissionStore.can("expenses.approve") }
+
+    /// Where this batch sits in its lifecycle — drives the header stats and
+    /// which footer (if any) renders. Same derivation as the console so the
+    /// two can never disagree.
+    private var bucket: ExpenseBucket? {
+        ExpenseBuckets.bucket(for: batch, lineCount: viewModel.selectedBatchExpenses.count)
+    }
+
+    private var owedAmount: Double { ExpenseBuckets.owedAmount(batch) }
+
+    private var batchStatus: ExpenseBatchStatus? { ExpenseBatchStatus(rawValue: batch.status) }
+
     private var isReviewable: Bool {
         // Filling (open) envelopes are not review-ready; only sent ones are.
-        // Shared rule with the hub's needsReview filter so they never diverge.
-        (ExpenseBatchStatus(rawValue: batch.status) ?? .pendingReview).needsReview
+        // Shared rule with the console's review bucket so they never diverge.
+        canApprove && (batchStatus?.needsReview ?? false)
+    }
+
+    private var hasFooter: Bool {
+        guard !viewModel.selectedBatchExpenses.isEmpty else { return false }
+        if isReviewable { return true }
+        return canApprove && bucket == .pay
+    }
+
+    private var paidByName: String? {
+        guard let paidBy = batch.paidBy else { return nil }
+        return teamMembers.first(where: { $0.id == paidBy })?.fullName.uppercased()
     }
 
     private var crewName: String {
@@ -73,17 +98,21 @@ struct ExpenseBatchDetailView: View {
                         headerCard
                             .padding(.top, OPSStyle.Layout.spacing3)
 
-                        reviewProgressBar
+                        lifecycleLine
+
+                        if isReviewable {
+                            reviewProgressBar
+                        }
 
                         sectionHeader("EXPENSES")
 
                         expenseCards
                     }
-                    .padding(.bottom, isReviewable ? 100 : OPSStyle.Layout.spacing5)
+                    .padding(.bottom, hasFooter ? 100 : OPSStyle.Layout.spacing5)
                 }
             }
 
-            if isReviewable && !viewModel.selectedBatchExpenses.isEmpty {
+            if hasFooter {
                 stickyFooter
             }
         }
@@ -148,16 +177,130 @@ struct ExpenseBatchDetailView: View {
 
             Divider().background(OPSStyle.Colors.cardBorder)
 
-            // Stats row
+            // Stats row — leads with the number that matters for where this
+            // batch sits: submitted total in review, owed once approved,
+            // the recorded payout once paid, the running total while filling.
             HStack(spacing: 0) {
-                statCell(label: "TOTAL", value: formatCurrency(batch.totalAmount ?? 0))
-                statCell(label: "ITEMS", value: "\(viewModel.selectedBatchExpenses.count)")
-                statCell(label: "SUBMITTED", value: formatShortDate(batch.createdAt))
+                ForEach(statCells, id: \.label) { cell in
+                    statCell(label: cell.label, value: cell.value)
+                }
             }
             .padding(.vertical, OPSStyle.Layout.spacing2)
         }
         .glassSurface()
         .padding(.horizontal, OPSStyle.Layout.spacing3)
+    }
+
+    private var statCells: [(label: String, value: String)] {
+        let items = "\(viewModel.selectedBatchExpenses.count)"
+        switch bucket {
+        case .pay:
+            if batchStatus == .partiallyApproved {
+                return [("OWED", formatCurrency(owedAmount)),
+                        ("ITEMS", items),
+                        ("TOTAL", formatCurrency(batch.totalAmount ?? 0))]
+            }
+            return [("OWED", formatCurrency(owedAmount)),
+                    ("ITEMS", items),
+                    ("SUBMITTED", formatShortDate(batch.createdAt))]
+        case .paid:
+            let when = ExpenseBuckets.parseDate(batch.paidAt).map(formatDateValue) ?? "—"
+            return [("PAID", formatCurrency(owedAmount)),
+                    ("ITEMS", items),
+                    ("ON", when)]
+        case .crew where batchStatus == .open:
+            return [("SO FAR", formatCurrency(batch.totalAmount ?? 0)),
+                    ("ITEMS", items),
+                    ("STARTED", formatShortDate(batch.createdAt))]
+        default:
+            return [("TOTAL", formatCurrency(batch.totalAmount ?? 0)),
+                    ("ITEMS", items),
+                    ("SUBMITTED", formatShortDate(batch.createdAt))]
+        }
+    }
+
+    // MARK: - Lifecycle line
+
+    /// One quiet line under the header naming the batch's current reality:
+    /// who recorded the payout, when a filling envelope auto-sends, or that
+    /// sent-back lines are with the crew. UNDO rides the paid line —
+    /// mis-tap recovery, never prominent.
+    @ViewBuilder
+    private var lifecycleLine: some View {
+        switch bucket {
+        case .paid:
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                Circle()
+                    .fill(OPSStyle.Colors.olive)
+                    .frame(width: OPSStyle.Layout.Indicator.dotSM, height: OPSStyle.Layout.Indicator.dotSM)
+                if let when = ExpenseBuckets.parseDate(batch.paidAt) {
+                    Text("PAID \(formatDateValue(when))")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.olive)
+                }
+                if let paidByName {
+                    Text("·")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text(paidByName)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                Spacer()
+                if canApprove {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        Task {
+                            await viewModel.unmarkPaid(batch)
+                            dismiss()
+                        }
+                    } label: {
+                        Text("UNDO")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel("Undo payout")
+                }
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+        case .crew where batchStatus == .open:
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                Circle()
+                    .fill(OPSStyle.Colors.tertiaryText)
+                    .frame(width: OPSStyle.Layout.Indicator.dotSM, height: OPSStyle.Layout.Indicator.dotSM)
+                Text(crewForesight)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Spacer()
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+        case .crew:
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                Circle()
+                    .fill(OPSStyle.Colors.rose)
+                    .frame(width: OPSStyle.Layout.Indicator.dotSM, height: OPSStyle.Layout.Indicator.dotSM)
+                Text("SENT BACK — the crew is fixing the flagged lines")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Spacer()
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+        default:
+            EmptyView()
+        }
+    }
+
+    private var crewForesight: String {
+        let graceDays = viewModel.settings?.autoSubmitGraceDays ?? 7
+        if let sendDate = ExpenseBuckets.autoSendDate(batch, graceDays: graceDays) {
+            return sendDate <= Date()
+                ? "STILL FILLING — SENDS TODAY"
+                : "STILL FILLING — AUTO-SENDS \(formatDateValue(sendDate))"
+        }
+        return "STILL FILLING — SENDS AFTER THE JOB WRAPS"
     }
 
     private func statCell(label: String, value: String) -> some View {
@@ -287,7 +430,7 @@ struct ExpenseBatchDetailView: View {
                             Circle()
                                 .fill(expStatus.reviewColor)
                                 .frame(width: OPSStyle.Layout.Indicator.dotSM, height: OPSStyle.Layout.Indicator.dotSM)
-                            Text(expStatus.displayName)
+                            Text(statusLabel(expStatus))
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(expStatus.reviewColor)
                         }
@@ -417,6 +560,26 @@ struct ExpenseBatchDetailView: View {
                 if isFlagged {
                     flagCommentField(expense)
                 }
+
+                // Early clear — approve one line while the envelope keeps
+                // filling (e.g. the crew member needs that money now). The
+                // server approves, recalculates, and notifies them itself.
+                if canApprove,
+                   batchStatus == .open,
+                   ExpenseStatus(rawValue: expense.status) == .submitted {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        Task { await viewModel.earlyClearLine(expense.id, batchId: batch.id) }
+                    } label: {
+                        Text("CLEAR NOW")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.olive)
+                            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel("Approve this line now")
+                }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2)
@@ -471,59 +634,19 @@ struct ExpenseBatchDetailView: View {
     private var stickyFooter: some View {
         OPSFloatingButtonBar(horizontalPadding: OPSStyle.Layout.spacing3, verticalPadding: OPSStyle.Layout.spacing2) {
             Group {
-                if flaggedCount == 0 {
-                    // No flags — approve all
-                    Button {
-                        let userId = dataController.currentUser?.id ?? ""
+                if isReviewable {
+                    reviewFooter
+                } else if bucket == .pay {
+                    // Approved money not yet settled — the one next step.
+                    footerButton(
+                        "MARK PAID · \(formatCurrency(owedAmount))",
+                        background: OPSStyle.Colors.successStatus
+                    ) {
                         UINotificationFeedbackGenerator().notificationOccurred(.success)
                         Task {
-                            await viewModel.approveInvoice(batch.id, reviewedBy: userId)
+                            await viewModel.markPaid(batch)
                             dismiss()
                         }
-                    } label: {
-                        Text("APPROVE ALL (\(viewModel.selectedBatchExpenses.count))")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.buttonText)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(OPSStyle.Colors.successStatus)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                } else {
-                    // Has flags — approve all or return for revision
-                    HStack(spacing: OPSStyle.Layout.spacing2) {
-                        Button {
-                            let userId = dataController.currentUser?.id ?? ""
-                            UINotificationFeedbackGenerator().notificationOccurred(.success)
-                            Task {
-                                await viewModel.approveInvoice(batch.id, reviewedBy: userId)
-                                dismiss()
-                            }
-                        } label: {
-                            Text("APPROVE ALL")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.buttonText)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(OPSStyle.Colors.successStatus)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-
-                        Button {
-                            UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                            showRejectConfirmation = true
-                        } label: {
-                            Text("RETURN \(flaggedCount) FOR REVISION")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.buttonText)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(OPSStyle.Colors.errorStatus)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        }
-                        .buttonStyle(PlainButtonStyle())
                     }
                 }
             }
@@ -531,7 +654,67 @@ struct ExpenseBatchDetailView: View {
         }
     }
 
+    @ViewBuilder
+    private var reviewFooter: some View {
+        if flaggedCount == 0 {
+            // No flags — one clean commit through the atomic RPC.
+            footerButton(
+                "APPROVE ALL (\(viewModel.selectedBatchExpenses.count))",
+                background: OPSStyle.Colors.successStatus
+            ) {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                Task {
+                    await viewModel.approveBatch(batch)
+                    dismiss()
+                }
+            }
+        } else {
+            // Has flags — approve everything anyway, or send the flags back.
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                footerButton("APPROVE ALL", background: OPSStyle.Colors.successStatus) {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    Task {
+                        await viewModel.approveBatch(batch)
+                        dismiss()
+                    }
+                }
+                footerButton("SEND BACK \(flaggedCount)", background: OPSStyle.Colors.errorStatus) {
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    showRejectConfirmation = true
+                }
+            }
+        }
+    }
+
+    private func footerButton(
+        _ label: String,
+        background: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.buttonText)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(background)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
     // MARK: - Formatters
+
+    /// Crew-facing vocabulary: a reimbursed line reads "paid".
+    private func statusLabel(_ status: ExpenseStatus) -> String {
+        status == .reimbursed ? "PAID" : status.displayName
+    }
+
+    private func formatDateValue(_ date: Date) -> String {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "MMM d"
+        return fmt.string(from: date).uppercased()
+    }
 
     private func formatCurrency(_ amount: Double) -> String {
         let formatter = NumberFormatter()

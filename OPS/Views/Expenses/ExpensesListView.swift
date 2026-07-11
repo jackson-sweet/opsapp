@@ -2,147 +2,140 @@
 //  ExpensesListView.swift
 //  OPS
 //
-//  Admin expense review hub — period filter, hero summary,
-//  full-width batch rows, tab toggle (Needs Review / History).
+//  The expense batch console — the owner-side review surface. Two jobs, one
+//  structure: a spend hero answers "how much are we spending on job
+//  expenses"; three money tiles (TO REVIEW / TO PAY / PAID) are the metrics
+//  AND the bucket switcher for the person-grouped queue below. WITH CREW
+//  (filling + sent-back envelopes) rides underneath as a quiet expandable
+//  footer — findable, never in the way. Cross-period always: the old month
+//  pills hid prior-month pending batches and are gone.
+//
+//  Approval runs through the atomic `approve_expense_batch` RPC; payouts
+//  through `mark_expense_batch_paid` / `unmark_expense_batch_paid`. The
+//  surface stays live via the realtime `.expenseUpdated` signal.
 //
 
 import SwiftUI
 import SwiftData
 
 struct ExpensesListView: View {
-    var embedded: Bool = false
-    /// When set (from a batch-scoped expense deep link), the hub auto-pushes this
-    /// batch's review detail once batches load. Bug 7cdbe7bb.
+    /// Pushed screens (Books, Settings) own the bottom edge and hide the
+    /// global tab bar; as a tab root (single-segment Books auto-skip) the
+    /// tab bar stays and content clears it.
+    var isPushed: Bool = true
+    /// When set (from a batch-scoped expense deep link), the console
+    /// auto-pushes this batch's detail once batches load. Bug 7cdbe7bb.
     var deepLinkBatchId: String? = nil
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel = ExpenseViewModel()
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Query private var teamMembers: [TeamMember]
 
-    @State private var selectedTab: ReviewTab = .needsReview
-    @State private var selectedPeriod: String = ""
-    @State private var availablePeriods: [String] = []
+    @State private var selectedBucket: ExpenseBucket = .review
+    @State private var hasAutoSelectedBucket = false
+    @State private var selectedBatch: ExpenseBatchDTO? = nil
     @State private var showExpenseSettings = false
     @State private var showAddExpense = false
     @State private var hasAppeared = false
-    // Batch-scoped deep-link target (bug 7cdbe7bb).
-    @State private var deepLinkBatch: ExpenseBatchDTO? = nil
-    @State private var showDeepLinkBatch = false
 
-    enum ReviewTab: String, CaseIterable {
-        case needsReview = "NEEDS REVIEW"
-        case history = "HISTORY"
-    }
+    // Bulk-action confirmation state — one dialog pair serves both the
+    // per-person buttons and the ALL floating CTA.
+    @State private var pendingApproveBatches: [ExpenseBatchDTO] = []
+    @State private var showApproveConfirm = false
+    @State private var pendingPayBatches: [ExpenseBatchDTO] = []
+    @State private var showPayConfirm = false
 
-    // MARK: - Period Filtering
+    // MARK: - Derived
 
-    private var batchesForPeriod: [ExpenseBatchDTO] {
-        viewModel.reviewBatches.filter { batch in
-            // Filling envelopes are peek-only and have no iOS peek surface —
-            // exclude them from the review hub, hero totals, and period pills.
-            guard batchStatus(batch) != .open else { return false }
-            guard !selectedPeriod.isEmpty else { return true }
-            return periodKey(for: batch) == selectedPeriod
-        }
-    }
+    private var canApprove: Bool { permissionStore.can("expenses.approve") }
+    private var split: ExpenseBucketSplit { viewModel.consoleSplit }
+    private var metrics: ExpenseConsoleMetrics { viewModel.consoleMetrics }
 
-    // MARK: - Tab Sections
-
-    private var needsReviewBatches: [ExpenseBatchDTO] {
-        batchesForPeriod.filter { batchStatus($0).needsReview }
-    }
-
-    private var autoApprovedBatches: [ExpenseBatchDTO] {
-        batchesForPeriod.filter { batchStatus($0) == .autoApproved }
-    }
-
-    private var approvedBatches: [ExpenseBatchDTO] {
-        batchesForPeriod.filter {
-            let s = batchStatus($0)
-            return s == .approved || s == .partiallyApproved
-        }
-    }
-
-    private var rejectedBatches: [ExpenseBatchDTO] {
-        batchesForPeriod.filter { batchStatus($0) == .rejected }
-    }
-
-    // MARK: - Hero Summary
-
-    private var totalCrewExpenses: Double {
-        batchesForPeriod.compactMap(\.totalAmount).reduce(0, +)
-    }
-
-    private var approvedTotal: Double {
-        batchesForPeriod.compactMap(\.approvedAmount).reduce(0, +)
-    }
-
-    private var pendingTotal: Double {
-        max(totalCrewExpenses - approvedTotal, 0)
-    }
-
-    private var approvedFraction: Double {
-        guard totalCrewExpenses > 0 else { return 0 }
-        return min(approvedTotal / totalCrewExpenses, 1.0)
+    /// Bulk-approve working set: clean (unflagged) review batches only.
+    private var cleanReviewBatches: [ExpenseBatchDTO] {
+        split.review.filter { (viewModel.consoleLineStats[$0.id]?.flagged ?? 0) == 0 }
     }
 
     // MARK: - Body
 
     var body: some View {
-        ZStack {
-            if !embedded {
-                OPSStyle.Colors.background.ignoresSafeArea()
+        Group {
+            if isPushed {
+                core.hidesGlobalTabBar()
+            } else {
+                core
             }
+        }
+    }
+
+    private var core: some View {
+        ZStack(alignment: .bottom) {
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                if !embedded { header }
-                periodFilterPills
-                heroSummaryCard
-                tabToggle
-                batchList
+                header
+                consoleScroll
             }
 
-            // FAB — hidden when embedded in Books (global FAB handles creation),
-            // matching InvoicesListView / EstimatesListView.
-            if !embedded {
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        addExpenseFAB
-                            .padding(.trailing, OPSStyle.Layout.spacing3)
-                            .padding(.bottom, OPSStyle.Layout.spacing3)
-                    }
-                }
-            }
+            bulkCTA
         }
         .trackScreen("Expenses")
-        // Refresh review batches when an expense is created/submitted anywhere
-        // (e.g. the global FAB), since that flow no longer shares this model.
-        .onReceive(NotificationCenter.default.publisher(for: .opsExpensesDidChange)) { _ in
-            Task { await viewModel.loadBatchesForReview() }
-        }
         .navigationBarBackButtonHidden(true)
         .navigationDestination(isPresented: $showExpenseSettings) {
             ExpenseSettingsView(viewModel: viewModel)
                 .environmentObject(dataController)
         }
-        // Bug 7cdbe7bb — auto-pushed batch detail when arriving via a
-        // batch-scoped expense notification.
-        .navigationDestination(isPresented: $showDeepLinkBatch) {
-            if let batch = deepLinkBatch {
-                ExpenseBatchDetailView(batch: batch, viewModel: viewModel)
-                    .environmentObject(dataController)
-            }
-        }
-        .onChange(of: deepLinkBatchId) { _, _ in
-            Task { await openDeepLinkBatchIfNeeded() }
+        .navigationDestination(item: $selectedBatch) { batch in
+            ExpenseBatchDetailView(batch: batch, viewModel: viewModel)
+                .environmentObject(dataController)
         }
         .sheet(isPresented: $showAddExpense) {
             ExpenseFormSheet(viewModel: viewModel)
                 .environmentObject(dataController)
+        }
+        .confirmationDialog(
+            approveConfirmTitle,
+            isPresented: $showApproveConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Approve \(pendingApproveBatches.count) Batch\(pendingApproveBatches.count == 1 ? "" : "es")") {
+                let batches = pendingApproveBatches
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                Task { await viewModel.approveBatches(batches) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Total \(BooksFormat.currency(pendingApproveBatches.reduce(0) { $0 + ($1.totalAmount ?? 0) })). Flagged batches stay put.")
+        }
+        .confirmationDialog(
+            payConfirmTitle,
+            isPresented: $showPayConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Mark \(pendingPayBatches.count) Batch\(pendingPayBatches.count == 1 ? "" : "es") Paid") {
+                let batches = pendingPayBatches
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                Task { await viewModel.markPaidBatches(batches) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Records \(BooksFormat.currency(pendingPayBatches.reduce(0) { $0 + ExpenseBuckets.owedAmount($1) })) paid out. Lines flip to paid.")
+        }
+        .errorToast($viewModel.error, label: Feedback.Err.batchUpdateFailed)
+        // Local mutations (create/edit/delete anywhere in the app).
+        .onReceive(NotificationCenter.default.publisher(for: .opsExpensesDidChange)) { _ in
+            Task { await viewModel.loadConsole() }
+        }
+        // Realtime — expenses + expense_batches changes stream in already;
+        // the console is the listener that makes the surface live.
+        .onReceive(NotificationCenter.default.publisher(for: .expenseUpdated)) { _ in
+            viewModel.scheduleRealtimeRefresh()
+        }
+        .onChange(of: deepLinkBatchId) { _, _ in
+            Task { await openDeepLinkBatchIfNeeded() }
         }
         .task {
             if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
@@ -156,45 +149,49 @@ struct ExpensesListView: View {
                     currentUserId: user?.id,
                     currentUserName: userName.isEmpty ? nil : userName
                 )
-                await viewModel.loadBatchesForReview()
-                computeAvailablePeriods()
-                hasAppeared = true
+                await viewModel.loadConsole()
+                autoSelectBucketIfNeeded()
+                withAnimation(reduceMotion ? nil : OPSStyle.Animation.fast) {
+                    hasAppeared = true
+                }
                 await openDeepLinkBatchIfNeeded()
             }
         }
-    }
-
-    /// Resolves `deepLinkBatchId` against the loaded review batches and pushes
-    /// its detail. No-op when there's no deep link or the batch can't be found
-    /// (the user still lands on the review hub — never a dead tab). Bug 7cdbe7bb.
-    private func openDeepLinkBatchIfNeeded() async {
-        guard let id = deepLinkBatchId, !id.isEmpty, !showDeepLinkBatch else { return }
-        if viewModel.reviewBatches.isEmpty {
-            await viewModel.loadBatchesForReview()
-        }
-        guard let batch = viewModel.reviewBatches.first(where: { $0.id == id }) else { return }
-        deepLinkBatch = batch
-        showDeepLinkBatch = true
     }
 
     // MARK: - Header
 
     private var header: some View {
         HStack {
-            Button(action: { dismiss() }) {
-                Image(systemName: OPSStyle.Icons.chevronLeft)
-                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+            if isPushed {
+                Button(action: { dismiss() }) {
+                    Image(systemName: OPSStyle.Icons.chevronLeft)
+                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+                .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            } else {
+                Spacer().frame(width: OPSStyle.Layout.touchTargetMin)
             }
-            .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
 
             Spacer()
 
-            Text("REVIEW EXPENSES")
+            Text("BATCHES")
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
 
             Spacer()
+
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                showAddExpense = true
+            }) {
+                Image(systemName: OPSStyle.Icons.plus)
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+            .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            .accessibilityLabel("New Expense")
 
             Button(action: { showExpenseSettings = true }) {
                 Image(systemName: "gearshape")
@@ -202,374 +199,137 @@ struct ExpensesListView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            .accessibilityLabel("Expense Settings")
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
         .padding(.top, OPSStyle.Layout.spacing2_5)
     }
 
-    // MARK: - Period Filter Pills
+    // MARK: - Console scroll
 
-    private var periodFilterPills: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                periodPill(label: "ALL", key: "")
+    private var consoleScroll: some View {
+        ScrollView {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
+                if viewModel.isLoading && viewModel.reviewBatches.isEmpty && !hasAppeared {
+                    TacticalLoadingBarAnimated()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, OPSStyle.Layout.spacing5)
+                } else {
+                    ExpenseInstrumentStrip(metrics: metrics, selectedBucket: $selectedBucket)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
-                ForEach(availablePeriods, id: \.self) { period in
-                    periodPill(label: periodDisplayLabel(period), key: period)
-                }
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
-        }
-    }
-
-    private func periodPill(label: String, key: String) -> some View {
-        let isSelected = selectedPeriod == key
-        return Button {
-            withAnimation(OPSStyle.Animation.fast) {
-                selectedPeriod = key
-            }
-        } label: {
-            Text(label)
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-                .padding(.vertical, OPSStyle.Layout.spacing1)
-                .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
-                .cornerRadius(OPSStyle.Layout.chipRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                        .stroke(
-                            isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder,
-                            lineWidth: OPSStyle.Layout.Border.standard
-                        )
-                )
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-
-    // MARK: - Hero Summary Card
-
-    private var heroSummaryCard: some View {
-        VStack(spacing: OPSStyle.Layout.spacing2) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("CREW EXPENSES")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Text(totalCrewExpenses, format: .currency(code: "USD").precision(.fractionLength(0)))
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .contentTransition(.numericText())
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    HStack(spacing: OPSStyle.Layout.spacing2) {
-                        legendDot(color: OPSStyle.Colors.successStatus, label: "APPROVED")
-                        legendDot(color: OPSStyle.Colors.primaryAccent, label: "PENDING")
-                    }
-                }
-            }
-
-            // Animated progress bar
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                        .fill(OPSStyle.Colors.primaryAccent.opacity(0.3))
-                        .frame(height: 6)
-
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                        .fill(OPSStyle.Colors.successStatus)
-                        .frame(width: geometry.size.width * approvedFraction, height: 6)
-                        .animation(OPSStyle.Animation.standard, value: approvedFraction)
-                }
-            }
-            .frame(height: 6)
-
-            HStack {
-                Text(approvedTotal, format: .currency(code: "USD").precision(.fractionLength(0)))
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.successStatus)
-                    .contentTransition(.numericText())
-                Text("approved")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Spacer()
-                Text(pendingTotal, format: .currency(code: "USD").precision(.fractionLength(0)))
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .contentTransition(.numericText())
-                Text("pending")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-            }
-        }
-        .padding(OPSStyle.Layout.spacing3)
-        .glassSurface()
-        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-    }
-
-    private func legendDot(color: Color, label: String) -> some View {
-        HStack(spacing: OPSStyle.Layout.spacing1) {
-            Circle()
-                .fill(color)
-                .frame(width: OPSStyle.Layout.Indicator.dotSM, height: OPSStyle.Layout.Indicator.dotSM)
-            Text(label)
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-        }
-    }
-
-    // MARK: - Tab Toggle
-
-    private var tabToggle: some View {
-        HStack(spacing: 0) {
-            ForEach(ReviewTab.allCases, id: \.self) { tab in
-                Button {
-                    UISelectionFeedbackGenerator().selectionChanged()
-                    withAnimation(OPSStyle.Animation.fast) {
-                        selectedTab = tab
-                    }
-                } label: {
-                    VStack(spacing: OPSStyle.Layout.spacing1) {
-                        Text(tab.rawValue)
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(
-                                selectedTab == tab
-                                    ? OPSStyle.Colors.primaryText
-                                    : OPSStyle.Colors.tertiaryText
-                            )
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, OPSStyle.Layout.spacing2)
-
-                        Rectangle()
-                            .fill(
-                                selectedTab == tab
-                                    ? OPSStyle.Colors.primaryText
-                                    : Color.clear
-                            )
-                            .frame(height: 2)
-                    }
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-        }
-        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-        .padding(.top, OPSStyle.Layout.spacing3)
-    }
-
-    // MARK: - Batch List
-
-    private var batchList: some View {
-        // Embedded in Books renders inline so the Books page owns the single
-        // scroll; standalone keeps its own ScrollView.
-        Group {
-            if embedded {
-                batchListContent
-            } else {
-                ScrollView { batchListContent }
-            }
-        }
-    }
-
-    private var batchListContent: some View {
-        VStack(spacing: OPSStyle.Layout.spacing3) {
-            switch selectedTab {
-            case .needsReview:
-                needsReviewContent
-            case .history:
-                historyContent
-            }
-        }
-        .padding(.top, OPSStyle.Layout.spacing3)
-        // Standalone clears the in-view FAB + tab bar; embedded only needs rhythm.
-        .padding(.bottom, embedded
-                 ? OPSStyle.Layout.spacing4
-                 : OPSStyle.Layout.touchTargetLarge + OPSStyle.Layout.spacing5 + OPSStyle.Layout.spacing4)
-    }
-
-    // MARK: - Needs Review Content
-
-    private var needsReviewContent: some View {
-        Group {
-            if needsReviewBatches.isEmpty {
-                emptyState
-            } else {
-                batchSection(
-                    title: "\(needsReviewBatches.count) NEED REVIEW",
-                    batches: needsReviewBatches
-                )
-            }
-        }
-    }
-
-    // MARK: - History Content
-
-    private var historyContent: some View {
-        Group {
-            if autoApprovedBatches.isEmpty && approvedBatches.isEmpty && rejectedBatches.isEmpty {
-                emptyState
-            } else {
-                VStack(spacing: OPSStyle.Layout.spacing3) {
-                    if !autoApprovedBatches.isEmpty {
-                        batchSection(title: "\(autoApprovedBatches.count) AUTO-APPROVED", batches: autoApprovedBatches)
-                    }
-                    if !approvedBatches.isEmpty {
-                        batchSection(title: "APPROVED", batches: approvedBatches)
-                    }
-                    if !rejectedBatches.isEmpty {
-                        batchSection(title: "REJECTED", batches: rejectedBatches)
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Batch Section
-
-    private func batchSection(title: String, batches: [ExpenseBatchDTO]) -> some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text(title)
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-
-            VStack(spacing: OPSStyle.Layout.spacing2) {
-                ForEach(Array(batches.enumerated()), id: \.element.id) { index, batch in
-                    NavigationLink(destination: ExpenseBatchDetailView(batch: batch, viewModel: viewModel)) {
-                        batchRow(batch)
-                    }
-                    .buttonStyle(BatchRowButtonStyle())
-                    .opacity(hasAppeared ? 1 : 0)
-                    .offset(y: hasAppeared ? 0 : 8)
-                    .animation(
-                        reduceMotion
-                            ? .none
-                            : OPSStyle.Animation.fast.delay(Double(index) * 0.05),
-                        value: hasAppeared
+                    ExpenseBucketQueue(
+                        bucket: selectedBucket,
+                        split: split,
+                        lineStats: viewModel.consoleLineStats,
+                        autoSubmitGraceDays: viewModel.settings?.autoSubmitGraceDays ?? 7,
+                        canApprove: canApprove,
+                        nameFor: resolveCrewName,
+                        onOpen: { selectedBatch = $0 },
+                        onApprove: { batch in
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            Task { await viewModel.approveBatch(batch) }
+                        },
+                        onPay: { batch in
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            Task { await viewModel.markPaid(batch) }
+                        },
+                        onApproveGroup: { group in
+                            pendingApproveBatches = group.batches.filter {
+                                (viewModel.consoleLineStats[$0.id]?.flagged ?? 0) == 0
+                            }
+                            showApproveConfirm = !pendingApproveBatches.isEmpty
+                        },
+                        onPayGroup: { group in
+                            pendingPayBatches = group.batches
+                            showPayConfirm = !pendingPayBatches.isEmpty
+                        }
                     )
+                    .opacity(hasAppeared ? 1 : 0)
+                    .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: selectedBucket)
                 }
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.top, OPSStyle.Layout.spacing2)
+            .padding(.bottom, bottomClearance)
         }
+        .refreshable { await viewModel.loadConsole() }
     }
 
-    // MARK: - Batch Row
+    /// Clears the floating CTA (pushed) or CTA + global tab bar (tab root).
+    private var bottomClearance: CGFloat {
+        let ctaAllowance = OPSStyle.Layout.touchTargetLarge + OPSStyle.Layout.spacing4
+        return isPushed ? ctaAllowance : ctaAllowance + 100
+    }
 
-    private func batchRow(_ batch: ExpenseBatchDTO) -> some View {
-        let status = batchStatus(batch)
-        let statusColor = batchStatusColor(status)
-        let crewName = resolveCrewName(batch.submittedBy)
+    // MARK: - Bulk CTA
 
-        return HStack(spacing: OPSStyle.Layout.spacing2) {
-            // Crew avatar
-            Circle()
-                .fill(OPSStyle.Colors.primaryAccent.opacity(0.3))
-                .frame(width: 32, height: 32)
-                .overlay(
-                    Text(crewInitials(batch.submittedBy))
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                )
-
-            // Info column
-            VStack(alignment: .leading, spacing: 2) {
-                Text(crewName)
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .lineLimit(1)
-
-                Text(batch.batchNumber)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-            }
-
-            Spacer()
-
-            // Right column
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(batch.totalAmount ?? 0, format: .currency(code: "USD").precision(.fractionLength(0)))
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-
-                HStack(spacing: OPSStyle.Layout.spacing1) {
-                    Circle()
-                        .fill(statusColor)
-                        .frame(width: OPSStyle.Layout.Indicator.dotSM, height: OPSStyle.Layout.Indicator.dotSM)
-                    Text(status.displayName)
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(statusColor)
-
-                    Text("\u{00B7}")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                    Text(relativeTime(batch.createdAt))
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+    @ViewBuilder
+    private var bulkCTA: some View {
+        if canApprove {
+            switch selectedBucket {
+            case .review where cleanReviewBatches.count > 1:
+                ctaBar(
+                    label: "APPROVE ALL · \(BooksFormat.currency(cleanReviewBatches.reduce(0) { $0 + ($1.totalAmount ?? 0) }))"
+                ) {
+                    pendingApproveBatches = cleanReviewBatches
+                    showApproveConfirm = true
                 }
+            case .pay where split.pay.count > 1:
+                ctaBar(
+                    label: "PAY ALL · \(BooksFormat.currency(split.pay.reduce(0) { $0 + ExpenseBuckets.owedAmount($1) }))"
+                ) {
+                    pendingPayBatches = split.pay
+                    showPayConfirm = true
+                }
+            default:
+                EmptyView()
             }
-
-            Image(systemName: OPSStyle.Icons.chevronRight)
-                .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
-        .padding(OPSStyle.Layout.spacing3)
-        .glassSurface()
     }
 
-    // MARK: - FAB
-
-    private var addExpenseFAB: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            showAddExpense = true
-        } label: {
-            Image(systemName: OPSStyle.Icons.plus)
-                .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .medium))
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .frame(width: OPSStyle.Layout.touchTargetLarge, height: OPSStyle.Layout.touchTargetLarge)
-                .background(OPSStyle.Colors.primaryAccent)
-                .clipShape(Circle())
+    private func ctaBar(label: String, action: @escaping () -> Void) -> some View {
+        OPSFloatingButtonBar(
+            horizontalPadding: OPSStyle.Layout.spacing3,
+            verticalPadding: OPSStyle.Layout.spacing2
+        ) {
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                action()
+            } label: {
+                Text(label)
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.buttonText)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(OPSStyle.Colors.successStatus)
+                    .cornerRadius(OPSStyle.Layout.buttonRadius)
+            }
+            .buttonStyle(PlainButtonStyle())
         }
-        .accessibilityLabel("New Expense")
-    }
-
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        VStack(spacing: OPSStyle.Layout.spacing3) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Text("NO BATCHES TO REVIEW")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-            Text("Submitted expense batches will appear here.")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
+        .padding(.bottom, isPushed ? 0 : 100)
     }
 
     // MARK: - Helpers
 
-    private func batchStatus(_ batch: ExpenseBatchDTO) -> ExpenseBatchStatus {
-        ExpenseBatchStatus(rawValue: batch.status) ?? .pendingReview
+    /// One-time landing bucket: the first state of money with work in it.
+    private func autoSelectBucketIfNeeded() {
+        guard !hasAutoSelectedBucket else { return }
+        hasAutoSelectedBucket = true
+        if !split.review.isEmpty { selectedBucket = .review }
+        else if !split.pay.isEmpty { selectedBucket = .pay }
+        else { selectedBucket = .paid }
     }
 
-    private func batchStatusColor(_ status: ExpenseBatchStatus) -> Color {
-        switch status {
-        case .open:              return OPSStyle.Colors.tertiaryText
-        case .pendingReview:     return OPSStyle.Colors.warningStatus
-        case .submitted:         return OPSStyle.Colors.primaryAccent
-        case .approved:          return OPSStyle.Colors.successStatus
-        case .partiallyApproved: return OPSStyle.Colors.warningStatus
-        case .rejected:          return OPSStyle.Colors.errorStatus
-        case .autoApproved:      return OPSStyle.Colors.successStatus
+    /// Resolves `deepLinkBatchId` against the loaded batches (any bucket) and
+    /// pushes its detail. No-op when there's no deep link or the batch can't
+    /// be found — the user still lands on the console, never a dead tap.
+    private func openDeepLinkBatchIfNeeded() async {
+        guard let id = deepLinkBatchId, !id.isEmpty, selectedBatch?.id != id else { return }
+        if viewModel.reviewBatches.isEmpty {
+            await viewModel.loadConsole()
         }
+        guard let batch = viewModel.reviewBatches.first(where: { $0.id == id }) else { return }
+        selectedBatch = batch
     }
 
     private func resolveCrewName(_ userId: String?) -> String {
@@ -579,84 +339,15 @@ struct ExpensesListView: View {
         }
         return userId.prefix(8).uppercased()
     }
-
-    private func crewInitials(_ userId: String?) -> String {
-        guard let userId = userId else { return "?" }
-        if let member = teamMembers.first(where: { $0.id == userId }) {
-            return member.initials
-        }
-        return String(userId.prefix(2)).uppercased()
-    }
-
-    private func periodKey(for batch: ExpenseBatchDTO) -> String {
-        guard let start = batch.periodStart else { return "" }
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withFullDate]
-        let isoFull = ISO8601DateFormatter()
-        var date: Date?
-        date = iso.date(from: start)
-        if date == nil { date = isoFull.date(from: start) }
-        guard let resolved = date else { return "" }
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yyyy-MM"
-        return fmt.string(from: resolved)
-    }
-
-    private func computeAvailablePeriods() {
-        var keys = Set<String>()
-        for batch in viewModel.reviewBatches {
-            guard batchStatus(batch) != .open else { continue }   // filling envelopes aren't shown here
-            let key = periodKey(for: batch)
-            if !key.isEmpty { keys.insert(key) }
-        }
-        availablePeriods = keys.sorted(by: >)
-    }
-
-    private func periodDisplayLabel(_ period: String) -> String {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yyyy-MM"
-        guard let date = fmt.date(from: period) else { return period.uppercased() }
-        let display = DateFormatter()
-        display.dateFormat = "MMM yyyy"
-        return display.string(from: date).uppercased()
-    }
-
-    private func relativeTime(_ dateString: String) -> String {
-        let isoDate = ISO8601DateFormatter()
-        isoDate.formatOptions = [.withFullDate]
-        let isoFull = ISO8601DateFormatter()
-        var date: Date?
-        date = isoDate.date(from: dateString)
-        if date == nil { date = isoFull.date(from: dateString) }
-        guard let resolved = date else { return "" }
-
-        let interval = Date().timeIntervalSince(resolved)
-        let hours = Int(interval / 3600)
-        if hours < 1 { return "now" }
-        if hours < 24 { return "\(hours)h" }
-        let days = hours / 24
-        if days < 30 { return "\(days)d" }
-        let months = days / 30
-        return "\(months)mo"
-    }
-}
-
-// MARK: - Batch Row Button Style
-
-private struct BatchRowButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
-            .animation(OPSStyle.Animation.faster, value: configuration.isPressed)
-            .onChange(of: configuration.isPressed) { _, isPressed in
-                if isPressed {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-            }
-    }
 }
 
 // MARK: - Hashable Conformance
+
+/// `navigationDestination(item:)` needs Hashable; identity is the row id.
+extension ExpenseBatchDTO: Hashable {
+    static func == (lhs: ExpenseBatchDTO, rhs: ExpenseBatchDTO) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
 
 extension ExpenseDTO: Hashable {
     static func == (lhs: ExpenseDTO, rhs: ExpenseDTO) -> Bool { lhs.id == rhs.id }

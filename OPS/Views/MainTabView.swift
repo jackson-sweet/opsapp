@@ -198,7 +198,7 @@ struct MainTabView: View {
             if scopeIsOwn {
                 return AnyView(NavigationStack { MyExpensesView() })
             } else {
-                return AnyView(NavigationStack { ExpensesListView() })
+                return AnyView(NavigationStack { ExpensesListView(isPushed: false) })
             }
         }
     }

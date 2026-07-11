@@ -2,8 +2,9 @@
 //  RejectConfirmationView.swift
 //  OPS
 //
-//  Sheet presented when admin taps "REJECT WITH X REVISIONS" on InvoiceDetailView.
-//  Shows all flagged items, lets the admin edit comments, unflag items, and send revisions.
+//  Sheet presented when the reviewer taps "SEND BACK n" on a batch's detail.
+//  Shows the flagged lines, lets the reviewer edit comments, unflag items,
+//  and send the flags back to the crew (clean lines approve).
 //
 
 import SwiftUI
@@ -146,7 +147,7 @@ struct RejectConfirmationView: View {
         Group {
             if !viewModel.selectedBatchExpenses.isEmpty {
                 let flaggedCount = flaggedExpenses.count
-                Text("\(cleanCount) expense\(cleanCount == 1 ? "" : "s") will be approved. \(flaggedCount) will be returned for revision.")
+                Text("\(cleanCount) expense\(cleanCount == 1 ? "" : "s") get\(cleanCount == 1 ? "s" : "") approved. \(flaggedCount) go\(flaggedCount == 1 ? "es" : "") back to the crew with your notes.")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .multilineTextAlignment(.center)
@@ -186,10 +187,9 @@ struct RejectConfirmationView: View {
                 if flaggedExpenses.isEmpty {
                 // All items unflagged — offer approve all
                 Button {
-                    let userId = dataController.currentUser?.id ?? ""
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                     Task {
-                        await viewModel.approveInvoice(batch.id, reviewedBy: userId)
+                        await viewModel.approveBatch(batch)
                         dismiss()
                         onDismiss()
                     }
@@ -221,7 +221,7 @@ struct RejectConfirmationView: View {
                     }
                 } label: {
                     let count = flaggedExpenses.count
-                    Text("SEND \(count) REVISION\(count == 1 ? "" : "S")")
+                    Text("SEND BACK \(count)")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.buttonText)
                         .frame(maxWidth: .infinity)

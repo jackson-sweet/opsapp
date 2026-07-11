@@ -127,15 +127,24 @@ enum BooksExpenseFilter: String, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Review-batches link
+// MARK: - Batches link
 
 /// Discreet trailing affordance in the expenses ledger marker — one tap from
-/// Money into the admin batch-review hub. Shown only to approvers
-/// (`expenses.approve`); goes tan when envelopes are waiting on them.
+/// Money into the batch console. Shown only to approvers (`expenses.approve`);
+/// the label names the most urgent state of money: review work first (tan),
+/// then money owed, else just the door.
 struct BooksReviewBatchesLink: View {
-    /// Batches currently needing review (pending / submitted).
-    let count: Int
+    /// Batches waiting on the office (pending / legacy submitted).
+    let reviewCount: Int
+    /// Approved batches not yet paid out.
+    let payCount: Int
     var onTap: () -> Void
+
+    private var label: String {
+        if reviewCount > 0 { return "BATCHES · \(reviewCount) TO REVIEW" }
+        if payCount > 0 { return "BATCHES · \(payCount) TO PAY" }
+        return "BATCHES"
+    }
 
     var body: some View {
         Button {
@@ -143,14 +152,14 @@ struct BooksReviewBatchesLink: View {
             onTap()
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing1) {
-                Text(count > 0 ? "REVIEW BATCHES · \(count)" : "REVIEW BATCHES")
+                Text(label)
                 Text("→")
             }
             .font(.custom("JetBrainsMono-Medium", size: 10))
             .tracking(1.2)
             .textCase(.uppercase)
             .monospacedDigit()
-            .foregroundColor(count > 0 ? OPSStyle.Colors.tan : OPSStyle.Colors.secondaryText)
+            .foregroundColor(reviewCount > 0 ? OPSStyle.Colors.tan : OPSStyle.Colors.secondaryText)
             // Keep the marker row visually compact but honor the 44pt floor —
             // the hit region extends past the one-line label.
             .frame(minHeight: 44)
@@ -158,8 +167,12 @@ struct BooksReviewBatchesLink: View {
         }
         .buttonStyle(.plain)
         .padding(.vertical, -15)
-        .accessibilityLabel(count > 0 ? "Review batches, \(count) waiting" : "Review batches")
-        .accessibilityHint("Opens the expense batch review hub")
+        .accessibilityLabel(
+            reviewCount > 0
+                ? "Batches, \(reviewCount) to review"
+                : (payCount > 0 ? "Batches, \(payCount) to pay" : "Batches")
+        )
+        .accessibilityHint("Opens the expense batch console")
     }
 }
 

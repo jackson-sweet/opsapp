@@ -81,10 +81,15 @@ struct BooksTabView: View {
     private var canReviewBatches: Bool { permissionStore.can("expenses.approve") }
 
     /// Envelopes waiting on the approver (pending / submitted; a filling
-    /// envelope is never review-ready). Same predicate as the hub's
-    /// NEEDS REVIEW tab, computed off the batches the Books VM already loads.
+    /// envelope is never review-ready). Same bucket rule as the console,
+    /// computed off the batches the Books VM already loads.
     private var batchesNeedingReview: Int {
         expenseVM.batches.filter { ExpenseBatchStatus(rawValue: $0.status)?.needsReview == true }.count
+    }
+
+    /// Approved batches not yet recorded as paid out — the TO PAY working set.
+    private var batchesAwaitingPayout: Int {
+        expenseVM.batches.filter { ExpenseBuckets.isAwaitingPayout($0) }.count
     }
 
     /// Maps the dashboard VM's 4-case sync state onto `BooksSyncBanner`'s
@@ -320,7 +325,10 @@ struct BooksTabView: View {
             Text("\(currentCount)").foregroundColor(OPSStyle.Colors.secondaryText)
             Spacer()
             if selectedSegment == .expenses && canReviewBatches {
-                BooksReviewBatchesLink(count: batchesNeedingReview) {
+                BooksReviewBatchesLink(
+                    reviewCount: batchesNeedingReview,
+                    payCount: batchesAwaitingPayout
+                ) {
                     showBatchReview = true
                 }
             }

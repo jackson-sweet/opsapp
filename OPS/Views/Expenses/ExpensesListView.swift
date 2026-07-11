@@ -268,15 +268,17 @@ struct ExpensesListView: View {
         if canApprove {
             switch selectedBucket {
             case .review where cleanReviewBatches.count > 1:
-                ctaBar(
-                    label: "APPROVE ALL · \(BooksFormat.currency(cleanReviewBatches.reduce(0) { $0 + ($1.totalAmount ?? 0) }))"
+                ExpenseBulkCTABar(
+                    label: "APPROVE ALL · \(BooksFormat.currency(cleanReviewBatches.reduce(0) { $0 + ($1.totalAmount ?? 0) }))",
+                    bottomInset: isPushed ? 0 : 100
                 ) {
                     pendingApproveBatches = cleanReviewBatches
                     showApproveConfirm = true
                 }
             case .pay where split.pay.count > 1:
-                ctaBar(
-                    label: "PAY ALL · \(BooksFormat.currency(split.pay.reduce(0) { $0 + ExpenseBuckets.owedAmount($1) }))"
+                ExpenseBulkCTABar(
+                    label: "PAY ALL · \(BooksFormat.currency(split.pay.reduce(0) { $0 + ExpenseBuckets.owedAmount($1) }))",
+                    bottomInset: isPushed ? 0 : 100
                 ) {
                     pendingPayBatches = split.pay
                     showPayConfirm = true
@@ -285,28 +287,6 @@ struct ExpensesListView: View {
                 EmptyView()
             }
         }
-    }
-
-    private func ctaBar(label: String, action: @escaping () -> Void) -> some View {
-        OPSFloatingButtonBar(
-            horizontalPadding: OPSStyle.Layout.spacing3,
-            verticalPadding: OPSStyle.Layout.spacing2
-        ) {
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                action()
-            } label: {
-                Text(label)
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.buttonText)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(OPSStyle.Colors.successStatus)
-                    .cornerRadius(OPSStyle.Layout.buttonRadius)
-            }
-            .buttonStyle(PlainButtonStyle())
-        }
-        .padding(.bottom, isPushed ? 0 : 100)
     }
 
     // MARK: - Helpers

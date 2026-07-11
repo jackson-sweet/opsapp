@@ -351,10 +351,16 @@ enum ExpenseBuckets {
 
     /// Parse the server's date shapes: plain dates ("2026-07-14") and
     /// timestamptz strings, with or without fractional seconds.
+    ///
+    /// Plain dates anchor to LOCAL midnight — a period ending "2026-07-14" is
+    /// July 14 on the operator's calendar, not UTC's. Parsing date-only
+    /// strings at UTC midnight shifts every derived day (auto-send dates,
+    /// period labels) one day early for anyone west of Greenwich.
     static func parseDate(_ string: String?) -> Date? {
         guard let string, !string.isEmpty else { return nil }
         let dateOnly = ISO8601DateFormatter()
         dateOnly.formatOptions = [.withFullDate]
+        dateOnly.timeZone = .current
         if let date = dateOnly.date(from: string) { return date }
         let full = ISO8601DateFormatter()
         full.formatOptions = [.withInternetDateTime]

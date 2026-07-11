@@ -133,13 +133,21 @@ struct ExpensesListView: View {
             Text("Records \(BooksFormat.currency(pendingPayBatches.reduce(0) { $0 + ExpenseBuckets.owedAmount($1) })) paid out. Lines flip to paid.")
         }
         .errorToast($viewModel.error, label: Feedback.Err.batchUpdateFailed)
-        // Local mutations (create/edit/delete anywhere in the app).
-        .onReceive(NotificationCenter.default.publisher(for: .opsExpensesDidChange)) { _ in
-            Task { await viewModel.loadConsole() }
+        // Local mutations (create/edit/delete anywhere in the app) AND remote
+        // realtime changes — RealtimeProcessor posts BOTH signals for
+        // expenses / expense_batches, so both funnel through the debounce: an
+        // approval's event storm (batch flip + every line) collapses to one
+        // reload.
+        .onReceive(
+            NotificationCenter.default.publisher(for: .opsExpensesDidChange)
+                .receive(on: DispatchQueue.main)
+        ) { _ in
+            viewModel.scheduleRealtimeRefresh()
         }
-        // Realtime — expenses + expense_batches changes stream in already;
-        // the console is the listener that makes the surface live.
-        .onReceive(NotificationCenter.default.publisher(for: .expenseUpdated)) { _ in
+        .onReceive(
+            NotificationCenter.default.publisher(for: .expenseUpdated)
+                .receive(on: DispatchQueue.main)
+        ) { _ in
             viewModel.scheduleRealtimeRefresh()
         }
         .onChange(of: deepLinkBatchId) { _, _ in

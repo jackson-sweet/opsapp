@@ -827,6 +827,7 @@ struct NotificationListView: View {
                     let typeImpliesDeepLink: Bool = {
                         switch notification.type {
                         case "expense_submitted", "expense_approved", "expense_rejected",
+                             "expense_paid",
                              "invoice_approved", "invoice_revisions", "invoice_overdue",
                              "billable_this_week",
                              "catalog_mapping_needed":
@@ -850,7 +851,8 @@ struct NotificationListView: View {
                             // Legacy type-based fallback labels.
                             if (notification.deepLinkType ?? "").isEmpty {
                                 switch notification.type {
-                                case "expense_submitted", "expense_approved", "expense_rejected":
+                                case "expense_submitted", "expense_approved", "expense_rejected",
+                                     "expense_paid":
                                     return "VIEW EXPENSES"
                                 case "invoice_approved", "invoice_revisions", "invoice_overdue":
                                     return "VIEW INVOICES"
@@ -996,6 +998,8 @@ struct NotificationListView: View {
                 return ("checkmark.seal", OPSStyle.Colors.successStatus)
             case "expense_rejected":
                 return ("xmark.seal", OPSStyle.Colors.errorStatus)
+            case "expense_paid":
+                return ("banknote", OPSStyle.Colors.successStatus)
             // LiDAR Dimensioned Photo Capture — spec §6 / Phase G.
             // `ruler` matches the MEASURE entry on `ProjectActionBar` so the
             // user can trace a rail card back to the originating capture flow.
@@ -1232,8 +1236,10 @@ struct NotificationListView: View {
             switch notification.type {
             case "expense_submitted",
                  "expense_approved",
-                 "expense_rejected":
-                // Legacy rows with no deep_link_type — still batch-aware.
+                 "expense_rejected",
+                 "expense_paid":
+                // Rows with no deep_link_type (incl. web-dispatched
+                // expense_paid) — still batch-aware.
                 routeExpenseNotification(batchId: notification.batchId)
             case "invoice_approved",
                  "invoice_revisions",

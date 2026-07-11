@@ -616,10 +616,13 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 name: Notification.Name("OpenManageTeam"),
                 object: nil
             )
-        case "expense_submitted", "expense_approved", "expense_rejected":
+        case "expense_submitted", "expense_approved", "expense_rejected",
+             "expense_paid", "expensePaid":
             // Bug 7cdbe7bb — a batch-scoped expense push opens that specific
             // batch's review detail; without a batchId it falls back to the
             // Expenses surface. MainTabView handles the tab/permission split.
+            // `expensePaid` is the camelCase pushData type OPS-Web sends on
+            // mark-paid; `expense_paid` is the iOS-dispatched twin.
             if let batchId = batchId, !batchId.isEmpty {
                 NotificationCenter.default.post(
                     name: Notification.Name("OpenExpenseBatch"),

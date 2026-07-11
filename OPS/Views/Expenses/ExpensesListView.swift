@@ -59,6 +59,14 @@ struct ExpensesListView: View {
         split.review.filter { (viewModel.consoleLineStats[$0.id]?.flagged ?? 0) == 0 }
     }
 
+    private var approveConfirmTitle: String {
+        "Approve \(pendingApproveBatches.count) Batch\(pendingApproveBatches.count == 1 ? "" : "es")?"
+    }
+
+    private var payConfirmTitle: String {
+        "Mark \(pendingPayBatches.count) Batch\(pendingPayBatches.count == 1 ? "" : "es") Paid?"
+    }
+
     // MARK: - Body
 
     var body: some View {

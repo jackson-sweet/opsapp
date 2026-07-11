@@ -169,8 +169,9 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
     func testRenderReviewBatchesLink() {
         snapshot("money_review_batches_link") {
             VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing3) {
-                BooksReviewBatchesLink(count: 0, onTap: {})
-                BooksReviewBatchesLink(count: 3, onTap: {})
+                BooksReviewBatchesLink(reviewCount: 0, payCount: 0, onTap: {})
+                BooksReviewBatchesLink(reviewCount: 0, payCount: 2, onTap: {})
+                BooksReviewBatchesLink(reviewCount: 3, payCount: 2, onTap: {})
             }
             .padding(OPSStyle.Layout.spacing3_5)
         }

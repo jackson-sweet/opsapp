@@ -84,14 +84,14 @@ final class SyncStatusCopyTests: XCTestCase {
         let s = SyncStatusCopy.status(status: "failed", retryCount: 2, canRetry: true,
                                       rawError: "Unexpected sync error: insert or update violates foreign key")
         XCTAssertEqual(s.tone, .attention)
-        XCTAssertEqual(s.text, "Couldn't save — retrying")
+        XCTAssertEqual(s.text, "Couldn't save yet")
         XCTAssertFalse(s.text.lowercased().contains("insert"), "raw Postgres text must never surface")
     }
 
     func testFailedOutOfRetriesAsksTheUser() {
         let s = SyncStatusCopy.status(status: "failed", retryCount: 20, canRetry: false, rawError: "boom")
         XCTAssertEqual(s.tone, .stuck)
-        XCTAssertEqual(s.text, "Still can't save — retry or dismiss")
+        XCTAssertEqual(s.text, "Still can't save")
     }
 
     func testNetworkErrorReadsAsSignal() {
@@ -104,7 +104,7 @@ final class SyncStatusCopyTests: XCTestCase {
     func testAuthErrorIsActionable() {
         let s = SyncStatusCopy.status(status: "failed", retryCount: 1, canRetry: true,
                                       rawError: "PGRST301 JWT expired (401)")
-        XCTAssertEqual(s.text, "Sign in again to save")
+        XCTAssertEqual(s.text, "Sign in to save")
     }
 
     func testDuplicateKeyReadsAsAlreadySaved() {

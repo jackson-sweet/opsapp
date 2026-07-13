@@ -73,8 +73,10 @@ enum SyncStatusCopy {
             return ("Waiting to sync", .waiting)
         case "failed":
             if let specific = specificFailure(rawError) { return specific }
-            if !canRetry { return ("Still can't save — retry or dismiss", .stuck) }
-            return ("Couldn't save — retrying", .attention)
+            // The retry / dismiss buttons sit right beside this line, so the
+            // copy stays short — the buttons carry the "what to do".
+            if !canRetry { return ("Still can't save", .stuck) }
+            return ("Couldn't save yet", .attention)
         default:
             return ("Waiting to sync", .waiting)
         }
@@ -102,7 +104,7 @@ enum SyncStatusCopy {
         }
         if raw.contains("jwt") || raw.contains("401") || raw.contains("unauthorized")
             || raw.contains("authentication") {
-            return ("Sign in again to save", .attention)
+            return ("Sign in to save", .attention)
         }
         if raw.contains("duplicate key") {
             return ("Already saved", .waiting)

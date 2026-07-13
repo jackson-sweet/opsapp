@@ -3,7 +3,12 @@
 //  OPS
 //
 //  Collapsible sync status section for the notifications sheet.
-//  Shows pending/failed operations with retry and cancel capability.
+//
+//  Design intent (bug dbada8f5): stay quiet and honest. Count every outstanding
+//  change — queued AND failed — so the header can never disagree with the list
+//  below it. Speak plain language via SyncStatusCopy (never a raw column name or
+//  Postgres error). Give stuck changes a working retry / dismiss with real
+//  44pt touch targets. Calm tan for "needs a look", rose only when truly stuck.
 //
 
 import SwiftUI
@@ -12,39 +17,35 @@ struct SyncStatusSection: View {
     @EnvironmentObject private var dataController: DataController
     @State private var isExpanded: Bool = false
 
-    /// Access sync state from the engine (SyncEngine is @Observable)
+    /// Access sync state from the engine (SyncEngine is @Observable).
     private var syncEngine: SyncEngine {
         dataController.syncEngine
     }
 
-    private var pendingCount: Int {
-        syncEngine.pendingOperationCount
-    }
-
-    private var isSyncing: Bool {
-        syncEngine.isSyncing
-    }
-
-    private var hasContent: Bool {
-        pendingCount > 0 || isSyncing
-    }
-
     var body: some View {
+        // Read tracked engine state so the view re-renders when sync changes,
+        // then fetch the live operation lists for display.
+        let isSyncing = syncEngine.isSyncing
+        let pending = syncEngine.getPendingOperations()
+        let failed = syncEngine.getFailedOperations()
+        // Reading pendingOperationCount keeps the @Observable subscription live
+        // so the panel re-renders as operations move between pending/failed/done.
+        let trackedCount = syncEngine.pendingOperationCount
+        let hasContent = !pending.isEmpty || !failed.isEmpty || isSyncing || trackedCount > 0
+
         if hasContent {
             VStack(spacing: 0) {
-                // Collapsed header — always visible when there's content
                 Button {
                     withAnimation(OPSStyle.Animation.standard) {
                         isExpanded.toggle()
                     }
                 } label: {
-                    headerRow
+                    headerRow(pendingCount: pending.count, failedCount: failed.count, isSyncing: isSyncing)
                 }
                 .buttonStyle(PlainButtonStyle())
 
-                // Expanded content
                 if isExpanded {
-                    expandedContent
+                    expandedContent(pending: pending, failed: failed)
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
@@ -58,61 +59,61 @@ struct SyncStatusSection: View {
 
     // MARK: - Header Row
 
-    private var headerRow: some View {
+    private func headerRow(pendingCount: Int, failedCount: Int, isSyncing: Bool) -> some View {
         HStack(spacing: OPSStyle.Layout.spacing2_5) {
-            // Status icon
-            if isSyncing {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .rotationEffect(.degrees(isSyncing ? 360 : 0))
-                    .animation(
-                        .linear(duration: 1.5).repeatForever(autoreverses: false),
-                        value: isSyncing
-                    )
-                    .frame(width: 20, height: 20)
-            } else {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(OPSStyle.Colors.warningStatus)
-                    .frame(width: 20, height: 20)
-            }
+            headerIcon(isSyncing: isSyncing, hasFailures: failedCount > 0)
+                .frame(width: 20, height: 20)
 
-            // Status text
-            Text(headerText)
+            Text(SyncStatusCopy.header(pendingCount: pendingCount, failedCount: failedCount, isSyncing: isSyncing))
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.primaryText)
 
             Spacer()
 
-            // Chevron
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
+        .contentShape(Rectangle())
     }
 
-    private var headerText: String {
+    @ViewBuilder
+    private func headerIcon(isSyncing: Bool, hasFailures: Bool) -> some View {
         if isSyncing {
-            return "Syncing \(pendingCount) change\(pendingCount == 1 ? "" : "s")…"
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .rotationEffect(.degrees(isSyncing ? 360 : 0))
+                .animation(
+                    .linear(duration: 1.5).repeatForever(autoreverses: false),
+                    value: isSyncing
+                )
+        } else if hasFailures {
+            Image(systemName: "exclamationmark.circle")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(OPSStyle.Colors.tan)
         } else {
-            return "\(pendingCount) change\(pendingCount == 1 ? "" : "s") pending"
+            Image(systemName: "clock")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
     }
 
     // MARK: - Expanded Content
 
-    private var expandedContent: some View {
-        VStack(spacing: 0) {
+    private func expandedContent(pending: [SyncOperation], failed: [SyncOperation]) -> some View {
+        // Queued first, then failed — deduped by id, capped at 15 rows.
+        let items = pending + failed
+        let uniqueItems = Array(Dictionary(grouping: items) { $0.id }.values.compactMap(\.first))
+        let shown = Array(uniqueItems.prefix(15))
+        let overflow = uniqueItems.count - shown.count
+
+        return VStack(spacing: 0) {
             Divider()
                 .background(OPSStyle.Colors.line)
                 .padding(.vertical, OPSStyle.Layout.spacing2)
 
-            // Individual operation rows (show up to 15)
-            let items = syncEngine.getPendingOperations() + syncEngine.getFailedOperations()
-            let uniqueItems = Array(Dictionary(grouping: items) { $0.id }.values.compactMap(\.first)).prefix(15)
-
-            ForEach(Array(uniqueItems.enumerated()), id: \.element.id) { index, operation in
+            ForEach(Array(shown.enumerated()), id: \.element.id) { index, operation in
                 if index > 0 {
                     Divider()
                         .background(Color.white.opacity(0.06))
@@ -121,37 +122,36 @@ struct SyncStatusSection: View {
                 operationRow(for: operation)
             }
 
-            if (syncEngine.getPendingOperations().count + syncEngine.getFailedOperations().count) > 15 {
-                Text("+ \(syncEngine.getPendingOperations().count + syncEngine.getFailedOperations().count - 15) more")
+            if overflow > 0 {
+                Text("+ \(overflow) more")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, OPSStyle.Layout.spacing1)
             }
 
-            // Retry all button for failed operations
-            let failedOps = syncEngine.getFailedOperations()
-            if !failedOps.isEmpty {
+            // Retry all — clears the failed state and re-queues.
+            if !failed.isEmpty {
                 Button {
-                    for op in failedOps {
+                    for op in failed {
                         op.status = "pending"
                         op.retryCount = 0
+                        op.lastError = nil
                     }
                     try? dataController.modelContext?.save()
-                    Task {
-                        await syncEngine.triggerSync()
-                    }
+                    Task { await syncEngine.triggerSync() }
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 12, weight: .medium))
-                        Text("RETRY ALL FAILED (\(failedOps.count))")
+                        Text("RETRY ALL (\(failed.count))")
                             .font(OPSStyle.Typography.smallCaption)
                     }
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .padding(.vertical, OPSStyle.Layout.spacing2)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, minHeight: 44)
                     .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
                     .cornerRadius(8)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
                 .padding(.top, OPSStyle.Layout.spacing2)
@@ -162,158 +162,113 @@ struct SyncStatusSection: View {
     // MARK: - Operation Row
 
     private func operationRow(for operation: SyncOperation) -> some View {
-        HStack(spacing: 10) {
-            // Status indicator
-            statusIcon(for: operation)
+        let state = SyncStatusCopy.status(
+            status: operation.status,
+            retryCount: operation.retryCount,
+            canRetry: operation.canRetry,
+            rawError: operation.lastError
+        )
+
+        return HStack(spacing: 10) {
+            statusIcon(for: state.tone)
                 .frame(width: 16, height: 16)
 
-            // Description — entity type, action, changed fields, time
+            // Human title + plain-language status — no raw fields, no raw errors.
             VStack(alignment: .leading, spacing: 3) {
-                // Primary line: action + entity
-                Text(operationTitle(for: operation))
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Text(SyncStatusCopy.title(
+                    entityType: operation.entityType,
+                    operationType: operation.operationType,
+                    changedFields: operation.getChangedFields()
+                ))
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .lineLimit(1)
+
+                Text(state.text)
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(color(for: state.tone))
                     .lineLimit(1)
-
-                // Detail line: changed fields
-                let fields = operation.getChangedFields()
-                if !fields.isEmpty {
-                    Text(fields.joined(separator: ", "))
-                        .font(OPSStyle.Typography.metadata)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .lineLimit(1)
-                }
-
-                // Error line
-                if let error = operation.lastError {
-                    Text(error)
-                        .font(OPSStyle.Typography.metadata)
-                        .foregroundColor(OPSStyle.Colors.errorStatus)
-                        .lineLimit(1)
-                }
             }
 
-            Spacer()
+            Spacer(minLength: OPSStyle.Layout.spacing1)
 
-            // Time ago
             Text(timeAgo(from: operation.createdAt))
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-            // Action buttons
+            // Retry — failed only.
             if operation.status == "failed" {
-                // Retry button for failed
-                Button {
+                actionButton(system: "arrow.clockwise", tint: OPSStyle.Colors.primaryAccent, glyphSize: 12) {
                     operation.status = "pending"
                     operation.retryCount = 0
                     operation.lastError = nil
                     try? dataController.modelContext?.save()
                     Task { await syncEngine.triggerSync() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .frame(width: 28, height: 28)
-                        .background(OPSStyle.Colors.surfaceActive)
-                        .clipShape(Circle())
                 }
-                .buttonStyle(PlainButtonStyle())
             }
 
-            // Cancel button — available for pending and failed (not in-progress)
+            // Dismiss — pending or failed (not in-progress).
             if operation.status != "inProgress" {
-                Button {
+                actionButton(system: "xmark", tint: OPSStyle.Colors.tertiaryText, glyphSize: 10) {
                     withAnimation(OPSStyle.Animation.standard) {
                         syncEngine.cancelOperation(operation)
                     }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .frame(width: 24, height: 24)
-                        .background(OPSStyle.Colors.surfaceActive)
-                        .clipShape(Circle())
                 }
-                .buttonStyle(PlainButtonStyle())
             }
         }
         .padding(.vertical, OPSStyle.Layout.spacing1)
     }
 
+    // MARK: - Row pieces
+
     @ViewBuilder
-    private func statusIcon(for operation: SyncOperation) -> some View {
-        switch operation.status {
-        case "pending":
-            Image(systemName: "clock")
-                .font(.system(size: 11))
-                .foregroundColor(OPSStyle.Colors.warningStatus)
-        case "inProgress":
+    private func statusIcon(for tone: SyncStatusTone) -> some View {
+        switch tone {
+        case .syncing:
             ProgressView()
                 .scaleEffect(0.5)
                 .tint(OPSStyle.Colors.primaryAccent)
-        case "failed":
-            Image(systemName: "xmark.circle.fill")
+        case .waiting:
+            Image(systemName: "clock")
                 .font(.system(size: 11))
-                .foregroundColor(OPSStyle.Colors.errorStatus)
-        default:
-            Image(systemName: "checkmark.circle.fill")
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        case .attention:
+            Image(systemName: "exclamationmark.circle")
                 .font(.system(size: 11))
-                .foregroundColor(OPSStyle.Colors.successStatus)
+                .foregroundColor(OPSStyle.Colors.tan)
+        case .stuck:
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 11))
+                .foregroundColor(OPSStyle.Colors.rose)
         }
     }
 
-    private func operationTitle(for operation: SyncOperation) -> String {
-        let action: String
-        switch operation.operationType {
-        case "create": action = "Create"
-        case "update": action = "Update"
-        case "delete": action = "Delete"
-        default: action = "Sync"
+    /// Small glyph with a full 44pt touch target (field-first, gloves).
+    private func actionButton(
+        system: String,
+        tint: Color,
+        glyphSize: CGFloat,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: system)
+                .font(.system(size: glyphSize, weight: .medium))
+                .foregroundColor(tint)
+                .frame(width: 30, height: 30)
+                .background(OPSStyle.Colors.surfaceActive)
+                .clipShape(Circle())
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
-
-        let entity = friendlyEntityName(operation.entityType)
-        return "\(action) \(entity)"
+        .buttonStyle(PlainButtonStyle())
     }
 
-    private func friendlyEntityName(_ entityType: String) -> String {
-        switch entityType {
-        case "project": return "Project"
-        case "projectTask": return "Task"
-        case "projectNote": return "Note"
-        case "user": return "User"
-        case "client": return "Client"
-        case "subClient": return "Sub-Client"
-        case "company": return "Company"
-        case "taskType": return "Task Type"
-        case "expense": return "Expense"
-        case "estimate": return "Estimate"
-        case "invoice": return "Invoice"
-        case "lineItem": return "Line Item"
-        case "payment": return "Payment"
-        case "photoAnnotation": return "Photo Annotation"
-        case "calendarUserEvent": return "Calendar Event"
-        case "catalogCategory": return "Catalog Category"
-        case "catalogUnit": return "Catalog Unit"
-        case "catalogTag": return "Catalog Tag"
-        case "catalogItem": return "Catalog Item"
-        case "catalogVariant": return "Catalog Variant"
-        case "catalogOption": return "Catalog Option"
-        case "catalogOptionValue": return "Catalog Option Value"
-        case "catalogVariantOptionValue": return "Catalog Variant Option Value"
-        case "catalogItemTag": return "Catalog Item Tag"
-        case "catalogSnapshot": return "Catalog Snapshot"
-        case "catalogSnapshotItem": return "Catalog Snapshot Item"
-        case "catalogOrder": return "Catalog Order"
-        case "catalogOrderItem": return "Catalog Order Item"
-        case "companyDefaultProduct": return "Default Product"
-        case "productOption": return "Product Option"
-        case "productOptionValue": return "Product Option Value"
-        case "productPricingModifier": return "Pricing Modifier"
-        case "productMaterial": return "Product Material"
-        case "timeEntry": return "Time Entry"
-        case "signatureCapture": return "Signature"
-        case "formSubmission": return "Form"
-        default: return entityType.capitalized
+    private func color(for tone: SyncStatusTone) -> Color {
+        switch tone {
+        case .syncing:   return OPSStyle.Colors.primaryAccent
+        case .waiting:   return OPSStyle.Colors.tertiaryText
+        case .attention: return OPSStyle.Colors.tan
+        case .stuck:     return OPSStyle.Colors.rose
         }
     }
 

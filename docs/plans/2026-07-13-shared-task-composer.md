@@ -4,7 +4,7 @@
 
 **Goal:** Replace the constrained inline task row in Project Form and Projects Needing Tasks with one shared composer that supports one-tap suggestions and persistent editable task rows.
 
-**Architecture:** Keep `LocalTask` as the shared draft representation. Build `ProjectTaskComposer` in the already-compiled `InlineTaskRow.swift` source so no Xcode project-file mutation is needed, and inject async save/delete adapters for local staging versus immediate persistence. Extend `TaskSuggestionEngine` with a project-independent exclusion input so new-project forms can use company-history suggestions.
+**Architecture:** Keep `LocalTask` as the shared draft representation. Build `ProjectTaskComposer` as a file-system-synchronized SwiftUI component and inject async save/delete adapters for local staging versus immediate persistence. Extend `TaskSuggestionEngine` with a project-independent exclusion input so new-project forms can use company-history suggestions.
 
 **Tech Stack:** SwiftUI, SwiftData, existing DataController task APIs, XCTest.
 
@@ -20,7 +20,7 @@
 
 **Files:**
 - Create: `OPSTests/Views/JobBoard/ProjectTaskComposerLogicTests.swift`
-- Modify: `OPS/Styles/Components/InlineTaskRow.swift`
+- Add: `OPS/Styles/Components/ProjectTaskComposer.swift`
 
 **Design tokens:** None; pure state behavior.
 
@@ -34,7 +34,7 @@
 **Skills:** OPS design, mobile UX, interface design, UI/UX Pro Max, OPS copywriter.
 
 **Files:**
-- Modify: `OPS/Styles/Components/InlineTaskRow.swift`
+- Modify: `OPS/Styles/Components/ProjectTaskComposer.swift`
 - Modify: `OPS/Utilities/TaskSuggestionEngine.swift`
 - Test: `OPSTests/Views/JobBoard/ProjectTaskComposerLogicTests.swift`
 

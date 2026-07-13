@@ -14,6 +14,7 @@ import SwiftData
 struct ProjectsWithoutTasksReviewView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var dataController: DataController
 
     @Query private var allTaskTypes: [TaskType]
@@ -23,7 +24,7 @@ struct ProjectsWithoutTasksReviewView: View {
     /// Id of the project whose inline details + quick-add composer are
     /// currently expanded. Only one card opens at a time.
     @State private var expandedProjectId: String? = nil
-    @State private var addedTaskCountsByProjectId: [String: Int] = [:]
+    @State private var addedTasksByProjectId: [String: [LocalTask]] = [:]
 
     // MARK: - Motion (spec: one curve, no spring; reduce-motion → fade only)
 
@@ -141,13 +142,22 @@ struct ProjectsWithoutTasksReviewView: View {
 
                     projectDetails(project)
 
-                    InlineQuickTaskComposer(
-                        project: project,
-                        allTaskTypes: allTaskTypes,
-                        savedCount: addedTaskCount(for: project),
-                        onSaved: { handleTaskSaved(for: project) },
-                        onCancel: { finishProjectReview(project) }
+                    ProjectTaskComposer(
+                        tasks: addedTasksBinding(for: project),
+                        availableTaskTypes: allTaskTypes.sorted {
+                            $0.display.localizedCaseInsensitiveCompare($1.display) == .orderedAscending
+                        },
+                        companyId: project.companyId,
+                        projectId: project.id,
+                        canSchedule: project.canEditSchedule,
+                        onSaveTask: { task in
+                            try await persist(task, for: project)
+                        },
+                        onDeleteTask: { task in
+                            try await delete(task, from: project)
+                        }
                     )
+                    .environmentObject(dataController)
                 }
                 .padding(.top, OPSStyle.Layout.spacing2)
                 .transition(composerTransition)
@@ -254,7 +264,7 @@ struct ProjectsWithoutTasksReviewView: View {
     }
 
     private func addedTaskCount(for project: Project) -> Int {
-        addedTaskCountsByProjectId[project.id] ?? 0
+        addedTasksByProjectId[project.id]?.count ?? 0
     }
 
     private func taskAddedLabel(for project: Project) -> String {
@@ -326,15 +336,119 @@ struct ProjectsWithoutTasksReviewView: View {
     private func finishProjectReview(_ project: Project) {
         expandedProjectId = nil
         if addedTaskCount(for: project) > 0 {
-            addedTaskCountsByProjectId[project.id] = nil
+            addedTasksByProjectId[project.id] = nil
             recomputeProjects()
         }
     }
 
-    private func handleTaskSaved(for project: Project) {
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-        addedTaskCountsByProjectId[project.id, default: 0] += 1
+    private func addedTasksBinding(for project: Project) -> Binding<[LocalTask]> {
+        Binding(
+            get: { addedTasksByProjectId[project.id] ?? [] },
+            set: { addedTasksByProjectId[project.id] = $0 }
+        )
     }
+
+    @MainActor
+    private func persist(_ draft: LocalTask, for project: Project) async throws -> LocalTask {
+        guard let taskType = allTaskTypes.first(where: { $0.id == draft.taskTypeId }) else {
+            throw ProjectTaskComposerPersistenceError.missingTaskType
+        }
+
+        if let existingTaskId = draft.existingTaskId,
+           let task = try persistedTask(id: existingTaskId, project: project) {
+            task.taskTypeId = draft.taskTypeId
+            task.taskType = taskType
+            task.customTitle = draft.customTitle
+            task.status = draft.status
+            task.taskColor = taskType.color
+            task.startDate = draft.startDate
+            task.endDate = draft.endDate
+            task.setTeamMemberIds(draft.teamMemberIds)
+            try hydrateTeamMembers(for: task)
+            try await dataController.updateTask(task: task)
+            return draft
+        }
+
+        let task = ProjectTask(
+            id: UUID().uuidString.lowercased(),
+            projectId: project.id,
+            taskTypeId: draft.taskTypeId,
+            companyId: project.companyId,
+            status: draft.status,
+            taskColor: taskType.color
+        )
+        task.project = project
+        task.taskType = taskType
+        task.customTitle = draft.customTitle
+        task.startDate = draft.startDate
+        task.endDate = draft.endDate
+        task.displayOrder = (project.tasks.map(\.displayOrder).max() ?? -1) + 1
+
+        let resolvedIds = resolvedTeamMemberIds(
+            explicitIds: draft.teamMemberIds,
+            taskType: taskType,
+            project: project
+        )
+        task.setTeamMemberIds(resolvedIds)
+        try hydrateTeamMembers(for: task)
+        try await dataController.createTask(task: task)
+
+        var savedDraft = draft
+        savedDraft.teamMemberIds = resolvedIds
+        savedDraft.existingTaskId = task.id
+        return savedDraft
+    }
+
+    @MainActor
+    private func delete(_ draft: LocalTask, from project: Project) async throws {
+        guard let existingTaskId = draft.existingTaskId,
+              let task = try persistedTask(id: existingTaskId, project: project) else {
+            return
+        }
+        try await dataController.deleteTask(task)
+    }
+
+    private func persistedTask(id: String, project: Project) throws -> ProjectTask? {
+        if let task = project.tasks.first(where: { $0.id == id }) {
+            return task
+        }
+
+        let descriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { task in task.id == id }
+        )
+        return try modelContext.fetch(descriptor).first
+    }
+
+    private func hydrateTeamMembers(for task: ProjectTask) throws {
+        let memberIds = task.getTeamMemberIds()
+        guard !memberIds.isEmpty else {
+            task.teamMembers = []
+            return
+        }
+
+        let descriptor = FetchDescriptor<User>(
+            predicate: #Predicate<User> { user in memberIds.contains(user.id) }
+        )
+        task.teamMembers = try modelContext.fetch(descriptor)
+    }
+
+    private func resolvedTeamMemberIds(
+        explicitIds: [String],
+        taskType: TaskType,
+        project: Project
+    ) -> [String] {
+        if !explicitIds.isEmpty { return explicitIds }
+        if !taskType.defaultTeamMemberIdsString.isEmpty {
+            return taskType.defaultTeamMemberIdsString
+                .components(separatedBy: ",")
+                .filter { !$0.isEmpty }
+        }
+        return project.teamMembers.map(\.id)
+    }
+}
+
+private enum ProjectTaskComposerPersistenceError: Error {
+    case missingTaskType
 }
 
 private struct ProjectReviewDetailCell: View {
@@ -374,295 +488,6 @@ private struct ProjectReviewDetailLine: View {
                 .lineLimit(1)
 
             Spacer(minLength: 0)
-        }
-    }
-}
-
-// MARK: - Inline Quick-Task Composer (bug fa5010b0)
-
-/// Inline task creator embedded inside each expandable project card.
-/// Mirrors the chip-based composer used in `ProjectFormSheet`: pick a
-/// task type, pick a crew, pick a date, add the task, keep going.
-///
-/// On save the composer constructs a `ProjectTask`, persists it via
-/// `DataController.createTask`, and calls back so the parent can
-/// update its in-session added count while this card stays open.
-private struct InlineQuickTaskComposer: View {
-    let project: Project
-    let allTaskTypes: [TaskType]
-    let savedCount: Int
-    let onSaved: () -> Void
-    let onCancel: () -> Void
-
-    @EnvironmentObject private var dataController: DataController
-    @Environment(\.modelContext) private var modelContext
-
-    @State private var draftTask: LocalTask
-    @State private var assignSelectedIds: Set<String> = []
-    @State private var showCrewPicker = false
-    @State private var showScheduler = false
-    @State private var schedulerStart: Date = Date()
-    @State private var schedulerEnd: Date = Date()
-    @State private var schedulerConfirmed = false
-    @State private var schedulerDatesExisted = false
-    @State private var fetchedTeamUsers: [User] = []
-    @State private var saving = false
-    @State private var saveError: String? = nil
-
-    init(project: Project, allTaskTypes: [TaskType], savedCount: Int, onSaved: @escaping () -> Void, onCancel: @escaping () -> Void) {
-        self.project = project
-        self.allTaskTypes = allTaskTypes
-        self.savedCount = savedCount
-        self.onSaved = onSaved
-        self.onCancel = onCancel
-        _draftTask = State(initialValue: Self.blankDraftTask())
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
-            HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
-                Text("// ADD TASK")
-                    .font(OPSStyle.Typography.microLabel)
-                    .foregroundColor(OPSStyle.Colors.text3)
-
-                Spacer()
-
-                if savedCount > 0 {
-                    Text("\(savedCount) ADDED")
-                        .font(OPSStyle.Typography.microLabel)
-                        .foregroundColor(OPSStyle.Colors.oliveTextM)
-                }
-            }
-
-            InlineTaskRow(
-                task: draftTask,
-                availableTaskTypes: allTaskTypes,
-                teamMemberCount: draftTask.teamMemberIds.count,
-                surfaceStyle: .nested,
-                isEnabled: !saving,
-                onTaskTypeChange: { newTypeId in
-                    draftTask.taskTypeId = newTypeId
-                },
-                onCreateNewTaskType: { /* inline composer doesn't surface task-type creation */ },
-                onTeamTap: { presentCrewPicker() },
-                onDateTap: { presentScheduler() },
-                onStatusChange: { newStatus in draftTask.status = newStatus },
-                onOpenFullEditor: { /* full editor would navigate away, keep inline */ },
-                onDuplicate: { /* not meaningful with a single draft row */ },
-                onDelete: { onCancel() }
-            )
-
-            if let saveError = saveError {
-                Text(saveError)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.errorStatus)
-            }
-
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                Button(action: onCancel) {
-                    Text(savedCount > 0 ? "DONE" : "CANCEL")
-                }
-                .opsSecondaryButtonStyle()
-                .disabled(saving)
-
-                Button(action: { Task { await saveTask() } }) {
-                    HStack(spacing: OPSStyle.Layout.spacing1) {
-                        if saving {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.invertedText))
-                                .scaleEffect(0.8)
-                        }
-                        Text(saving ? "ADDING" : "ADD TASK")
-                    }
-                }
-                .opsPrimaryButtonStyle(isDisabled: !canSave || saving)
-                .disabled(!canSave || saving)
-            }
-        }
-        .padding(OPSStyle.Layout.spacing2_5)
-        .onAppear { loadTeamUsers() }
-        .sheet(isPresented: $showCrewPicker, onDismiss: { handleCrewPickerDismiss() }) {
-            crewPickerSheet
-        }
-        .sheet(isPresented: $showScheduler, onDismiss: { handleSchedulerDismiss() }) {
-            schedulerSheet
-        }
-    }
-
-    // MARK: - Save eligibility
-
-    private var canSave: Bool {
-        !draftTask.taskTypeId.isEmpty &&
-        allTaskTypes.contains(where: { $0.id == draftTask.taskTypeId })
-    }
-
-    private static func blankDraftTask() -> LocalTask {
-        LocalTask(
-            id: UUID(),
-            taskTypeId: "",
-            customTitle: nil,
-            status: .active,
-            teamMemberIds: [],
-            startDate: nil,
-            endDate: nil
-        )
-    }
-
-    // MARK: - Team picker
-
-    private var crewPickerSheet: some View {
-        let ranked: (ordered: [User], usualCrewIds: Set<String>) = {
-            guard let companyId = dataController.currentUser?.companyId else {
-                return (fetchedTeamUsers.sorted {
-                    $0.fullName.localizedCaseInsensitiveCompare($1.fullName) == .orderedAscending
-                }, [])
-            }
-            return dataController.rankedTeamMembers(
-                forTaskType: draftTask.taskTypeId,
-                companyId: companyId,
-                candidates: fetchedTeamUsers
-            )
-        }()
-        return TeamMemberPickerSheet(
-            selectedTeamMemberIds: $assignSelectedIds,
-            allTeamMembers: ranked.ordered,
-            recentMemberIds: ranked.usualCrewIds,
-            taskTypeName: allTaskTypes.first { $0.id == draftTask.taskTypeId }?.display
-        )
-    }
-
-    private func presentCrewPicker() {
-        guard !saving else { return }
-        assignSelectedIds = Set(draftTask.teamMemberIds)
-        showCrewPicker = true
-    }
-
-    private func handleCrewPickerDismiss() {
-        draftTask.teamMemberIds = Array(assignSelectedIds)
-    }
-
-    // MARK: - Scheduler
-
-    private var schedulerSheet: some View {
-        CalendarSchedulerSheet(
-            isPresented: $showScheduler,
-            itemType: .draftTask(
-                taskTypeId: draftTask.taskTypeId,
-                teamMemberIds: draftTask.teamMemberIds,
-                projectId: project.id
-            ),
-            currentStartDate: schedulerStart,
-            currentEndDate: schedulerEnd,
-            onScheduleUpdate: { newStart, newEnd in
-                schedulerConfirmed = true
-                draftTask.startDate = newStart
-                draftTask.endDate = newEnd
-            },
-            onClearDates: {
-                draftTask.startDate = nil
-                draftTask.endDate = nil
-            },
-            preselectedTeamMemberIds: assignSelectedIds.isEmpty ? nil : assignSelectedIds
-        )
-        .environmentObject(dataController)
-    }
-
-    private func presentScheduler() {
-        guard !saving else { return }
-        // Scheduling a draft is gated on calendar.edit, scope-aware on the project
-        // (own-scope → only projects the user is on). Crew / Unassigned (no grant)
-        // can review and create tasks but never set their schedule.
-        guard project.canEditSchedule else { return }
-        schedulerDatesExisted = draftTask.startDate != nil
-        schedulerConfirmed = false
-        schedulerStart = draftTask.startDate ?? Date()
-        schedulerEnd = draftTask.endDate ?? schedulerStart
-        showScheduler = true
-    }
-
-    private func handleSchedulerDismiss() {
-        // Same convention as ProjectFormSheet: a sheet dismissed without
-        // confirmation rolls back dates that didn't exist before opening.
-        if !schedulerConfirmed && !schedulerDatesExisted {
-            draftTask.startDate = nil
-            draftTask.endDate = nil
-        }
-    }
-
-    // MARK: - Save
-
-    private func loadTeamUsers() {
-        guard let companyId = dataController.currentUser?.companyId else { return }
-        fetchedTeamUsers = dataController.getTeamMembers(companyId: companyId)
-            .sorted { $0.fullName.localizedCompare($1.fullName) == .orderedAscending }
-    }
-
-    @MainActor
-    private func saveTask() async {
-        guard canSave, !saving else { return }
-        guard let modelContext = dataController.modelContext else {
-            saveError = "Local store unavailable."
-            return
-        }
-        guard let taskType = allTaskTypes.first(where: { $0.id == draftTask.taskTypeId }) else {
-            saveError = "Pick a task type to save."
-            return
-        }
-        guard let companyId = dataController.currentUser?.companyId else {
-            saveError = "Missing company context."
-            return
-        }
-
-        saving = true
-        saveError = nil
-
-        let taskId = UUID().uuidString.lowercased()
-        let task = ProjectTask(
-            id: taskId,
-            projectId: project.id,
-            taskTypeId: draftTask.taskTypeId,
-            companyId: companyId,
-            status: draftTask.status,
-            taskColor: taskType.color
-        )
-        task.project = project
-        task.taskType = taskType
-        task.startDate = draftTask.startDate
-        task.endDate = draftTask.endDate
-
-        // Resolve team members: explicit picks > task-type default > project team.
-        let resolvedIds: [String]
-        if !draftTask.teamMemberIds.isEmpty {
-            resolvedIds = draftTask.teamMemberIds
-        } else if !taskType.defaultTeamMemberIdsString.isEmpty {
-            resolvedIds = taskType.defaultTeamMemberIdsString
-                .components(separatedBy: ",")
-                .filter { !$0.isEmpty }
-        } else {
-            resolvedIds = project.teamMembers.map { $0.id }
-        }
-        task.setTeamMemberIds(resolvedIds)
-        let lowercaseIds = task.getTeamMemberIds()
-        if !lowercaseIds.isEmpty {
-            let descriptor = FetchDescriptor<User>(
-                predicate: #Predicate<User> { user in lowercaseIds.contains(user.id) }
-            )
-            task.teamMembers = (try? modelContext.fetch(descriptor)) ?? []
-        }
-
-        do {
-            try await dataController.createTask(task: task)
-            saving = false
-            draftTask = Self.blankDraftTask()
-            assignSelectedIds = []
-            schedulerConfirmed = false
-            schedulerDatesExisted = false
-            schedulerStart = Date()
-            schedulerEnd = schedulerStart
-            onSaved()
-        } catch {
-            saving = false
-            saveError = "Save failed. \(error.localizedDescription)"
         }
     }
 }

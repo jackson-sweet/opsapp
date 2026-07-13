@@ -39,6 +39,14 @@ struct TaskSuggestion: Identifiable, Hashable {
     }
 }
 
+/// A task-type and crew combination that should not be suggested again.
+/// This lightweight value lets unsaved project forms participate in the same
+/// suggestion engine as persisted projects.
+struct TaskSuggestionSelection: Hashable {
+    let taskTypeId: String
+    let teamMemberIds: [String]
+}
+
 enum TaskSuggestionEngine {
     /// Days of history to consider.
     static let windowDays: Int = 60
@@ -86,6 +94,49 @@ enum TaskSuggestionEngine {
         activeMemberIds: Set<String>,
         for project: Project
     ) -> [TaskSuggestion] {
+        let existingSelections = project.tasks
+            .filter { $0.deletedAt == nil }
+            .map {
+                TaskSuggestionSelection(
+                    taskTypeId: $0.taskTypeId,
+                    teamMemberIds: $0.getTeamMemberIds()
+                )
+            }
+
+        return suggestions(
+            context: context,
+            companyId: companyId,
+            activeMemberIds: activeMemberIds,
+            excluding: existingSelections,
+            dismissedKeyHashes: dismissedKeyHashes(forProjectId: project.id)
+        )
+    }
+
+    /// Compute company-level suggestions while excluding task combinations
+    /// that exist only in local form state. Used by the shared task composer
+    /// in both create-project and review flows.
+    static func suggestions(
+        context: ModelContext,
+        companyId: String,
+        activeMemberIds: Set<String>,
+        excluding existingSelections: [TaskSuggestionSelection]
+    ) -> [TaskSuggestion] {
+        suggestions(
+            context: context,
+            companyId: companyId,
+            activeMemberIds: activeMemberIds,
+            excluding: existingSelections,
+            dismissedKeyHashes: []
+        )
+    }
+
+    private static func suggestions(
+        context: ModelContext,
+        companyId: String,
+        activeMemberIds: Set<String>,
+        excluding existingSelections: [TaskSuggestionSelection],
+        dismissedKeyHashes: Set<String>
+    ) -> [TaskSuggestion] {
         guard !companyId.isEmpty else { return [] }
 
         let cutoff = Calendar.current.date(
@@ -107,9 +158,9 @@ enum TaskSuggestionEngine {
             task.createdAt ?? task.lastSyncedAt ?? .distantPast
         }
 
-        // Active, deduped, lowercased crew for a single task.
-        func activeCrew(for task: ProjectTask) -> [String] {
-            let lowered = task.getTeamMemberIds()
+        // Active, deduped, lowercased crew for a single selection.
+        func activeCrew(_ memberIds: [String]) -> [String] {
+            let lowered = memberIds
                 .map { $0.lowercased() }
                 .filter { !$0.isEmpty && activeMemberIds.contains($0) }
             return Array(Set(lowered)).sorted()
@@ -140,7 +191,7 @@ enum TaskSuggestionEngine {
             agg.score += weight
             agg.occurrences += 1
             if s > agg.mostRecent { agg.mostRecent = s }
-            for memberId in activeCrew(for: task) {
+            for memberId in activeCrew(task.getTeamMemberIds()) {
                 if (agg.memberLatest[memberId] ?? .distantPast) < s {
                     agg.memberLatest[memberId] = s
                 }
@@ -148,17 +199,13 @@ enum TaskSuggestionEngine {
             byType[task.taskTypeId] = agg
         }
 
-        // Build dedup set of keys already present on the current project so we
-        // never suggest a setup the user has already added here. Normalize the
-        // existing crews the SAME way (active-filtered, deduped, sorted) so the
-        // comparison matches the final suggested crew.
+        // Build the dedup set from either persisted project tasks or unsaved
+        // form rows. Normalize crews exactly like computed suggestions.
         let existingKeys: Set<String> = Set(
-            project.tasks
-                .filter { $0.deletedAt == nil }
-                .map { key(taskTypeId: $0.taskTypeId, teamIds: activeCrew(for: $0)) }
+            existingSelections.map {
+                key(taskTypeId: $0.taskTypeId, teamIds: activeCrew($0.teamMemberIds))
+            }
         )
-
-        let dismissed = dismissedKeyHashes(forProjectId: project.id)
 
         let suggestions: [TaskSuggestion] = byType.compactMap { (taskTypeId, agg) -> TaskSuggestion? in
             guard agg.occurrences >= minOccurrences else { return nil }
@@ -183,7 +230,7 @@ enum TaskSuggestionEngine {
                 score: agg.score,
                 mostRecentAt: agg.mostRecent
             )
-            guard !dismissed.contains(candidate.keyHash) else { return nil }
+            guard !dismissedKeyHashes.contains(candidate.keyHash) else { return nil }
             return candidate
         }
         .sorted { a, b in

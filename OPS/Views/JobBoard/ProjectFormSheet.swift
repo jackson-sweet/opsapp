@@ -123,43 +123,6 @@ struct ProjectFormSheet: View {
     @State private var showingPhotoSourceChooser = false
     @State private var showingCameraBatch = false
     @State private var showingCopyFromProject = false
-    @State private var showingTaskForm = false
-    @State private var editingTaskIndex: Int?
-
-    // MARK: - Inline task row state
-    //
-    // Bug 2daf95f2 — task creation inside the project form sheet is now an
-    // inline table of `InlineTaskRow`s. Each row exposes type / team / date
-    // as in-line chips that present the SAME sheets used by `TaskFormSheet`,
-    // so the data flow and persistence are unchanged. Status / notes /
-    // dependencies remain accessible via long-press → "Open full editor".
-    //
-    /// Resolved `User` objects for the team-member picker presented from a row.
-    /// Fetched once on appear via `dataController.getTeamMembers(companyId:)`
-    /// because `TeamMemberPickerSheet` wants full `User`s for avatar rendering,
-    /// while the rest of this form continues to use the lightweight
-    /// `[TeamMember]` `@Query` for counts and team rollups.
-    @State private var fetchedTeamUsers: [User] = []
-    /// LocalTask whose chip is currently driving a presented sheet (team or
-    /// scheduler). Lookup by id so a list edit (insert/delete) doesn't shift
-    /// the sheet onto the wrong row.
-    @State private var rowEditingTaskId: UUID?
-    /// Bug 4890bdee — row team picker, scheduler, and create-task-type
-    /// sheets used to be three separate `.sheet(isPresented:)` modifiers
-    /// attached only to `tutorialModeProjectContent`. In standard mode they
-    /// were never in the view hierarchy, so tapping the team or date chip
-    /// silently did nothing. The three are now driven by a single enum and
-    /// presented from `mainProjectContent` (shared by both modes) via
-    /// `.sheet(item:)`, which also dodges any multi-sheet stacking edge
-    /// case.
-    @State private var rowSheetTarget: RowSheetTarget?
-    /// Local mirror of the row's dates while the scheduler sheet is open.
-    /// Bound into `CalendarSchedulerSheet`, then written back to the row on
-    /// confirm. Mirrors the pattern used by `TaskFormSheet`.
-    @State private var rowSchedulerStart: Date = Date()
-    @State private var rowSchedulerEnd: Date = Date()
-    @State private var rowDatesExistedBeforeScheduler = false
-    @State private var rowSchedulerConfirmed = false
 
     // Expanded sections tracking
     @State private var isBasicInfoExpanded = true // New: for client and project name
@@ -194,33 +157,6 @@ struct ProjectFormSheet: View {
         case notes
         case tasks
         case photos
-    }
-
-    /// Bug 4890bdee — drives the single `.sheet(item:)` that hosts every
-    /// inline-task-row sheet. Replaces three separate `@State` flags so the
-    /// row sheets attach to the shared `mainProjectContent` and work in
-    /// both tutorial and standard modes. Each case carries the row's
-    /// `LocalTask.id` so a row reorder during presentation can't shift
-    /// the sheet onto the wrong row.
-    enum RowSheetTarget: Identifiable, Equatable {
-        case team(UUID)
-        case schedule(UUID)
-        case createTaskType(UUID)
-
-        var id: String {
-            switch self {
-            case .team(let id): return "team:\(id.uuidString)"
-            case .schedule(let id): return "schedule:\(id.uuidString)"
-            case .createTaskType(let id): return "createTaskType:\(id.uuidString)"
-            }
-        }
-
-        var taskId: UUID {
-            switch self {
-            case .team(let id), .schedule(let id), .createTaskType(let id):
-                return id
-            }
-        }
     }
 
     @State private var isSaving = false
@@ -405,8 +341,8 @@ struct ProjectFormSheet: View {
         return recentTier + restTier
     }
 
-    /// Tutorial-mode filtered + recency-ordered task types. The inline `Menu`
-    /// inside a row reads from this so tutorial sessions only see DEMO_ types.
+    /// Tutorial-mode filtered + recency-ordered task types used by the shared
+    /// composer so scripted sessions only see DEMO_ types.
     private var availableInlineTaskTypes: [TaskType] {
         if tutorialMode {
             return recencyOrderedTaskTypes.filter { $0.id.hasPrefix("DEMO_") }
@@ -414,90 +350,6 @@ struct ProjectFormSheet: View {
         return recencyOrderedTaskTypes
     }
 
-    /// `Set<String>` binding into a specific row's `teamMemberIds`, looked up
-    /// by `LocalTask.id` so insertions/deletions during sheet presentation
-    /// can't shift the binding onto the wrong row.
-    private func teamSelectionBinding(forTaskId id: UUID) -> Binding<Set<String>> {
-        Binding(
-            get: {
-                guard let idx = localTasks.firstIndex(where: { $0.id == id }) else {
-                    return []
-                }
-                return Set(localTasks[idx].teamMemberIds)
-            },
-            set: { newValue in
-                guard let idx = localTasks.firstIndex(where: { $0.id == id }) else { return }
-                localTasks[idx].teamMemberIds = Array(newValue)
-            }
-        )
-    }
-
-    /// Local index for the row currently driving the presented sheets.
-    private var rowEditingIndex: Int? {
-        guard let id = rowEditingTaskId else { return nil }
-        return localTasks.firstIndex(where: { $0.id == id })
-    }
-
-    /// Append a new blank row and immediately scroll attention to it.
-    private func appendBlankTaskRow() {
-        let defaultStatus: TaskStatus = .active
-        withAnimation(.accessibleEaseInOut(duration: OPSStyle.Animation.durationPanel)) {
-            localTasks.append(
-                LocalTask(
-                    id: UUID(),
-                    taskTypeId: "",
-                    status: defaultStatus
-                )
-            )
-        }
-        #if !targetEnvironment(simulator)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        #endif
-    }
-
-    /// Duplicate an existing row with a fresh id (mirrors the long-press
-    /// "Duplicate" context-menu action).
-    private func duplicateTaskRow(at index: Int) {
-        guard localTasks.indices.contains(index) else { return }
-        var copy = localTasks[index]
-        copy = LocalTask(
-            id: UUID(),
-            taskTypeId: copy.taskTypeId,
-            customTitle: copy.customTitle,
-            status: copy.status,
-            teamMemberIds: copy.teamMemberIds,
-            startDate: copy.startDate,
-            endDate: copy.endDate
-        )
-        withAnimation(.accessibleEaseInOut(duration: OPSStyle.Animation.durationPanel)) {
-            localTasks.insert(copy, at: index + 1)
-        }
-        #if !targetEnvironment(simulator)
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        #endif
-    }
-
-    /// Remove a row with the standard collapse animation. Mirrors the
-    /// existing `localTasks.remove(at:)` callsite but adds the animation +
-    /// haptic in a single place.
-    private func removeTaskRow(at index: Int) {
-        guard localTasks.indices.contains(index) else { return }
-        withAnimation(.accessibleEaseInOut(duration: OPSStyle.Animation.durationPanel)) {
-            _ = localTasks.remove(at: index)
-        }
-        #if !targetEnvironment(simulator)
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        #endif
-    }
-
-    /// Open the team picker sheet for a specific row.
-    private func presentTeamPicker(forTaskId id: UUID) {
-        rowEditingTaskId = id
-        rowSheetTarget = .team(id)
-    }
-
-    /// Open the scheduler sheet for a specific row, mirroring its current
-    /// dates into the local scheduler state.
     /// Whether the current user may schedule this project's tasks. Gated on
     /// calendar.edit, scope-aware: an existing project uses its own scope; a new
     /// project (not yet created) uses any calendar.edit grant. Crew / Unassigned
@@ -507,47 +359,6 @@ struct ProjectFormSheet: View {
             return project.canEditSchedule
         }
         return PermissionStore.shared.canEditAnySchedule
-    }
-
-    private func presentScheduler(forTaskId id: UUID) {
-        guard canSchedule else { return }
-        guard let idx = localTasks.firstIndex(where: { $0.id == id }) else { return }
-        rowEditingTaskId = id
-        let existingStart = localTasks[idx].startDate
-        let existingEnd = localTasks[idx].endDate ?? existingStart
-        rowDatesExistedBeforeScheduler = existingStart != nil
-        rowSchedulerConfirmed = false
-        rowSchedulerStart = existingStart ?? Date()
-        rowSchedulerEnd = existingEnd ?? rowSchedulerStart
-        rowSheetTarget = .schedule(id)
-    }
-
-    /// Open the create-task-type sheet for a specific row.
-    private func presentCreateTaskType(forTaskId id: UUID) {
-        rowEditingTaskId = id
-        rowSheetTarget = .createTaskType(id)
-    }
-
-    /// Bug 4890bdee — fires when the single row-sheet binding nils out.
-    /// Per-case cleanup runs based on the target that was dismissed; the
-    /// `oldTarget` snapshot is captured by the `.onChange` modifier on
-    /// `rowSheetTarget` so we know which sheet category just closed even
-    /// though the binding has already cleared.
-    private func handleRowSheetDismiss(oldTarget: RowSheetTarget) {
-        switch oldTarget {
-        case .schedule:
-            // Mirror `TaskFormSheet` behaviour: if the scheduler was
-            // dismissed without an explicit confirm AND no dates existed
-            // before opening, clear the row's dates back out.
-            if !rowSchedulerConfirmed && !rowDatesExistedBeforeScheduler,
-               let idx = localTasks.firstIndex(where: { $0.id == oldTarget.taskId }) {
-                localTasks[idx].startDate = nil
-                localTasks[idx].endDate = nil
-            }
-        case .team, .createTaskType:
-            break
-        }
-        rowEditingTaskId = nil
     }
 
     init(mode: Mode, preselectedClient: Client? = nil, initialTitle: String? = nil, onSave: @escaping (Project) -> Void) {
@@ -770,30 +581,6 @@ struct ProjectFormSheet: View {
                 clientSearchText = newClient.name
             }
         }
-        .sheet(isPresented: $showingTaskForm) {
-            // Bug 0d14aab0 — open an existing row via `.editDraft` (not
-            // `.draft`) so TaskFormSheet's save preserves the task's
-            // customTitle and stable id through the round-trip. Under `.draft`
-            // the saved LocalTask was rebuilt with customTitle = nil, which
-            // made reconcileTasks push `custom_title = null` and erase the
-            // title locally and on Supabase. The add-new path keeps `.draft(nil)`.
-            TaskFormSheet(draftMode: editingTaskIndex != nil ?
-                .editDraft(localTasks[editingTaskIndex!]) :
-                .draft(nil)
-            ) { savedTask in
-                if let editIndex = editingTaskIndex {
-                    // Preserve the real-task mapping so an edit updates the
-                    // existing task on save instead of creating a duplicate.
-                    var merged = savedTask
-                    merged.existingTaskId = localTasks[editIndex].existingTaskId
-                    localTasks[editIndex] = merged
-                } else {
-                    localTasks.append(savedTask)
-                }
-                editingTaskIndex = nil
-            }
-            .environmentObject(dataController)
-        }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TutorialTaskSaved"))) { notification in
             if tutorialMode, let task = notification.userInfo?["task"] as? LocalTask {
                 localTasks.append(task)
@@ -922,21 +709,6 @@ struct ProjectFormSheet: View {
                                         }
                                     }
                                 }
-                                // Bug 705cc320 — when the tasks section is
-                                // expanded for the first time and no tasks
-                                // exist yet, append a blank row so the
-                                // operator types into the chip instead of
-                                // hunting for the "Add Task" button.
-                                // Subsequent expansions (re-opens after
-                                // collapse) leave existing rows alone.
-                                // Skipped in tutorial mode — the scripted
-                                // task-creation phase wants the empty state.
-                                .onChange(of: isTasksExpanded) { oldValue, newValue in
-                                    guard !oldValue, newValue, !tutorialMode,
-                                          localTasks.isEmpty else { return }
-                                    appendBlankTaskRow()
-                                }
-
                         // COPY FROM BUTTON (at bottom) - disabled in tutorial mode
                         if mode.isCreate && !tutorialMode {
                             Button(action: { showingCopyFromProject = true }) {
@@ -1013,20 +785,6 @@ struct ProjectFormSheet: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
             }
         }
-        // Bug 4890bdee — single inline-task-row sheet attached to the
-        // shared content so the team picker, scheduler, and create-task-
-        // type flows present from both tutorial and standard modes. The
-        // companion `.onChange` captures the dismissed target so per-case
-        // cleanup (e.g. scheduler "clear dates on unconfirmed dismiss")
-        // can run after the binding has nilled.
-        .sheet(item: $rowSheetTarget) { target in
-            rowSheet(for: target)
-        }
-        .onChange(of: rowSheetTarget) { oldValue, newValue in
-            if let oldTarget = oldValue, newValue == nil {
-                handleRowSheetDismiss(oldTarget: oldTarget)
-            }
-        }
         // Bug 33403492 — system contact picker. The button on
         // `clientSearchField` flips `showingContactPicker`, and the
         // selected contact is funnelled to `handleContactSelected` which
@@ -1041,117 +799,6 @@ struct ProjectFormSheet: View {
                 onDismiss: nil
             )
         }
-        // Bug 685e1d0e — preload full `User` records for the inline task-row
-        // team picker here, on the SHARED content, so the picker populates in
-        // BOTH standard and tutorial modes. Previously the only fetch lived on
-        // the tutorial-only `.onAppear`, leaving the standard-mode picker an
-        // empty list. mainProjectContent is embedded by both mode containers,
-        // so this single onAppear covers every path.
-        .onAppear {
-            if let companyId = dataController.currentUser?.companyId {
-                fetchedTeamUsers = dataController.getTeamMembers(companyId: companyId)
-            }
-        }
-    }
-
-    // MARK: - Row sheet content (bug 4890bdee)
-
-    /// Dispatches the row-sheet binding onto the correct child sheet for
-    /// each case. Kept as a `@ViewBuilder` so the if-let unwraps stay
-    /// readable per case.
-    @ViewBuilder
-    private func rowSheet(for target: RowSheetTarget) -> some View {
-        switch target {
-        case .team(let id):
-            rowTeamPickerSheet(forTaskId: id)
-        case .schedule(let id):
-            rowSchedulerSheet(forTaskId: id)
-        case .createTaskType:
-            rowCreateTaskTypeSheet()
-        }
-    }
-
-    @ViewBuilder
-    private func rowTeamPickerSheet(forTaskId id: UUID) -> some View {
-        if let idx = localTasks.firstIndex(where: { $0.id == id }) {
-            let typeId = localTasks[idx].taskTypeId
-            let ranked: (ordered: [User], usualCrewIds: Set<String>) = {
-                guard let companyId = dataController.currentUser?.companyId else {
-                    return (fetchedTeamUsers.sorted {
-                        $0.fullName.localizedCaseInsensitiveCompare($1.fullName) == .orderedAscending
-                    }, [])
-                }
-                return dataController.rankedTeamMembers(
-                    forTaskType: typeId,
-                    companyId: companyId,
-                    candidates: fetchedTeamUsers
-                )
-            }()
-            TeamMemberPickerSheet(
-                selectedTeamMemberIds: teamSelectionBinding(forTaskId: id),
-                allTeamMembers: ranked.ordered,
-                recentMemberIds: ranked.usualCrewIds,
-                taskTypeName: allTaskTypes.first { $0.id == typeId }?.display
-            )
-            .environmentObject(dataController)
-        }
-    }
-
-    @ViewBuilder
-    private func rowSchedulerSheet(forTaskId id: UUID) -> some View {
-        if let idx = localTasks.firstIndex(where: { $0.id == id }) {
-            let typeId = localTasks[idx].taskTypeId
-            let teamIds = Set(localTasks[idx].teamMemberIds)
-            CalendarSchedulerSheet(
-                isPresented: schedulerIsPresentedBinding,
-                itemType: .draftTask(
-                    taskTypeId: typeId,
-                    teamMemberIds: localTasks[idx].teamMemberIds,
-                    projectId: nil
-                ),
-                currentStartDate: rowSchedulerStart,
-                currentEndDate: rowSchedulerEnd,
-                onScheduleUpdate: { newStart, newEnd in
-                    rowSchedulerConfirmed = true
-                    guard let editIdx = localTasks.firstIndex(where: { $0.id == id }) else { return }
-                    localTasks[editIdx].startDate = newStart
-                    localTasks[editIdx].endDate = newEnd
-                },
-                onClearDates: {
-                    guard let editIdx = localTasks.firstIndex(where: { $0.id == id }) else { return }
-                    localTasks[editIdx].startDate = nil
-                    localTasks[editIdx].endDate = nil
-                },
-                preselectedTeamMemberIds: teamIds.isEmpty ? nil : teamIds
-            )
-            .environmentObject(dataController)
-        }
-    }
-
-    @ViewBuilder
-    private func rowCreateTaskTypeSheet() -> some View {
-        TaskTypeSheet(mode: .create { newType in
-            if let id = rowEditingTaskId,
-               let idx = localTasks.firstIndex(where: { $0.id == id }) {
-                localTasks[idx].taskTypeId = newType.id
-            }
-        })
-        .environmentObject(dataController)
-    }
-
-    /// Bridges `CalendarSchedulerSheet`'s `isPresented:` Binding<Bool>
-    /// parameter into the enum-driven row-sheet state — true while a
-    /// `.schedule` target is presenting, settable to false to dismiss.
-    private var schedulerIsPresentedBinding: Binding<Bool> {
-        Binding(
-            get: {
-                if case .schedule = rowSheetTarget { return true }
-                return false
-            },
-            set: { newValue in
-                if !newValue { rowSheetTarget = nil }
-            }
-        )
     }
 
     // MARK: - Mandatory Fields Section
@@ -1978,117 +1625,34 @@ struct ProjectFormSheet: View {
                 #endif
             }
         ) {
-            VStack(spacing: OPSStyle.Layout.spacing2_5) {
-                if !localTasks.isEmpty {
-                    VStack(spacing: OPSStyle.Layout.spacing2_5) {
-                        ForEach(Array(localTasks.enumerated()), id: \.element.id) { index, task in
-                            inlineRow(for: task, at: index)
-                                .transition(
-                                    .asymmetric(
-                                        insertion: .opacity.combined(with: .move(edge: .top)),
-                                        removal: .opacity
-                                    )
-                                )
-                        }
-                    }
-                }
-
-                addRowButton
-            }
+            ProjectTaskComposer(
+                tasks: $localTasks,
+                availableTaskTypes: availableInlineTaskTypes,
+                companyId: dataController.currentUser?.companyId,
+                projectId: mode.project?.id,
+                canSchedule: canSchedule,
+                isEnabled: !tutorialMode,
+                isAddEnabled: isAddTaskEnabled,
+                isAddHighlighted: addTaskButtonHighlight.isHighlighted,
+                addButtonTarget: "add_task",
+                onManualAddRequested: {
+                    guard tutorialMode else { return true }
+                    handleAddRowTap()
+                    return false
+                },
+                onSaveTask: { task in task },
+                onDeleteTask: { _ in }
+            )
+            .environmentObject(dataController)
         }
     }
 
-    private func inlineRow(for task: LocalTask, at index: Int) -> some View {
-        InlineTaskRow(
-            task: task,
-            availableTaskTypes: availableInlineTaskTypes,
-            teamMemberCount: uniqueTeamMembers.filter { task.teamMemberIds.contains($0.id) }.count,
-            isEnabled: !tutorialMode,
-            onTaskTypeChange: { newTypeId in
-                guard localTasks.indices.contains(index) else { return }
-                localTasks[index].taskTypeId = newTypeId
-            },
-            onCreateNewTaskType: {
-                presentCreateTaskType(forTaskId: task.id)
-            },
-            onTeamTap: {
-                presentTeamPicker(forTaskId: task.id)
-            },
-            onDateTap: {
-                presentScheduler(forTaskId: task.id)
-            },
-            onStatusChange: { newStatus in
-                guard localTasks.indices.contains(index) else { return }
-                localTasks[index].status = newStatus
-            },
-            onOpenFullEditor: {
-                editingTaskIndex = index
-                showingTaskForm = true
-            },
-            onDuplicate: {
-                duplicateTaskRow(at: index)
-            },
-            onDelete: {
-                removeTaskRow(at: index)
-            }
-        )
-    }
-
-    /// "Add row" button — dashed-bordered, primary-accent, matches the
-    /// previous "+ Add Task" affordance so the tutorial highlight and
-    /// `wizardTarget("add_task")` keep working unchanged.
-    private var addRowButton: some View {
-        Button(action: handleAddRowTap) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: OPSStyle.Icons.plusCircleFill)
-                    .font(.system(size: OPSStyle.Layout.IconSize.md))
-                Text(localTasks.isEmpty ? "Add Task" : "Add Another Task")
-                    .font(OPSStyle.Typography.body)
-            }
-            .foregroundColor(
-                addTaskButtonHighlight.isHighlighted
-                    ? addTaskButtonHighlight.labelColor
-                    : OPSStyle.Colors.opsAccent
-            )
-            .modifier(TutorialPulseModifier(isHighlighted: addTaskButtonHighlight.isHighlighted))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, OPSStyle.Layout.spacing2_5)
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.surfaceInput)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(
-                        addTaskButtonHighlight.isHighlighted
-                            ? addTaskButtonHighlight.borderColor
-                            : OPSStyle.Colors.opsAccent.opacity(OPSStyle.Layout.Opacity.light),
-                        style: addTaskButtonHighlight.isHighlighted
-                            ? StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick)
-                            : StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [5])
-                    )
-                    .modifier(TutorialPulseModifier(isHighlighted: addTaskButtonHighlight.isHighlighted))
-            )
-        }
-        .wizardTarget("add_task")
-        .allowsHitTesting(isAddTaskEnabled)
-        .opacity(tutorialMode && !isAddTaskEnabled ? OPSStyle.Layout.Opacity.medium : 1.0)
-        .id("addTaskButton")
-    }
-
-    /// Tutorial-aware tap handler for the add-row button. In tutorial mode
-    /// the wrapper still opens the legacy `TaskFormSheet` so the scripted
-    /// task-creation phase has its expected target; outside tutorial we
-    /// append a blank inline row.
     private func handleAddRowTap() {
-        if tutorialMode {
-            editingTaskIndex = nil
-            NotificationCenter.default.post(
-                name: Notification.Name("TutorialAddTaskTapped"),
-                object: nil
-            )
-            return
-        }
-        appendBlankTaskRow()
+        guard tutorialMode else { return }
+        NotificationCenter.default.post(
+            name: Notification.Name("TutorialAddTaskTapped"),
+            object: nil
+        )
     }
 
     private var photosSection: some View {

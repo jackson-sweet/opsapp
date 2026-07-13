@@ -826,6 +826,11 @@ final class SyncEngine {
         // pending queue, so a future bypass can't silently drop a write.
         enqueueOrphanedTaskWrites()
 
+        // Same class of safety net for deck→project links: a stranded link
+        // (needsSync set, no op recorded) re-records its update here and
+        // drains in this very pass.
+        enqueueStrandedDeckDesignLinks()
+
         let pending = getPendingOperations()
         guard !pending.isEmpty else {
             print("[SYNC_ENGINE] No pending operations to push")
@@ -913,7 +918,7 @@ final class SyncEngine {
         var didMutate = false
         for task in orphans {
             if let created = task.createdAt, created > graceCutoff { continue }
-            if hasOpenOperation(entityId: task.id) { continue }
+            if hasOpenOperation(entityType: .projectTask, entityId: task.id) { continue }
 
             guard hasRecentLocalWrite(entityId: task.id, withinSeconds: recentLocalWriteWindow) else {
                 // No evidence of a genuine recent local edit. Do NOT push the local
@@ -950,12 +955,56 @@ final class SyncEngine {
         }
     }
 
-    /// True if a pending or in-flight SyncOperation already exists for this entity id.
-    private func hasOpenOperation(entityId: String) -> Bool {
+    /// Recovery sweep for deck→project links stranded by the pre-fix
+    /// site-visit conversion handoff: needsSync == true with a projectId but
+    /// no SyncOperation ever recorded — the link exists only on the capturing
+    /// phone, so the deck shows project_id NULL to every other device. This
+    /// re-records a durable {project_id, updated_at} update (deferPush — the
+    /// surrounding pushPending drains it in the same pass). Decks with an open
+    /// op are already in flight; decks with any recent op lifecycle are
+    /// converging through the normal pipeline (needsSync clears on the next
+    /// inbound merge) and must not be spammed with link updates.
+    func enqueueStrandedDeckDesignLinks() {
+        guard let modelContext else { return }
+        let stranded: [DeckDesign]
+        do {
+            stranded = try modelContext.fetch(
+                FetchDescriptor<DeckDesign>(
+                    predicate: #Predicate { $0.needsSync == true && $0.deletedAt == nil }
+                )
+            )
+        } catch {
+            print("[SYNC_ENGINE] Stranded-deck sweep fetch failed: \(error)")
+            return
+        }
+        guard !stranded.isEmpty else { return }
+
+        let writer = ISO8601DateFormatter()
+        for design in stranded {
+            guard let projectId = design.projectId, !projectId.isEmpty else { continue }
+            guard !hasOpenOperation(entityType: .deckDesign, entityId: design.id) else { continue }
+            guard !hasRecentLocalWrite(entityId: design.id, withinSeconds: 15 * 60) else { continue }
+
+            print("[SYNC_ENGINE] Stranded deck link (needsSync, no op): \(design.id) — re-recording project link \(projectId)")
+            _ = recordOperation(
+                entityType: .deckDesign,
+                entityId: design.id,
+                operationType: "update",
+                changedFields: [
+                    "project_id": projectId,
+                    "updated_at": writer.string(from: Date())
+                ],
+                deferPush: true
+            )
+        }
+    }
+
+    /// True if a pending or in-flight SyncOperation already exists for this entity.
+    private func hasOpenOperation(entityType type: SyncEntityType, entityId: String) -> Bool {
         guard let modelContext else { return false }
         let idLower = entityId.lowercased()
         let idUpper = entityId.uppercased()
-        let entityType = SyncEntityType.projectTask.rawValue
+        let entityType = type.rawValue
         let descriptor = FetchDescriptor<SyncOperation>(
             predicate: #Predicate { op in
                 op.entityType == entityType &&
@@ -991,7 +1040,7 @@ final class SyncEngine {
 
         var clearedCount = 0
         for task in dirtyTasks {
-            if hasOpenOperation(entityId: task.id) { continue }
+            if hasOpenOperation(entityType: .projectTask, entityId: task.id) { continue }
             guard completedProjectTaskIds.contains(task.id.lowercased()) ||
                     hasCompletedOperation(entityId: task.id, since: pushStartedAt) else { continue }
             task.needsSync = false

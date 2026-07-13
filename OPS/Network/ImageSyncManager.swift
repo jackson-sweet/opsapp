@@ -519,7 +519,209 @@ class ImageSyncManager: ObservableObject {
         retryTimer?.invalidate()
         retryTimer = nil
     }
-    
+
+    // MARK: - Site-Visit Handoff Photos (Carol Dancer stranding fix)
+
+    /// Enqueue an ALREADY-SAVED `local://` image into the durable upload queue.
+    ///
+    /// The queue was previously fed only by `saveImageLocally`, which both
+    /// writes the bytes and appends the entry — so photos whose bytes were
+    /// saved elsewhere (site-visit capture writes straight to ImageFileManager)
+    /// had no path into it, and their optimistic `ProjectPhoto` rows stayed
+    /// phone-local forever. This is the missing entry point: it queues a file
+    /// that already exists on disk. Restart-surviving (UserDefaults), deduped
+    /// by URL, drained by the same retry timer / connectivity passes as every
+    /// other pending upload.
+    func enqueueExistingLocalImage(localURL: String, projectId: String, companyId: String) {
+        guard localURL.hasPrefix("local://") else { return }
+        guard ImageFileManager.shared.imageExists(localID: localURL) else { return }
+        guard !pendingUploads.contains(where: { $0.localURL == localURL }) else { return }
+
+        pendingUploads.append(PendingImageUpload(
+            localURL: localURL,
+            projectId: projectId,
+            companyId: companyId,
+            timestamp: Date()
+        ))
+        savePendingUploads()
+        startRetryTimerIfNeeded()
+    }
+
+    /// Reconciliation sweep for stranded handoff photos. Any `ProjectPhoto`
+    /// row still carrying a `local://` url with `needsSync == true` is a photo
+    /// whose bytes exist ONLY on this phone — no server backfill can recover
+    /// it, so this sweep is the sole healing path for projects converted
+    /// before the durable-enqueue fix (and the safety net behind it). Runs at
+    /// the top of every `syncPendingImages` pass (startup + reconnect + retry).
+    ///
+    /// Rows whose url matches a pending `PhotoAnnotation` are skipped: the
+    /// dimensioned-capture pipeline uploads those itself (HEIC + rendered
+    /// deliverable), inserts the `project_photos` row, and heals the local row
+    /// on success — queueing them here too would upload the same photo twice
+    /// and double-tile every teammate's gallery.
+    func reconcileStrandedProjectPhotos() {
+        guard let modelContext = modelContext else { return }
+
+        let stranded: [ProjectPhoto]
+        do {
+            stranded = try modelContext.fetch(FetchDescriptor<ProjectPhoto>(
+                predicate: #Predicate { $0.needsSync == true && $0.deletedAt == nil }
+            ))
+        } catch {
+            DebugLogger.shared.log(
+                "Stranded-photo sweep fetch failed: \(error)",
+                level: .warning,
+                category: "ImageSyncManager"
+            )
+            return
+        }
+        guard !stranded.isEmpty else { return }
+
+        let pendingAnnotationURLs: Set<String> = {
+            let descriptor = FetchDescriptor<PhotoAnnotation>(
+                predicate: #Predicate { $0.needsSync == true && $0.deletedAt == nil }
+            )
+            let annotations = (try? modelContext.fetch(descriptor)) ?? []
+            return Set(annotations.map(\.photoURL))
+        }()
+
+        var enqueued = 0
+        for row in stranded {
+            guard row.url.hasPrefix("local://") else { continue }
+            guard !pendingAnnotationURLs.contains(row.url) else { continue }
+            guard ImageFileManager.shared.imageExists(localID: row.url) else { continue }
+            guard !pendingUploads.contains(where: { $0.localURL == row.url }) else { continue }
+
+            pendingUploads.append(PendingImageUpload(
+                localURL: row.url,
+                projectId: row.projectId,
+                companyId: row.companyId,
+                timestamp: Date()
+            ))
+            enqueued += 1
+        }
+
+        guard enqueued > 0 else { return }
+        DebugLogger.shared.log(
+            "Stranded-photo sweep enqueued \(enqueued) local photo(s) for upload",
+            level: .info,
+            category: "ImageSyncManager"
+        )
+        savePendingUploads()
+        startRetryTimerIfNeeded()
+    }
+
+    /// The `project_photos` insert for a drained handoff photo. Carries the
+    /// LOCAL row's identity + metadata so provenance survives the drain.
+    ///
+    /// Deliberately has NO `site_visit_id` field: iOS `SiteVisit` ids are
+    /// local-only (UPPERCASE `UUID().uuidString`, never written to the server
+    /// `site_visits` table), so sending one would FK-reject the entire insert.
+    struct HandoffProjectPhotoInsert: Encodable {
+        let id: String
+        let projectId: String
+        let companyId: String
+        let url: String
+        let source: String
+        let uploadedBy: String?
+        let caption: String?
+        let takenAt: String
+        let isClientVisible: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case projectId = "project_id"
+            case companyId = "company_id"
+            case url
+            case source
+            case uploadedBy = "uploaded_by"
+            case caption
+            case takenAt = "taken_at"
+            case isClientVisible = "is_client_visible"
+        }
+    }
+
+    /// Build the server insert for a handoff row whose upload just landed.
+    /// The id travels lowercased (Postgres uuids are lowercase) so the insert
+    /// echo merges back into the SAME local row instead of duplicating it.
+    /// An empty uploader is omitted — `uploaded_by` is a uuid column and an
+    /// empty string would 22P02 the whole insert.
+    static func handoffPhotoInsert(for row: ProjectPhoto, remoteURL: String) -> HandoffProjectPhotoInsert {
+        let uploader = row.uploadedBy.trimmingCharacters(in: .whitespacesAndNewlines)
+        return HandoffProjectPhotoInsert(
+            id: row.id.lowercased(),
+            projectId: row.projectId,
+            companyId: row.companyId,
+            url: remoteURL,
+            source: row.source,
+            uploadedBy: uploader.isEmpty ? nil : uploader,
+            caption: row.caption,
+            takenAt: ISO8601DateFormatter().string(from: row.takenAt ?? row.createdAt),
+            isClientVisible: false
+        )
+    }
+
+    /// Heal a handoff row IN PLACE after its upload + server insert landed.
+    /// The gallery dedupes by URL, so the row's url must swap local:// → S3
+    /// in place — inserting a second row instead would double-tile. A rendered
+    /// URL that pointed at the same local file follows the swap.
+    static func healHandoffPhotoRow(_ row: ProjectPhoto, remoteURL: String) {
+        if row.renderedURL == row.url {
+            row.renderedURL = remoteURL
+        }
+        row.url = remoteURL
+        row.id = row.id.lowercased()
+        row.needsSync = false
+        row.lastSyncedAt = Date()
+    }
+
+    /// Local ProjectPhoto rows (site-visit handoff) keyed by their local:// url.
+    private func handoffPhotoRows(projectId: String, localURLs: [String]) -> [String: ProjectPhoto] {
+        guard let modelContext = modelContext, !localURLs.isEmpty else { return [:] }
+        let urls = localURLs
+        let descriptor = FetchDescriptor<ProjectPhoto>(
+            predicate: #Predicate { $0.projectId == projectId && urls.contains($0.url) && $0.deletedAt == nil }
+        )
+        let rows = (try? modelContext.fetch(descriptor)) ?? []
+        return Dictionary(rows.map { ($0.url, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Insert the `project_photos` row for a drained handoff photo. Returns
+    /// whether the row is now on the server — the caller only heals the local
+    /// row (and drops the queue entry) on success, so a failed insert retries
+    /// on the next drain pass instead of silently losing portal visibility.
+    private func insertHandoffPhotoRow(_ row: ProjectPhoto, remoteURL: String) async -> Bool {
+        let insert = Self.handoffPhotoInsert(for: row, remoteURL: remoteURL)
+        do {
+            try await SupabaseService.shared.client
+                .from("project_photos")
+                .insert(insert)
+                .execute()
+            return true
+        } catch {
+            // A duplicate-key reject means a prior drain's insert DID land and
+            // only the response was lost — the server row exists, so heal.
+            if "\(error)".contains("23505") { return true }
+            let kind = await AutoBugReporter.shared.reportIfPermanent(
+                error,
+                screen: "ImageSyncManager.insertHandoffPhotoRow",
+                suspectedFile: "ImageSyncManager.swift",
+                summary: "Handoff project_photos INSERT failed for project \(row.projectId): \(error.localizedDescription)",
+                metadata: [
+                    "project_id": row.projectId,
+                    "company_id": row.companyId,
+                    "photo_id": row.id
+                ]
+            )
+            DebugLogger.shared.log(
+                "handoff project_photos insert failed (\(kind)) for \(row.projectId): \(error)",
+                level: .error,
+                category: "ImageSyncManager"
+            )
+            return false
+        }
+    }
+
     /// Delete an image from S3 and locally
     func deleteImage(_ urlString: String, from project: Project) async -> Bool {
         // Check if it's a local URL
@@ -666,15 +868,20 @@ class ImageSyncManager: ObservableObject {
 
     /// Sync all pending images to S3 and Supabase
     func syncPendingImages() async {
-        
-        guard !isSyncing, connectivity.isConnected else { 
+
+        guard !isSyncing, connectivity.isConnected else {
             if isSyncing {
             }
             if !connectivity.isConnected {
             }
-            return 
+            return
         }
-        
+
+        // Stranded-photo recovery runs on every drain pass (startup, reconnect,
+        // retry timer) BEFORE the empty-queue check — a launch with an empty
+        // queue but stranded local:// rows must still pick them up.
+        reconcileStrandedProjectPhotos()
+
         if pendingUploads.isEmpty {
             return
         }
@@ -747,9 +954,19 @@ class ImageSyncManager: ObservableObject {
         // OWN remote URL, found by identity (never by array position).
         let results: [(localURL: String, outcome: ProjectImageUploadOutcome)] =
             zip(pairs, outcomes).map { ($0.0.upload.localURL, $0.1) }
+
+        // Site-visit handoff photos carry a local ProjectPhoto row keyed by the
+        // same local:// URL. They drain through their own path below (per-photo
+        // server insert with the row's identity + metadata, then the row heals
+        // in place) — the legacy CSV path must not also insert a generic
+        // `in_progress` row for them, or the gallery double-tiles.
+        let handoffRowsByURL = handoffPhotoRows(projectId: projectId, localURLs: results.map(\.localURL))
+        let legacyResults = results.filter { handoffRowsByURL[$0.localURL] == nil }
+        let handoffResults = results.filter { handoffRowsByURL[$0.localURL] != nil }
+
         let reconciled = GalleryReconciler.reconcileDrain(
             currentImageURLs: project.getProjectImages(),
-            results: results
+            results: legacyResults
         )
 
         if !reconciled.syncedLocalURLs.isEmpty {
@@ -787,6 +1004,29 @@ class ImageSyncManager: ObservableObject {
             pendingUploads.removeAll { synced.contains($0.localURL) }
             savePendingUploads()
 
+            if let modelContext = modelContext {
+                try? modelContext.save()
+            }
+        }
+
+        // Drain the handoff-owned uploads: per-photo server insert carrying
+        // the row's own id/source/caption (never site_visit_id — iOS visit ids
+        // have no server row), then the local row heals local:// → S3 in
+        // place. A failed insert keeps the entry queued so the next pass
+        // retries; the S3 bytes are re-uploaded then, which is the price of
+        // never losing the portal row.
+        var healedAny = false
+        for (localURL, outcome) in handoffResults {
+            guard let remoteURL = outcome.url,
+                  let row = handoffRowsByURL[localURL] else { continue }
+            guard await insertHandoffPhotoRow(row, remoteURL: remoteURL) else { continue }
+            Self.healHandoffPhotoRow(row, remoteURL: remoteURL)
+            pendingUploads.removeAll { $0.localURL == localURL }
+            healedAny = true
+        }
+        if healedAny {
+            savePendingUploads()
+            project.lastSyncedAt = Date()
             if let modelContext = modelContext {
                 try? modelContext.save()
             }

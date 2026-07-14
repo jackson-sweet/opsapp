@@ -500,18 +500,28 @@ final class SiteVisitCaptureViewModel: ObservableObject {
 
     func attachDeckDesign(_ deckDesign: DeckDesign) {
         guard let visit = requireVisit() else { return }
-        let artifact = SiteVisitCaptureArtifact(
-            siteVisitId: visit.id,
-            companyId: companyId,
-            opportunityId: activeOpportunityId,
-            kind: .deckDesign,
-            source: .deckBuilder,
-            title: deckDesign.title,
-            deckDesignId: deckDesign.id,
-            capturedAt: Date(),
-            createdBy: userId
-        )
-        modelContext.insert(artifact)
+
+        // Idempotent on reopen: one active artifact per design. Continuing a
+        // design (checklist EDIT, or a lead deck carried into the visit) must
+        // not stack duplicate DECK artifacts, inflate the summary count, or
+        // hand conversion the same design twice.
+        let alreadyAttached = activeArtifacts.contains {
+            $0.kind == .deckDesign && $0.deckDesignId == deckDesign.id
+        }
+        if !alreadyAttached {
+            let artifact = SiteVisitCaptureArtifact(
+                siteVisitId: visit.id,
+                companyId: companyId,
+                opportunityId: activeOpportunityId,
+                kind: .deckDesign,
+                source: .deckBuilder,
+                title: deckDesign.title,
+                deckDesignId: deckDesign.id,
+                capturedAt: Date(),
+                createdBy: userId
+            )
+            modelContext.insert(artifact)
+        }
         if let deckAnswer = checklistAnswers.first(where: {
             $0.isActive && $0.kind == .deckDesign
         }) {

@@ -815,6 +815,25 @@ private struct SiteVisitCaptureConsole: View {
             viewModel.errorMessage = "DECK DESIGN UNAVAILABLE"
             return
         }
+
+        // Continue before create: the visit's own sketch first, then the
+        // lead's design (same display-candidate rule the lead page uses).
+        // DECK never forks a duplicate — and the checklist row's EDIT
+        // genuinely edits the linked design instead of quietly replacing it.
+        let allDesigns = (try? modelContext.fetch(FetchDescriptor<DeckDesign>())) ?? []
+        let visitDesignIds = viewModel.activeArtifacts
+            .filter { $0.kind == .deckDesign }
+            .compactMap(\.deckDesignId)
+        if let existing = SiteVisitDeckDesignResolver.existingDesign(
+            artifactDesignIds: visitDesignIds,
+            opportunityId: viewModel.currentOpportunity?.id,
+            in: allDesigns
+        ) {
+            viewModel.attachDeckDesign(existing)   // idempotent — links, never dupes
+            activeDeckDesign = existing
+            return
+        }
+
         let design = DeckDesign(
             companyId: viewModel.companyIdentifier,
             projectId: nil,

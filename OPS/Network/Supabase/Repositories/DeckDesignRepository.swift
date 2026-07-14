@@ -57,6 +57,23 @@ class DeckDesignRepository {
         return Self.decodeResilient(data)
     }
 
+    // MARK: - Fetch for Opportunity
+
+    /// Decks drawn on a lead. Same resilient row-by-row decode as the project
+    /// path — LeadDetailView's self-repair fetch must survive one corrupt row.
+    func fetchForOpportunity(_ opportunityId: String) async throws -> [SupabaseDeckDesignDTO] {
+        let data = try await client
+            .from("deck_designs")
+            .select()
+            .eq("company_id", value: companyId)
+            .eq("opportunity_id", value: opportunityId)
+            .is("deleted_at", value: nil)
+            .order("created_at", ascending: false)
+            .execute()
+            .data
+        return Self.decodeResilient(data)
+    }
+
     // MARK: - Decode Resilience
 
     /// Decode a `deck_designs` array row-by-row, skipping any row whose JSON fails

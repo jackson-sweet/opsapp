@@ -14,6 +14,9 @@ final class DeckDesign: Identifiable {
     @Attribute(.unique) var id: String
     var companyId: String
     var projectId: String?           // nil for standalone sketches
+    var opportunityId: String?       // set when the deck was drawn on a LEAD;
+                                     // survives conversion (project_id gains the
+                                     // link server-side, this stays as provenance)
     var title: String
     var drawingDataJSON: String      // DeckDrawingData serialized as JSON
     var thumbnailURL: String?        // S3 URL of rendered PNG
@@ -35,6 +38,7 @@ final class DeckDesign: Identifiable {
         id: String = UUID().uuidString,
         companyId: String,
         projectId: String? = nil,
+        opportunityId: String? = nil,
         title: String = "Untitled Deck",
         drawingDataJSON: String = "{}",
         createdBy: String? = nil
@@ -42,6 +46,7 @@ final class DeckDesign: Identifiable {
         self.id = Self.canonicalUUIDString(id)
         self.companyId = Self.canonicalUUIDString(companyId)
         self.projectId = projectId.map(Self.canonicalUUIDString)
+        self.opportunityId = opportunityId.map(Self.canonicalUUIDString)
         self.title = title
         self.drawingDataJSON = drawingDataJSON
         self.createdBy = createdBy
@@ -77,6 +82,11 @@ final class DeckDesign: Identifiable {
         return Self.canonicalUUIDString(designProjectId) == Self.canonicalUUIDString(projectId)
     }
 
+    func isAttached(toOpportunityId opportunityId: String) -> Bool {
+        guard let designOpportunityId = self.opportunityId else { return false }
+        return Self.canonicalUUIDString(designOpportunityId) == Self.canonicalUUIDString(opportunityId)
+    }
+
     var hasRenderableGeometry: Bool {
         if drawingData.isMultiLevel {
             return drawingData.levels.contains { !$0.vertices.isEmpty }
@@ -87,6 +97,23 @@ final class DeckDesign: Identifiable {
     static func displayCandidate(in designs: [DeckDesign], forProjectId projectId: String) -> DeckDesign? {
         let candidates = designs.filter {
             $0.deletedAt == nil && $0.isAttached(toProjectId: projectId)
+        }
+
+        let renderable = candidates.filter(\.hasRenderableGeometry)
+        if let design = mostRecentlyUpdated(renderable) {
+            return design
+        }
+
+        return mostRecentlyUpdated(candidates)
+    }
+
+    /// Same selection rule as the project variant, scoped to a lead: prefer
+    /// the most recently updated design with drawable geometry, fall back to
+    /// the most recent at all. A converted lead's deck (project_id now set)
+    /// still qualifies — the lead keeps showing its deck after WON.
+    static func displayCandidate(in designs: [DeckDesign], forOpportunityId opportunityId: String) -> DeckDesign? {
+        let candidates = designs.filter {
+            $0.deletedAt == nil && $0.isAttached(toOpportunityId: opportunityId)
         }
 
         let renderable = candidates.filter(\.hasRenderableGeometry)

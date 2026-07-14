@@ -11,6 +11,7 @@ struct SupabaseDeckDesignDTO: Codable, Identifiable {
     let id: String
     let companyId: String
     let projectId: String?
+    let opportunityId: String?
     let title: String
     let drawingData: DeckDrawingData   // JSONB — decoded directly as Codable struct
     let thumbnailUrl: String?
@@ -22,8 +23,9 @@ struct SupabaseDeckDesignDTO: Codable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case id
-        case companyId    = "company_id"
-        case projectId    = "project_id"
+        case companyId     = "company_id"
+        case projectId     = "project_id"
+        case opportunityId = "opportunity_id"
         case title
         case drawingData  = "drawing_data"
         case thumbnailUrl = "thumbnail_url"
@@ -39,6 +41,7 @@ struct SupabaseDeckDesignDTO: Codable, Identifiable {
             id: id,
             companyId: companyId,
             projectId: projectId,
+            opportunityId: opportunityId,
             title: title,
             drawingDataJSON: drawingData.toJSON(),
             createdBy: createdBy
@@ -60,6 +63,7 @@ struct SupabaseDeckDesignDTO: Codable, Identifiable {
             id: model.id,
             companyId: model.companyId,
             projectId: model.projectId,
+            opportunityId: model.opportunityId,
             title: model.title,
             drawingData: model.drawingData,
             thumbnailUrl: model.thumbnailURL,
@@ -74,7 +78,7 @@ struct SupabaseDeckDesignDTO: Codable, Identifiable {
 
 extension DeckDesign {
     static let serverMergeFields: [String] = [
-        "company_id", "project_id", "title", "drawing_data",
+        "company_id", "project_id", "opportunity_id", "title", "drawing_data",
         "thumbnail_url", "version", "created_by",
         "created_at", "updated_at", "deleted_at"
     ]
@@ -115,6 +119,7 @@ extension DeckDesign {
 
         if acceptedFields.contains("company_id") { companyId = dto.companyId }
         if acceptedFields.contains("project_id") { projectId = dto.projectId }
+        if acceptedFields.contains("opportunity_id") { opportunityId = dto.opportunityId }
         if acceptedFields.contains("title") { title = dto.title }
         if acceptedFields.contains("drawing_data") { drawingDataJSON = dto.drawingData.toJSON() }
         if acceptedFields.contains("thumbnail_url") { thumbnailURL = dto.thumbnailUrl }

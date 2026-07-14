@@ -8,6 +8,9 @@ struct CreationPickerView: View {
     @Environment(\.dismiss) private var dismiss
 
     let projectId: String?
+    /// Set when creating from a LEAD — the design carries opportunity_id so it
+    /// surfaces on the lead and re-parents to the project at conversion.
+    var opportunityId: String? = nil
     let companyId: String
     let userId: String?
     let onDesignCreated: (DeckDesign) -> Void
@@ -103,6 +106,7 @@ struct CreationPickerView: View {
                 let design = DeckDesign(
                     companyId: companyId,
                     projectId: projectId,
+                    opportunityId: opportunityId,
                     title: scanResult.clientNameCandidate.map { "\($0) Deck" } ?? "Scanned Deck",
                     drawingDataJSON: drawingData.toJSON(),
                     createdBy: userId
@@ -123,6 +127,7 @@ struct CreationPickerView: View {
                 let design = DeckDesign(
                     companyId: companyId,
                     projectId: projectId,
+                    opportunityId: opportunityId,
                     title: "AR Deck Sketch",
                     drawingDataJSON: drawingData.toJSON(),
                     createdBy: userId
@@ -138,6 +143,7 @@ struct CreationPickerView: View {
             TemplatePickerView(
                 initialTab: templatePickerInitialTab,
                 projectId: projectId,
+                opportunityId: opportunityId,
                 companyId: companyId,
                 userId: userId,
                 onDesignCreated: { design in
@@ -207,6 +213,7 @@ struct CreationPickerView: View {
         return DeckDesign(
             companyId: companyId,
             projectId: projectId,
+            opportunityId: opportunityId,
             title: title,
             createdBy: userId
         )

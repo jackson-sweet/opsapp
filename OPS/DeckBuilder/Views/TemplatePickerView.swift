@@ -6,6 +6,8 @@ import SwiftData
 struct TemplatePickerView: View {
     let initialTab: Int  // 0 = templates, 1 = recents
     let projectId: String?
+    /// Set when creating from a LEAD — stamped onto the generated design.
+    let opportunityId: String?
     let companyId: String
     let userId: String?
     let onDesignCreated: (DeckDesign) -> Void
@@ -21,12 +23,14 @@ struct TemplatePickerView: View {
     init(
         initialTab: Int,
         projectId: String?,
+        opportunityId: String? = nil,
         companyId: String,
         userId: String?,
         onDesignCreated: @escaping (DeckDesign) -> Void
     ) {
         self.initialTab = initialTab
         self.projectId = projectId
+        self.opportunityId = opportunityId
         self.companyId = companyId
         self.userId = userId
         self.onDesignCreated = onDesignCreated
@@ -266,6 +270,7 @@ struct TemplatePickerView: View {
         let design = DeckDesign(
             companyId: companyId,
             projectId: projectId,
+            opportunityId: opportunityId,
             title: "\(template.displayName) Deck",
             createdBy: userId
         )
@@ -283,6 +288,7 @@ struct TemplatePickerView: View {
         let design = DeckDesign(
             companyId: companyId,
             projectId: nil,
+            opportunityId: opportunityId,
             title: "Copy of \(original.title)",
             createdBy: userId
         )

@@ -818,6 +818,10 @@ private struct SiteVisitCaptureConsole: View {
         let design = DeckDesign(
             companyId: viewModel.companyIdentifier,
             projectId: nil,
+            // Bind the sketch to the lead the visit is for — it surfaces on
+            // the lead detail immediately and re-parents to the project at
+            // conversion (server-side, alongside the existing iOS handoff).
+            opportunityId: viewModel.currentOpportunity?.id,
             title: viewModel.deckDesignTitle,
             createdBy: dataController.currentUser?.id
         )

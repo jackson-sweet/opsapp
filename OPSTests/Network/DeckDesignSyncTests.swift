@@ -77,7 +77,7 @@ final class DeckDesignSyncTests: XCTestCase {
 
         // Server snapshot is 10 minutes OLDER, with the reverted (empty) geometry.
         let staleDTO = SupabaseDeckDesignDTO(
-            id: "deck-stale", companyId: "c1", projectId: "p1", title: "Untitled Deck",
+            id: "deck-stale", companyId: "c1", projectId: "p1", opportunityId: nil, title: "Untitled Deck",
             drawingData: DeckDrawingData(), thumbnailUrl: nil, version: 1, createdBy: nil,
             createdAt: "2026-06-19T19:00:00Z",
             updatedAt: iso(Date().addingTimeInterval(-600)),
@@ -118,7 +118,7 @@ final class DeckDesignSyncTests: XCTestCase {
         ]
         newerDrawing.scaleFactor = 1
         let newerDTO = SupabaseDeckDesignDTO(
-            id: "deck-newer", companyId: "c1", projectId: "p1", title: "New Title",
+            id: "deck-newer", companyId: "c1", projectId: "p1", opportunityId: nil, title: "New Title",
             drawingData: newerDrawing, thumbnailUrl: nil, version: 2, createdBy: nil,
             createdAt: "2026-06-19T19:00:00Z",
             updatedAt: iso(Date()),
@@ -172,6 +172,7 @@ final class DeckDesignSyncTests: XCTestCase {
             id: designId,
             companyId: companyId,
             projectId: projectId,
+            opportunityId: nil,
             title: "Untitled Deck",
             drawingData: drawing,
             thumbnailUrl: nil,
@@ -326,6 +327,7 @@ final class DeckDesignSyncTests: XCTestCase {
                 id: id,
                 companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
                 projectId: nil,
+                opportunityId: nil,
                 title: "Deck \(id)",
                 drawingData: DeckDrawingData(),
                 thumbnailUrl: nil,

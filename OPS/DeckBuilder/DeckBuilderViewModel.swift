@@ -3419,6 +3419,12 @@ class DeckBuilderViewModel: ObservableObject {
             if let projectId = deckDesign.projectId, !projectId.isEmpty {
                 payload["project_id"] = projectId
             }
+            // Lead link (same non-nil rule as project_id): a deck drawn on a
+            // lead ships its opportunity_id on the create so every other
+            // device — and the convert RPC's re-parent — can see it.
+            if let opportunityId = deckDesign.opportunityId, !opportunityId.isEmpty {
+                payload["opportunity_id"] = opportunityId
+            }
             if let thumbnail = deckDesign.thumbnailURL, !thumbnail.isEmpty {
                 payload["thumbnail_url"] = thumbnail
             }
@@ -3452,6 +3458,11 @@ class DeckBuilderViewModel: ObservableObject {
             // stale-nil would UNLINK a deck another device just attached.
             if let projectId = deckDesign.projectId, !projectId.isEmpty {
                 payload["project_id"] = projectId
+            }
+            // Same delivery rule for the lead link — non-nil only, so a
+            // stale-nil device can never unlink a lead's deck.
+            if let opportunityId = deckDesign.opportunityId, !opportunityId.isEmpty {
+                payload["opportunity_id"] = opportunityId
             }
             if let thumbnail = deckDesign.thumbnailURL, !thumbnail.isEmpty {
                 payload["thumbnail_url"] = thumbnail

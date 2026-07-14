@@ -50,6 +50,9 @@
 //
 
 import SwiftUI
+import SwiftData
+import PhotosUI
+import UIKit
 
 struct LeadDetailView: View {
     let opportunity: Opportunity
@@ -70,6 +73,20 @@ struct LeadDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
+
+    // Photos on the lead
+    @State private var showingAddPhotoDialog = false
+    @State private var showingCameraCapture = false
+    @State private var showingPhotoLibrary = false
+    @State private var libraryItems: [PhotosPickerItem] = []
+    @State private var photoViewerState: LeadPhotoViewerState?
+
+    // Deck design on the lead
+    @State private var showingDeckCreationPicker = false
+    @State private var deckDesignToOpen: DeckDesign?
+
+    // Share lead summary
+    @State private var isAssemblingShare = false
 
     init(
         opportunity: Opportunity,
@@ -100,10 +117,13 @@ struct LeadDetailView: View {
             Atmosphere(tone: atmosphereTone)
 
             VStack(spacing: 0) {
-                DetailNavBar(onBack: {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    dismiss()
-                })
+                DetailNavBar(
+                    onBack: {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dismiss()
+                    },
+                    trailing: { shareButton }
+                )
 
                 ScrollView {
                     VStack(spacing: 0) {
@@ -129,6 +149,24 @@ struct LeadDetailView: View {
                             .padding(.top, 22)
                         }
 
+                        LeadPhotosSection(
+                            opportunity: opportunity,
+                            canManage: canManage,
+                            onAdd: { showingAddPhotoDialog = true },
+                            onTap: { items, index in
+                                photoViewerState = LeadPhotoViewerState(items: items, initialIndex: index)
+                            }
+                        )
+                        .padding(.top, 22)
+
+                        LeadDeckSection(
+                            opportunity: opportunity,
+                            canManage: canManage,
+                            onCreate: { showingDeckCreationPicker = true },
+                            onOpen: { design in deckDesignToOpen = design }
+                        )
+                        .padding(.top, 22)
+
                         ActivityTimeline(activities: sortedActivities)
                             .padding(.top, 22)
 
@@ -153,6 +191,12 @@ struct LeadDetailView: View {
         .task {
             await vm.loadAll()
         }
+        .onAppear {
+            if let context = dataController.modelContext {
+                LeadImageService.shared.configure(modelContext: context)
+            }
+            Task { await LeadImageService.shared.drain() }
+        }
         .fullScreenCover(isPresented: $showingSiteVisitCapture) {
             SiteVisitCaptureView(
                 opportunity: opportunity,
@@ -164,6 +208,168 @@ struct LeadDetailView: View {
                     }
                 }
             )
+        }
+        .confirmationDialog(
+            "ADD PHOTOS",
+            isPresented: $showingAddPhotoDialog,
+            titleVisibility: .visible
+        ) {
+            Button("TAKE PHOTOS") { showingCameraCapture = true }
+            Button("CHOOSE FROM LIBRARY") { showingPhotoLibrary = true }
+            Button("CANCEL", role: .cancel) {}
+        }
+        .fullScreenCover(isPresented: $showingCameraCapture) {
+            CameraBatchView { images in
+                showingCameraCapture = false
+                guard !images.isEmpty else { return }
+                addPhotos(images)
+            }
+        }
+        .photosPicker(
+            isPresented: $showingPhotoLibrary,
+            selection: $libraryItems,
+            maxSelectionCount: 20,
+            matching: .images
+        )
+        .onChange(of: libraryItems) { _, items in
+            guard !items.isEmpty else { return }
+            libraryItems = []
+            Task { await importLibraryItems(items) }
+        }
+        .fullScreenCover(item: $photoViewerState) { state in
+            LeadPhotoViewer(
+                opportunity: opportunity,
+                canManage: canManage,
+                initialState: state
+            )
+        }
+        .sheet(isPresented: $showingDeckCreationPicker) {
+            deckCreationPicker
+        }
+        .fullScreenCover(item: $deckDesignToOpen) { design in
+            deckBuilder(design: design)
+        }
+    }
+
+    // MARK: - Photos
+
+    private func addPhotos(_ images: [UIImage]) {
+        Task {
+            let result = await LeadImageService.shared.addImages(images, to: opportunity)
+            if result.failedCount > 0 {
+                ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
+            } else if !result.uploadedURLs.isEmpty || result.queuedCount > 0 {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+        }
+    }
+
+    private func importLibraryItems(_ items: [PhotosPickerItem]) async {
+        var images: [UIImage] = []
+        for item in items {
+            if let data = try? await item.loadTransferable(type: Data.self),
+               let image = UIImage(data: data) {
+                images.append(image)
+            }
+        }
+        guard !images.isEmpty else { return }
+        addPhotos(images)
+    }
+
+    // MARK: - Deck design
+
+    @ViewBuilder
+    private var deckCreationPicker: some View {
+        // Picker dismisses BEFORE the builder presents — iOS can't stack two
+        // modals (same dance as ProjectDetailsView's deck creation, bug 1).
+        CreationPickerView(
+            projectId: nil,
+            opportunityId: opportunity.id,
+            companyId: opportunity.companyId,
+            userId: dataController.currentUser?.id,
+            onDesignCreated: { design in
+                showingDeckCreationPicker = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    deckDesignToOpen = design
+                }
+            }
+        )
+        .presentationDetents([.medium])
+    }
+
+    @ViewBuilder
+    private func deckBuilder(design: DeckDesign) -> some View {
+        if let modelContext = dataController.modelContext {
+            DeckBuilderView(
+                deckDesign: design,
+                modelContext: modelContext,
+                syncEngine: dataController.syncEngine,
+                projectName: opportunity.displayContactName
+            )
+        }
+    }
+
+    // MARK: - Share lead summary
+
+    private var shareButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            shareLead()
+        } label: {
+            Group {
+                if isAssemblingShare {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(OPSStyle.Colors.text2)
+                } else {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundColor(OPSStyle.Colors.text2)
+                }
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .disabled(isAssemblingShare)
+        .accessibilityLabel("Share lead summary")
+    }
+
+    private func shareLead() {
+        guard !isAssemblingShare else { return }
+        isAssemblingShare = true
+
+        Task {
+            var designs: [DeckDesign] = []
+            if let context = dataController.modelContext {
+                let oppId: String? = opportunity.id
+                let descriptor = FetchDescriptor<DeckDesign>(
+                    predicate: #Predicate<DeckDesign> { $0.opportunityId == oppId }
+                )
+                designs = (try? context.fetch(descriptor)) ?? []
+            }
+
+            let items = await LeadShareSummaryBuilder.assemblePacket(
+                opportunity: opportunity,
+                activities: vm.activities,
+                deckDesigns: designs
+            )
+            isAssemblingShare = false
+            presentShareSheet(items)
+        }
+    }
+
+    /// Imperative present from the top controller — the codebase's standing
+    /// share-sheet pattern (PhotoGalleryViewer et al).
+    private func presentShareSheet(_ items: [Any]) {
+        let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first {
+            var top = window.rootViewController
+            while let presented = top?.presentedViewController {
+                top = presented
+            }
+            top?.present(activityVC, animated: true)
         }
     }
 
@@ -204,13 +410,13 @@ struct LeadDetailView: View {
 
 // MARK: - DetailNavBar (private)
 
-/// Minimal nav bar above the scroll view. Custom back chevron + LEADS label.
-/// Right side is intentionally empty in Phase 3 — archive lives in
-/// EditLeadSheet's danger zone (Phase 4) and per-row actions are reachable
-/// from the sticky action bar. Swipe-back gesture is preserved by the
-/// NavigationStack.
-private struct DetailNavBar: View {
+/// Minimal nav bar above the scroll view. Custom back chevron + LEADS label;
+/// the trailing slot carries the share affordance (the summary + photo packet
+/// + deck snapshot leave through here). Swipe-back gesture is preserved by
+/// the NavigationStack.
+private struct DetailNavBar<Trailing: View>: View {
     let onBack: () -> Void
+    @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
         HStack {
@@ -235,6 +441,8 @@ private struct DetailNavBar: View {
             .accessibilityLabel("Back to leads")
 
             Spacer()
+
+            trailing()
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .frame(height: 52)

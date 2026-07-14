@@ -233,6 +233,28 @@ class OpportunityRepository {
             .value
     }
 
+    // MARK: - Images
+
+    /// Append image URLs against the SERVER row: fetch → merge → update, so a
+    /// device holding a stale local array can never blow away photos another
+    /// device (or the web email-extract pipeline) already landed. Duplicate
+    /// URLs are dropped. Returns the updated row.
+    func appendImages(_ urls: [String], to opportunityId: String) async throws -> OpportunityDTO {
+        let current = try await fetchOne(opportunityId)
+        var merged = current.images ?? []
+        for url in urls where !url.isEmpty && !merged.contains(url) {
+            merged.append(url)
+        }
+        return try await update(opportunityId, patch: ["images": merged])
+    }
+
+    /// Remove one image URL — same server-state read-modify-write contract.
+    func removeImage(_ url: String, from opportunityId: String) async throws -> OpportunityDTO {
+        let current = try await fetchOne(opportunityId)
+        let merged = (current.images ?? []).filter { $0 != url }
+        return try await update(opportunityId, patch: ["images": merged])
+    }
+
     // MARK: - Soft Delete + Archive
 
     /// Soft-delete via deleted_at. Replaces the prior HARD delete.

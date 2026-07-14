@@ -161,6 +161,12 @@ struct OPSApp: App {
                     let context = sharedModelContainer.mainContext
                     dataController.setModelContext(context)
 
+                    // Lead photo queue: configure + drain at launch so an
+                    // offline capture from a previous session uploads without
+                    // waiting for the operator to reopen a lead.
+                    LeadImageService.shared.configure(modelContext: context)
+                    Task { await LeadImageService.shared.drain() }
+
                     // Bridge the model container to non-View singletons
                     // (CalendarMirrorService reaches SwiftData through this).
                     ModelContainerHolder.shared = sharedModelContainer

@@ -19,6 +19,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct AddLeadSheet: View {
     @EnvironmentObject private var dataController: DataController
@@ -185,6 +186,13 @@ struct AddLeadSheet: View {
             throw AddLeadError.missingCompany
         }
         let trimmedName = form.contactName.trimmingCharacters(in: .whitespaces)
+
+        // Bug 1d5ab9aa — a saved lead creates (or links) its client, matching
+        // the web email/lead-engine behavior. Runs BEFORE the opportunity
+        // insert so the row lands with client_id set (the convert RPC carries
+        // it onto the project). Never blocks the lead: failure → unlinked.
+        let clientId = await resolveClientId(companyId: companyId, name: trimmedName)
+
         let dto = CreateOpportunityDTO(
             companyId: companyId,
             title: form.title.isEmpty ? nil : form.title,
@@ -199,7 +207,9 @@ struct AddLeadSheet: View {
             assignedTo: dataController.currentUser?.id,
             expectedCloseDate: nil,
             quoteDeliveryMethod: nil,
-            clientId: nil
+            clientId: clientId,
+            latitude: form.latitude,
+            longitude: form.longitude
         )
         let repository = OpportunityRepository(companyId: companyId)
         let resultDTO = try await repository.create(dto)
@@ -218,6 +228,51 @@ struct AddLeadSheet: View {
             opp.stage = form.stage
         }
         return opp
+    }
+
+    /// Match-first (phone → email → name) against the local client cache so a
+    /// repeat caller links to their existing record instead of forking a
+    /// duplicate; otherwise create through `DataController.createClient` — the
+    /// durable local-insert + sync-op path, so the client survives offline
+    /// even though the lead insert itself needs the network.
+    @MainActor
+    private func resolveClientId(companyId: String, name: String) async -> String? {
+        let email = form.email.isEmpty ? nil : form.email
+        let phone = form.phone.isEmpty ? nil : form.phone
+
+        var clients: [Client] = []
+        if let context = dataController.modelContext {
+            let cid: String? = companyId
+            let descriptor = FetchDescriptor<Client>(
+                predicate: #Predicate<Client> { $0.companyId == cid }
+            )
+            clients = (try? context.fetch(descriptor)) ?? []
+        }
+
+        if let existing = LeadClientMatcher.match(in: clients, name: name, email: email, phone: phone) {
+            return existing.id
+        }
+
+        let dto = SupabaseClientDTO(
+            id: UUID().uuidString.lowercased(),   // lowercase at generation — Postgres echoes lowercase uuids
+            bubbleId: nil,
+            companyId: companyId,
+            name: name,
+            email: email,
+            phoneNumber: phone,
+            address: form.address.isEmpty ? nil : form.address,
+            latitude: form.latitude,
+            longitude: form.longitude,
+            notes: nil,
+            profileImageUrl: nil,
+            deletedAt: nil
+        )
+        do {
+            return try await dataController.createClient(dto: dto)
+        } catch {
+            print("[ADD_LEAD] client autocreate failed — saving lead unlinked: \(error)")
+            return nil
+        }
     }
 
     private func simplifyError(_ error: Error) -> String {

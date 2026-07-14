@@ -3443,6 +3443,16 @@ class DeckBuilderViewModel: ObservableObject {
                 "version": deckDesign.version,
                 "updated_at": nowIso
             ]
+            // The project link rides every update. Site-visit decks are created
+            // with projectId nil (the create op ships NULL) and only gain the
+            // link at conversion — an update payload that structurally omitted
+            // project_id could never deliver it, stranding the deck off its
+            // project for every other device (Carol Dancer case). Included only
+            // when non-nil: an explicit null from a device whose local row is
+            // stale-nil would UNLINK a deck another device just attached.
+            if let projectId = deckDesign.projectId, !projectId.isEmpty {
+                payload["project_id"] = projectId
+            }
             if let thumbnail = deckDesign.thumbnailURL, !thumbnail.isEmpty {
                 payload["thumbnail_url"] = thumbnail
             }

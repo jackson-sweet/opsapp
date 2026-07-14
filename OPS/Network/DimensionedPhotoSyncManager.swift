@@ -793,6 +793,7 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
                     dimensions: enriched
                 )
 
+                let previousPhotoURL = annotation.photoURL
                 annotation.id = inserted.id
                 annotation.photoURL = heicURLString
                 annotation.renderedPhotoURL = renderedURLString
@@ -800,6 +801,19 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
                 annotation.needsSync = false
                 annotation.lastSyncedAt = Date()
                 try? modelContext.save()
+
+                // Site-visit handoff created an optimistic ProjectPhoto row
+                // keyed by the same local:// url this annotation carried. The
+                // project_photos row just inserted above supersedes it — heal
+                // the local row onto the S3 urls so the capturing phone's
+                // gallery converges with everyone else's instead of keeping a
+                // phantom local tile beside the synced one.
+                Self.healHandoffPhotoRows(
+                    matching: previousPhotoURL,
+                    heicURL: heicURLString,
+                    renderedURL: renderedURLString,
+                    in: modelContext
+                )
             } catch {
                 // Auto-bug-reporting (May-12 follow-up): the queued-retry
                 // loop will hammer the same poisoned row every retry pass.
@@ -835,6 +849,37 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
             }
         )
         return (try? modelContext.fetchCount(descriptor)) ?? 0
+    }
+
+    /// Heal site-visit handoff `ProjectPhoto` rows after a queued dimensioned
+    /// capture finally synced. The handoff creates an optimistic gallery row
+    /// whose url is the annotation's local:// HEIC; once this pipeline uploads
+    /// the assets and inserts the authoritative `project_photos` row, that
+    /// local row must swap onto the S3 urls IN PLACE (the gallery dedupes by
+    /// URL — a leftover local:// row renders a phantom duplicate tile on the
+    /// capturing phone) and stop advertising `needsSync` so the stranded-photo
+    /// sweep never re-uploads a photo this pipeline already delivered.
+    static func healHandoffPhotoRows(
+        matching localURL: String,
+        heicURL: String,
+        renderedURL: String?,
+        in context: ModelContext
+    ) {
+        guard localURL.hasPrefix("local://") else { return }
+        let descriptor = FetchDescriptor<ProjectPhoto>(
+            predicate: #Predicate { $0.url == localURL && $0.deletedAt == nil }
+        )
+        guard let rows = try? context.fetch(descriptor), !rows.isEmpty else { return }
+        for row in rows {
+            row.url = heicURL
+            if let renderedURL {
+                row.renderedURL = renderedURL
+            }
+            row.id = row.id.lowercased()
+            row.needsSync = false
+            row.lastSyncedAt = Date()
+        }
+        try? context.save()
     }
 
     // MARK: - Internal — per-asset retry with exponential backoff

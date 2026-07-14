@@ -951,18 +951,39 @@ struct ConvertToProjectSheet: View {
     }
 
     private func applyPendingSiteVisitHandoff(projectId: String) {
-        guard let payload = SiteVisitProjectHandoffStore.shared.consume(for: opportunity.id) else { return }
-        let siteVisitId = payload.siteVisitId
-        let descriptor = FetchDescriptor<SiteVisitCaptureArtifact>(
-            predicate: #Predicate<SiteVisitCaptureArtifact> { artifact in
-                artifact.siteVisitId == siteVisitId
-            },
-            sortBy: [SortDescriptor(\.capturedAt, order: .forward)]
-        )
-        let artifacts = (try? modelContext.fetch(descriptor)) ?? []
+        if let payload = SiteVisitProjectHandoffStore.shared.consume(for: opportunity.id) {
+            let siteVisitId = payload.siteVisitId
+            let descriptor = FetchDescriptor<SiteVisitCaptureArtifact>(
+                predicate: #Predicate<SiteVisitCaptureArtifact> { artifact in
+                    artifact.siteVisitId == siteVisitId
+                },
+                sortBy: [SortDescriptor(\.capturedAt, order: .forward)]
+            )
+            let artifacts = (try? modelContext.fetch(descriptor)) ?? []
+            SiteVisitProjectHandoff.apply(
+                payload: payload,
+                artifacts: artifacts,
+                projectId: projectId,
+                companyId: opportunity.companyId,
+                userId: dataController.currentUser?.id,
+                modelContext: modelContext,
+                dataController: dataController
+            )
+            return
+        }
+
+        // The staging store is in-memory — an app kill between visit review
+        // and conversion used to drop the whole packet (photos, notes, deck
+        // link) silently. The artifacts themselves are persisted SwiftData
+        // rows, so rebuild the payload from them instead of losing the visit.
+        guard let derived = SiteVisitProjectHandoff.derivePayload(
+            opportunityId: opportunity.id,
+            opportunityAddress: opportunity.address,
+            modelContext: modelContext
+        ) else { return }
         SiteVisitProjectHandoff.apply(
-            payload: payload,
-            artifacts: artifacts,
+            payload: derived.payload,
+            artifacts: derived.artifacts,
             projectId: projectId,
             companyId: opportunity.companyId,
             userId: dataController.currentUser?.id,

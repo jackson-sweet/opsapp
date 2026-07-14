@@ -165,15 +165,14 @@ struct DetailHero: View {
         return "Unnamed lead"
     }
 
-    /// "L-AB12CD" — last 6 chars of the UUID, uppercased, with an "L-" prefix
-    /// so the operator scanning the screen reads it as a lead identifier.
+    /// "L-AB12CD" — shared lead identifier (Opportunity.shortDisplayId) so the
+    /// hero, edit sheet, and convert sheet all read the same number.
     private var displayId: String {
-        "L-\(displayIdShort)"
+        opportunity.shortDisplayId
     }
 
     private var displayIdShort: String {
-        let raw = opportunity.id.replacingOccurrences(of: "-", with: "")
-        return String(raw.suffix(6)).uppercased()
+        opportunity.shortIdSuffix
     }
 
     private var estimatedValue: Double? {

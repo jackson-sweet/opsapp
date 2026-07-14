@@ -56,6 +56,14 @@ class Opportunity: Identifiable {
     var tags: [String]
     var sourceEmailId: String?
 
+    // Photos + geo — server columns adopted post-Phase-1 ("Phase 1 defers
+    // AI/location/images"). `images` holds full public S3 URLs, same shape the
+    // web email-extract pipeline writes. Coordinates come from the address
+    // autocomplete selection (or reverse-geocode) and back the map affordances.
+    var images: [String] = []
+    var latitude: Double?
+    var longitude: Double?
+
     // Message-thread denormalized counters (populated by web; iOS reads but doesn't write)
     var correspondenceCount: Int
     var outboundCount: Int
@@ -94,6 +102,20 @@ class Opportunity: Identifiable {
         if !contactName.isEmpty { return contactName }
         if let title, !title.isEmpty { return title }
         return "Unnamed lead"
+    }
+
+    /// Last 6 of the un-hyphenated uuid, uppercased — the scannable tail every
+    /// lead surface shares. One number everywhere: hero, edit sheet, convert
+    /// sheet. (The first-6 variant EditLeadSheet used pre-unification read as
+    /// a DIFFERENT id than the hero's.)
+    var shortIdSuffix: String {
+        let raw = id.replacingOccurrences(of: "-", with: "")
+        return String(raw.suffix(6)).uppercased()
+    }
+
+    /// "L-AB12CD" — `shortIdSuffix` with the lead prefix.
+    var shortDisplayId: String {
+        "L-\(shortIdSuffix)"
     }
 
     // MARK: - Field copy (realtime refresh)
@@ -144,6 +166,10 @@ class Opportunity: Identifiable {
 
         tags = other.tags
         sourceEmailId = other.sourceEmailId
+
+        images = other.images
+        latitude = other.latitude
+        longitude = other.longitude
 
         correspondenceCount = other.correspondenceCount
         outboundCount = other.outboundCount

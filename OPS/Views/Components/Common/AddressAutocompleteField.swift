@@ -51,6 +51,15 @@ struct AddressAutocompleteField: View {
                     .textInputAutocapitalization(.words)
                     .focused($isFocused)
                     .onChange(of: searchText) { _, newValue in
+                        // Live-commit typed text to the binding. Without this,
+                        // a hand-typed address that never taps a suggestion
+                        // (partial rural addresses, lot numbers) silently never
+                        // reached the bound value — the caller saved stale or
+                        // empty text. The equality guard below (onChange(of:
+                        // address)) breaks the external-write sync loop.
+                        if address != newValue {
+                            address = newValue
+                        }
                         if newValue.isEmpty {
                             searchResults = []
                             showingResults = false

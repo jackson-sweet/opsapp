@@ -42,6 +42,14 @@ struct LeadForm {
     var priority: String = "medium"
     var notes: String = ""
 
+    // Coordinates ride the address: set by an autocomplete selection or the
+    // use-my-location reverse geocode, cleared the moment the operator types
+    // over the resolved string (stale coords must never outlive a hand-edited
+    // address). `lastResolvedAddress` is the string the coords belong to.
+    var latitude: Double? = nil
+    var longitude: Double? = nil
+    var lastResolvedAddress: String? = nil
+
     /// Hydrate from an existing opportunity for the Edit path.
     init(from opportunity: Opportunity? = nil) {
         guard let opportunity else { return }
@@ -57,6 +65,27 @@ struct LeadForm {
         stage = opportunity.stage.isTerminal ? .newLead : opportunity.stage
         priority = opportunity.priority ?? "medium"
         notes = opportunity.descriptionText ?? ""
+        latitude = opportunity.latitude
+        longitude = opportunity.longitude
+        lastResolvedAddress = opportunity.address
+    }
+
+    /// Address text changed. Keep coords only while the text still matches the
+    /// string they were resolved for — any divergence (hand edit, clear) nulls
+    /// them so the save path writes honest geo.
+    mutating func addressTextChanged(_ newValue: String) {
+        guard newValue != lastResolvedAddress else { return }
+        latitude = nil
+        longitude = nil
+    }
+
+    /// An autocomplete selection (or reverse geocode) resolved `address` to a
+    /// coordinate. Record both so addressTextChanged() knows this string owns
+    /// its coords.
+    mutating func addressResolved(_ resolved: String, latitude lat: Double?, longitude lng: Double?) {
+        lastResolvedAddress = resolved
+        latitude = lat
+        longitude = lng
     }
 
     /// Strip non-digits-and-dot from the value string, return a Double.
@@ -124,12 +153,27 @@ struct LeadFormView: View {
             }
 
             LeadField(label: "SITE ADDRESS") {
-                LeadTextInput(
+                // Shared MapKit autocomplete (same component as projects,
+                // clients, site visits) — suggestions + use-my-location.
+                // Chrome parity is token-level: cornerRadius == buttonRadius
+                // (5), inputFieldBorder == line (0.10), same surfaceInput
+                // fill and 0.20 focus border. minHeight pins the row to the
+                // lead form's 48pt input height.
+                AddressAutocompleteField(
+                    address: $form.address,
                     placeholder: "3185 Fairview Rd",
-                    text: $form.address,
-                    keyboard: .default,
-                    textContentType: .fullStreetAddress
+                    onAddressSelected: { resolved, coordinate in
+                        form.addressResolved(
+                            resolved,
+                            latitude: coordinate?.latitude,
+                            longitude: coordinate?.longitude
+                        )
+                    }
                 )
+                .frame(minHeight: 48)
+            }
+            .onChange(of: form.address) { _, newValue in
+                form.addressTextChanged(newValue)
             }
 
             LeadField(label: "JOB DESCRIPTION") {

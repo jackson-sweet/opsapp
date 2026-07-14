@@ -222,7 +222,8 @@ struct ConvertToProjectSheet: View {
                 .lineLimit(2)
 
             HStack(spacing: 6) {
-                Text(String(opportunity.id.prefix(6)).uppercased())
+                Text(opportunity.shortDisplayId)
+                    .monospacedDigit()
                 if let phone = opportunity.contactPhone, !phone.isEmpty {
                     Text("·")
                     Text(phone)

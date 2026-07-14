@@ -49,6 +49,10 @@ struct OpportunityDTO: Codable, Identifiable {
     let tags: [String]?
     let sourceEmailId: String?
 
+    let images: [String]?
+    let latitude: Double?
+    let longitude: Double?
+
     let correspondenceCount: Int?
     let outboundCount: Int?
     let inboundCount: Int?
@@ -90,6 +94,9 @@ struct OpportunityDTO: Codable, Identifiable {
         case archivedAt           = "archived_at"
         case tags
         case sourceEmailId        = "source_email_id"
+        case images
+        case latitude
+        case longitude
         case correspondenceCount  = "correspondence_count"
         case outboundCount        = "outbound_count"
         case inboundCount         = "inbound_count"
@@ -135,6 +142,9 @@ struct OpportunityDTO: Codable, Identifiable {
         opp.archivedAt = archivedAt.flatMap { SupabaseDate.parse($0) }
         opp.tags = tags ?? []
         opp.sourceEmailId = sourceEmailId
+        opp.images = images ?? []
+        opp.latitude = latitude
+        opp.longitude = longitude
         opp.correspondenceCount = correspondenceCount ?? 0
         opp.outboundCount = outboundCount ?? 0
         opp.inboundCount = inboundCount ?? 0
@@ -160,6 +170,8 @@ struct CreateOpportunityDTO: Codable {
     let expectedCloseDate: String?
     let quoteDeliveryMethod: String?
     let clientId: String?
+    let latitude: Double?
+    let longitude: Double?
 
     init(
         companyId: String,
@@ -175,7 +187,9 @@ struct CreateOpportunityDTO: Codable {
         assignedTo: String? = nil,
         expectedCloseDate: Date? = nil,
         quoteDeliveryMethod: String? = nil,
-        clientId: String? = nil
+        clientId: String? = nil,
+        latitude: Double? = nil,
+        longitude: Double? = nil
     ) {
         self.companyId = companyId
         self.title = title
@@ -191,6 +205,8 @@ struct CreateOpportunityDTO: Codable {
         self.expectedCloseDate = expectedCloseDate.map { SupabaseDate.formatDate($0) }
         self.quoteDeliveryMethod = quoteDeliveryMethod
         self.clientId = clientId
+        self.latitude = latitude
+        self.longitude = longitude
     }
 
     enum CodingKeys: String, CodingKey {
@@ -208,6 +224,8 @@ struct CreateOpportunityDTO: Codable {
         case expectedCloseDate    = "expected_close_date"
         case quoteDeliveryMethod  = "quote_delivery_method"
         case clientId             = "client_id"
+        case latitude
+        case longitude
     }
 }
 
@@ -276,6 +294,8 @@ struct EditOpportunityPatch: Encodable {
     var estimatedValue: Double?
     var source: String?
     var priority: String?
+    var latitude: Double?
+    var longitude: Double?
 
     enum CodingKeys: String, CodingKey {
         case title
@@ -287,6 +307,8 @@ struct EditOpportunityPatch: Encodable {
         case estimatedValue = "estimated_value"
         case source
         case priority
+        case latitude
+        case longitude
     }
 
     func encode(to encoder: Encoder) throws {
@@ -303,6 +325,12 @@ struct EditOpportunityPatch: Encodable {
         try c.encode(estimatedValue, forKey: .estimatedValue)
         try c.encode(source, forKey: .source)
         try c.encode(priority, forKey: .priority)
+        // Coordinates follow the address: hydrated from the opportunity on
+        // open, replaced by an autocomplete selection, nulled by a manual
+        // address edit. Explicit null so stale coords can't outlive a
+        // hand-typed address change.
+        try c.encode(latitude, forKey: .latitude)
+        try c.encode(longitude, forKey: .longitude)
     }
 }
 

@@ -40,9 +40,11 @@ struct EditLeadSheet: View {
             && !isArchiving
     }
 
-    private var titleText: String {
-        let prefix = String(opportunity.id.prefix(6)).uppercased()
-        return "EDIT · \(prefix)"
+    // Header reads name-first: the operator edits "Helen Calloway", not a hex
+    // fragment. The lead number stays, demoted to the eyebrow — same L-id the
+    // detail hero shows, so both surfaces read as one record.
+    private var eyebrowText: String {
+        "EDIT · \(opportunity.shortDisplayId)"
     }
 
     var body: some View {
@@ -76,8 +78,21 @@ struct EditLeadSheet: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
-            SheetTitleLabel(title: titleText, size: .full)
+        HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 0) {
+                    Text("// ")
+                        .foregroundColor(OPSStyle.Colors.textMute)
+                    Text(eyebrowText)
+                        .foregroundColor(OPSStyle.Colors.text3)
+                        .monospacedDigit()
+                }
+                .font(.custom("JetBrainsMono-Regular", size: 10))
+                .kerning(1.4)
+                .textCase(.uppercase)
+
+                SheetTitleLabel(title: opportunity.displayContactName, size: .full)
+            }
             SheetCloseButton { dismiss() }
         }
         .padding(.leading, OPSStyle.Layout.spacing3_5)
@@ -179,7 +194,9 @@ struct EditLeadSheet: View {
             address:        form.address.isEmpty ? nil : form.address,
             estimatedValue: form.estimatedValueDouble,
             source:         form.source,
-            priority:       form.priority
+            priority:       form.priority,
+            latitude:       form.latitude,
+            longitude:      form.longitude
         )
 
         let updatedDTO = try await repository.update(opportunity.id, patch: patch)
@@ -193,6 +210,8 @@ struct EditLeadSheet: View {
         opportunity.contactPhone = fresh.contactPhone
         opportunity.descriptionText = fresh.descriptionText
         opportunity.address = fresh.address
+        opportunity.latitude = fresh.latitude
+        opportunity.longitude = fresh.longitude
         opportunity.estimatedValue = fresh.estimatedValue
         opportunity.source = fresh.source
         opportunity.priority = fresh.priority

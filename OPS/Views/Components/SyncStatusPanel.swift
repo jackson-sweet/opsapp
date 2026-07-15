@@ -103,7 +103,7 @@ struct SyncStatusPanel: View {
             ForEach(Array(shown.enumerated()), id: \.element.id) { index, operation in
                 if index > 0 {
                     Divider()
-                        .background(Color.white.opacity(0.06))
+                        .background(OPSStyle.Colors.lineSoft)
                         .padding(.vertical, 2)
                 }
                 operationRow(for: operation)
@@ -130,7 +130,7 @@ struct SyncStatusPanel: View {
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
-                    .cornerRadius(8)
+                    .cornerRadius(OPSStyle.Layout.buttonRadius)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())

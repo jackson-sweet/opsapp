@@ -15,6 +15,7 @@ class OpportunityRepository {
     enum RPC {
         static let createGuarded = "create_opportunity_guarded"
         static let changeAssignment = "change_opportunity_assignment"
+        static let listAssignmentCandidates = "list_opportunity_assignment_candidates"
     }
 
     private let client: SupabaseClient
@@ -163,6 +164,37 @@ class OpportunityRepository {
             .rpc(RPC.changeAssignment, params: params)
             .execute()
             .value
+    }
+
+    /// Returns only assignment targets authorized by the guarded server RPC.
+    /// Local `User` rows are display fallbacks, never a picker data source.
+    func listAssignmentCandidates(
+        opportunityId: String
+    ) async throws -> OpportunityAssignmentCandidates {
+        struct Params: Encodable {
+            let p_opportunity_id: String
+        }
+
+        return try await client
+            .rpc(
+                RPC.listAssignmentCandidates,
+                params: Params(p_opportunity_id: opportunityId)
+            )
+            .execute()
+            .value
+    }
+
+    /// Refetches the canonical assignment tuple after an optimistic-concurrency
+    /// conflict. The full row fetch retains the existing opportunity RLS gate;
+    /// callers project only the two non-PII fields below.
+    func fetchAssignmentSnapshot(
+        opportunityId: String
+    ) async throws -> OpportunityAssignmentSnapshot {
+        let opportunity = try await fetchOne(opportunityId)
+        return OpportunityAssignmentSnapshot(
+            assignedTo: opportunity.assignedTo,
+            assignmentVersion: opportunity.assignmentVersion
+        )
     }
 
     func logActivity(_ dto: CreateActivityDTO) async throws -> ActivityDTO {

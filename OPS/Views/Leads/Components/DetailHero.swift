@@ -26,17 +26,92 @@ import SwiftUI
 
 struct DetailHero: View {
     let opportunity: Opportunity
+    let assigneeName: String
+    let canChangeAssignee: Bool
+    let onAssigneeTap: () -> Void
+
+    init(
+        opportunity: Opportunity,
+        assigneeName: String = "UNASSIGNED",
+        canChangeAssignee: Bool = false,
+        onAssigneeTap: @escaping () -> Void = {}
+    ) {
+        self.opportunity = opportunity
+        self.assigneeName = assigneeName
+        self.canChangeAssignee = canChangeAssignee
+        self.onAssigneeTap = onAssigneeTap
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             identityBlock
 
+            assigneeRow
+                .padding(.top, OPSStyle.Layout.spacing3)
+
             kpiStrip
-                .padding(.top, 18)
+                .padding(.top, OPSStyle.Layout.spacing2)
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.top, OPSStyle.Layout.spacing1)
         .padding(.bottom, 18)
+    }
+
+    // MARK: - Assignee
+
+    /// Compact assignment command near the lead identity. It is a button only
+    /// when the row-specific policy permits assignment; everyone else gets the
+    /// same information without a misleading affordance.
+    @ViewBuilder
+    private var assigneeRow: some View {
+        if canChangeAssignee {
+            Button(action: onAssigneeTap) {
+                assigneeRowContent
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Assigned to \(assigneeName). Change assignee")
+        } else {
+            assigneeRowContent
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Assigned to \(assigneeName)")
+        }
+    }
+
+    private var assigneeRowContent: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
+            Image(systemName: OPSStyle.Icons.teamMember)
+                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
+                .foregroundColor(OPSStyle.Colors.text3)
+                .frame(
+                    width: OPSStyle.Layout.touchTargetMin,
+                    height: OPSStyle.Layout.touchTargetMin
+                )
+
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                Text("// ASSIGNED TO")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.textMute)
+                    .textCase(.uppercase)
+
+                Text(assigneeName)
+                    .font(OPSStyle.Typography.bodyEmphasis)
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .textCase(.uppercase)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: OPSStyle.Layout.spacing2)
+
+            if canChangeAssignee {
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.text3)
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+        .contentShape(Rectangle())
+        .nestedCard()
     }
 
     /// Lead identity (id, days-in-stage, stage, win prob, name, title) grouped

@@ -469,6 +469,94 @@ struct OpportunityAssignmentChangeResult: Decodable {
         )
         eventId = try container.decodeIfPresent(String.self, forKey: .eventId)
     }
+
+    init(
+        ok: Bool,
+        conflict: Bool,
+        assignedTo: String?,
+        assignmentVersion: Int64,
+        eventId: String?
+    ) throws {
+        guard assignmentVersion >= 0 else {
+            throw OpportunityAssignmentContractError.invalidAssignmentVersion
+        }
+        self.ok = ok
+        self.conflict = conflict
+        self.assignedTo = assignedTo
+        _assignmentVersion = NonnegativeInt64(wrappedValue: assignmentVersion)
+        self.eventId = eventId
+    }
+}
+
+// MARK: - Guarded assignment picker contracts
+
+/// One server-approved target returned by
+/// `list_opportunity_assignment_candidates`. The RPC owns company, active-user,
+/// and `pipeline.view:assigned` eligibility; clients must never broaden this
+/// list from their local user cache.
+struct OpportunityAssignmentCandidate: Decodable, Identifiable, Equatable {
+    let id: String
+    let firstName: String?
+    let lastName: String?
+    let profileImageURL: String?
+    let userColor: String?
+
+    var displayName: String {
+        [firstName, lastName]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    init(
+        id: String,
+        firstName: String?,
+        lastName: String?,
+        profileImageURL: String?,
+        userColor: String?
+    ) {
+        self.id = id
+        self.firstName = firstName
+        self.lastName = lastName
+        self.profileImageURL = profileImageURL
+        self.userColor = userColor
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case firstName       = "first_name"
+        case lastName        = "last_name"
+        case profileImageURL = "profile_image_url"
+        case userColor       = "user_color"
+    }
+}
+
+/// The complete guarded picker response. `canUnassign` is actor- and
+/// row-specific; rendering an unassign option from any other signal would
+/// widen assigned-scope authority.
+struct OpportunityAssignmentCandidates: Decodable, Equatable {
+    let canUnassign: Bool
+    let candidates: [OpportunityAssignmentCandidate]
+
+    init(
+        canUnassign: Bool,
+        candidates: [OpportunityAssignmentCandidate]
+    ) {
+        self.canUnassign = canUnassign
+        self.candidates = candidates
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case canUnassign = "can_unassign"
+        case candidates
+    }
+}
+
+/// Minimal authoritative assignment state used only to reconcile an
+/// optimistic-concurrency conflict. It deliberately excludes lead PII.
+struct OpportunityAssignmentSnapshot: Equatable {
+    let assignedTo: String?
+    let assignmentVersion: Int64
 }
 
 // MARK: - Edit-form patch

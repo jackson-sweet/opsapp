@@ -69,7 +69,10 @@ struct LeadDetailView: View {
     var onConvertLead: (Opportunity) -> Void = { _ in }
 
     @StateObject private var vm: LeadDetailViewModel
+    @StateObject private var assignmentViewModel: LeadAssignmentViewModel
+    @Query private var allUsers: [User]
     @State private var showingSiteVisitCapture = false
+    @State private var showingAssignmentPicker = false
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
@@ -105,6 +108,9 @@ struct LeadDetailView: View {
             opportunityId: opportunity.id,
             companyId: opportunity.companyId
         ))
+        _assignmentViewModel = StateObject(
+            wrappedValue: LeadAssignmentViewModel(opportunity: opportunity)
+        )
     }
 
     private var leadAccessPolicy: LeadAccessPolicy { permissionStore.leadAccessPolicy }
@@ -113,6 +119,19 @@ struct LeadDetailView: View {
     }
     private var canConvert: Bool {
         leadAccessPolicy.can(.convert, assignedTo: opportunity.assignedTo)
+    }
+    private var canChangeAssignee: Bool {
+        guard leadAccessPolicy.can(.assign, assignedTo: opportunity.assignedTo),
+              let scope = leadAccessPolicy.scope(for: .assign) else {
+            return false
+        }
+
+        switch scope {
+        case .all:
+            return true
+        case .assigned:
+            return !opportunity.stage.isTerminal && !opportunity.isArchived
+        }
     }
 
     var body: some View {
@@ -131,7 +150,15 @@ struct LeadDetailView: View {
 
                 ScrollView {
                     VStack(spacing: 0) {
-                        DetailHero(opportunity: opportunity)
+                        DetailHero(
+                            opportunity: opportunity,
+                            assigneeName: currentAssigneeName,
+                            canChangeAssignee: canChangeAssignee,
+                            onAssigneeTap: {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                showingAssignmentPicker = true
+                            }
+                        )
 
                         ContactCard(
                             opportunity: opportunity,
@@ -254,6 +281,13 @@ struct LeadDetailView: View {
         }
         .sheet(isPresented: $showingDeckCreationPicker) {
             deckCreationPicker
+        }
+        .sheet(isPresented: $showingAssignmentPicker) {
+            LeadAssignmentSheet(
+                viewModel: assignmentViewModel,
+                isOnline: dataController.isConnected,
+                onMutation: handleAssignmentMutation
+            )
         }
         .fullScreenCover(item: $deckDesignToOpen) { design in
             deckBuilder(design: design)
@@ -383,6 +417,73 @@ struct LeadDetailView: View {
     }
 
     // MARK: - Derived state
+
+    private var currentAssigneeName: String {
+        guard let assignedTo = opportunity.assignedTo else {
+            return "UNASSIGNED"
+        }
+
+        if let candidate = assignmentViewModel.candidates.first(where: {
+            normalizedUserId($0.id) == normalizedUserId(assignedTo)
+        }), !candidate.displayName.isEmpty {
+            return candidate.displayName
+        }
+
+        if let user = allUsers.first(where: {
+            normalizedUserId($0.id) == normalizedUserId(assignedTo)
+                && $0.companyId == opportunity.companyId
+        }) {
+            let name = user.fullName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty { return name }
+        }
+
+        return "TEAM MEMBER"
+    }
+
+    private func handleAssignmentMutation(
+        _ outcome: LeadAssignmentMutationOutcome
+    ) {
+        let disposition = LeadAssignmentMutationDisposition.resolve(
+            outcome: outcome,
+            retainsLeadAccess: leadAccessPolicy.can(
+                .view,
+                assignedTo: opportunity.assignedTo
+            )
+        )
+
+        if disposition.showSuccess {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            ToastCenter.shared.present(
+                Toast(
+                    label: opportunity.assignedTo == nil
+                        ? "// LEAD UNASSIGNED"
+                        : "// LEAD ASSIGNED",
+                    tone: .success
+                )
+            )
+        }
+
+        if disposition.refreshLeads {
+            NotificationCenter.default.post(name: .opsLeadsDidChange, object: nil)
+        }
+
+        if disposition.dismissPicker {
+            showingAssignmentPicker = false
+        }
+
+        if disposition.dismissLead {
+            // `assignment_access_lost` deliberately returns no replacement
+            // assignee. Dismiss from the stable server token alone, then let
+            // the scoped list refresh destroy its cached row.
+            DispatchQueue.main.async {
+                dismiss()
+            }
+        }
+    }
+
+    private func normalizedUserId(_ value: String) -> String {
+        value.lowercased()
+    }
 
     private var atmosphereTone: Atmosphere.Tone {
         switch opportunity.stage {

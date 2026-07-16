@@ -229,7 +229,7 @@ struct ConvertToProjectSheet: View {
                     Text(phone)
                 }
             }
-            .font(.custom("JetBrainsMono-Regular", size: 10))
+            .font(OPSStyle.Typography.miniLabel)
             .kerning(1.2)
             .foregroundColor(OPSStyle.Colors.text3)
             .textCase(.uppercase)
@@ -282,7 +282,7 @@ struct ConvertToProjectSheet: View {
                 }
                 if let address = existing.address, !address.isEmpty {
                     Text(address)
-                        .font(.custom("JetBrainsMono-Regular", size: 10))
+                        .font(OPSStyle.Typography.miniLabel)
                         .kerning(1.0)
                         .foregroundColor(OPSStyle.Colors.text3)
                         .lineLimit(1)
@@ -360,7 +360,7 @@ struct ConvertToProjectSheet: View {
                 Text("·")
                     .foregroundColor(OPSStyle.Colors.textMute)
                 Text("MATCH")
-                    .font(.custom("JetBrainsMono-Regular", size: 10))
+                    .font(OPSStyle.Typography.miniLabel)
                     .kerning(1.0)
                     .foregroundColor(OPSStyle.Colors.tanTextM)
                     .textCase(.uppercase)
@@ -431,7 +431,7 @@ struct ConvertToProjectSheet: View {
                     .foregroundColor(OPSStyle.Colors.text3)
                     .textCase(.uppercase)
                 Text(titleIsAuto ? "[AUTO]" : "[CUSTOM]")
-                    .font(.custom("JetBrainsMono-Regular", size: 10))
+                    .font(OPSStyle.Typography.miniLabel)
                     .kerning(1.6)
                     .foregroundColor(OPSStyle.Colors.textMute)
                     .textCase(.uppercase)
@@ -520,7 +520,7 @@ struct ConvertToProjectSheet: View {
             )
 
             Text("Auto-named from the site address. Rename anytime.")
-                .font(.custom("JetBrainsMono-Regular", size: 10))
+                .font(OPSStyle.Typography.miniLabel)
                 .kerning(0.4)
                 .foregroundColor(OPSStyle.Colors.textMute)
                 .lineLimit(2)
@@ -559,7 +559,7 @@ struct ConvertToProjectSheet: View {
                     Text("·")
                     Text("\(String(format: "%02d", bundle.lineItems.count)) ITEMS")
                 }
-                .font(.custom("JetBrainsMono-Regular", size: 10))
+                .font(OPSStyle.Typography.miniLabel)
                 .kerning(1.0)
                 .foregroundColor(OPSStyle.Colors.text3)
                 .textCase(.uppercase)
@@ -605,7 +605,7 @@ struct ConvertToProjectSheet: View {
                 Text(estimateBundles.count == 1 ? "ESTIMATE" : "ESTIMATES")
                     .foregroundColor(OPSStyle.Colors.text3)
             }
-            .font(.custom("JetBrainsMono-Regular", size: 10))
+            .font(OPSStyle.Typography.miniLabel)
             .kerning(1.4)
             .textCase(.uppercase)
             .padding(.top, OPSStyle.Layout.spacing1)
@@ -634,7 +634,7 @@ struct ConvertToProjectSheet: View {
                         Text("\(formatQty(item.quantity))")
                     }
                 }
-                .font(.custom("JetBrainsMono-Regular", size: 10))
+                .font(OPSStyle.Typography.miniLabel)
                 .kerning(1.0)
                 .foregroundColor(OPSStyle.Colors.text3)
                 .textCase(.uppercase)
@@ -664,7 +664,7 @@ struct ConvertToProjectSheet: View {
             Text("Marks the lead WON and creates a Project (status: ACCEPTED) linked back to this lead. Finish project setup from the PROJECTS tab.")
                 .foregroundColor(OPSStyle.Colors.text3)
         }
-        .font(.custom("JetBrainsMono-Regular", size: 10))
+        .font(OPSStyle.Typography.miniLabel)
         .kerning(0.4)
         .lineSpacing(2)
         .padding(.vertical, OPSStyle.Layout.spacing2_5)

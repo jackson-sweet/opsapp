@@ -118,7 +118,7 @@ struct WonChooserRow: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Text(subline)
-                        .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                        .font(OPSStyle.Typography.nanoLabel)
                         .tracking(0.8)
                         .textCase(.uppercase)
                         .foregroundColor(OPSStyle.Colors.text3)

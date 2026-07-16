@@ -105,7 +105,7 @@ private struct ActivityRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(ageString)
-                .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                .font(OPSStyle.Typography.nanoLabel)
                 .foregroundColor(OPSStyle.Colors.textMute)
                 .kerning(1.0)
                 .textCase(.uppercase)
@@ -251,7 +251,7 @@ private struct EmptyLine: View {
 
     var body: some View {
         Text(text)
-            .font(.custom("JetBrainsMono-Regular", size: 10))
+            .font(OPSStyle.Typography.miniLabel)
             .kerning(1.6)
             .foregroundColor(OPSStyle.Colors.textMute)
             .textCase(.uppercase)

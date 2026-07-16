@@ -104,7 +104,7 @@ struct PipelineStageListView: View {
             Spacer()
 
             Text("\(String(format: "%02d", leads.count)) LEADS")
-                .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                .font(OPSStyle.Typography.nanoLabel)
                 .foregroundColor(OPSStyle.Colors.text3)
                 .kerning(0.8)
                 .textCase(.uppercase)
@@ -211,7 +211,7 @@ private struct StageListNavBar: View {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 16, weight: .regular))
                     Text("LEADS")
-                        .font(.custom("JetBrainsMono-Regular", size: 10))
+                        .font(OPSStyle.Typography.miniLabel)
                         .fontWeight(.semibold)
                         .kerning(1.4)
                         .textCase(.uppercase)

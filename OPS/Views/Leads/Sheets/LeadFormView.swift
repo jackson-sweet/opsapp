@@ -318,7 +318,7 @@ struct LeadField<Content: View>: View {
                     .textCase(.uppercase)
                 if let hint {
                     Text(hint)
-                        .font(.custom("JetBrainsMono-Regular", size: 10))
+                        .font(OPSStyle.Typography.miniLabel)
                         .kerning(1.6)
                         .foregroundColor(OPSStyle.Colors.textMute)
                         .textCase(.uppercase)
@@ -349,7 +349,7 @@ struct LeadTextInput: View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             if let leading {
                 Text(leading)
-                    .font(.custom("JetBrainsMono-Regular", size: 13))
+                    .font(OPSStyle.Typography.dataValue)
                     .foregroundColor(OPSStyle.Colors.textMute)
             }
             TextField("", text: $text, prompt:

@@ -206,6 +206,14 @@ extension Font {
         return Font.custom("JetBrainsMono-Medium", size: 10)
     }
 
+    /// Nano label — JetBrains Mono Regular 9.5pt. The densest micro-label tier,
+    /// one step below `miniLabel`: timeline timestamps, stage tags, KPI-cell
+    /// labels, and other tight uppercase meta where 10pt runs too tall.
+    /// Uppercase + per-component tracking (0.8–1.4pt) applied at the call site.
+    public static var nanoLabel: Font {
+        return Font.custom("JetBrainsMono-Regular", size: 9.5)
+    }
+
     public static var microLabel: Font {
         return Font.custom("JetBrainsMono-Regular", size: 11)
     }

@@ -305,86 +305,106 @@ struct ConvertToProjectSheet: View {
     // MARK: - Client-has-others banner
 
     private var clientOthersBanner: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 0) {
-                Text("// ")
-                    .foregroundColor(OPSStyle.Colors.textMute)
-                Text("THIS CLIENT HAS \(String(format: "%02d", clientOtherProjects.count)) OTHER ")
-                    .foregroundColor(OPSStyle.Colors.tanTextM)
-                Text(clientOtherProjects.count == 1 ? "PROJECT" : "PROJECTS")
-                    .foregroundColor(OPSStyle.Colors.tanTextM)
-                Text("  ·  ")
-                    .foregroundColor(OPSStyle.Colors.textMute)
-                Text("REVIEW BEFORE CREATING")
-                    .foregroundColor(OPSStyle.Colors.text3)
-            }
-            .font(OPSStyle.Typography.miniLabelBold)
-            .kerning(1.6)
-            .textCase(.uppercase)
+        ClientOthersBanner(projects: clientOtherProjects, onOpen: openExistingProject)
+    }
 
-            ChipWrap(spacing: 6) {
-                ForEach(clientOtherProjects.prefix(8)) { project in
-                    Button {
-                        openExistingProject(project.id)
-                    } label: {
-                        projectChip(project)
+    /// Tan attention banner for the CLIENT-HAS-OTHERS render state. Extracted
+    /// as its own view so the snapshot harness can render it against fixture
+    /// counts (bug 4e11e121 — the old header wrapped onto multiple lines).
+    struct ClientOthersBanner: View {
+        let projects: [RelatedProjectRef]
+        let onOpen: (String) -> Void
+
+        /// `CLIENT HAS 02 OTHER PROJECTS` — one message, count zero-padded to
+        /// match the mono HUD style. The old header also carried "REVIEW
+        /// BEFORE CREATING", which pushed the line past every phone width and
+        /// fragment-wrapped (bug 4e11e121); the tan tint + tappable chips
+        /// already carry the review intent.
+        private var headline: String {
+            let count = projects.count
+            let noun = count == 1 ? "PROJECT" : "PROJECTS"
+            return "CLIENT HAS \(String(format: "%02d", count)) OTHER \(noun)"
+        }
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 10) {
+                // Single concatenated text run + lineLimit(1): the header can
+                // never fragment-wrap again, at any count.
+                (
+                    Text("// ")
+                        .foregroundColor(OPSStyle.Colors.textMute)
+                    + Text(headline)
+                        .foregroundColor(OPSStyle.Colors.tanTextM)
+                )
+                .font(OPSStyle.Typography.miniLabelBold)
+                .kerning(1.6)
+                .textCase(.uppercase)
+                .lineLimit(1)
+
+                ChipWrap(spacing: 6) {
+                    ForEach(projects.prefix(8)) { project in
+                        Button {
+                            onOpen(project.id)
+                        } label: {
+                            projectChip(project)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .accessibilityLabel("Open project \(project.title)")
                     }
-                    .buttonStyle(PlainButtonStyle())
-                    .accessibilityLabel("Open project \(project.title)")
                 }
             }
+            .padding(OPSStyle.Layout.spacing2_5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
+                    .fill(OPSStyle.Colors.tanFillM)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
+                    .strokeBorder(OPSStyle.Colors.tanLineM, lineWidth: 1)
+            )
         }
-        .padding(OPSStyle.Layout.spacing2_5)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
-                .fill(OPSStyle.Colors.tanFillM)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
-                .strokeBorder(OPSStyle.Colors.tanLineM, lineWidth: 1)
-        )
-    }
 
-    private func projectChip(_ project: RelatedProjectRef) -> some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(project.statusColor)
-                .frame(width: 5, height: 5)
-            Text(truncatedTitle(project.title))
-                .font(OPSStyle.Typography.miniLabelBold)
-                .kerning(1.2)
-                .foregroundColor(OPSStyle.Colors.text)
-                .textCase(.uppercase)
-            if project.isLikelyDuplicate {
-                Text("·")
-                    .foregroundColor(OPSStyle.Colors.textMute)
-                Text("MATCH")
-                    .font(OPSStyle.Typography.miniLabel)
-                    .kerning(1.0)
-                    .foregroundColor(OPSStyle.Colors.tanTextM)
+        private func projectChip(_ project: RelatedProjectRef) -> some View {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(project.statusColor)
+                    .frame(width: 5, height: 5)
+                Text(truncatedTitle(project.title))
+                    .font(OPSStyle.Typography.miniLabelBold)
+                    .kerning(1.2)
+                    .foregroundColor(OPSStyle.Colors.text)
                     .textCase(.uppercase)
+                if project.isLikelyDuplicate {
+                    Text("·")
+                        .foregroundColor(OPSStyle.Colors.textMute)
+                    Text("MATCH")
+                        .font(OPSStyle.Typography.miniLabel)
+                        .kerning(1.0)
+                        .foregroundColor(OPSStyle.Colors.tanTextM)
+                        .textCase(.uppercase)
+                }
             }
+            .padding(.horizontal, 10)
+            .frame(minHeight: 32)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
+                    .fill(OPSStyle.Colors.surfaceHover)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
+                    .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
+            )
+            // 32pt visible chip · 44pt hit area — MOBILE.md §1 / audit F1.
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 10)
-        .frame(minHeight: 32)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
-                .fill(OPSStyle.Colors.surfaceHover)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
-                .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
-        )
-        // 32pt visible chip · 44pt hit area — MOBILE.md §1 / audit F1.
-        .frame(minHeight: 44)
-        .contentShape(Rectangle())
-    }
 
-    private func truncatedTitle(_ raw: String) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespaces)
-        if trimmed.isEmpty { return "UNTITLED" }
-        return trimmed.count > 18 ? String(trimmed.prefix(17)) + "…" : trimmed
+        private func truncatedTitle(_ raw: String) -> String {
+            let trimmed = raw.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { return "UNTITLED" }
+            return trimmed.count > 18 ? String(trimmed.prefix(17)) + "…" : trimmed
+        }
     }
 
     // MARK: - Form fields

@@ -2,6 +2,10 @@
 build/
 .derived-data/
 **/.derived-data/
+.deriveddata/
+**/.deriveddata/
+.spm-local/
+**/.spm-local/
 
 # Secrets - never commit
 Secrets.xcconfig

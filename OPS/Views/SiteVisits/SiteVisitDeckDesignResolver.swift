@@ -24,16 +24,32 @@ enum SiteVisitDeckDesignResolver {
     /// The design the DECK action should open, or nil to create new.
     ///
     /// - Parameters:
+    ///   - preferredDesignId: the design a caller wants opened by exact id —
+    ///     the checklist row's EDIT knows precisely which design it linked, so
+    ///     this takes priority over any re-derivation. Bug (site-visit report):
+    ///     EDIT used to fall through to re-derivation and open a blank/new
+    ///     design; anchoring on the linked id makes EDIT deterministic.
     ///   - artifactDesignIds: deck-artifact design ids from THIS visit,
     ///     newest first (`activeArtifacts` order).
     ///   - opportunityId: the lead bound to the visit, when there is one.
     ///   - designs: the local design store (soft-deleted rows are skipped
     ///     here and by the display-candidate rule).
     static func existingDesign(
+        preferredDesignId: String? = nil,
         artifactDesignIds: [String],
         opportunityId: String?,
         in designs: [DeckDesign]
     ) -> DeckDesign? {
+        // 0. Open the exact design the caller asked for. Canonicalize the id
+        //    (artifacts/answers can carry UPPERCASE UUIDs; the store is
+        //    lowercase) before matching.
+        if let preferredDesignId {
+            let canonical = DeckDesign.canonicalUUIDString(preferredDesignId)
+            if let match = designs.first(where: { $0.deletedAt == nil && $0.id == canonical }) {
+                return match
+            }
+        }
+
         // 1. Continue the visit's own sketch. Ids canonicalize before
         //    comparing — artifacts can carry UPPERCASE UUIDs while the
         //    design store is lowercase (the Postgres echo convention).

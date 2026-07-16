@@ -56,6 +56,48 @@ final class SiteVisitDeckDesignResolverTests: XCTestCase {
         return d
     }
 
+    func test_PreferredDesignId_winsOverEverything() {
+        // Bug (site-visit report) — the checklist EDIT knows exactly which
+        // design it linked; that id must win over the visit sketch and the
+        // lead candidate so EDIT never opens a re-derived (blank) design.
+        let linked = design(opportunityId: oppId, updatedAt: Date(timeIntervalSince1970: 1_000))
+        let visitSketch = design(opportunityId: oppId, updatedAt: Date(timeIntervalSince1970: 5_000))
+        let leadDeck = design(opportunityId: oppId, updatedAt: Date(timeIntervalSince1970: 9_000))
+
+        let resolved = SiteVisitDeckDesignResolver.existingDesign(
+            preferredDesignId: linked.id,
+            artifactDesignIds: [visitSketch.id],
+            opportunityId: oppId,
+            in: [linked, visitSketch, leadDeck]
+        )
+        XCTAssertEqual(resolved?.id, linked.id)
+    }
+
+    func test_PreferredDesignId_matchesAcrossUUIDCasing() {
+        let linked = design(opportunityId: oppId)
+        let resolved = SiteVisitDeckDesignResolver.existingDesign(
+            preferredDesignId: linked.id.uppercased(),
+            artifactDesignIds: [],
+            opportunityId: oppId,
+            in: [linked]
+        )
+        XCTAssertEqual(resolved?.id, linked.id)
+    }
+
+    func test_PreferredDesignId_deletedOrMissing_fallsThrough() {
+        // A stale linked id (design since deleted) must not dead-end on nil —
+        // fall through to the visit sketch / lead candidate.
+        let deletedLinked = design(opportunityId: oppId, deleted: true)
+        let sketch = design(opportunityId: oppId)
+        let resolved = SiteVisitDeckDesignResolver.existingDesign(
+            preferredDesignId: deletedLinked.id,
+            artifactDesignIds: [sketch.id],
+            opportunityId: oppId,
+            in: [deletedLinked, sketch]
+        )
+        XCTAssertEqual(resolved?.id, sketch.id)
+    }
+
     func test_VisitOwnSketch_winsOverLeadCandidate() {
         let visitSketch = design(opportunityId: oppId, updatedAt: Date(timeIntervalSince1970: 1_000))
         let newerLeadDeck = design(opportunityId: oppId, updatedAt: Date(timeIntervalSince1970: 9_000))

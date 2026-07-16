@@ -750,7 +750,8 @@ struct ProjectDetailsView: View {
     }
     /// The Deck tab is at the top and being pulled past it (cue-visible window).
     private var isDeckOverscrolling: Bool {
-        !isDeckFullscreen && viewModel.selectedTab == .deck && hasRenderableDeck && deckPull > 1
+        !isDeckFullscreen && viewModel.selectedTab == .deck && hasRenderableDeck
+            && deckViewMode != .materials && deckPull > 1
     }
     private var deckExpandProgress: CGFloat { DeckOverscrollMath.progress(pull: deckPull) }
 
@@ -759,7 +760,13 @@ struct ProjectDetailsView: View {
     /// and open fullscreen (one-shot via `deckPullArmed`); below the threshold the
     /// scroll rubber-bands back on its own. Inert off the Deck tab.
     private func updateDeckPull(_ pull: CGFloat) {
-        guard viewModel.selectedTab == .deck, hasRenderableDeck, !isDeckFullscreen else {
+        // Pull-to-expand is a CANVAS affordance — fullscreen has no materials
+        // form. Gating on the mode also absorbs the content-height collapse
+        // when the tall viewport swaps for the shorter materials card: the
+        // probe reads that reflow as a huge "pull" for a frame and would
+        // otherwise commit fullscreen on a plain segment tap.
+        guard viewModel.selectedTab == .deck, hasRenderableDeck, !isDeckFullscreen,
+              deckViewMode != .materials else {
             if deckPull != 0 { deckPull = 0 }
             deckPullArmed = false
             return

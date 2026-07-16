@@ -99,6 +99,10 @@ final class DeckTabModeSnapshotTests: XCTestCase {
 
     private func snapshot(_ name: String, mode: DeckTabViewMode, ordered: Bool) throws {
         let stage = try makeStage(ordered: ordered)
+        // Grant deck edit so the control row renders its trailing EDIT verb —
+        // proving the picker (leading 3/5) and the action never collide.
+        let permissions = PermissionStore()
+        permissions.permissions["deck_builder.edit"] = "all"
         let view = ZStack(alignment: .top) {
             OPSStyle.Colors.background.ignoresSafeArea()
             DeckTabView(
@@ -108,7 +112,7 @@ final class DeckTabModeSnapshotTests: XCTestCase {
                 viewMode: .constant(mode)
             )
         }
-        .environmentObject(PermissionStore())
+        .environmentObject(permissions)
         .environmentObject(DataController())
         .modelContainer(stage.container)
 

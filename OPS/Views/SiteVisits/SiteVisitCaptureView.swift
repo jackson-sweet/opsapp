@@ -5,6 +5,7 @@
 //  Field-first site visit capture console.
 //
 
+import Contacts
 import PencilKit
 import Speech
 import SwiftData
@@ -898,6 +899,7 @@ private struct SiteVisitIdentityPanel: View {
     @State private var activeLeads: [Opportunity] = []
     @State private var clients: [Client] = []
     @State private var autosaveTask: Task<Void, Never>?
+    @State private var showingContactPicker = false
 
     private var completionCount: Int {
         [
@@ -977,6 +979,10 @@ private struct SiteVisitIdentityPanel: View {
                 searchField
                 suggestionList
 
+                if boundDisplayName == nil {
+                    importContactsButton
+                }
+
                 VStack(spacing: OPSStyle.Layout.spacing2) {
                     identityField(
                         "NAME",
@@ -1054,8 +1060,15 @@ private struct SiteVisitIdentityPanel: View {
                 .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
         )
         .task {
-            loadSearchSources()
+            await loadSearchSources()
             syncFromDraft()
+        }
+        .sheet(isPresented: $showingContactPicker) {
+            ContactPicker(
+                onContactSelected: { contact in applyContact(contact) },
+                onDismiss: { showingContactPicker = false }
+            )
+            .ignoresSafeArea()
         }
         .onDisappear {
             autosaveTask?.cancel()
@@ -1260,7 +1273,7 @@ private struct SiteVisitIdentityPanel: View {
                         commitDraft()
                         if await viewModel.createLeadFromIdentityDraft(dataController: dataController) != nil {
                             syncFromDraft()
-                            loadSearchSources()
+                            await loadSearchSources()
                             UINotificationFeedbackGenerator().notificationOccurred(.success)
                         } else {
                             UINotificationFeedbackGenerator().notificationOccurred(.error)
@@ -1413,17 +1426,113 @@ private struct SiteVisitIdentityPanel: View {
         )
     }
 
-    private func loadSearchSources() {
-        let opportunityDescriptor = FetchDescriptor<Opportunity>(
-            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
-        )
-        activeLeads = ((try? modelContext.fetch(opportunityDescriptor)) ?? [])
-            .filter { lead in
-                lead.companyId == viewModel.companyIdentifier
-                && !lead.stage.isTerminal
-                && !lead.isDeleted
-                && !lead.isArchived
+    /// Bug (site-visit report) — pull an existing person straight from the
+    /// phone's address book instead of retyping them. Shown only while the
+    /// visit is unlinked; a pick fills the identity draft.
+    private var importContactsButton: some View {
+        Button {
+            showingContactPicker = true
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: "person.crop.circle.badge.plus")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundColor(OPSStyle.Colors.text2)
+                Text("IMPORT FROM CONTACTS")
+                    .font(OPSStyle.Typography.miniLabel)
+                    .foregroundColor(OPSStyle.Colors.text2)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.text3)
             }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .frame(maxWidth: .infinity)
+            .frame(height: OPSStyle.Layout.touchTargetMin)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .fill(OPSStyle.Colors.surfaceInput)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Import from phone contacts")
+    }
+
+    /// Fill the identity draft from a picked device contact. Each field is
+    /// only overwritten when the contact actually carries that value, so a
+    /// partially typed form isn't wiped by an import.
+    private func applyContact(_ contact: CNContact) {
+        showingContactPicker = false
+
+        let given = contact.givenName.trimmingCharacters(in: .whitespaces)
+        let family = contact.familyName.trimmingCharacters(in: .whitespaces)
+        let fullName = [given, family].filter { !$0.isEmpty }.joined(separator: " ")
+        if !fullName.isEmpty { contactName = fullName }
+
+        let org = contact.organizationName.trimmingCharacters(in: .whitespaces)
+        if !org.isEmpty { clientName = org }
+
+        if let email = contact.emailAddresses.first
+            .map({ ($0.value as String).trimmingCharacters(in: .whitespaces) }),
+            !email.isEmpty {
+            preferredEmail = email
+        }
+
+        if let phone = contact.phoneNumbers.first?.value.stringValue
+            .trimmingCharacters(in: .whitespaces), !phone.isEmpty {
+            phoneNumber = phone
+        }
+
+        if let composed = composeContactAddress(from: contact) {
+            address = composed
+            // A picked postal address is a commit (like an autocomplete
+            // selection); persist it — without a geocode, coordinates stay nil.
+            viewModel.applySelectedSiteAddress(composed, coordinate: nil)
+        }
+
+        commitDraft()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    /// Single comma-separated line from the contact's first postal address,
+    /// matching `AddressAutocompleteField`'s output shape.
+    private func composeContactAddress(from contact: CNContact) -> String? {
+        guard let postal = contact.postalAddresses.first?.value else { return nil }
+        var components: [String] = []
+        if !postal.street.isEmpty { components.append(postal.street) }
+        if !postal.city.isEmpty { components.append(postal.city) }
+        if !postal.state.isEmpty { components.append(postal.state) }
+        if !postal.postalCode.isEmpty { components.append(postal.postalCode) }
+        let joined = components.joined(separator: ", ")
+        return joined.isEmpty ? nil : joined
+    }
+
+    private func loadSearchSources() async {
+        // Bug (site-visit report) — leads are network-only; they are not
+        // persisted in SwiftData (see [[opportunities-not-in-swiftdata]]), so
+        // the old `FetchDescriptor<Opportunity>` always came back empty and
+        // search never matched a lead. Pull the live opportunity store, and
+        // fall back to whatever SwiftData holds only when offline.
+        let repo = OpportunityRepository(companyId: viewModel.companyIdentifier)
+        if let dtos = try? await repo.fetchAll() {
+            activeLeads = dtos
+                .map { $0.toModel() }
+                .filter { !$0.stage.isTerminal && !$0.isDeleted && !$0.isArchived }
+        } else {
+            let opportunityDescriptor = FetchDescriptor<Opportunity>(
+                sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+            )
+            activeLeads = ((try? modelContext.fetch(opportunityDescriptor)) ?? [])
+                .filter { lead in
+                    lead.companyId == viewModel.companyIdentifier
+                    && !lead.stage.isTerminal
+                    && !lead.isDeleted
+                    && !lead.isArchived
+                }
+        }
 
         let clientDescriptor = FetchDescriptor<Client>(
             sortBy: [SortDescriptor(\.name)]

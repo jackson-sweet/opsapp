@@ -62,7 +62,7 @@ struct DetailHero: View {
 
             if let title = opportunity.title, !title.isEmpty {
                 Text(title)
-                    .font(.custom("Mohave-Regular", size: 14))
+                    .font(OPSStyle.Typography.cardBody)
                     .foregroundColor(OPSStyle.Colors.text2)
                     .lineLimit(2)
                     .padding(.top, 6)
@@ -95,14 +95,14 @@ struct DetailHero: View {
                     .foregroundColor(OPSStyle.Colors.text3)
                     .monospacedDigit()
             }
-            .font(.custom("JetBrainsMono-Regular", size: 10))
+            .font(OPSStyle.Typography.miniLabel)
             .kerning(1.4)
             .textCase(.uppercase)
 
             Spacer(minLength: 12)
 
             Text("\(opportunity.daysInStage)D IN STAGE")
-                .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                .font(OPSStyle.Typography.nanoLabel)
                 .kerning(1.3)
                 .foregroundColor(OPSStyle.Colors.textMute)
                 .textCase(.uppercase)
@@ -117,7 +117,7 @@ struct DetailHero: View {
             StageTag(stage: opportunity.stage)
 
             Text("\(winProbability)% WIN PROB")
-                .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                .font(OPSStyle.Typography.nanoLabel)
                 .kerning(1.3)
                 .foregroundColor(OPSStyle.Colors.text3)
                 .textCase(.uppercase)
@@ -223,7 +223,7 @@ private struct StageTag: View {
 
     var body: some View {
         Text(stage.displayName)
-            .font(.custom("JetBrainsMono-Regular", size: 9.5))
+            .font(OPSStyle.Typography.nanoLabel)
             .fontWeight(.semibold)
             .kerning(1.4)
             .foregroundColor(textColor)
@@ -286,7 +286,7 @@ private struct KvCell: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label)
-                .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                .font(OPSStyle.Typography.nanoLabel)
                 .fontWeight(.semibold)
                 .kerning(1.26)
                 .foregroundColor(OPSStyle.Colors.text3)
@@ -309,7 +309,7 @@ private struct KvCell: View {
             }
 
             Text(sub)
-                .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                .font(OPSStyle.Typography.nanoLabel)
                 .fontWeight(.semibold)
                 .kerning(1.02)
                 .foregroundColor(OPSStyle.Colors.textMute)

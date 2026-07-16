@@ -103,7 +103,7 @@ struct LeadDeckSection: View {
                             .lineLimit(1)
 
                         Text(updatedStamp(for: design))
-                            .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                            .font(OPSStyle.Typography.nanoLabel)
                             .kerning(1.2)
                             .foregroundColor(OPSStyle.Colors.textMute)
                             .textCase(.uppercase)

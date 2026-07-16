@@ -211,6 +211,20 @@ struct DeckSettingsSheet: View {
                 }
 
                 Section {
+                    Toggle("Start listening automatically", isOn: Binding(
+                        get: { viewModel.dictateAutoStartEnabled },
+                        set: { viewModel.setDictateAutoStartPreference($0) }
+                    ))
+                    .tint(OPSStyle.Colors.text)
+                } header: {
+                    Text("DICTATION")
+                } footer: {
+                    Text("Speed draw opens the mic for each new length. Speak the measurement, tap continue.")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+
+                Section {
                     Toggle("Autosave every 2 minutes", isOn: Binding(
                         get: { viewModel.autosaveEnabled },
                         set: { viewModel.setAutosavePreference($0) }

@@ -69,7 +69,7 @@ struct BooksPTRIndicator: View {
 
     private var label: some View {
         Text("SYNCING")
-            .font(.custom("JetBrainsMono-Medium", size: 10))
+            .font(OPSStyle.Typography.miniLabelBold)
             .tracking(1.8)  // 0.18em at 10pt
             .foregroundColor(OPSStyle.Colors.tertiaryText)
     }

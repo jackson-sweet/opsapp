@@ -25,7 +25,14 @@ final class SpotlightBackfillCoordinator {
 
     func runIfNeeded(context: ModelContext) async {
         guard !isRunning else { return }
-        guard !SpotlightIndexManager.shared.hasCompletedInitialBackfill else { return }
+        // Existing users whose initial backfill predates the lead domain: index
+        // the network-only leads once, without re-running the full backfill or
+        // re-showing its banner. New users fall through and get leads as a normal
+        // step of the full backfill below.
+        guard !SpotlightIndexManager.shared.hasCompletedInitialBackfill else {
+            await SpotlightIndexManager.shared.backfillLeadsIfNeeded()
+            return
+        }
         isRunning = true
         defer { isRunning = false }
 

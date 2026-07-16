@@ -16,8 +16,17 @@ struct EstimateDetailView: View {
     @State private var showConvertOptions = false
     @State private var showProgressInvoice = false
     @State private var showOverflowMenu = false
-    @State private var showBreakdown = false
+    @State private var showBreakdown: Bool
     @Query(sort: \TaskType.displayOrder) private var taskTypes: [TaskType]
+
+    /// `initialShowBreakdown` seeds the bundle-breakdown toggle — the default
+    /// (bundled) is production behavior; the snapshot harness passes `true`
+    /// to capture the expanded state.
+    init(estimate: Estimate, viewModel: EstimateViewModel, initialShowBreakdown: Bool = false) {
+        self.estimate = estimate
+        self.viewModel = viewModel
+        _showBreakdown = State(initialValue: initialShowBreakdown)
+    }
 
     private var lineItems: [EstimateLineItem] {
         viewModel.lineItems(for: estimate.id)
@@ -206,7 +215,7 @@ struct EstimateDetailView: View {
                 "\(overrunCount) stock overrun\(overrunCount == 1 ? "" : "s") projected"
             ]
             if let shortQuantity = overrunDetails.compactMap(\.projectedOverrunQuantity).first {
-                parts.append("Short \(formatQuantity(shortQuantity)) at booking")
+                parts.append("Short \(LineItemDisplay.quantityString(shortQuantity)) at booking")
             }
             if missingMappingCount > 0 {
                 parts.append(mappingMessage(count: missingMappingCount))
@@ -250,7 +259,7 @@ struct EstimateDetailView: View {
             }
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Text(estimate.total, format: .currency(code: "USD").precision(.fractionLength(0)))
+                Text(LineItemDisplay.money(estimate.total))
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -297,7 +306,7 @@ struct EstimateDetailView: View {
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                             Image(systemName: showBreakdown ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
-                                .font(.system(size: 12))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                     }
@@ -336,7 +345,8 @@ struct EstimateDetailView: View {
     }
 
     private func parentLineItemRow(_ item: EstimateLineItem) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        let children = childItems(for: item.id)
+        return VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Circle()
                     .fill(taskTypeColor(for: item.taskTypeId) ?? OPSStyle.Colors.tertiaryText.opacity(0.3))
@@ -346,7 +356,7 @@ struct EstimateDetailView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
                 Spacer()
-                Text(item.lineTotal, format: .currency(code: "USD").precision(.fractionLength(0)))
+                Text(LineItemDisplay.money(item.lineTotal))
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
@@ -354,13 +364,20 @@ struct EstimateDetailView: View {
                 Text(item.type.rawValue.uppercased())
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
+                // Standalone items carry their own math — show it so the row
+                // total is verifiable at a glance (bundle parents are a sum
+                // of their children, so they show the item count instead).
+                if children.isEmpty {
+                    Text("· \(LineItemDisplay.quantityPriceMeta(quantity: item.quantity, unit: item.unit, unitPrice: item.unitPrice, resolvedUnitPrice: item.resolvedUnitPrice))")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
                 if let label = item.resolvedOptionsLabel, !label.isEmpty {
                     Text("· \(label)")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .lineLimit(1)
                 }
-                let children = childItems(for: item.id)
                 if !children.isEmpty {
                     Text("[\(children.count) items]")
                         .font(OPSStyle.Typography.smallCaption)
@@ -392,7 +409,7 @@ struct EstimateDetailView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             Spacer()
-            Text(item.lineTotal, format: .currency(code: "USD").precision(.fractionLength(0)))
+            Text(LineItemDisplay.money(item.lineTotal))
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
@@ -402,20 +419,21 @@ struct EstimateDetailView: View {
         .background(OPSStyle.Colors.surfaceHover)
     }
 
-    /// Child-row metadata: "qty unit · [chosen option] · unit price". The option
-    /// label appears only when the child line snapshotted a configured option.
+    /// Child-row metadata: "qty unit × unit price · [chosen option]". The option
+    /// label appears only when the child line snapshotted a configured option;
+    /// configured children display their resolved snapshot price — the price
+    /// their line total was actually computed from.
     private func childMetaLine(_ item: EstimateLineItem) -> String {
-        let qtyUnit = "\(formatQuantity(item.quantity)) \(item.unit ?? "")"
-            .trimmingCharacters(in: .whitespaces)
-        let price = item.unitPrice.formatted(.currency(code: "USD"))
+        let meta = LineItemDisplay.quantityPriceMeta(
+            quantity: item.quantity,
+            unit: item.unit,
+            unitPrice: item.unitPrice,
+            resolvedUnitPrice: item.resolvedUnitPrice
+        )
         if let label = item.resolvedOptionsLabel, !label.isEmpty {
-            return "\(qtyUnit) · \(label) · \(price)"
+            return "\(meta) · \(label)"
         }
-        return "\(qtyUnit) · \(price)"
-    }
-
-    private func formatQuantity(_ qty: Double) -> String {
-        qty.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(qty)) : String(format: "%.1f", qty)
+        return meta
     }
 
     // MARK: - Totals
@@ -430,18 +448,39 @@ struct EstimateDetailView: View {
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Spacer()
-                    Text(estimate.subtotal, format: .currency(code: "USD").precision(.fractionLength(0)))
+                    Text(LineItemDisplay.money(estimate.subtotal))
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
 
-                if estimate.taxRate > 0 {
+                // Discount is derived from the stored totals so the card's
+                // arithmetic always closes on screen — without this row a
+                // discounted estimate reads subtotal + tax ≠ total.
+                if let discount = LineItemDisplay.discountAmount(
+                    subtotal: estimate.subtotal,
+                    taxAmount: estimate.taxAmount,
+                    total: estimate.total
+                ) {
                     HStack {
-                        Text("TAX (\(String(format: "%.0f", estimate.taxRate))%)")
+                        Text(estimate.discountPercent > 0
+                            ? "DISCOUNT (\(LineItemDisplay.taxRateString(estimate.discountPercent))%)"
+                            : "DISCOUNT")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Spacer()
-                        Text(estimate.taxAmount, format: .currency(code: "USD").precision(.fractionLength(0)))
+                        Text("−\(LineItemDisplay.money(discount))")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                }
+
+                if estimate.taxRate > 0 {
+                    HStack {
+                        Text("TAX (\(LineItemDisplay.taxRateString(estimate.taxRate))%)")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        Spacer()
+                        Text(LineItemDisplay.money(estimate.taxAmount))
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -453,7 +492,7 @@ struct EstimateDetailView: View {
                         .fontWeight(.semibold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                     Spacer()
-                    Text(estimate.total, format: .currency(code: "USD").precision(.fractionLength(0)))
+                    Text(LineItemDisplay.money(estimate.total))
                         .font(OPSStyle.Typography.body)
                         .fontWeight(.semibold)
                         .foregroundColor(OPSStyle.Colors.primaryText)

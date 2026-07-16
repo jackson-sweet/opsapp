@@ -6,10 +6,10 @@
 //  required→optional relaxation. A real shipped store sits at V10 with a NOT NULL
 //  `opportunityId`; this test stands up that exact on-disk shape (the frozen
 //  `OPSSchemaLegacySiteVisit.SiteVisit`), then reopens the same file with the
-//  full migration plan and the current (V15) schema and asserts the row survives
+//  full migration plan and the current (V16) schema and asserts the row survives
 //  with its `opportunityId` intact — and that the migrated store can now persist
 //  an unlinked visit with a nil `opportunityId`. (The migrated store must be
-//  opened at the CURRENT schema so the live `SiteVisit` type — which V15
+//  opened at the CURRENT schema so the live `SiteVisit` type — which V15+
 //  registers, and V11–V14 do NOT after the loggedActivityId version-scoping — is
 //  the queryable entity.)
 //
@@ -56,12 +56,12 @@ final class SiteVisitMigrationTests: XCTestCase {
             try context.save()
         }
 
-        // 2. Reopen the SAME file with the full migration plan + CURRENT (V15)
+        // 2. Reopen the SAME file with the full migration plan + CURRENT (V16)
         //    schema. This drives V10 → V11 (opportunityId becomes optional) → V12
-        //    → V13 → V14 → V15 (adds loggedActivityId). Opening at V15 means the
+        //    → V13 → V14 → V15 (adds loggedActivityId) → V16. Opening at V16 means the
         //    live `SiteVisit` type is the registered entity (V11–V14 register the
         //    frozen `OPSSchemaLegacySiteVisitV11.SiteVisit` after version-scoping).
-        let currentSchema = Schema(versionedSchema: OPSSchemaV15.self)
+        let currentSchema = Schema(versionedSchema: OPSSchemaV16.self)
         let currentConfig = ModelConfiguration(schema: currentSchema, url: storeURL)
         let migrated = try ModelContainer(
             for: currentSchema,
@@ -119,8 +119,8 @@ final class SiteVisitMigrationTests: XCTestCase {
             try context.save()
         }
 
-        // 2. Reopen the SAME file with the full migration plan + current (V15)
-        //    schema. This drives V14 → V15 (adds the nullable loggedActivityId).
+        // 2. Reopen the SAME file with the full migration plan + target V15
+        //    schema. This isolates V14 → V15 (adds the nullable loggedActivityId).
         let v15Schema = Schema(versionedSchema: OPSSchemaV15.self)
         let v15Config = ModelConfiguration(schema: v15Schema, url: storeURL)
         let migrated = try ModelContainer(

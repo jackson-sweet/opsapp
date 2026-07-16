@@ -98,6 +98,11 @@
 //  (+ loggedActivityId) backs V15+. This confines the change to this single
 //  boundary instead of rewriting every V11–V14 schema's `SiteVisit` hash.
 //
+//  V15 → V16 stage: app-update compatibility. Opportunity gains optional
+//  coordinates plus its images array, and DeckDesign gains nullable
+//  `opportunityId`. Both models are frozen through V15 and switch to their live
+//  shapes at V16 so released fingerprints remain stable.
+//
 
 import Foundation
 import SwiftData
@@ -119,7 +124,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV12.self,
             OPSSchemaV13.self,
             OPSSchemaV14.self,
-            OPSSchemaV15.self
+            OPSSchemaV15.self,
+            OPSSchemaV16.self
         ]
     }
 
@@ -138,9 +144,20 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addSiteVisitIdentityDraftsV11toV12,
             addProjectNoteEventKindV12toV13,
             addUnifiedActivityParentsV13toV14,
-            addSiteVisitActivityLinkV14toV15
+            addSiteVisitActivityLinkV14toV15,
+            addOpportunityMediaAndDeckLeadV15toV16
         ]
     }
+
+    /// V15 → V16: fields that landed after V15 shipped. Opportunity adds an
+    /// images array plus nullable latitude/longitude; DeckDesign adds nullable
+    /// `opportunityId`. Frozen V15 model shapes preserve recognition of stores
+    /// created by released binaries, while the additive/defaulted live shapes
+    /// are inferable as a lightweight transform.
+    static let addOpportunityMediaAndDeckLeadV15toV16 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV15.self,
+        toVersion: OPSSchemaV16.self
+    )
 
     /// V14 → V15: site-visit → timeline auto-post idempotency. Adds a single
     /// nullable `SiteVisit.loggedActivityId` so a completed visit that posts its

@@ -71,7 +71,7 @@ struct BooksSyncBanner: View {
                 .opacity(reduceMotion ? 1.0 : (pulse ? 0.3 : 1.0))
 
             Text(labelText)
-                .font(.custom("JetBrainsMono-Medium", size: 10))
+                .font(OPSStyle.Typography.miniLabelBold)
                 .tracking(1.6)  // 0.16em at 10pt
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .lineLimit(1)

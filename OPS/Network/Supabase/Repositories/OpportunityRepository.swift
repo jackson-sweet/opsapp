@@ -201,6 +201,7 @@ class OpportunityRepository {
     /// Updates stage + stage_entered_at + stage_manually_set AND inserts a
     /// stage_transitions row in one transaction. Returns the updated opportunity.
     func moveToStage(opportunityId: String, to stage: PipelineStage, userId: String?) async throws -> OpportunityDTO {
+        try Self.validateDirectStageMutation(stage)
         struct RpcParams: Codable {
             let p_opportunity_id: String
             let p_to_stage: String
@@ -218,18 +219,15 @@ class OpportunityRepository {
             .value
     }
 
-    /// Mark won. Sets stage to .won, stores actualValue + actualCloseDate,
-    /// and writes the stage_transitions row via moveToStage.
-    func markWon(opportunityId: String, actualValue: Double?, projectId: String?, userId: String?) async throws -> OpportunityDTO {
-        // First the stage move (writes transition row)
-        _ = try await moveToStage(opportunityId: opportunityId, to: .won, userId: userId)
-
-        // Then patch the won-specific fields
-        var fields = UpdateOpportunityDTO()
-        fields.actualValue = actualValue
-        fields.actualCloseDate = SupabaseDate.formatDate(Date())
-        if let projectId { fields.projectId = projectId }
-        return try await update(opportunityId, fields: fields)
+    /// The won transition is authorization-sensitive: it creates or links the
+    /// project and pins the assignment version in one guarded transaction.
+    /// Keeping this rejection at the repository boundary prevents a future UI
+    /// from accidentally reviving the legacy `move_opportunity_stage('won')`
+    /// escape hatch.
+    static func validateDirectStageMutation(_ stage: PipelineStage) throws {
+        guard stage != .won else {
+            throw OpportunityRepositoryError.guardedConversionRequired
+        }
     }
 
     /// Mark lost. Sets stage to .lost, stores lost_reason + lost_notes + actualCloseDate,
@@ -258,7 +256,7 @@ class OpportunityRepository {
     /// Update via an arbitrary Encodable patch. Used by the edit form's
     /// `EditOpportunityPatch`, whose custom encoder emits explicit nulls so
     /// cleared fields persist. The `fields:` overload (UpdateOpportunityDTO)
-    /// stays the partial-update path for mark-won / mark-lost / archive. (review I-12)
+    /// stays the partial-update path for mark-lost / archive. (review I-12)
     func update<Patch: Encodable>(_ opportunityId: String, patch: Patch) async throws -> OpportunityDTO {
         try await client
             .from("opportunities")
@@ -323,17 +321,24 @@ class OpportunityRepository {
     // MARK: - Deprecated
 
     /// Kept for backward compatibility. Forwards to moveToStage; does NOT
-    /// write actualValue or actualCloseDate. Prefer markWon / markLost.
-    @available(*, deprecated, message: "Use moveToStage / markWon / markLost")
+    /// write actualValue or actualCloseDate. Won is deliberately rejected by
+    /// `moveToStage` and must use the guarded conversion service.
+    @available(*, deprecated, message: "Use moveToStage / markLost; won requires guarded conversion")
     func advanceStage(opportunityId: String, to stage: PipelineStage, lostReason: String? = nil) async throws -> OpportunityDTO {
         try await moveToStage(opportunityId: opportunityId, to: stage, userId: nil)
     }
 }
 
-enum OpportunityRepositoryError: LocalizedError {
+enum OpportunityRepositoryError: LocalizedError, Equatable {
     case guardedCreateRejected
+    case guardedConversionRequired
 
     var errorDescription: String? {
-        "Lead was not created. Refresh and try again."
+        switch self {
+        case .guardedCreateRejected:
+            return "Lead was not created. Refresh and try again."
+        case .guardedConversionRequired:
+            return "Marking a lead won requires guarded project conversion."
+        }
     }
 }

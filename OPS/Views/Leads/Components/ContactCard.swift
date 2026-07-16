@@ -20,6 +20,7 @@ import SwiftUI
 
 struct ContactCard: View {
     let opportunity: Opportunity
+    var canLogActivity: Bool = false
 
     var body: some View {
         VStack(spacing: OPSStyle.Layout.spacing2_5) {
@@ -142,11 +143,11 @@ struct ContactCard: View {
     /// "log that call" prompt when the operator returns from the Phone app.
     /// Around-call lead capture (feature 154cb8a3).
     private func placeCall() {
-        // Only record the post-call-prompt intent for operators who can act on
-        // it (pipeline.manage) — keeps the write/consume gates symmetric and
-        // leaves no stale record for read-only operators.
+        // Keep the write/consume gates symmetric and row-specific. Calling is
+        // always available; only an editor of this lead records a follow-up
+        // intent that can later mutate its activity timeline.
         if PermissionStore.shared.isFeatureEnabled("pipeline"),
-           PermissionStore.shared.can("pipeline.manage") {
+           canLogActivity {
             CallLogStore.shared.recordOutbound(
                 opportunityId: opportunity.id,
                 contactName: opportunity.contactName,

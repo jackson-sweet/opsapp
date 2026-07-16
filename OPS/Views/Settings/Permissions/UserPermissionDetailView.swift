@@ -21,14 +21,18 @@ struct UserPermissionDetailView: View {
     // Role state
     @State private var selectedRole: UserRole
     @State private var originalRole: UserRole
+    @State private var currentRoleId: String?
     @State private var isSavingRole = false
 
     // Override state
-    @State private var rolePermissions: [String: String] = [:] // permission -> scope from role
-    @State private var userOverrides: [String: OverrideState] = [:]
+    @State private var rolePermissions: [String: String] = [:]
+    @State private var currentOverrideSnapshot: [CanonicalUserPermissionOverride] = []
+    @State private var desiredOverrideLevels: [String: PermissionLevel] = [:]
     @State private var isLoading = true
-    @State private var isSavingOverride = false
+    @State private var isSavingOverrides = false
     @State private var errorMessage: String?
+    @State private var assignmentConflict: RolePermissionMutationConflict?
+    @State private var pendingMutation: PendingAccessMutation?
 
 
     /// Whether this member is the company creator (account holder) — their role cannot be changed
@@ -37,9 +41,9 @@ struct UserPermissionDetailView: View {
         return company.accountHolderId == member.id
     }
 
-    struct OverrideState {
-        let granted: Bool
-        let scope: String?
+    private enum PendingAccessMutation {
+        case role
+        case overrides
     }
 
     init(member: User, companyId: String) {
@@ -122,6 +126,26 @@ struct UserPermissionDetailView: View {
                 RoleListView()
                     .environmentObject(dataController)
             }
+        }
+        .sheet(item: $assignmentConflict) { conflict in
+            LeadResponsibilityResolutionSheet(
+                conflict: conflict,
+                isSaving: isSavingRole || isSavingOverrides,
+                onCancel: {
+                    assignmentConflict = nil
+                    pendingMutation = nil
+                },
+                onResolve: { resolutions in
+                    switch pendingMutation {
+                    case .role:
+                        saveRole(assignmentResolutions: resolutions)
+                    case .overrides:
+                        saveOverrides(assignmentResolutions: resolutions)
+                    case nil:
+                        assignmentConflict = nil
+                    }
+                }
+            )
         }
     }
 
@@ -296,6 +320,32 @@ struct UserPermissionDetailView: View {
                     overrideCategory(category)
                 }
             }
+
+            if hasPendingOverrideChanges {
+                Button(action: { saveOverrides() }) {
+                    HStack {
+                        if isSavingOverrides {
+                            ProgressView()
+                                .progressViewStyle(
+                                    CircularProgressViewStyle(
+                                        tint: OPSStyle.Colors.invertedText
+                                    )
+                                )
+                                .scaleEffect(0.8)
+                        } else {
+                            Text("SAVE ACCESS CHANGES")
+                                .font(OPSStyle.Typography.button)
+                                .foregroundColor(OPSStyle.Colors.invertedText)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, OPSStyle.Layout.spacing3)
+                    .background(OPSStyle.Colors.primaryAccent)
+                    .cornerRadius(OPSStyle.Layout.buttonRadius)
+                }
+                .disabled(isSavingOverrides)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            }
         }
     }
 
@@ -366,6 +416,7 @@ struct UserPermissionDetailView: View {
                 overrideScopePicker(
                     selection: catLevel ?? .off,
                     isMixed: isMixed,
+                    levels: PermissionEditorPolicy.commonLevels(for: permissions),
                     onChange: { level in
                         setOverrideCategoryLevel(category, to: level)
                     }
@@ -419,6 +470,7 @@ struct UserPermissionDetailView: View {
             overrideScopePicker(
                 selection: level,
                 isMixed: false,
+                levels: perm.allowedLevels,
                 onChange: { newLevel in
                     setOverrideLevel(permissionId: perm.id, level: newLevel)
                 }
@@ -433,11 +485,12 @@ struct UserPermissionDetailView: View {
     private func overrideScopePicker(
         selection: PermissionLevel,
         isMixed: Bool,
+        levels: [PermissionLevel],
         onChange: @escaping (PermissionLevel) -> Void
     ) -> some View {
         SettingsSegmentedPicker(
             selection: selection,
-            options: PermissionLevel.allCases.map { ($0, $0.displayName) },
+            options: levels.map { ($0, $0.displayName) },
             isMixed: isMixed,
             onChange: onChange
         )
@@ -445,21 +498,27 @@ struct UserPermissionDetailView: View {
 
     // MARK: - Override Helpers
 
-    private func effectiveOverrideLevel(for permissionId: String) -> PermissionLevel {
-        if let override = userOverrides[permissionId] {
-            if override.granted, let scope = override.scope {
-                return PermissionLevel(rawValue: scope) ?? .all
-            }
-            return .off
+    private var hasPendingOverrideChanges: Bool {
+        let current = currentEffectiveOverrideLevels
+        return PermissionRegistry.editable.contains { definition in
+            (desiredOverrideLevels[definition.id] ?? .off)
+                != (current[definition.id] ?? .off)
         }
-        return roleBaselineLevel(for: permissionId)
+    }
+
+    private var currentEffectiveOverrideLevels: [String: PermissionLevel] {
+        effectiveLevels(
+            baseline: roleBaselineLevels(from: rolePermissions),
+            overrides: currentOverrideSnapshot
+        )
+    }
+
+    private func effectiveOverrideLevel(for permissionId: String) -> PermissionLevel {
+        desiredOverrideLevels[permissionId] ?? .off
     }
 
     private func roleBaselineLevel(for permissionId: String) -> PermissionLevel {
-        if let scope = rolePermissions[permissionId] {
-            return PermissionLevel(rawValue: scope) ?? .all
-        }
-        return .off
+        roleBaselineLevels(from: rolePermissions)[permissionId] ?? .off
     }
 
     private func overrideCategoryLevel(for category: String) -> PermissionLevel? {
@@ -476,162 +535,287 @@ struct UserPermissionDetailView: View {
 
     private func setOverrideCategoryLevel(_ category: String, to level: PermissionLevel) {
         let perms = PermissionRegistry.permissions(for: category)
+        guard PermissionEditorPolicy.commonLevels(for: perms).contains(level) else { return }
+        var updated = desiredOverrideLevels
         for perm in perms {
-            setOverrideLevel(permissionId: perm.id, level: level)
+            updated[perm.id] = level
         }
+        desiredOverrideLevels = PermissionEditorPolicy.normalized(updated)
     }
 
     private func setOverrideLevel(permissionId: String, level: PermissionLevel) {
-        let baseline = roleBaselineLevel(for: permissionId)
-        if level == baseline {
-            // Matches role baseline — remove override
-            Task {
-                do {
-                    try await PermissionAdminService.removeUserOverride(userId: member.id, permission: permissionId)
-                    await MainActor.run {
-                        userOverrides.removeValue(forKey: permissionId)
-                        ToastCenter.shared.present(Feedback.Settings.permissionUpdated)
-                    }
-                } catch {
-                    await MainActor.run { errorMessage = "Failed to remove override" }
-                }
+        desiredOverrideLevels = PermissionEditorPolicy.applying(
+            level,
+            to: permissionId,
+            in: desiredOverrideLevels
+        )
+    }
+
+    private func roleBaselineLevels(
+        from permissions: [String: String]
+    ) -> [String: PermissionLevel] {
+        var result = Dictionary(
+            uniqueKeysWithValues: PermissionRegistry.editable.map {
+                ($0.id, PermissionLevel.off)
             }
-        } else if level == .off {
-            // Revoking permission
-            Task {
-                do {
-                    try await PermissionAdminService.setUserOverride(
-                        userId: member.id,
-                        companyId: companyId,
-                        permission: permissionId,
-                        scope: nil,
-                        granted: false
-                    )
-                    await MainActor.run {
-                        userOverrides[permissionId] = OverrideState(granted: false, scope: nil)
-                        ToastCenter.shared.present(Feedback.Settings.permissionUpdated)
-                    }
-                } catch {
-                    await MainActor.run { errorMessage = "Failed to save override" }
-                }
+        )
+        for definition in PermissionRegistry.editable {
+            guard let scope = permissions[definition.id],
+                  let level = PermissionLevel(rawValue: scope),
+                  definition.scopes.contains(level) else { continue }
+            result[definition.id] = level
+        }
+        return PermissionEditorPolicy.normalized(result)
+    }
+
+    private func effectiveLevels(
+        baseline: [String: PermissionLevel],
+        overrides: [CanonicalUserPermissionOverride]
+    ) -> [String: PermissionLevel] {
+        var result = baseline
+        for override in overrides {
+            guard let definition = PermissionRegistry.definition(for: override.permission),
+                  !definition.hiddenFromEditor else { continue }
+            guard override.granted else {
+                result[override.permission] = .off
+                continue
             }
-        } else {
-            // Granting with specific scope
-            Task {
-                do {
-                    try await PermissionAdminService.setUserOverride(
-                        userId: member.id,
-                        companyId: companyId,
-                        permission: permissionId,
-                        scope: level.rawValue,
-                        granted: true
+            guard let scope = override.scope,
+                  let level = PermissionLevel(rawValue: scope),
+                  definition.scopes.contains(level) else { continue }
+            result[override.permission] = level
+        }
+        return PermissionEditorPolicy.normalized(result)
+    }
+
+    private func saveOverrides(
+        assignmentResolutions: [RolePermissionAssignmentResolution] = []
+    ) {
+        guard !isSavingOverrides,
+              hasPendingOverrideChanges || !assignmentResolutions.isEmpty else { return }
+        isSavingOverrides = true
+        errorMessage = nil
+
+        Task {
+            do {
+                let baseline = roleBaselineLevels(from: rolePermissions)
+                let request = try UserPermissionOverrideMutationRequest(
+                    expectedOverrides: currentOverrideSnapshot,
+                    roleBaseline: baseline,
+                    desiredLevels: desiredOverrideLevels,
+                    assignmentResolutions: assignmentResolutions
+                )
+                let result = try await PermissionAdminService.replaceUserPermissionOverrides(
+                    userId: member.id,
+                    request: request
+                )
+
+                await MainActor.run {
+                    currentOverrideSnapshot = result.overrides
+                    desiredOverrideLevels = effectiveLevels(
+                        baseline: baseline,
+                        overrides: result.overrides
                     )
-                    await MainActor.run {
-                        userOverrides[permissionId] = OverrideState(granted: true, scope: level.rawValue)
-                        ToastCenter.shared.present(Feedback.Settings.permissionUpdated)
-                    }
-                } catch {
-                    await MainActor.run { errorMessage = "Failed to save override" }
+                    assignmentConflict = nil
+                    pendingMutation = nil
+                    isSavingOverrides = false
+                    ToastCenter.shared.present(Feedback.Settings.permissionsSaved)
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
+
+                if member.id == dataController.currentUser?.id {
+                    await PermissionStore.shared.fetchPermissions(userId: member.id)
+                }
+            } catch {
+                await MainActor.run {
+                    isSavingOverrides = false
+                    handlePermissionAdminError(error, mutation: .overrides)
                 }
             }
         }
     }
 
-    private func saveRole() {
+    private func saveRole(
+        assignmentResolutions: [RolePermissionAssignmentResolution] = []
+    ) {
         guard !isSavingRole else { return }
+        guard selectedRole != originalRole || !assignmentResolutions.isEmpty else { return }
         isSavingRole = true
         errorMessage = nil
 
         Task {
             do {
-                // 1. Write to user_roles
                 let roleId = try await PermissionAdminService.resolveRoleId(for: selectedRole)
-                try await PermissionAdminService.assignUserRole(userId: member.id, roleId: roleId)
-
-                // 2. Update role field in users table
-                try await dataController.updateUserFields(
-                    userId: member.id,
-                    fields: ["role": .string(selectedRole.rawValue)]
+                let nextPermissions = try await PermissionAdminService.fetchRolePermissions(
+                    roleId: roleId
                 )
+                let request = try UserRoleMutationRequest(
+                    expectedRoleId: currentRoleId,
+                    newRoleId: roleId,
+                    assignmentResolutions: assignmentResolutions
+                )
+                let result = try await PermissionAdminService.replaceUserRole(
+                    userId: member.id,
+                    request: request
+                )
+                guard result.roleId == roleId else {
+                    throw PermissionAdminService.PermissionAdminError.invalidResponse
+                }
 
-                // 3. Update local model
+                let committedRole = UserRole(rawValue: result.legacyRole.lowercased())
+                    ?? selectedRole
+                let permissionMap = Dictionary(
+                    uniqueKeysWithValues: nextPermissions.map { ($0.permission, $0.scope) }
+                )
+                let baseline = roleBaselineLevels(from: permissionMap)
+
                 await MainActor.run {
-                    member.role = selectedRole
-                    try? dataController.modelContext?.save()
-                    originalRole = selectedRole
+                    currentRoleId = result.roleId
+                    member.role = committedRole
+                    selectedRole = committedRole
+                    originalRole = committedRole
+                    rolePermissions = permissionMap
+                    desiredOverrideLevels = effectiveLevels(
+                        baseline: baseline,
+                        overrides: currentOverrideSnapshot
+                    )
+                    assignmentConflict = nil
+                    pendingMutation = nil
                     isSavingRole = false
-
-                    // Reload role permissions since role changed
-                    loadRolePermissions()
-
                     ToastCenter.shared.present(Feedback.Settings.roleUpdated)
-                    let generator = UINotificationFeedbackGenerator()
-                    generator.notificationOccurred(.success)
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
                 }
 
-                // 4. Refresh PermissionStore if editing current user
+                do {
+                    try dataController.modelContext?.save()
+                } catch {
+                    print("[PERMISSIONS] Role committed; local cache save deferred: \(error)")
+                }
+
                 if member.id == dataController.currentUser?.id {
-                    if let userId = dataController.currentUser?.id {
-                        await PermissionStore.shared.fetchPermissions(userId: userId)
-                    }
+                    await PermissionStore.shared.fetchPermissions(userId: member.id)
                 }
-
-                print("[PERMISSIONS] Updated \(member.fullName) role to \(selectedRole)")
-
             } catch {
                 await MainActor.run {
-                    errorMessage = "Failed to save role"
                     isSavingRole = false
-
-                    let generator = UINotificationFeedbackGenerator()
-                    generator.notificationOccurred(.error)
+                    handlePermissionAdminError(error, mutation: .role)
                 }
-                print("[PERMISSIONS] Error saving role: \(error)")
             }
+        }
+    }
+
+    private func handlePermissionAdminError(
+        _ error: Error,
+        mutation: PendingAccessMutation
+    ) {
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        guard let adminError = error as? PermissionAdminService.PermissionAdminError else {
+            errorMessage = error.localizedDescription
+            return
+        }
+
+        switch adminError {
+        case .assignmentResolutionRequired(let conflict):
+            pendingMutation = mutation
+            assignmentConflict = conflict
+            errorMessage = nil
+
+        case .assignmentResolutionChanged:
+            let retryMutation = pendingMutation ?? mutation
+            assignmentConflict = nil
+            pendingMutation = retryMutation
+            DispatchQueue.main.async {
+                switch retryMutation {
+                case .role:
+                    saveRole()
+                case .overrides:
+                    saveOverrides()
+                }
+            }
+
+        case .userOverrideSnapshotChanged(let current):
+            currentOverrideSnapshot = current
+            desiredOverrideLevels = effectiveLevels(
+                baseline: roleBaselineLevels(from: rolePermissions),
+                overrides: current
+            )
+            assignmentConflict = nil
+            pendingMutation = nil
+            errorMessage = adminError.localizedDescription
+
+        case .userRoleSnapshotChanged:
+            assignmentConflict = nil
+            pendingMutation = nil
+            loadData(message: adminError.localizedDescription)
+
+        default:
+            errorMessage = adminError.localizedDescription
         }
     }
 
     // MARK: - Data Loading
 
-    private func loadData() {
+    private func loadData(message: String? = nil) {
+        isLoading = true
+        let memberId = member.id
         Task {
-            // Load role permissions baseline
-            loadRolePermissions()
-
-            // Load user overrides
             do {
-                let overrides = try await PermissionAdminService.fetchUserOverrides(userId: member.id)
-                var map: [String: OverrideState] = [:]
-                for o in overrides {
-                    map[o.permission] = OverrideState(granted: o.granted, scope: o.scope)
+                async let rolesRequest = PermissionAdminService.fetchAllRoles()
+                async let userRoleRequest = PermissionAdminService.fetchUserRole(userId: memberId)
+                async let overridesRequest = PermissionAdminService.fetchUserOverrides(userId: memberId)
+                let (roles, userRole, overrideRows) = try await (
+                    rolesRequest,
+                    userRoleRequest,
+                    overridesRequest
+                )
+
+                let authoritativeRoleId = userRole?.role_id
+                let permissionRows: [AdminRolePermissionRow]
+                if let authoritativeRoleId {
+                    permissionRows = try await PermissionAdminService.fetchRolePermissions(
+                        roleId: authoritativeRoleId
+                    )
+                } else {
+                    permissionRows = []
                 }
+
+                let permissionMap = Dictionary(
+                    uniqueKeysWithValues: permissionRows.map { ($0.permission, $0.scope) }
+                )
+                let baseline = roleBaselineLevels(from: permissionMap)
+                let snapshot = overrideRows.map {
+                    CanonicalUserPermissionOverride(
+                        permission: $0.permission,
+                        scope: $0.scope,
+                        granted: $0.granted
+                    )
+                }.sorted { $0.permission < $1.permission }
+                let roleName = roles.first(where: { $0.id == authoritativeRoleId })?.name
+                let authoritativeRole = roleName.flatMap {
+                    UserRole(rawValue: $0.lowercased())
+                } ?? .unassigned
+
                 await MainActor.run {
-                    self.userOverrides = map
-                    self.isLoading = false
+                    currentRoleId = authoritativeRoleId
+                    selectedRole = authoritativeRole
+                    originalRole = authoritativeRole
+                    rolePermissions = permissionMap
+                    currentOverrideSnapshot = snapshot
+                    desiredOverrideLevels = effectiveLevels(
+                        baseline: baseline,
+                        overrides: snapshot
+                    )
+                    member.role = authoritativeRole
+                    assignmentConflict = nil
+                    pendingMutation = nil
+                    errorMessage = message
+                    isLoading = false
                 }
             } catch {
                 await MainActor.run {
-                    self.isLoading = false
+                    errorMessage = error.localizedDescription
+                    isLoading = false
                 }
-                print("[PERMISSIONS] Error loading user overrides: \(error)")
-            }
-        }
-    }
-
-    private func loadRolePermissions() {
-        Task {
-            do {
-                let roleId = try await PermissionAdminService.resolveRoleId(for: selectedRole)
-                let perms = try await PermissionAdminService.fetchRolePermissions(roleId: roleId)
-                var map: [String: String] = [:]
-                for p in perms {
-                    map[p.permission] = p.scope
-                }
-                await MainActor.run {
-                    self.rolePermissions = map
-                }
-            } catch {
-                print("[PERMISSIONS] Error loading role permissions: \(error)")
             }
         }
     }

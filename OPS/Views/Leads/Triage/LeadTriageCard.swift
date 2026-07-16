@@ -16,10 +16,13 @@
 import SwiftUI
 
 struct LeadTriageCard: View {
+    @ObservedObject private var conversionVisibilityStore = LeadConversionVisibilityStore.shared
+
     let lead: Opportunity
     let viewModel: PipelineViewModel
     let bucket: PipelineViewModel.TriageBucket
-    var canManage: Bool = true
+    var canEdit: Bool = true
+    var canConvert: Bool = true
     var onTap: () -> Void = {}
     var onLog: () -> Void = {}
     var onAdvance: () -> Void = {}
@@ -50,6 +53,10 @@ struct LeadTriageCard: View {
     }
     private var stageIndex: Int { Self.openStages.firstIndex(of: lead.stage) ?? 0 }
     private var isTerminal: Bool { lead.stage.isTerminal }
+    private var canAdvance: Bool {
+        guard let next = lead.stage.next else { return false }
+        return next == .won ? canConvert : canEdit
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -86,7 +93,7 @@ struct LeadTriageCard: View {
             // Quick actions — open leads only. A closed lead has nothing to
             // advance / win / lose; edit + archive stay reachable via the
             // long-press context menu the parent attaches.
-            if canManage && !isTerminal {
+            if (canEdit || canConvert) && !isTerminal {
                 quickActions
                     .padding(.top, OPSStyle.Layout.spacing2_5)
                     .padding(.top, 1)
@@ -197,8 +204,14 @@ struct LeadTriageCard: View {
     private var outcome: (label: String, detail: String?, icon: String, color: Color) {
         switch lead.stage {
         case .won:
+            let projectState: String
+            if conversionVisibilityStore.contains(lead.id) {
+                projectState = "PROJECT SAVED"
+            } else {
+                projectState = lead.projectId == nil ? "NOT CONVERTED" : "PROJECT LINKED"
+            }
             return ("WON",
-                    lead.projectId == nil ? "NOT CONVERTED" : "PROJECT LINKED",
+                    projectState,
                     "checkmark",
                     OPSStyle.Colors.oliveTextM)
         case .lost:
@@ -265,31 +278,37 @@ struct LeadTriageCard: View {
 
     private var quickActions: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            LeadQuickGlyph(icon: "square.and.pencil", tint: OPSStyle.Colors.text2, action: onLog)
-                .accessibilityLabel("Log activity")
-
-            Button(action: { UIImpactFeedbackGenerator(style: .medium).impactOccurred(); onAdvance() }) {
-                HStack(spacing: 7) {
-                    Text("ADVANCE")
-                        .font(.custom("JetBrainsMono-Medium", size: 10))
-                        .tracking(0.9)
-                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
-                }
-                .foregroundColor(OPSStyle.Colors.opsAccent)
-                .frame(maxWidth: .infinity)
-                .frame(height: 38)
-                .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius, style: .continuous).fill(OPSStyle.Colors.opsAccent.opacity(0.08)))
-                .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius, style: .continuous).strokeBorder(OPSStyle.Colors.opsAccent.opacity(0.40), lineWidth: 1))
+            if canEdit {
+                LeadQuickGlyph(icon: "square.and.pencil", tint: OPSStyle.Colors.text2, action: onLog)
+                    .accessibilityLabel("Log activity")
             }
-            .buttonStyle(.plain)
-            .disabled(lead.stage.isTerminal || lead.stage.next == nil)
-            .opacity(lead.stage.isTerminal || lead.stage.next == nil ? 0.4 : 1)
-            .accessibilityLabel("Advance stage")
 
-            LeadQuickGlyph(icon: "checkmark", tint: OPSStyle.Colors.olive, action: onWon)
-                .accessibilityLabel("Mark won")
-            LeadQuickGlyph(icon: "xmark", tint: OPSStyle.Colors.textMute, action: onLost)
-                .accessibilityLabel("Mark lost")
+            if canAdvance {
+                Button(action: { UIImpactFeedbackGenerator(style: .medium).impactOccurred(); onAdvance() }) {
+                    HStack(spacing: 7) {
+                        Text("ADVANCE")
+                            .font(.custom("JetBrainsMono-Medium", size: 10))
+                            .tracking(0.9)
+                        Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundColor(OPSStyle.Colors.opsAccent)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 38)
+                    .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius, style: .continuous).fill(OPSStyle.Colors.opsAccent.opacity(0.08)))
+                    .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius, style: .continuous).strokeBorder(OPSStyle.Colors.opsAccent.opacity(0.40), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(lead.stage.next == .won ? "Mark won and convert" : "Advance stage")
+            }
+
+            if canConvert {
+                LeadQuickGlyph(icon: "checkmark", tint: OPSStyle.Colors.olive, action: onWon)
+                    .accessibilityLabel("Mark won")
+            }
+            if canEdit {
+                LeadQuickGlyph(icon: "xmark", tint: OPSStyle.Colors.textMute, action: onLost)
+                    .accessibilityLabel("Mark lost")
+            }
         }
         .padding(.top, OPSStyle.Layout.spacing2_5)
         .overlay(alignment: .top) {

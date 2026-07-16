@@ -102,7 +102,6 @@ class PermissionStore: ObservableObject {
         }
         return LeadAccessPolicy(
             currentUserId: currentUserId,
-            isAdmin: roleName?.lowercased() == "admin",
             permissions: availablePermissions,
             explicitPermissionKeys: explicitPermissionKeys.union(blockedByFlags)
         )

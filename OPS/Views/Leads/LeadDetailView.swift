@@ -73,6 +73,7 @@ struct LeadDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
+    @ObservedObject private var conversionVisibilityStore = LeadConversionVisibilityStore.shared
 
     // Photos on the lead
     @State private var showingAddPhotoDialog = false
@@ -106,10 +107,13 @@ struct LeadDetailView: View {
         ))
     }
 
-    /// Read-only operators (pipeline.view without pipeline.manage) get no
-    /// mutating affordances — the sticky action bar and convert card are
-    /// hidden, matching the queue/stage-list gating and design-intent §14 #11.
-    private var canManage: Bool { permissionStore.can("pipeline.manage") }
+    private var leadAccessPolicy: LeadAccessPolicy { permissionStore.leadAccessPolicy }
+    private var canEdit: Bool {
+        leadAccessPolicy.can(.edit, assignedTo: opportunity.assignedTo)
+    }
+    private var canConvert: Bool {
+        leadAccessPolicy.can(.convert, assignedTo: opportunity.assignedTo)
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -129,10 +133,13 @@ struct LeadDetailView: View {
                     VStack(spacing: 0) {
                         DetailHero(opportunity: opportunity)
 
-                        ContactCard(opportunity: opportunity)
+                        ContactCard(
+                            opportunity: opportunity,
+                            canLogActivity: canEdit
+                        )
                             .padding(.top, OPSStyle.Layout.spacing1)
 
-                        if canManage && showWonNotConverted {
+                        if canConvert && showWonNotConverted {
                             WonNotConvertedCard(onConvert: onMarkWon)
                                 .padding(.top, 22)
                         }
@@ -142,7 +149,7 @@ struct LeadDetailView: View {
                                 .padding(.top, 22)
                         }
 
-                        if canManage && !opportunity.stage.isTerminal {
+                        if canConvert && !opportunity.stage.isTerminal {
                             SiteVisitLaunchCard {
                                 showingSiteVisitCapture = true
                             }
@@ -151,7 +158,7 @@ struct LeadDetailView: View {
 
                         LeadPhotosSection(
                             opportunity: opportunity,
-                            canManage: canManage,
+                            canManage: canEdit,
                             onAdd: { showingAddPhotoDialog = true },
                             onTap: { items, index in
                                 photoViewerState = LeadPhotoViewerState(items: items, initialIndex: index)
@@ -161,7 +168,7 @@ struct LeadDetailView: View {
 
                         LeadDeckSection(
                             opportunity: opportunity,
-                            canManage: canManage,
+                            canManage: canEdit,
                             onCreate: { showingDeckCreationPicker = true },
                             onOpen: { design in deckDesignToOpen = design }
                         )
@@ -178,8 +185,10 @@ struct LeadDetailView: View {
                 .scrollIndicators(.hidden)
             }
 
-            if canManage && !opportunity.stage.isTerminal {
+            if (canEdit || canConvert) && !opportunity.stage.isTerminal {
                 StickyActionBar(
+                    canEdit: canEdit,
+                    canConvert: canConvert,
                     onMarkLost: onMarkLost,
                     onEdit:     onEdit,
                     onMarkWon:  onMarkWon
@@ -239,7 +248,7 @@ struct LeadDetailView: View {
         .fullScreenCover(item: $photoViewerState) { state in
             LeadPhotoViewer(
                 opportunity: opportunity,
-                canManage: canManage,
+                canManage: canEdit,
                 initialState: state
             )
         }
@@ -385,7 +394,9 @@ struct LeadDetailView: View {
     }
 
     private var showWonNotConverted: Bool {
-        opportunity.stage == .won && opportunity.projectId == nil
+        opportunity.stage == .won
+            && opportunity.projectId == nil
+            && !conversionVisibilityStore.contains(opportunity.id)
     }
 
     /// Soonest unfinished follow-up (status != .completed), ascending by dueAt.

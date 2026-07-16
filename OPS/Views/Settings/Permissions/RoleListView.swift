@@ -35,11 +35,9 @@ struct RoleListView: View {
         case rename(AdminRoleRow)
     }
 
-    private static let presetNames = ["admin", "owner", "office", "operator", "crew", "unassigned"]
-
     /// Preset roles sorted: Owner first, then by hierarchy, Unassigned last.
     private var presetRoles: [AdminRoleRow] {
-        roles.filter { Self.presetNames.contains($0.name.lowercased()) }
+        roles.filter(\.isPreset)
             .sorted { r1, r2 in
                 let n1 = r1.name.lowercased()
                 let n2 = r2.name.lowercased()
@@ -55,7 +53,7 @@ struct RoleListView: View {
     }
 
     private var customRoles: [AdminRoleRow] {
-        roles.filter { !Self.presetNames.contains($0.name.lowercased()) }
+        roles.filter { !$0.isPreset }
     }
 
     var body: some View {

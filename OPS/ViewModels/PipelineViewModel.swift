@@ -216,14 +216,6 @@ class PipelineViewModel: ObservableObject {
         }
     }
 
-    func markWon(opportunityId: String, actualValue: Double?, projectId: String?, userId: String?) async throws {
-        guard let repo = repository else { return }
-        let updatedDTO = try await repo.markWon(opportunityId: opportunityId, actualValue: actualValue, projectId: projectId, userId: userId)
-        if let idx = allOpportunities.firstIndex(where: { $0.id == opportunityId }) {
-            allOpportunities[idx] = updatedDTO.toModel()
-        }
-    }
-
     func markLost(opportunityId: String, reason: LossReason, notes: String?, userId: String?) async throws {
         guard let repo = repository else { return }
         let updatedDTO = try await repo.markLost(opportunityId: opportunityId, reason: reason, notes: notes, userId: userId)
@@ -347,7 +339,10 @@ class PipelineViewModel: ObservableObject {
 
         for opp in allOpportunities where !opp.isDeleted && !opp.isArchived {
             if opp.stage == .won {
-                if opp.projectId == nil { unconvertedWon.append(opp) }
+                if opp.projectId == nil,
+                   !LeadConversionVisibilityStore.shared.contains(opp.id) {
+                    unconvertedWon.append(opp)
+                }
                 continue
             }
             // Drop every terminal stage from the triage queue. .won is handled

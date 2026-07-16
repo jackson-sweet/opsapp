@@ -37,7 +37,7 @@ private struct RolePermissionRow: Decodable {
     let scope: String
 }
 
-private struct OverrideRow: Decodable {
+struct PermissionOverrideFoldRow: Decodable, Equatable {
     let permission: String
     let scope: String?
     let granted: Bool
@@ -112,7 +112,7 @@ enum PermissionService {
         // 4. Fetch user-level overrides. If this read fails, granular fallback
         // must fail closed: an unseen explicit revoke cannot be distinguished
         // from an old role with no granular rows.
-        let overrides: [OverrideRow]?
+        let overrides: [PermissionOverrideFoldRow]?
         do {
             overrides = try await client
                 .from("user_permission_overrides")
@@ -125,14 +125,13 @@ enum PermissionService {
             explicitPermissionKeys.formUnion(LeadAccessPolicy.granularPermissionKeys)
         }
 
-        for override in (overrides ?? []) {
-            explicitPermissionKeys.insert(override.permission)
-            if override.granted, let scope = override.scope {
-                permissionMap[override.permission] = scope
-            } else if !override.granted {
-                permissionMap.removeValue(forKey: override.permission)
-            }
-        }
+        let folded = foldOverrides(
+            overrides ?? [],
+            into: permissionMap,
+            explicitPermissionKeys: explicitPermissionKeys
+        )
+        permissionMap = folded.permissions
+        explicitPermissionKeys = folded.explicitPermissionKeys
 
         return PermissionPayload(
             roleId: role.id,
@@ -141,5 +140,29 @@ enum PermissionService {
             permissions: permissionMap,
             explicitPermissionKeys: explicitPermissionKeys
         )
+    }
+
+    /// Mirror `should_use_pipeline_manage_compat`: a legacy inheritance row
+    /// (`granted=true, scope=NULL`) is not an authoritative granular choice.
+    /// Explicit revokes and scoped grants are authoritative.
+    static func foldOverrides(
+        _ overrides: [PermissionOverrideFoldRow],
+        into permissions: [String: String],
+        explicitPermissionKeys: Set<String>
+    ) -> (permissions: [String: String], explicitPermissionKeys: Set<String>) {
+        var permissions = permissions
+        var explicitKeys = explicitPermissionKeys
+
+        for override in overrides {
+            if !override.granted || override.scope != nil {
+                explicitKeys.insert(override.permission)
+            }
+            if override.granted, let scope = override.scope {
+                permissions[override.permission] = scope
+            } else if !override.granted {
+                permissions.removeValue(forKey: override.permission)
+            }
+        }
+        return (permissions, explicitKeys)
     }
 }

@@ -193,7 +193,7 @@ struct SettingsView: View {
                             // Operations section — workflow rules. Bug 4014b472 moved these out
                             // of BUSINESS: task taxonomy, scheduling, project review rules, and
                             // inventory are app-behavior config, not company identity.
-                            if isAdminOrOffice || permissionStore.can("catalog.view") || permissionStore.can("pipeline.manage") {
+                            if isAdminOrOffice || permissionStore.can("catalog.view") || permissionStore.leadAccessPolicy.canEditAny {
                                 settingsSection(title: "OPERATIONS") {
                                     if isAdminOrOffice {
                                         settingsRow(
@@ -229,7 +229,7 @@ struct SettingsView: View {
 
                                     // Calls — around-call auto-log preference (154cb8a3),
                                     // gated to pipeline managers.
-                                    if permissionStore.can("pipeline.manage") {
+                                    if permissionStore.leadAccessPolicy.canEditAny {
                                         if isAdminOrOffice || permissionStore.can("catalog.view") {
                                             sectionDivider
                                         }

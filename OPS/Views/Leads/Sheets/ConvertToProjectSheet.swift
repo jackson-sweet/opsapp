@@ -29,18 +29,12 @@
 //  a quiet RENAME affordance reveals a hand-edit field (sets title_is_auto =
 //  false). When auto, the operator never types a name.
 //
-//  Exit semantics (plan §2.1 Q3, restated in the Phase 4 brief):
+//  Exit semantics:
 //
-//    The decision to win was already committed when the operator tapped
-//    MARK WON →; this sheet only asks "do you also want a project?". Every
-//    *committing* exit marks the lead WON — a `didCommitWon` flag prevents
-//    double-firing. The lone non-committing exit is the CLIENT-HAS-OTHERS
-//    review peek: investigating a related project is not a conversion.
-//
-//    × / CANCEL / drag / scrim    → markWonNoProject(actualValue)
-//    CREATE PROJECT →             → convertOpportunityToProject(...), stay on LEADS
-//    OPEN PROJECT → (DUPLICATE)   → mark won with existing project, then open it
-//    other-project chip           → review peek, no commit, then open it
+//    The canonical guarded RPC always creates or links a project. Closing or
+//    cancelling this sheet therefore leaves the lead unchanged. CREATE PROJECT
+//    and OPEN PROJECT are the only committing exits, and both pin the lead's
+//    stage plus assignment version in the same atomic conversion transaction.
 //
 
 import SwiftUI
@@ -52,6 +46,7 @@ struct ConvertToProjectSheet: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var conversionVisibilityStore = LeadConversionVisibilityStore.shared
     @Environment(\.modelContext) private var modelContext
 
     // MARK: - Form state
@@ -83,21 +78,15 @@ struct ConvertToProjectSheet: View {
     @State private var clientOtherProjects: [RelatedProjectRef] = []
     @State private var estimateBundles: [LeadConversionService.EstimateBundle] = []
     @State private var hasLoadedPreflight = false
+    /// A hidden linked project must be verified through the guarded conversion
+    /// RPC before the client may present a committed win. While this flag is
+    /// set, the sheet exposes no create/retry action.
+    @State private var hiddenConversionRecoveryDetected = false
 
     // MARK: - Operation state
 
     @State private var isSaving = false
     @State private var errorMessage: String?
-    /// Once we've fired markWon (via convert or open-project) we suppress the
-    /// onDisappear escape-hatch — otherwise drag-down dismiss after a successful
-    /// CREATE PROJECT would mark-won-again and overwrite actualValue with stale
-    /// state.
-    @State private var didCommitWon = false
-    /// Set only by the CLIENT-HAS-OTHERS review peek. Tapping an "other
-    /// project" chip is an investigation, not a conversion — the operator has
-    /// not committed to winning this lead — so this flag suppresses the
-    /// onDisappear escape hatch and the sheet dismisses without marking won.
-    @State private var didDismissForReview = false
 
     // MARK: - Computed
 
@@ -172,18 +161,9 @@ struct ConvertToProjectSheet: View {
         .preferredColorScheme(.dark)
         .interactiveDismissDisabled(isSaving)
         .task {
-            await loadPreflight()
+            let recoveredCommittedConversion = await loadPreflight()
+            guard !recoveredCommittedConversion else { return }
             applyInitialFormValues()
-        }
-        .onDisappear {
-            // Drag-down / scrim / interactive dismiss all funnel through here.
-            // Tap-driven dismisses already fire their own markWon/convert path
-            // and set didCommitWon = true, so we'd skip work here. The
-            // CLIENT-HAS-OTHERS review peek sets didDismissForReview so it can
-            // leave the sheet without committing the lead.
-            guard !didCommitWon, !didDismissForReview else { return }
-            didCommitWon = true
-            Task { await markWonNoProjectSilently() }
         }
     }
 
@@ -192,9 +172,7 @@ struct ConvertToProjectSheet: View {
     private var header: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             SheetTitleLabel(title: "CONVERT → PROJECT", size: .full)
-            SheetCloseButton {
-                Task { await commitNoProjectAndDismiss() }
-            }
+            SheetCloseButton { dismiss() }
         }
         .padding(.leading, OPSStyle.Layout.spacing3_5)
         .padding(.trailing, 6)
@@ -693,11 +671,22 @@ struct ConvertToProjectSheet: View {
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             }
 
-            SheetFooterButtonRow {
+            if hiddenConversionRecoveryDetected {
+                SheetCTAButton(
+                    label: isSaving ? "VERIFYING" : "CLOSE",
+                    variant: .primary,
+                    isLoading: isSaving,
+                    action: { dismiss() }
+                )
+                .disabled(isSaving)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.bottom, 28)
+            } else {
+                SheetFooterButtonRow {
                 SheetCTAButton(
                     label: "CANCEL",
                     variant: .secondary,
-                    action: { Task { await commitNoProjectAndDismiss() } }
+                    action: { dismiss() }
                 )
                 .disabled(isSaving)
             } primary: {
@@ -721,9 +710,10 @@ struct ConvertToProjectSheet: View {
                     .disabled(!canCreate)
                     .opacity(canCreate ? 1 : 0.5)
                 }
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.bottom, 28)
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-            .padding(.bottom, 28)
         }
         .background(
             LinearGradient(
@@ -745,8 +735,9 @@ struct ConvertToProjectSheet: View {
 
     // MARK: - Pre-flight load
 
-    private func loadPreflight() async {
-        guard !hasLoadedPreflight else { return }
+    @discardableResult
+    private func loadPreflight() async -> Bool {
+        guard !hasLoadedPreflight else { return false }
         let companyId = opportunity.companyId
         let service = LeadConversionService(companyId: companyId)
 
@@ -757,6 +748,21 @@ struct ConvertToProjectSheet: View {
         do {
             let preflight = try await service.getConversionPreflight(for: opportunity)
             suggestedName = preflight.suggestedName ?? ""
+
+            if preflight.isCommittedWithoutAccessibleProject {
+                hasLoadedPreflight = true
+                hiddenConversionRecoveryDetected = true
+                return await verifyHiddenCommittedConversion(
+                    service: service,
+                    preflight: preflight
+                )
+            }
+
+            // Access can legitimately change later. A successful accessible
+            // preflight clears any durable hidden-conversion presentation mark.
+            if preflight.alreadyConverted && preflight.projectAccessible {
+                conversionVisibilityStore.clear(opportunity.id)
+            }
 
             if let linked = preflight.existingLinkedProject {
                 existingProject = await resolveDuplicateDisplay(
@@ -784,6 +790,7 @@ struct ConvertToProjectSheet: View {
         }
 
         hasLoadedPreflight = true
+        return false
     }
 
     /// Hydrate the rich DUPLICATE-EXISTS card. Network first (canonical), then
@@ -898,42 +905,43 @@ struct ConvertToProjectSheet: View {
                 let originalAddress = (opportunity.address ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmedAddress.isEmpty || trimmedAddress != originalAddress {
                     let repo = OpportunityRepository(companyId: companyId)
-                    _ = try? await repo.update(opportunity.id, patch: ["address": trimmedAddress])
+                    _ = try await repo.update(opportunity.id, patch: ["address": trimmedAddress])
                     // Mirror locally so the optimistic model + the lead summary
                     // stay coherent if the operator returns to this lead.
                     opportunity.address = trimmedAddress.isEmpty ? nil : trimmedAddress
                 }
 
                 let trimmedTitle = titleText.trimmingCharacters(in: .whitespacesAndNewlines)
-                let project = try await service.convertOpportunityToProject(
+                let outcome = try await service.convertOpportunityToProject(
                     lead: opportunity,
                     actualValue: parseActualValue(),
                     titleOverride: titleIsAuto ? nil : (trimmedTitle.isEmpty ? nil : trimmedTitle),
                     notes: closingNotes.isEmpty ? nil : closingNotes,
+                    linkToProjectId: nil,
                     userId: dataController.currentUser?.id
                 )
 
-                completeConverted(projectId: project.id)
-            } catch {
-                if let conversionError = error as? LeadConversionError,
-                   case let .projectCreatedButFetchFailed(projectId, _) = conversionError {
-                    completeConverted(projectId: projectId)
-                } else {
-                    isSaving = false
-                    errorMessage = simplifyError(error)
+                switch outcome {
+                case .project(let project):
+                    completeConverted(projectId: project.id)
+                case .committedWithoutAccessibleProject:
+                    completeConvertedWithoutAccessibleProject()
                 }
+            } catch {
+                isSaving = false
+                errorMessage = simplifyError(error)
             }
         }
     }
 
     private func completeConverted(projectId: String) {
+        conversionVisibilityStore.clear(opportunity.id)
         opportunity.stage = .won
         opportunity.actualValue = parseActualValue()
         opportunity.actualCloseDate = Date()
         opportunity.projectId = projectId
         opportunity.stageEnteredAt = Date()
         opportunity.stageManuallySet = true
-        didCommitWon = true
 
         applyPendingSiteVisitHandoff(projectId: projectId)
 
@@ -948,6 +956,94 @@ struct ConvertToProjectSheet: View {
         )
         // Operator stays on the LEADS queue — the success toast carries the
         // tap-through to the new project (P3-2 / PM).
+        dismiss()
+    }
+
+    private func completeConvertedWithoutAccessibleProject() {
+        conversionVisibilityStore.markCommittedWithoutAccessibleProject(opportunity.id)
+        opportunity.stage = .won
+        opportunity.actualValue = parseActualValue()
+        opportunity.actualCloseDate = Date()
+        opportunity.projectId = nil
+        opportunity.stageEnteredAt = Date()
+        opportunity.stageManuallySet = true
+
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        NotificationCenter.default.post(
+            name: Notification.Name("LeadMarkedWonSuccess"),
+            object: nil,
+            userInfo: [
+                "leadId": opportunity.id,
+                "projectCommitted": true,
+                "projectAccessible": false,
+            ]
+        )
+        // Close only the conversion sheet. The operator remains on the won
+        // lead; no inaccessible project identity is exposed for navigation.
+        dismiss()
+    }
+
+    /// A preflight link alone does not prove the lead reached WON. Re-enter
+    /// the canonical row-locked conversion with the exact stage and assignment
+    /// snapshot that opened this sheet, and present success only after its
+    /// result proves the won commit. The project identity is discarded even if
+    /// access becomes available during the check.
+    @discardableResult
+    private func verifyHiddenCommittedConversion(
+        service: LeadConversionService,
+        preflight: ConversionPreflight
+    ) async -> Bool {
+        isSaving = true
+        errorMessage = nil
+
+        guard preflight.assignmentVersion == nil
+                || preflight.assignmentVersion == opportunity.assignmentVersion else {
+            isSaving = false
+            errorMessage = simplifyError(LeadConversionError.assignmentChanged)
+            return false
+        }
+
+        do {
+            _ = try await service.convertOpportunityToProject(
+                lead: opportunity,
+                actualValue: opportunity.actualValue,
+                titleOverride: nil,
+                notes: nil,
+                linkToProjectId: nil,
+                userId: dataController.currentUser?.id,
+                // Preflight proved only that a project link exists. Pin WON
+                // under the row lock so a genuinely committed conversion can
+                // recover even when the local cache still shows the old stage,
+                // while an inconsistent non-WON linked row fails closed.
+                expectedStage: PipelineStage.won.rawValue,
+                expectedAssignmentVersion: opportunity.assignmentVersion
+            )
+            completeVerifiedHiddenConversion()
+            return true
+        } catch {
+            isSaving = false
+            errorMessage = simplifyError(error)
+            return false
+        }
+    }
+
+    private func completeVerifiedHiddenConversion() {
+        conversionVisibilityStore.markCommittedWithoutAccessibleProject(opportunity.id)
+        opportunity.stage = .won
+        opportunity.projectId = nil
+
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        NotificationCenter.default.post(
+            name: Notification.Name("LeadMarkedWonSuccess"),
+            object: nil,
+            userInfo: [
+                "leadId": opportunity.id,
+                "projectCommitted": true,
+                "projectAccessible": false,
+            ]
+        )
+        // The row-locked conversion proved the won commit. Close immediately
+        // and stay on the won lead; never reveal or navigate to a project id.
         dismiss()
     }
 
@@ -997,113 +1093,41 @@ struct ConvertToProjectSheet: View {
         guard let existing = existingProject else { return }
         errorMessage = nil
         isSaving = true
-        let projectId = existing.id
 
         Task {
-            // Idempotent mark-won — covers projects that pre-date stage tracking,
-            // while preserving the existing project link so the lead leaves the
-            // unconverted-won carousel.
-            await markWonWithExistingProject(projectId)
-            didCommitWon = true
-            dismiss()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                appState.viewProjectDetailsById(projectId)
+            do {
+                let service = LeadConversionService(companyId: opportunity.companyId)
+                let outcome = try await service.convertOpportunityToProject(
+                    lead: opportunity,
+                    actualValue: parseActualValue(),
+                    titleOverride: nil,
+                    notes: closingNotes.isEmpty ? nil : closingNotes,
+                    linkToProjectId: existing.id,
+                    userId: dataController.currentUser?.id
+                )
+
+                switch outcome {
+                case .project(let project):
+                    completeConverted(projectId: project.id)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        appState.viewProjectDetailsById(project.id)
+                    }
+                case .committedWithoutAccessibleProject:
+                    completeConvertedWithoutAccessibleProject()
+                }
+            } catch {
+                isSaving = false
+                errorMessage = simplifyError(error)
             }
         }
     }
 
     private func openExistingProject(_ projectId: String) {
-        // CLIENT-HAS-OTHERS info chip — a non-committing review peek. The
-        // operator is investigating a related project before deciding, NOT
-        // converting this lead, so this exit must not mark the lead won.
-        // didDismissForReview suppresses the onDisappear escape hatch; the
-        // lead is left untouched and the operator can re-open convert later.
+        // CLIENT-HAS-OTHERS info chip — a non-committing review peek.
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        didDismissForReview = true
         dismiss()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
             appState.viewProjectDetailsById(projectId)
-        }
-    }
-
-    private func commitNoProjectAndDismiss() async {
-        guard !didCommitWon else {
-            dismiss()
-            return
-        }
-        didCommitWon = true
-        isSaving = true
-        await markWonNoProjectSilently()
-        dismiss()
-    }
-
-    /// Idempotent — silent failure is acceptable here. If the network call
-    /// errors we still want the sheet to close (the user already committed to
-    /// winning the lead). The next sync will reconcile.
-    private func markWonNoProjectSilently() async {
-        let companyId = opportunity.companyId
-        let service = LeadConversionService(companyId: companyId)
-        let value = parseActualValue()
-        do {
-            try await service.markWonNoProject(
-                lead: opportunity,
-                actualValue: value,
-                userId: dataController.currentUser?.id
-            )
-            opportunity.stage = .won
-            opportunity.actualValue = value
-            opportunity.actualCloseDate = Date()
-            opportunity.stageEnteredAt = Date()
-            opportunity.stageManuallySet = true
-
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-            NotificationCenter.default.post(
-                name: Notification.Name("LeadMarkedWonSuccess"),
-                object: nil,
-                userInfo: ["leadId": opportunity.id]
-            )
-        } catch {
-            // Already on the won-no-project path — keep the dismissal flow
-            // moving even if the server didn't accept the write. Sync engine
-            // will replay.
-            print("[CONVERT] markWonNoProject failed (will reconcile on sync): \(error)")
-        }
-    }
-
-    /// Duplicate-state OPEN PROJECT still commits the won transition, but it
-    /// must persist the existing project id. Otherwise the lead remains a
-    /// "won but unconverted" item and the toast reads as no-project.
-    private func markWonWithExistingProject(_ projectId: String) async {
-        let companyId = opportunity.companyId
-        let service = LeadConversionService(companyId: companyId)
-        let value = parseActualValue()
-        do {
-            try await service.markWonWithExistingProject(
-                lead: opportunity,
-                projectId: projectId,
-                actualValue: value,
-                userId: dataController.currentUser?.id
-            )
-            opportunity.stage = .won
-            opportunity.actualValue = value
-            opportunity.actualCloseDate = Date()
-            opportunity.projectId = projectId
-            opportunity.stageEnteredAt = Date()
-            opportunity.stageManuallySet = true
-
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-            NotificationCenter.default.post(
-                name: Notification.Name("LeadLinkedProjectSuccess"),
-                object: nil,
-                userInfo: [
-                    "leadId": opportunity.id,
-                    "projectId": projectId,
-                ]
-            )
-        } catch {
-            // Opening the existing project is still the right user-facing path;
-            // the stage/link write will reconcile on the next successful sync.
-            print("[CONVERT] markWonWithExistingProject failed (will reconcile on sync): \(error)")
         }
     }
 
@@ -1142,13 +1166,12 @@ struct ConvertToProjectSheet: View {
             case .accessDenied: return "PERMISSION DENIED"
             case .assignmentChanged: return "ASSIGNMENT CHANGED — REFRESH"
             case .leadChanged: return "LEAD CHANGED — REFRESH"
-            case .projectCreatedWithoutAccess: return "PROJECT CREATED — NO ACCESS"
-            case .projectCreatedButFetchFailed: return "PROJECT CREATED — REFRESH"
+            case .unverifiedResult: return "CONVERSION NOT VERIFIED — REFRESH"
             }
         }
         let description = String(describing: error).lowercased()
         if description.contains("network") || description.contains("offline") {
-            return "OFFLINE — TAP TO RETRY"
+            return "CHECK CONNECTION — RETRY"
         }
         return "COULD NOT CREATE — TAP TO RETRY"
     }

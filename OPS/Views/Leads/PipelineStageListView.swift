@@ -57,7 +57,13 @@ struct PipelineStageListView: View {
 
     /// This stage's leads — already sorted stale-first by the view model.
     private var leads: [Opportunity] { viewModel.opportunities(in: stage) }
-    private var canManage: Bool { permissionStore.can("pipeline.manage") }
+    private var leadAccessPolicy: LeadAccessPolicy { permissionStore.leadAccessPolicy }
+    private func canEdit(_ lead: Opportunity) -> Bool {
+        leadAccessPolicy.can(.edit, assignedTo: lead.assignedTo)
+    }
+    private func canConvert(_ lead: Opportunity) -> Bool {
+        leadAccessPolicy.can(.convert, assignedTo: lead.assignedTo)
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -139,7 +145,8 @@ struct PipelineStageListView: View {
             lead: lead,
             viewModel: viewModel,
             bucket: .all,
-            canManage: canManage,
+            canEdit: canEdit(lead),
+            canConvert: canConvert(lead),
             onTap:     { onLeadTap(lead) },
             onLog:     { onRequestSheet(.log(lead)) },
             onAdvance: { advance(lead) },
@@ -149,7 +156,7 @@ struct PipelineStageListView: View {
         .contextMenu {
             LeadCardContextMenu(
                 lead: lead,
-                canManage: canManage,
+                canManage: canEdit(lead),
                 onEdit: { onRequestSheet(.edit(lead)) },
                 onArchive: {
                     Task {
@@ -169,7 +176,13 @@ struct PipelineStageListView: View {
     /// Advances a lead to the next stage. No-op for terminal stages — mirrors
     /// `LeadsTabView.advance`.
     private func advance(_ lead: Opportunity) {
-        guard canManage, !lead.stage.isTerminal, let next = lead.stage.next else { return }
+        guard !lead.stage.isTerminal, let next = lead.stage.next else { return }
+        if next == .won {
+            guard canConvert(lead) else { return }
+            onRequestSheet(.convert(lead))
+            return
+        }
+        guard canEdit(lead) else { return }
         Task {
             do {
                 try await viewModel.moveToStage(
@@ -178,7 +191,11 @@ struct PipelineStageListView: View {
                     userId: dataController.currentUser?.id
                 )
                 ToastCenter.shared.present(Feedback.Lead.stageAdvanced)
-            } catch {}
+            } catch {
+                ToastCenter.shared.present(
+                    Toast(label: Feedback.Err.saveFailed, tone: .error)
+                )
+            }
         }
     }
 

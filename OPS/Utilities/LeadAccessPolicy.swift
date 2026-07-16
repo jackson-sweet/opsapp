@@ -30,24 +30,35 @@ struct LeadAccessPolicy {
     )
 
     private let currentUserId: String?
-    private let isAdmin: Bool
     private let permissions: [String: String]
     private let explicitPermissionKeys: Set<String>
 
     init(
         currentUserId: String?,
-        isAdmin: Bool = false,
         permissions: [String: String],
         explicitPermissionKeys: Set<String>
     ) {
         self.currentUserId = currentUserId?.lowercased()
-        self.isAdmin = isAdmin
         self.permissions = permissions
         self.explicitPermissionKeys = explicitPermissionKeys
     }
 
     var canCreate: Bool {
         scope(for: .create) == .all
+    }
+
+    /// Surface-level gate. Both `all` and `assigned` are real view grants;
+    /// row filtering remains the responsibility of `can(.view, assignedTo:)`.
+    var canViewAny: Bool {
+        scope(for: .view) != nil
+    }
+
+    var canEditAny: Bool {
+        scope(for: .edit) != nil
+    }
+
+    var canConvertAny: Bool {
+        scope(for: .convert) != nil
     }
 
     func can(_ action: LeadAction, assignedTo: String?) -> Bool {
@@ -66,8 +77,6 @@ struct LeadAccessPolicy {
     }
 
     func scope(for action: LeadAction) -> LeadAccessScope? {
-        if isAdmin { return .all }
-
         switch action {
         case .view:
             return rawScope(for: .view)

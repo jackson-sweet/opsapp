@@ -157,8 +157,11 @@ final class LeadAssignmentFoundationTests: XCTestCase {
             decidedBy: "user-1",
             notes: nil,
             titleOverride: nil,
+            linkToProjectId: "project-existing",
             sourcePath: "ios",
             winOpportunity: true,
+            projectStatus: "accepted",
+            evidence: ["surface": "convert_sheet"],
             expectedAssignmentVersion: 12
         )
 
@@ -166,6 +169,12 @@ final class LeadAssignmentFoundationTests: XCTestCase {
 
         XCTAssertEqual(object["p_expected_stage"] as? String, "quoted")
         XCTAssertEqual(object["p_expected_assignment_version"] as? Int, 12)
+        XCTAssertEqual(object["p_link_to_project_id"] as? String, "project-existing")
+        XCTAssertEqual(object["p_project_status"] as? String, "accepted")
+        XCTAssertEqual(
+            (object["p_evidence"] as? [String: String])?["surface"],
+            "convert_sheet"
+        )
     }
 
     func testConversionResultParsesAssignmentSnapshotAndProjectAccessGuard() throws {
@@ -196,6 +205,7 @@ final class LeadAssignmentFoundationTests: XCTestCase {
             {
               "converted": false,
               "already_converted": true,
+              "won": true,
               "guard_reason": "already_converted",
               "project_id": "project-1",
               "assigned_to": "user-current",
@@ -206,6 +216,28 @@ final class LeadAssignmentFoundationTests: XCTestCase {
         )
 
         XCTAssertEqual(result.guardDecision, .proceed)
+        XCTAssertEqual(
+            try LeadConversionOutcomeResolver.disposition(for: result),
+            .fetchProject(projectId: "project-1")
+        )
+    }
+
+    func testWonStageCannotUseTheDirectStageMutationBoundary() {
+        XCTAssertThrowsError(
+            try OpportunityRepository.validateDirectStageMutation(.won)
+        ) { error in
+            XCTAssertEqual(
+                error as? OpportunityRepositoryError,
+                .guardedConversionRequired
+            )
+        }
+
+        for stage in PipelineStage.allCases where stage != .won {
+            XCTAssertNoThrow(
+                try OpportunityRepository.validateDirectStageMutation(stage),
+                "\(stage.rawValue) should remain a direct stage transition"
+            )
+        }
     }
 
     func testLeadAccessPolicyMatchesOnlyTheCanonicalRowAssignee() {
@@ -254,6 +286,49 @@ final class LeadAssignmentFoundationTests: XCTestCase {
         XCTAssertTrue(legacyFallback.can(.view, assignedTo: "someone-else"))
     }
 
+    func testLegacyNullScopeOverrideStillInheritsPipelineManageCompatibility() {
+        let inherited = PermissionService.foldOverrides(
+            [
+                PermissionOverrideFoldRow(
+                    permission: "pipeline.view",
+                    scope: nil,
+                    granted: true
+                )
+            ],
+            into: ["pipeline.manage": "all"],
+            explicitPermissionKeys: []
+        )
+
+        XCTAssertFalse(inherited.explicitPermissionKeys.contains("pipeline.view"))
+        XCTAssertTrue(
+            LeadAccessPolicy(
+                currentUserId: "user-jason",
+                permissions: inherited.permissions,
+                explicitPermissionKeys: inherited.explicitPermissionKeys
+            ).can(.view, assignedTo: "someone-else")
+        )
+
+        let revoked = PermissionService.foldOverrides(
+            [
+                PermissionOverrideFoldRow(
+                    permission: "pipeline.view",
+                    scope: nil,
+                    granted: false
+                )
+            ],
+            into: ["pipeline.manage": "all"],
+            explicitPermissionKeys: []
+        )
+        XCTAssertTrue(revoked.explicitPermissionKeys.contains("pipeline.view"))
+        XCTAssertFalse(
+            LeadAccessPolicy(
+                currentUserId: "user-jason",
+                permissions: revoked.permissions,
+                explicitPermissionKeys: revoked.explicitPermissionKeys
+            ).can(.view, assignedTo: "user-jason")
+        )
+    }
+
     func testLeadAccessPolicyCapsWritesByPrerequisitesAndRequiresAllForCreate() {
         let policy = LeadAccessPolicy(
             currentUserId: "user-jason",
@@ -274,22 +349,34 @@ final class LeadAssignmentFoundationTests: XCTestCase {
         XCTAssertTrue(policy.can(.edit, assignedTo: "user-jason"))
     }
 
-    func testAdminLeadAccessBypassesScopedGrants() {
+    func testRawRoleNameCannotBypassAnExplicitGranularRevoke() {
         let policy = LeadAccessPolicy(
             currentUserId: nil,
-            isAdmin: true,
             permissions: [:],
-            explicitPermissionKeys: []
+            explicitPermissionKeys: LeadAccessPolicy.granularPermissionKeys
         )
 
-        XCTAssertTrue(policy.canCreate)
-        XCTAssertTrue(policy.can(.view, assignedTo: nil))
-        XCTAssertTrue(policy.can(.edit, assignedTo: "anyone"))
-        XCTAssertTrue(policy.can(.assign, assignedTo: "anyone"))
-        XCTAssertTrue(policy.can(.convert, assignedTo: "anyone"))
+        XCTAssertFalse(policy.canCreate)
+        XCTAssertFalse(policy.canViewAny)
+        XCTAssertFalse(policy.can(.view, assignedTo: nil))
+        XCTAssertFalse(policy.can(.edit, assignedTo: "anyone"))
+        XCTAssertFalse(policy.can(.assign, assignedTo: "anyone"))
+        XCTAssertFalse(policy.can(.convert, assignedTo: "anyone"))
     }
 
-    func testPermissionRegistryRegistersGranularLeadActionsAndHidesLegacyManage() {
+    func testAssignedLeadViewScopeMakesTheLeadsSurfaceAvailable() {
+        let policy = LeadAccessPolicy(
+            currentUserId: "user-jason",
+            permissions: ["pipeline.view": "assigned"],
+            explicitPermissionKeys: LeadAccessPolicy.granularPermissionKeys
+        )
+
+        XCTAssertTrue(policy.canViewAny)
+        XCTAssertTrue(policy.can(.view, assignedTo: "user-jason"))
+        XCTAssertFalse(policy.can(.view, assignedTo: "someone-else"))
+    }
+
+    func testPermissionRegistryUsesCanonicalScopesAndHidesCompatibilityBits() {
         let registered = Dictionary(
             uniqueKeysWithValues: PermissionRegistry.all.map { ($0.id, $0) }
         )
@@ -304,11 +391,397 @@ final class LeadAssignmentFoundationTests: XCTestCase {
             XCTAssertNotNil(registered[permission], "Missing \(permission)")
         }
 
-        XCTAssertNotNil(registered["pipeline.manage"], "Legacy permission must remain registered")
+        XCTAssertEqual(registered["pipeline.create"]?.allowedLevels, [.off, .all])
+        XCTAssertEqual(registered["pipeline.view"]?.allowedLevels, [.off, .assigned, .all])
+        XCTAssertEqual(registered["calendar.edit"]?.allowedLevels, [.off, .own, .all])
+        XCTAssertEqual(registered["profile.edit"]?.allowedLevels, [.off, .own])
+
+        XCTAssertNotNil(registered["pipeline.manage"], "Legacy permission must remain readable")
+        XCTAssertNotNil(registered["inbox.view_company"], "Legacy permission must remain readable")
         XCTAssertFalse(
-            PermissionRegistry.permissions(for: "Pipeline").contains { $0.id == "pipeline.manage" },
-            "Legacy pipeline.manage must not appear in new permission editing"
+            PermissionRegistry.editable.contains { $0.id == "pipeline.manage" },
+            "Legacy pipeline.manage must not appear in canonical mutations"
         )
+        XCTAssertFalse(
+            PermissionRegistry.editable.contains { $0.id == "inbox.view_company" },
+            "Legacy inbox.view_company must not appear in canonical mutations"
+        )
+        XCTAssertEqual(PermissionRegistry.editable.count, 100)
+    }
+
+    func testPipelinePermissionNormalizationOnlyNarrowsDependentActions() {
+        let initial: [String: PermissionLevel] = [
+            "pipeline.create": .all,
+            "pipeline.view": .assigned,
+            "pipeline.edit": .all,
+            "pipeline.assign": .all,
+            "pipeline.convert": .all,
+        ]
+
+        let normalized = PermissionEditorPolicy.normalized(initial)
+
+        XCTAssertEqual(normalized["pipeline.create"], .all)
+        XCTAssertEqual(normalized["pipeline.view"], .assigned)
+        XCTAssertEqual(normalized["pipeline.edit"], .assigned)
+        XCTAssertEqual(normalized["pipeline.assign"], .assigned)
+        XCTAssertEqual(normalized["pipeline.convert"], .assigned)
+
+        let revoked = PermissionEditorPolicy.normalized([
+            "pipeline.create": .all,
+            "pipeline.view": .off,
+            "pipeline.edit": .assigned,
+            "pipeline.assign": .assigned,
+            "pipeline.convert": .assigned,
+        ])
+        XCTAssertEqual(revoked["pipeline.create"], .off)
+        XCTAssertEqual(revoked["pipeline.edit"], .off)
+        XCTAssertEqual(revoked["pipeline.assign"], .off)
+        XCTAssertEqual(revoked["pipeline.convert"], .off)
+    }
+
+    func testRolePermissionMutationIsCompleteCanonicalAndExplicit() throws {
+        let expected = [
+            CanonicalRolePermission(permission: "pipeline.view", scope: "assigned"),
+            CanonicalRolePermission(permission: "pipeline.manage", scope: "all"),
+        ]
+        let request = try RolePermissionMutationRequest(
+            expectedPermissions: expected,
+            desiredLevels: ["pipeline.view": .assigned],
+            assignmentResolutions: []
+        )
+
+        XCTAssertEqual(
+            request.expectedPermissions.map(\.permission),
+            ["pipeline.manage", "pipeline.view"]
+        )
+        XCTAssertEqual(request.newPermissions.count, PermissionRegistry.editable.count)
+        XCTAssertEqual(
+            request.newPermissions.map(\.permission),
+            request.newPermissions.map(\.permission).sorted()
+        )
+        XCTAssertEqual(
+            request.newPermissions.first { $0.permission == "pipeline.view" }?.scope,
+            "assigned"
+        )
+        XCTAssertNil(
+            try XCTUnwrap(
+                request.newPermissions.first { $0.permission == "pipeline.edit" }
+            ).scope
+        )
+        XCTAssertFalse(request.newPermissions.contains { $0.permission == "pipeline.manage" })
+        XCTAssertFalse(request.newPermissions.contains { $0.permission == "inbox.view_company" })
+
+        let object = try jsonObject(request)
+        XCTAssertNotNil(object["expectedPermissions"])
+        XCTAssertNotNil(object["newPermissions"])
+        XCTAssertNotNil(object["assignmentResolutions"])
+        let encodedDesired = try XCTUnwrap(object["newPermissions"] as? [[String: Any]])
+        XCTAssertTrue(
+            try XCTUnwrap(encodedDesired.first { $0["permission"] as? String == "pipeline.edit" })["scope"] is NSNull
+        )
+
+        let explicitUnassign = RolePermissionAssignmentResolution(
+            opportunityId: "lead-1",
+            expectedAssignedTo: "user-jason",
+            expectedAssignmentVersion: 4,
+            newAssignedTo: nil
+        )
+        let encodedResolution = try jsonObject(explicitUnassign)
+        XCTAssertEqual(encodedResolution["expected_assigned_to"] as? String, "user-jason")
+        XCTAssertTrue(encodedResolution["new_assigned_to"] is NSNull)
+    }
+
+    func testRolePermissionSuccessRequiresTheFullAuthoritativeResponse() throws {
+        let valid = try JSONDecoder().decode(
+            RolePermissionMutationSuccess.self,
+            from: Data("""
+            {
+              "ok": true,
+              "roleId": "role-1",
+              "permissions": [{"permission":"pipeline.view","scope":"assigned"}],
+              "resolvedAssignments": 0
+            }
+            """.utf8)
+        )
+        XCTAssertEqual(valid.roleId, "role-1")
+        XCTAssertTrue(valid.ok)
+
+        for invalid in [
+            #"{"ok":true,"permissions":[],"resolvedAssignments":0}"#,
+            #"{"ok":true,"roleId":"role-1","resolvedAssignments":0}"#,
+            #"{"ok":true,"roleId":"role-1","permissions":[]}"#,
+            #"{"ok":false,"roleId":"role-1","permissions":[],"resolvedAssignments":0}"#,
+        ] {
+            XCTAssertThrowsError(
+                try JSONDecoder().decode(
+                    RolePermissionMutationSuccess.self,
+                    from: Data(invalid.utf8)
+                )
+            )
+        }
+    }
+
+    func testUserOverrideMutationIsAtomicSortedAndPreservesHiddenSnapshotRows() throws {
+        let request = try UserPermissionOverrideMutationRequest(
+            expectedOverrides: [
+                CanonicalUserPermissionOverride(
+                    permission: "pipeline.view",
+                    scope: "assigned",
+                    granted: true
+                ),
+                CanonicalUserPermissionOverride(
+                    permission: "pipeline.manage",
+                    scope: "all",
+                    granted: true
+                ),
+                CanonicalUserPermissionOverride(
+                    permission: "pipeline.edit",
+                    scope: "assigned",
+                    granted: true
+                ),
+                CanonicalUserPermissionOverride(
+                    permission: "pipeline.convert",
+                    scope: nil,
+                    granted: false
+                ),
+            ],
+            roleBaseline: [
+                "pipeline.view": .assigned,
+                "pipeline.edit": .assigned,
+            ],
+            desiredLevels: [
+                "pipeline.view": .all,
+                "pipeline.edit": .off,
+            ],
+            assignmentResolutions: []
+        )
+
+        XCTAssertEqual(
+            request.expectedOverrides.map(\.permission),
+            ["pipeline.convert", "pipeline.edit", "pipeline.manage", "pipeline.view"]
+        )
+        XCTAssertEqual(request.set.map(\.permission), ["pipeline.edit", "pipeline.view"])
+        XCTAssertEqual(request.clear, ["pipeline.convert"])
+        XCTAssertFalse(request.set.contains { $0.permission == "pipeline.manage" })
+
+        let object = try jsonObject(request)
+        XCTAssertNotNil(object["expectedOverrides"])
+        XCTAssertNotNil(object["set"])
+        XCTAssertNotNil(object["clear"])
+        XCTAssertNotNil(object["assignmentResolutions"])
+        let rows = try XCTUnwrap(object["set"] as? [[String: Any]])
+        let revoke = try XCTUnwrap(
+            rows.first { $0["permission"] as? String == "pipeline.edit" }
+        )
+        XCTAssertEqual(revoke["granted"] as? Bool, false)
+        XCTAssertTrue(revoke["scope"] is NSNull)
+    }
+
+    func testUserRoleMutationEncodesNullableSnapshotsAndRequiresAuthoritativeResponse() throws {
+        let request = try UserRoleMutationRequest(
+            expectedRoleId: nil,
+            newRoleId: nil,
+            assignmentResolutions: []
+        )
+        let object = try jsonObject(request)
+        XCTAssertTrue(object["expectedRoleId"] is NSNull)
+        XCTAssertTrue(object["newRoleId"] is NSNull)
+        XCTAssertNotNil(object["assignmentResolutions"])
+
+        let valid = try JSONDecoder().decode(
+            UserRoleMutationSuccess.self,
+            from: Data("""
+            {
+              "ok": true,
+              "userId": "user-jason",
+              "roleId": null,
+              "legacyRole": "unassigned",
+              "resolvedAssignments": 0
+            }
+            """.utf8)
+        )
+        XCTAssertNil(valid.roleId)
+
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                UserRoleMutationSuccess.self,
+                from: Data("""
+                {
+                  "ok": true,
+                  "userId": "user-jason",
+                  "legacyRole": "unassigned",
+                  "resolvedAssignments": 0
+                }
+                """.utf8)
+            )
+        )
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                UserRoleSnapshotConflict.self,
+                from: Data(#"{"code":"permission_snapshot_mismatch"}"#.utf8)
+            )
+        )
+    }
+
+    func testPresetRoleIdentityComesFromCanonicalDatabaseFlag() throws {
+        let role = try JSONDecoder().decode(
+            AdminRoleRow.self,
+            from: Data("""
+            {
+              "id": "custom-operator",
+              "name": "Operator",
+              "hierarchy": 8,
+              "is_preset": false
+            }
+            """.utf8)
+        )
+        XCTAssertFalse(role.isPreset)
+    }
+
+    func testAssignmentResolutionConflictRequiresSnapshotsAndEligibleTargets() throws {
+        let conflict = try JSONDecoder().decode(
+            RolePermissionMutationConflict.self,
+            from: Data("""
+            {
+              "code": "assignment_resolution_required",
+              "strandedCount": 1,
+              "stranded": [{
+                "opportunity_id": "lead-1",
+              "title": null,
+                "assigned_to": "user-jason",
+                "assignment_version": 9
+              }],
+              "eligibleAssignees": [{
+                "id": "user-amy",
+                "first_name": null,
+                "last_name": null,
+                "profile_image_url": null,
+                "user_color": null,
+                "role": null
+              }]
+            }
+            """.utf8)
+        )
+
+        XCTAssertEqual(conflict.strandedCount, 1)
+        XCTAssertEqual(conflict.stranded.first?.assignmentVersion, 9)
+        XCTAssertEqual(conflict.stranded.first?.title, "")
+        XCTAssertEqual(conflict.eligibleAssignees.first?.id, "user-amy")
+        XCTAssertEqual(conflict.eligibleAssignees.first?.displayName, "")
+
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                RolePermissionMutationConflict.self,
+                from: Data(#"{"code":"assignment_resolution_required","strandedCount":1,"stranded":[]}"#.utf8)
+            )
+        )
+    }
+
+    func testInaccessibleConvertedProjectIsACommittedSuccessWithoutIdentity() throws {
+        let result = try JSONDecoder().decode(
+            ConvertOpportunityResult.self,
+            from: Data("""
+            {
+              "converted": false,
+              "already_converted": true,
+              "won": true,
+              "guard_reason": "already_converted",
+              "project_id": "secret-project",
+              "assigned_to": "user-jason",
+              "assignment_version": 13,
+              "project_accessible": false
+            }
+            """.utf8)
+        )
+
+        XCTAssertEqual(
+            try LeadConversionOutcomeResolver.disposition(for: result),
+            .committedWithoutAccessibleProject
+        )
+    }
+
+    func testHiddenConversionPreflightCarriesAssignmentSnapshotWithoutProjectIdentity() throws {
+        let preflight = try JSONDecoder().decode(
+            ConversionPreflight.self,
+            from: Data("""
+            {
+              "existing_linked_project": null,
+              "duplicate_candidates": [],
+              "other_client_projects": [],
+              "suggested_name": null,
+              "already_converted": true,
+              "project_accessible": false,
+              "assignment_version": 14
+            }
+            """.utf8)
+        )
+
+        XCTAssertTrue(preflight.isCommittedWithoutAccessibleProject)
+        XCTAssertEqual(preflight.assignmentVersion, 14)
+        XCTAssertNil(preflight.existingLinkedProject)
+        XCTAssertTrue(preflight.duplicateCandidates.isEmpty)
+        XCTAssertTrue(preflight.otherClientProjects.isEmpty)
+    }
+
+    @MainActor
+    func testHiddenConversionPresentationMarkerPersistsOnlyLeadIdentity() throws {
+        let suiteName = "LeadAssignmentFoundationTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let storageKey = "hidden-conversion-test"
+
+        let first = LeadConversionVisibilityStore(
+            defaults: defaults,
+            storageKey: storageKey
+        )
+        first.markCommittedWithoutAccessibleProject("lead-1")
+
+        let restored = LeadConversionVisibilityStore(
+            defaults: defaults,
+            storageKey: storageKey
+        )
+        XCTAssertTrue(restored.contains("lead-1"))
+        XCTAssertEqual(defaults.stringArray(forKey: storageKey), ["lead-1"])
+
+        restored.clear("lead-1")
+        XCTAssertFalse(
+            LeadConversionVisibilityStore(
+                defaults: defaults,
+                storageKey: storageKey
+            ).contains("lead-1")
+        )
+    }
+
+    func testUncommittedConversionResultFailsClosed() throws {
+        let result = try JSONDecoder().decode(
+            ConvertOpportunityResult.self,
+            from: Data("""
+            {
+              "converted": false,
+              "already_converted": false,
+              "project_accessible": false
+            }
+            """.utf8)
+        )
+
+        XCTAssertThrowsError(try LeadConversionOutcomeResolver.disposition(for: result))
+    }
+
+    func testConversionMustProveTheWonTransitionCommitted() throws {
+        let result = try JSONDecoder().decode(
+            ConvertOpportunityResult.self,
+            from: Data("""
+            {
+              "converted": true,
+              "already_converted": false,
+              "won": false,
+              "project_id": "project-1",
+              "project_accessible": true
+            }
+            """.utf8)
+        )
+
+        XCTAssertThrowsError(try LeadConversionOutcomeResolver.disposition(for: result))
     }
 
     func testPipelineFeatureFlagCoversEveryGranularLeadPermission() {

@@ -65,6 +65,7 @@ struct LeadsTabView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
     @EnvironmentObject private var appState: AppState
+    @ObservedObject private var conversionVisibilityStore = LeadConversionVisibilityStore.shared
 
     @State private var selectedBucket: PipelineViewModel.TriageBucket?
     @State private var detailLead: Opportunity?
@@ -82,7 +83,18 @@ struct LeadsTabView: View {
     }
 
     private var buckets: PipelineViewModel.TriageBuckets { viewModel.triageBuckets }
-    private var canManage: Bool { permissionStore.can("pipeline.manage") }
+    private var leadAccessPolicy: LeadAccessPolicy { permissionStore.leadAccessPolicy }
+    private var canCreate: Bool { leadAccessPolicy.canCreate }
+    private var canConvertAny: Bool { leadAccessPolicy.canConvertAny }
+    private func canEdit(_ lead: Opportunity) -> Bool {
+        leadAccessPolicy.can(.edit, assignedTo: lead.assignedTo)
+    }
+    private func canConvert(_ lead: Opportunity) -> Bool {
+        leadAccessPolicy.can(.convert, assignedTo: lead.assignedTo)
+    }
+    private var convertibleUnconvertedWins: [Opportunity] {
+        buckets.unconvertedWon.filter(canConvert)
+    }
 
     /// The default view is ALL, grouped by urgency. A specific chip flattens to
     /// that bucket; if it empties (last item cleared) we drop back to ALL rather
@@ -106,7 +118,7 @@ struct LeadsTabView: View {
                 VStack(spacing: 0) {
                     AppHeader(
                         headerType: .leads,
-                        onAddLead: canManage ? { activeSheet = .add } : nil
+                        onAddLead: canCreate ? { activeSheet = .add } : nil
                     )
                     .padding(.bottom, OPSStyle.Layout.spacing2)
                     .background(OPSStyle.Colors.background.ignoresSafeArea(edges: .top))
@@ -119,9 +131,9 @@ struct LeadsTabView: View {
                             LeadsByStageRow(viewModel: viewModel, onStageTap: { footerStage = $0 })
                                 .padding(.top, 22)
 
-                            if canManage && !buckets.unconvertedWon.isEmpty {
+                            if !convertibleUnconvertedWins.isEmpty {
                                 LeadsWonNudge(
-                                    count: buckets.unconvertedWon.count,
+                                    count: convertibleUnconvertedWins.count,
                                     totalValue: unconvertedWonValue,
                                     onTap: { presentWonConvert() }
                                 )
@@ -397,7 +409,8 @@ struct LeadsTabView: View {
             lead: lead,
             viewModel: viewModel,
             bucket: bucket,
-            canManage: canManage,
+            canEdit: canEdit(lead),
+            canConvert: canConvert(lead),
             onTap:     { detailLead = lead },
             onLog:     { activeSheet = .log(lead) },
             onAdvance: { advance(lead) },
@@ -407,7 +420,7 @@ struct LeadsTabView: View {
         .contextMenu {
             LeadCardContextMenu(
                 lead: lead,
-                canManage: canManage,
+                canManage: canEdit(lead),
                 onEdit: { activeSheet = .edit(lead) },
                 onArchive: {
                     Task {
@@ -430,9 +443,9 @@ struct LeadsTabView: View {
         case .add:
             AddLeadSheet(
                 onSaved: { _ in },
-                onStartSiteVisit: { lead in
-                    activeSiteVisitLead = lead
-                }
+                onStartSiteVisit: canConvertAny
+                    ? { lead in activeSiteVisitLead = lead }
+                    : nil
             )
         case .edit(let opp):
             EditLeadSheet(opportunity: opp)
@@ -448,7 +461,7 @@ struct LeadsTabView: View {
                 .presentationDragIndicator(.visible)
         case .wonChooser:
             LeadsWonChooserSheet(
-                leads: buckets.unconvertedWon,
+                leads: convertibleUnconvertedWins,
                 onPick: { lead in
                     // Swap chooser → convert. Drop the chooser first, then
                     // present convert on the next runloop so a single sheet
@@ -515,7 +528,9 @@ struct LeadsTabView: View {
     // MARK: - Helpers
 
     private var unconvertedWonValue: Double {
-        buckets.unconvertedWon.reduce(0) { $0 + ($1.actualValue ?? $1.estimatedValue ?? 0) }
+        convertibleUnconvertedWins.reduce(0) {
+            $0 + ($1.actualValue ?? $1.estimatedValue ?? 0)
+        }
     }
 
     private var caughtUpHint: String {
@@ -525,7 +540,7 @@ struct LeadsTabView: View {
     /// One unconverted win → straight to convert. Several → a chooser first so
     /// the operator sees every open win and picks which to turn into a job.
     private func presentWonConvert() {
-        let wins = buckets.unconvertedWon
+        let wins = convertibleUnconvertedWins
         if wins.count > 1 {
             activeSheet = .wonChooser
         } else if let first = wins.first {
@@ -534,7 +549,13 @@ struct LeadsTabView: View {
     }
 
     private func advance(_ lead: Opportunity) {
-        guard canManage, !lead.stage.isTerminal, let next = lead.stage.next else { return }
+        guard !lead.stage.isTerminal, let next = lead.stage.next else { return }
+        if next == .won {
+            guard canConvert(lead) else { return }
+            activeSheet = .convert(lead)
+            return
+        }
+        guard canEdit(lead) else { return }
         Task {
             do {
                 try await viewModel.moveToStage(
@@ -543,7 +564,11 @@ struct LeadsTabView: View {
                     userId: dataController.currentUser?.id
                 )
                 ToastCenter.shared.present(Feedback.Lead.stageAdvanced)
-            } catch {}
+            } catch {
+                ToastCenter.shared.present(
+                    Toast(label: Feedback.Err.saveFailed, tone: .error)
+                )
+            }
         }
     }
 }

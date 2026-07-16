@@ -56,7 +56,7 @@ struct LeadsToastSubscriber: ViewModifier {
                 for: Notification.Name("LeadMarkedWonSuccess"))
             ) { _ in
                 ToastCenter.shared.present(
-                    Toast(label: "// LEAD WON · NO PROJECT", tone: .success)
+                    Toast(label: "// LEAD WON · PROJECT SAVED", tone: .success)
                 )
             }
             .onReceive(NotificationCenter.default.publisher(

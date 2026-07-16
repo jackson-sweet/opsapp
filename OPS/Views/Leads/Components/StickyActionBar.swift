@@ -24,14 +24,28 @@
 import SwiftUI
 
 struct StickyActionBar: View {
+    let canEdit: Bool
+    let canConvert: Bool
     let onMarkLost: () -> Void
     let onEdit:     () -> Void
     let onMarkWon:  () -> Void
 
     var body: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            lostButton
-            actionPair
+            if canEdit {
+                lostButton
+            }
+            if canEdit && canConvert {
+                actionPair
+            } else if canEdit {
+                editButton
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+            } else if canConvert {
+                wonButton
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+            }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.top, OPSStyle.Layout.spacing3)
@@ -169,6 +183,8 @@ struct StickyActionBar: View {
         }
 
         StickyActionBar(
+            canEdit: true,
+            canConvert: true,
             onMarkLost: {},
             onEdit: {},
             onMarkWon: {}

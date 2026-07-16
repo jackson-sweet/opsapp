@@ -8,166 +8,6 @@
 
 import SwiftUI
 
-// MARK: - Permission Registry
-
-struct PermissionDefinition: Identifiable {
-    let id: String // permission key, e.g. "projects.create"
-    let label: String
-    let category: String
-}
-
-enum PermissionRegistry {
-    static let all: [PermissionDefinition] = [
-        // Projects
-        PermissionDefinition(id: "projects.create", label: "Create Projects", category: "Projects"),
-        PermissionDefinition(id: "projects.edit", label: "Edit Projects", category: "Projects"),
-        // Tasks
-        PermissionDefinition(id: "tasks.create", label: "Create Tasks", category: "Tasks"),
-        PermissionDefinition(id: "tasks.edit", label: "Edit Tasks", category: "Tasks"),
-        PermissionDefinition(id: "tasks.delete", label: "Delete Tasks", category: "Tasks"),
-        PermissionDefinition(id: "tasks.change_status", label: "Change Task Status", category: "Tasks"),
-        // Clients
-        PermissionDefinition(id: "clients.create", label: "Create Clients", category: "Clients"),
-        PermissionDefinition(id: "clients.edit", label: "Edit Clients", category: "Clients"),
-        // Estimates
-        PermissionDefinition(id: "estimates.create", label: "Create Estimates", category: "Estimates"),
-        // Invoices
-        PermissionDefinition(id: "invoices.view", label: "View Invoices", category: "Invoices"),
-        PermissionDefinition(id: "invoices.create", label: "Create Invoices", category: "Invoices"),
-        PermissionDefinition(id: "invoices.edit", label: "Edit Invoices", category: "Invoices"),
-        PermissionDefinition(id: "invoices.send", label: "Send Invoices", category: "Invoices"),
-        PermissionDefinition(id: "invoices.record_payment", label: "Record Payments", category: "Invoices"),
-        PermissionDefinition(id: "invoices.delete", label: "Delete Invoices", category: "Invoices"),
-        // Expenses
-        PermissionDefinition(id: "expenses.create", label: "Create Expenses", category: "Expenses"),
-        // Pipeline
-        PermissionDefinition(id: "pipeline.create", label: "Create Leads", category: "Pipeline"),
-        PermissionDefinition(id: "pipeline.view", label: "View Leads", category: "Pipeline"),
-        PermissionDefinition(id: "pipeline.edit", label: "Edit Leads", category: "Pipeline"),
-        PermissionDefinition(id: "pipeline.assign", label: "Assign Leads", category: "Pipeline"),
-        PermissionDefinition(id: "pipeline.convert", label: "Convert Leads", category: "Pipeline"),
-        PermissionDefinition(id: "pipeline.manage", label: "Manage Pipeline", category: "Pipeline"),
-        // Calendar
-        PermissionDefinition(id: "calendar.edit", label: "Edit Calendar", category: "Calendar"),
-        // Catalog
-        PermissionDefinition(id: "catalog.view", label: "View Catalog", category: "Catalog"),
-        PermissionDefinition(id: "catalog.stock.adjust", label: "Adjust Stock Quantity", category: "Catalog"),
-        PermissionDefinition(id: "catalog.manage", label: "Manage Catalog", category: "Catalog"),
-        PermissionDefinition(id: "catalog.import", label: "Import Catalog", category: "Catalog"),
-        PermissionDefinition(id: "catalog.products.view", label: "View Products", category: "Catalog"),
-        PermissionDefinition(id: "catalog.products.manage", label: "Manage Products", category: "Catalog"),
-        PermissionDefinition(id: "catalog.orders.view", label: "View Orders", category: "Catalog"),
-        PermissionDefinition(id: "catalog.orders.manage", label: "Manage Orders", category: "Catalog"),
-        // Team
-        PermissionDefinition(id: "team.view", label: "View Team", category: "Team"),
-        PermissionDefinition(id: "team.manage", label: "Manage Team", category: "Team"),
-        // Settings
-        PermissionDefinition(id: "settings.company", label: "Company Settings", category: "Settings"),
-        PermissionDefinition(id: "settings.billing", label: "Billing Settings", category: "Settings"),
-        // Job Board
-        PermissionDefinition(id: "job_board.manage_sections", label: "Manage Sections", category: "Job Board"),
-        // Deck Builder
-        PermissionDefinition(id: "deck_builder.view", label: "View Designs", category: "Deck Builder"),
-        PermissionDefinition(id: "deck_builder.create", label: "Create Designs", category: "Deck Builder"),
-        PermissionDefinition(id: "deck_builder.edit", label: "Edit Designs", category: "Deck Builder"),
-    ]
-
-    static var categories: [String] {
-        var seen: Set<String> = []
-        return all.compactMap { def in
-            if seen.contains(def.category) { return nil }
-            seen.insert(def.category)
-            return def.category
-        }
-    }
-
-    static func permissions(for category: String) -> [PermissionDefinition] {
-        all.filter {
-            $0.category == category && !legacyHiddenPermissionIds.contains($0.id)
-        }
-    }
-
-    /// Compatibility-only permissions remain registered so existing role rows
-    /// can be read, but new edits must use the granular lead actions above.
-    private static let legacyHiddenPermissionIds: Set<String> = [
-        "pipeline.manage"
-    ]
-
-    // MARK: - Shared Helpers
-
-    static func displayName(for roleName: String) -> String {
-        switch roleName.lowercased() {
-        case "admin": return "Admin"
-        case "owner": return "Owner"
-        case "office": return "Office"
-        case "operator": return "Operator"
-        case "crew": return "Crew"
-        case "unassigned": return "Unassigned"
-        default: return roleName.replacingOccurrences(of: "_", with: " ").capitalized
-        }
-    }
-
-    static func iconForRole(_ roleName: String) -> String {
-        switch roleName.lowercased() {
-        case "admin": return "shield"
-        case "owner": return "star"
-        case "office": return "building.2"
-        case "operator": return "wrench.adjustable"
-        case "crew": return "hammer"
-        case "unassigned": return "questionmark.circle"
-        default: return "person"
-        }
-    }
-
-    /// Maps permission categories to their feature flag slug.
-    /// Categories not in this map are always enabled.
-    static let categoryFeatureFlag: [String: String] = [
-        "Pipeline": "pipeline",
-        "Estimates": "estimates",
-        "Invoices": "pipeline",
-        "Deck Builder": "deck_builder",
-    ]
-
-    /// Returns the feature flag slug gating a category, or nil if ungated.
-    static func featureFlag(for category: String) -> String? {
-        categoryFeatureFlag[category]
-    }
-
-    static func iconForCategory(_ category: String) -> String {
-        switch category {
-        case "Projects": return OPSStyle.Icons.project
-        case "Tasks": return OPSStyle.Icons.task
-        case "Clients": return OPSStyle.Icons.subClient
-        case "Estimates": return OPSStyle.Icons.estimateDoc
-        case "Invoices": return OPSStyle.Icons.invoiceReceipt
-        case "Expenses": return OPSStyle.Icons.expense
-        case "Pipeline": return OPSStyle.Icons.accountingChart
-        case "Calendar": return OPSStyle.Icons.calendar
-        case "Inventory": return "shippingbox.fill"
-        case "Team": return OPSStyle.Icons.crew
-        case "Settings": return "gearshape.fill"
-        case "Job Board": return "rectangle.stack.fill"
-        case "Deck Builder": return "ruler.fill"
-        default: return "lock.fill"
-        }
-    }
-}
-
-// MARK: - Permission Level
-
-enum PermissionLevel: String, CaseIterable, Identifiable {
-    case off = "off"
-    case own = "own"
-    case assigned = "assigned"
-    case all = "all"
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        rawValue.uppercased()
-    }
-}
-
 // MARK: - Search tag metadata
 // Maps permission key → extra keyword aliases used for search.
 // Keeps search logic colocated with the registry so there is one place to update.
@@ -218,26 +58,20 @@ struct RoleDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     // Current state from server
-    @State private var currentPermissions: [String: String] = [:] // permission -> scope
+    @State private var currentPermissionSnapshot: [CanonicalRolePermission] = []
+    @State private var desiredLevels: [String: PermissionLevel] = [:]
     @State private var isLoading = true
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var assignmentConflict: RolePermissionMutationConflict?
 
     // Team members assigned to this role
     @State private var roleUsers: [User] = []
 
 
-    // Pending changes
-    @State private var pendingChanges: [String: PermissionChange] = [:]
-
     // Search + collapse
     @State private var searchQuery: String = ""
     @State private var expandedCategories: Set<String> = []
-
-    enum PermissionChange: Equatable {
-        case enable(scope: String)
-        case disable
-    }
 
     // MARK: - Search helpers
 
@@ -261,13 +95,16 @@ struct RoleDetailView: View {
     }
 
     private var hasPendingChanges: Bool {
-        !pendingChanges.isEmpty
+        PermissionRegistry.editable.contains { definition in
+            effectiveLevel(for: definition.id)
+                != currentLevel(for: definition.id)
+        }
     }
 
-    /// Preset roles (the 5 built-in roles) cannot be edited.
+    /// Preset roles are immutable by canonical backend identity, not by a
+    /// display name that a custom role may legitimately share.
     private var isPresetRole: Bool {
-        let presetNames = ["admin", "owner", "office", "operator", "crew", "unassigned"]
-        return presetNames.contains(role.name.lowercased())
+        role.isPreset
     }
 
     var body: some View {
@@ -454,6 +291,16 @@ struct RoleDetailView: View {
         .onAppear {
             loadPermissions()
         }
+        .sheet(item: $assignmentConflict) { conflict in
+            LeadResponsibilityResolutionSheet(
+                conflict: conflict,
+                isSaving: isSaving,
+                onCancel: { assignmentConflict = nil },
+                onResolve: { resolutions in
+                    saveChanges(assignmentResolutions: resolutions)
+                }
+            )
+        }
         .onDisappear {
             // Wizard: notify step 2 completion when user RETURNS to the permissions list,
             // not when they first open the detail. Prevents step 3 activating while
@@ -475,7 +322,7 @@ struct RoleDetailView: View {
             // Header — always visible, tapping toggles expanded state
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(OPSStyle.Animation.spring) {
+                withAnimation(OPSStyle.Animation.panel) {
                     if expandedCategories.contains(category) {
                         expandedCategories.remove(category)
                     } else {
@@ -532,7 +379,7 @@ struct RoleDetailView: View {
     /// Renders just the rows + bulk picker for a category (used inside collapsible body).
     private func permissionCategoryRows(_ category: String) -> some View {
         let permissions = visiblePermissions(for: category)
-        let catLevel = categoryLevel(for: category)
+        let catLevel = categoryLevel(for: permissions)
         let isMixed = catLevel == nil
 
         return VStack(spacing: 0) {
@@ -545,9 +392,10 @@ struct RoleDetailView: View {
                 }
                 permissionScopePicker(
                     selection: catLevel ?? .off,
+                    levels: PermissionEditorPolicy.commonLevels(for: permissions),
                     isMixed: isMixed,
                     isReadOnly: isPresetRole,
-                    onChange: { level in setCategoryLevel(category, to: level) }
+                    onChange: { level in setPermissionLevels(permissions, to: level) }
                 )
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -594,6 +442,7 @@ struct RoleDetailView: View {
 
                 permissionScopePicker(
                     selection: catLevel ?? .off,
+                    levels: PermissionEditorPolicy.commonLevels(for: permissions),
                     isMixed: isMixed,
                     isReadOnly: isPresetRole,
                     onChange: { level in
@@ -667,14 +516,15 @@ struct RoleDetailView: View {
 
             permissionScopePicker(
                 selection: level,
+                levels: perm.allowedLevels,
                 isMixed: false,
                 isReadOnly: isPresetRole,
                 onChange: { newLevel in
-                    if newLevel == .off {
-                        pendingChanges[perm.id] = .disable
-                    } else {
-                        pendingChanges[perm.id] = .enable(scope: newLevel.rawValue)
-                    }
+                    desiredLevels = PermissionEditorPolicy.applying(
+                        newLevel,
+                        to: perm.id,
+                        in: desiredLevels
+                    )
                 }
             )
         }
@@ -687,12 +537,13 @@ struct RoleDetailView: View {
 
     private func permissionScopePicker(
         selection: PermissionLevel,
+        levels: [PermissionLevel],
         isMixed: Bool,
         isReadOnly: Bool = false,
         onChange: @escaping (PermissionLevel) -> Void
     ) -> some View {
         HStack(spacing: 2) {
-            ForEach(PermissionLevel.allCases) { level in
+            ForEach(levels) { level in
                 Button(action: {
                     guard !isReadOnly else { return }
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -762,21 +613,28 @@ struct RoleDetailView: View {
     // MARK: - Effective State
 
     private func effectiveLevel(for permissionId: String) -> PermissionLevel {
-        if let change = pendingChanges[permissionId] {
-            switch change {
-            case .enable(let scope): return PermissionLevel(rawValue: scope) ?? .all
-            case .disable: return .off
-            }
+        desiredLevels[permissionId] ?? .off
+    }
+
+    private func currentLevel(for permissionId: String) -> PermissionLevel {
+        guard let row = currentPermissionSnapshot.first(where: {
+            $0.permission == permissionId
+        }),
+        let level = PermissionLevel(rawValue: row.scope),
+        PermissionRegistry.definition(for: permissionId)?.scopes.contains(level) == true else {
+            return .off
         }
-        if let scope = currentPermissions[permissionId] {
-            return PermissionLevel(rawValue: scope) ?? .all
-        }
-        return .off
+        return level
     }
 
     /// Returns the uniform level for all permissions in a category, or nil if mixed.
     private func categoryLevel(for category: String) -> PermissionLevel? {
-        let perms = PermissionRegistry.permissions(for: category)
+        categoryLevel(for: PermissionRegistry.permissions(for: category))
+    }
+
+    private func categoryLevel(
+        for perms: [PermissionDefinition]
+    ) -> PermissionLevel? {
         guard let first = perms.first else { return nil }
         let firstLevel = effectiveLevel(for: first.id)
         for perm in perms.dropFirst() {
@@ -789,14 +647,19 @@ struct RoleDetailView: View {
 
     /// Bulk-set all permissions in a category to the given level.
     private func setCategoryLevel(_ category: String, to level: PermissionLevel) {
-        let perms = PermissionRegistry.permissions(for: category)
+        setPermissionLevels(PermissionRegistry.permissions(for: category), to: level)
+    }
+
+    private func setPermissionLevels(
+        _ perms: [PermissionDefinition],
+        to level: PermissionLevel
+    ) {
+        var updated = desiredLevels
         for perm in perms {
-            if level == .off {
-                pendingChanges[perm.id] = .disable
-            } else {
-                pendingChanges[perm.id] = .enable(scope: level.rawValue)
-            }
+            guard perm.allowedLevels.contains(level) else { continue }
+            updated[perm.id] = level
         }
+        desiredLevels = PermissionEditorPolicy.normalized(updated)
     }
 
     // MARK: - Data
@@ -805,10 +668,9 @@ struct RoleDetailView: View {
         Task {
             do {
                 let perms = try await PermissionAdminService.fetchRolePermissions(roleId: role.id)
-                var map: [String: String] = [:]
-                for perm in perms {
-                    map[perm.permission] = perm.scope
-                }
+                let snapshot = perms
+                    .map { CanonicalRolePermission(permission: $0.permission, scope: $0.scope) }
+                    .sorted { $0.permission < $1.permission }
 
                 // Fetch users assigned to this role
                 let userIds = try await PermissionAdminService.fetchUserIdsForRole(roleId: role.id)
@@ -820,7 +682,8 @@ struct RoleDetailView: View {
                 }
 
                 await MainActor.run {
-                    self.currentPermissions = map
+                    self.currentPermissionSnapshot = snapshot
+                    self.desiredLevels = PermissionEditorPolicy.desiredLevels(from: snapshot)
                     self.roleUsers = matchedUsers
                     self.isLoading = false
                 }
@@ -834,30 +697,31 @@ struct RoleDetailView: View {
         }
     }
 
-    private func saveChanges() {
+    private func saveChanges(
+        assignmentResolutions: [RolePermissionAssignmentResolution] = []
+    ) {
         guard !isSaving else { return }
         isSaving = true
         errorMessage = nil
 
         Task {
             do {
-                for (permissionId, change) in pendingChanges {
-                    switch change {
-                    case .enable(let scope):
-                        try await PermissionAdminService.setRolePermission(roleId: role.id, permission: permissionId, scope: scope)
-                        await MainActor.run {
-                            currentPermissions[permissionId] = scope
-                        }
-                    case .disable:
-                        try await PermissionAdminService.removeRolePermission(roleId: role.id, permission: permissionId)
-                        await MainActor.run {
-                            currentPermissions.removeValue(forKey: permissionId)
-                        }
-                    }
-                }
+                let request = try RolePermissionMutationRequest(
+                    expectedPermissions: currentPermissionSnapshot,
+                    desiredLevels: desiredLevels,
+                    assignmentResolutions: assignmentResolutions
+                )
+                let result = try await PermissionAdminService.replaceRolePermissions(
+                    roleId: role.id,
+                    request: request
+                )
 
                 await MainActor.run {
-                    pendingChanges = [:]
+                    currentPermissionSnapshot = result.permissions
+                    desiredLevels = PermissionEditorPolicy.desiredLevels(
+                        from: result.permissions
+                    )
+                    assignmentConflict = nil
                     isSaving = false
 
                     ToastCenter.shared.present(Feedback.Settings.permissionsSaved)
@@ -865,12 +729,35 @@ struct RoleDetailView: View {
                     generator.notificationOccurred(.success)
                 }
 
-                print("[PERMISSIONS] Saved \(pendingChanges.count) permission changes for role \(role.name)")
+                print("[PERMISSIONS] Replaced role permissions for \(role.name)")
 
             } catch {
                 await MainActor.run {
-                    errorMessage = "Failed to save changes"
                     isSaving = false
+
+                    if let adminError = error as? PermissionAdminService.PermissionAdminError {
+                        switch adminError {
+                        case .assignmentResolutionRequired(let conflict):
+                            assignmentConflict = conflict
+                            errorMessage = nil
+                        case .assignmentResolutionChanged:
+                            assignmentConflict = nil
+                            errorMessage = nil
+                            // Re-run without stale resolutions. The guarded
+                            // endpoint will either commit (nothing is stranded
+                            // now) or return a fresh authoritative prompt.
+                            DispatchQueue.main.async { saveChanges() }
+                        case .snapshotChanged(let current):
+                            currentPermissionSnapshot = current.sorted { $0.permission < $1.permission }
+                            desiredLevels = PermissionEditorPolicy.desiredLevels(from: current)
+                            assignmentConflict = nil
+                            errorMessage = adminError.localizedDescription
+                        default:
+                            errorMessage = adminError.localizedDescription
+                        }
+                    } else {
+                        errorMessage = error.localizedDescription
+                    }
 
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.error)
@@ -880,4 +767,136 @@ struct RoleDetailView: View {
         }
     }
 
+}
+
+struct LeadResponsibilityResolutionSheet: View {
+    private static let unassignedChoice = "__unassigned__"
+
+    let conflict: RolePermissionMutationConflict
+    let isSaving: Bool
+    let onCancel: () -> Void
+    let onResolve: ([RolePermissionAssignmentResolution]) -> Void
+
+    @State private var choices: [String: String] = [:]
+
+    private var canResolve: Bool {
+        conflict.stranded.allSatisfy { lead in
+            guard let choice = choices[lead.opportunityId] else { return false }
+            return !choice.isEmpty
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            OPSStyle.Colors.background.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    SheetTitleLabel(title: "REASSIGN ACTIVE LEADS", size: .full)
+                    SheetCloseButton(action: onCancel)
+                        .disabled(isSaving)
+                }
+                .padding(.leading, OPSStyle.Layout.spacing3_5)
+                .padding(.trailing, OPSStyle.Layout.spacing1)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+                        Text("This access change would leave active leads with no responsible operator. Choose a new assignee or leave each lead unassigned before saving.")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        ForEach(conflict.stranded) { lead in
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                                Text(lead.title.isEmpty ? "Untitled lead" : lead.title)
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .lineLimit(2)
+
+                                Picker(
+                                    "New assignee",
+                                    selection: Binding(
+                                        get: { choices[lead.opportunityId] ?? "" },
+                                        set: { choices[lead.opportunityId] = $0 }
+                                    )
+                                ) {
+                                    Text("Choose assignee").tag("")
+                                    Text("Unassigned").tag(Self.unassignedChoice)
+                                    ForEach(conflict.eligibleAssignees) { assignee in
+                                        Text(assignee.displayName.isEmpty ? "Team member" : assignee.displayName)
+                                            .tag(assignee.id)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(OPSStyle.Colors.primaryText)
+                                .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetStandard, alignment: .leading)
+                                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                .background(OPSStyle.Colors.surfaceInput)
+                                .clipShape(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(
+                                            OPSStyle.Colors.inputFieldBorder,
+                                            lineWidth: OPSStyle.Layout.Border.standard
+                                        )
+                                )
+                            }
+                            .padding(OPSStyle.Layout.spacing3)
+                            .glassSurface()
+                        }
+                    }
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.bottom, OPSStyle.Layout.spacing5)
+                }
+
+                Button(action: resolve) {
+                    Group {
+                        if isSaving {
+                            ProgressView()
+                                .progressViewStyle(
+                                    CircularProgressViewStyle(tint: OPSStyle.Colors.invertedText)
+                                )
+                        } else {
+                            Text("SAVE ACCESS CHANGE")
+                                .font(OPSStyle.Typography.button)
+                                .foregroundColor(OPSStyle.Colors.invertedText)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: OPSStyle.Layout.touchTargetStandard)
+                    .background(
+                        canResolve
+                            ? OPSStyle.Colors.primaryAccent
+                            : OPSStyle.Colors.surfaceHover
+                    )
+                    .clipShape(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(!canResolve || isSaving)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.vertical, OPSStyle.Layout.spacing3)
+            }
+        }
+        .preferredColorScheme(.dark)
+        .interactiveDismissDisabled(isSaving)
+    }
+
+    private func resolve() {
+        guard canResolve else { return }
+        let resolutions = conflict.stranded.map { lead in
+            let choice = choices[lead.opportunityId]
+            return RolePermissionAssignmentResolution(
+                opportunityId: lead.opportunityId,
+                expectedAssignedTo: lead.assignedTo,
+                expectedAssignmentVersion: lead.assignmentVersion,
+                newAssignedTo: choice == Self.unassignedChoice ? nil : choice
+            )
+        }
+        onResolve(resolutions)
+    }
 }

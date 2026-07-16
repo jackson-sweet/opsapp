@@ -407,6 +407,15 @@ enum OPSStyle {
         static let headlineMono = SwiftUI.Font.system(size: 24, weight: .bold, design: .monospaced)
         static let titleMono = SwiftUI.Font.system(size: 20, weight: .bold, design: .monospaced)
         static let monoValue = SwiftUI.Font.system(size: 14, weight: .bold, design: .monospaced)
+
+        /// UIKit bridge for `dataValue` — JetBrains Mono Medium for numeric
+        /// labels on UIKit/AVFoundation surfaces SwiftUI fonts can't reach
+        /// (e.g. the camera HUD's lens stops). Defaults to the 13pt data
+        /// value size.
+        static func uiDataValueMedium(size: CGFloat = 13) -> UIFont {
+            UIFont(name: "JetBrainsMono-Medium", size: size)
+                ?? .monospacedDigitSystemFont(ofSize: size, weight: .semibold)
+        }
     }
     
     // MARK: - Layout

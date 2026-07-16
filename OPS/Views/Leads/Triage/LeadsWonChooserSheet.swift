@@ -75,7 +75,7 @@ struct LeadsWonChooserSheet: View {
                 Text("\(BooksFormat.compact(totalValue)) UNCONVERTED")
                     .foregroundColor(OPSStyle.Colors.text3)
             }
-            .font(.custom("JetBrainsMono-Medium", size: 10))
+            .font(OPSStyle.Typography.miniLabelBold)
             .tracking(1.4)
             .textCase(.uppercase)
             .monospacedDigit()

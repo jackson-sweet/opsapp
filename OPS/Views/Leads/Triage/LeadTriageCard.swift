@@ -271,7 +271,7 @@ struct LeadTriageCard: View {
             Button(action: { UIImpactFeedbackGenerator(style: .medium).impactOccurred(); onAdvance() }) {
                 HStack(spacing: 7) {
                     Text("ADVANCE")
-                        .font(.custom("JetBrainsMono-Medium", size: 10))
+                        .font(OPSStyle.Typography.miniLabelBold)
                         .tracking(0.9)
                     Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
                 }

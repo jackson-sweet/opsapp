@@ -312,7 +312,7 @@ struct LeadField<Content: View>: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Text(label)
-                    .font(.custom("JetBrainsMono-Medium", size: 10))
+                    .font(OPSStyle.Typography.miniLabelBold)
                     .kerning(1.6)
                     .foregroundColor(OPSStyle.Colors.text3)
                     .textCase(.uppercase)
@@ -460,7 +460,7 @@ struct LeadChipPicker: View {
                     selection = option.id
                 } label: {
                     Text(option.label)
-                        .font(.custom("JetBrainsMono-Medium", size: 10))
+                        .font(OPSStyle.Typography.miniLabelBold)
                         .kerning(1.4)
                         .foregroundColor(isActive ? OPSStyle.Colors.text : OPSStyle.Colors.text2)
                         .textCase(.uppercase)

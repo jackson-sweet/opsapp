@@ -212,7 +212,7 @@ struct ConvertToProjectSheet: View {
                 Text("FROM WON LEAD")
                     .foregroundColor(OPSStyle.Colors.oliveTextM)
             }
-            .font(.custom("JetBrainsMono-Medium", size: 10))
+            .font(OPSStyle.Typography.miniLabelBold)
             .kerning(1.6)
             .textCase(.uppercase)
 
@@ -263,7 +263,7 @@ struct ConvertToProjectSheet: View {
                         .foregroundColor(OPSStyle.Colors.text3)
                 }
             }
-            .font(.custom("JetBrainsMono-Medium", size: 10))
+            .font(OPSStyle.Typography.miniLabelBold)
             .kerning(1.6)
             .textCase(.uppercase)
 
@@ -318,7 +318,7 @@ struct ConvertToProjectSheet: View {
                 Text("REVIEW BEFORE CREATING")
                     .foregroundColor(OPSStyle.Colors.text3)
             }
-            .font(.custom("JetBrainsMono-Medium", size: 10))
+            .font(OPSStyle.Typography.miniLabelBold)
             .kerning(1.6)
             .textCase(.uppercase)
 
@@ -352,7 +352,7 @@ struct ConvertToProjectSheet: View {
                 .fill(project.statusColor)
                 .frame(width: 5, height: 5)
             Text(truncatedTitle(project.title))
-                .font(.custom("JetBrainsMono-Medium", size: 10))
+                .font(OPSStyle.Typography.miniLabelBold)
                 .kerning(1.2)
                 .foregroundColor(OPSStyle.Colors.text)
                 .textCase(.uppercase)
@@ -426,7 +426,7 @@ struct ConvertToProjectSheet: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Text("NAME")
-                    .font(.custom("JetBrainsMono-Medium", size: 10))
+                    .font(OPSStyle.Typography.miniLabelBold)
                     .kerning(1.6)
                     .foregroundColor(OPSStyle.Colors.text3)
                     .textCase(.uppercase)
@@ -481,7 +481,7 @@ struct ConvertToProjectSheet: View {
                 Image(systemName: titleIsAuto ? OPSStyle.Icons.edit : OPSStyle.Icons.locationFill)
                     .font(.system(size: 10))
                 Text(titleIsAuto ? "RENAME" : "USE ADDRESS")
-                    .font(.custom("JetBrainsMono-Medium", size: 10))
+                    .font(OPSStyle.Typography.miniLabelBold)
                     .kerning(1.2)
             }
             .foregroundColor(OPSStyle.Colors.text2)

@@ -197,6 +197,15 @@ extension Font {
         return Font.custom("JetBrainsMono-Regular", size: 10)
     }
 
+    /// Medium companion to `miniLabel` — JetBrains Mono Medium 10pt.
+    /// The micro panel-header voice (Leads triage panel headers, sheet field
+    /// labels): uppercase at the call site, with per-component tracking
+    /// (0.9–1.6pt) applied there too, per the mobile spec's em-based label
+    /// tracking at 10pt.
+    public static var miniLabelBold: Font {
+        return Font.custom("JetBrainsMono-Medium", size: 10)
+    }
+
     public static var microLabel: Font {
         return Font.custom("JetBrainsMono-Regular", size: 11)
     }

@@ -183,6 +183,19 @@ class DeckBuilderViewModel: ObservableObject {
     private static let autosaveDecisionMadeKey = "deckBuilder.autosaveDecisionMade"
     private static let autosavePreferenceKey = "deckBuilder.autosaveEnabled"
 
+    // MARK: - Speed-Draw Dictation (bug 722b1606)
+
+    /// Speed draw opens the mic automatically for each length entry so the
+    /// user speaks edge lengths hands-free instead of fighting a mic button
+    /// between every edge. ON by default; the deck settings sheet holds the
+    /// off switch. Persisted per device.
+    @Published private(set) var dictateAutoStartEnabled: Bool = true
+    /// One manual mic-stop mutes auto-start for the REMAINDER of the current
+    /// perimeter walk (the user chose silence — don't reopen the mic on the
+    /// very next edge). A fresh walk starts clean.
+    private var dictationSuppressedForSession = false
+    static let dictateAutoStartKey = "deckBuilder.dictateAutoStart"
+
     // MARK: - Multi-Level Computed
 
     var activeLevel: DeckLevel? {
@@ -584,6 +597,12 @@ class DeckBuilderViewModel: ObservableObject {
                 }
             }
         }
+
+        // Speed-draw dictation defaults ON; `object(forKey:)` (not
+        // `bool(forKey:)`) so an absent key reads as enabled rather than
+        // false. Bug 722b1606.
+        self.dictateAutoStartEnabled = UserDefaults.standard
+            .object(forKey: Self.dictateAutoStartKey) as? Bool ?? true
 
         // DECK-NEW-1 follow-up — migrate legacy single-`footprint` payloads
         // to the per-surface store on first load. Reconciler is idempotent
@@ -1168,6 +1187,29 @@ class DeckBuilderViewModel: ObservableObject {
         return (liveAnchor.position, angle)
     }
 
+    // MARK: - Speed-Draw Dictation State (bug 722b1606)
+
+    /// Whether the length panel should open the mic on arrival: the persisted
+    /// preference, minus a session mute after a manual stop.
+    var shouldAutoStartDictation: Bool {
+        dictateAutoStartEnabled && !dictationSuppressedForSession
+    }
+
+    func setDictateAutoStartPreference(_ enabled: Bool) {
+        dictateAutoStartEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: Self.dictateAutoStartKey)
+        // Re-enabling from settings clears any leftover session mute so the
+        // change takes effect on the next length, not the next walk.
+        if enabled {
+            dictationSuppressedForSession = false
+        }
+    }
+
+    /// The user tapped the mic to stop — hold auto-start until a new walk.
+    func noteDictationManuallyStopped() {
+        dictationSuppressedForSession = true
+    }
+
     @discardableResult
     func beginPerimeterEntry(at point: CGPoint, hitThreshold: Double = 25.0) -> Bool {
         if let vertexId = PolygonMath.findVertexAtPoint(point, vertices: activeVertices, hitThreshold: hitThreshold) {
@@ -1194,6 +1236,7 @@ class DeckBuilderViewModel: ObservableObject {
         activeVertices.append(vertex)
         clearPerimeterEntrySelectionChrome()
         perimeterEntryHistory.removeAll()
+        dictationSuppressedForSession = false
         if let anchor = makePerimeterAnchor(vertexId: vertex.id, rootVertexId: vertex.id) {
             perimeterEntry = .choosingDirection(anchor: anchor)
             perimeterEntryMessage = nil
@@ -1207,6 +1250,7 @@ class DeckBuilderViewModel: ObservableObject {
         guard let anchor = makePerimeterAnchor(vertexId: vertexId, rootVertexId: vertexId) else { return }
         clearPerimeterEntrySelectionChrome()
         perimeterEntryHistory.removeAll()
+        dictationSuppressedForSession = false
         perimeterEntry = .choosingDirection(anchor: anchor)
         perimeterEntryMessage = nil
         hapticMedium()

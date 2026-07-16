@@ -63,6 +63,15 @@ struct DeckMeasurementPickerView: View {
     var message: String?
     var configuration: DeckMeasurementPickerConfiguration = .deckBuilder
     var canCommit: (DeckMeasurementValue) -> Bool = { $0.totalInches > 0 }
+    /// Open the mic as the panel lands (speed draw's hands-free default) so
+    /// the user speaks each edge length instead of hunting a button between
+    /// every edge. Only fires when speech access is already granted — never
+    /// summons the system permission dialogs uninvited.
+    var autoStartDictation: Bool = false
+    /// Fired only when the user taps the mic to STOP — the caller mutes
+    /// auto-start for the rest of the walk so the mic doesn't reopen on the
+    /// very next edge. Auto-stops (final result, errors, dismissal) don't fire.
+    var onDictationManualStop: (() -> Void)?
     var onBack: () -> Void
     var onCancel: (() -> Void)?
     var onCommit: (DeckMeasurementValue) -> Void
@@ -76,6 +85,7 @@ struct DeckMeasurementPickerView: View {
     @State private var centimeters = 0
     @State private var millimeters = 0
     @State private var didLoadInitialValue = false
+    @State private var dictationAutoStartTask: Task<Void, Never>?
 
     private var activeValue: DeckMeasurementValue {
         switch measurementSystem {
@@ -108,6 +118,7 @@ struct DeckMeasurementPickerView: View {
             applyDictatedLength(inches)
         }
         .onDisappear {
+            dictationAutoStartTask?.cancel()
             if voiceInput.isListening {
                 voiceInput.stopListening()
             }
@@ -133,6 +144,8 @@ struct DeckMeasurementPickerView: View {
 
             // Continue — the one accent action, enabled only with a length. The
             // committed value reads live on the canvas, so there is no readout here.
+            // 44pt visual circle inside a 56pt hit zone — it commits every edge,
+            // so it earns the standard field target alongside the mic.
             Button {
                 onCommit(activeValue)
             } label: {
@@ -146,6 +159,10 @@ struct DeckMeasurementPickerView: View {
                     .background(
                         Circle().fill(canCommit(activeValue)
                             ? OPSStyle.Colors.opsAccent.opacity(0.18) : Color.clear)
+                    )
+                    .frame(
+                        width: DeckMeasurementPickerTokens.standardTouch,
+                        height: DeckMeasurementPickerTokens.standardTouch
                     )
                     .contentShape(Rectangle())
             }
@@ -261,9 +278,11 @@ struct DeckMeasurementPickerView: View {
             Image(systemName: voiceInput.isListening ? "mic.fill" : "mic")
                 .font(.system(size: DeckMeasurementPickerTokens.iconSize, weight: .semibold))
                 .foregroundColor(voiceInput.isListening ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.text2)
+                // Primary field action — standard 56pt zone, not the 44 floor,
+                // so a gloved thumb lands it every time (bug 722b1606).
                 .frame(
-                    width: DeckMeasurementPickerTokens.minTouch,
-                    height: DeckMeasurementPickerTokens.minTouch
+                    width: DeckMeasurementPickerTokens.standardTouch,
+                    height: DeckMeasurementPickerTokens.standardTouch
                 )
                 .contentShape(Rectangle())
         }
@@ -350,6 +369,22 @@ struct DeckMeasurementPickerView: View {
         syncComponents(from: value)
         measurementSystem = value.measurementSystem
         voiceInput.setMeasurementSystem(value.measurementSystem)
+        scheduleDictationAutoStart()
+    }
+
+    /// Hands-free default (bug 722b1606): open the mic as the length panel
+    /// lands. Deferred one panel transition (token duration + a beat) so the
+    /// audio-session spin-up can't hitch the slide-in; cancelled on disappear
+    /// so a torn-down panel never leaves a hot mic behind.
+    private func scheduleDictationAutoStart() {
+        guard autoStartDictation, voiceInput.isAuthorized else { return }
+        let settleDelay = OPSStyle.Animation.durationPanel + 0.05
+        dictationAutoStartTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(settleDelay * 1_000_000_000))
+            guard !Task.isCancelled, !voiceInput.isListening, voiceInput.isAuthorized else { return }
+            voiceInput.setMeasurementSystem(measurementSystem)
+            voiceInput.startListening()
+        }
     }
 
     private func syncFromExternalValue(_ newValue: DeckMeasurementValue) {
@@ -406,22 +441,27 @@ struct DeckMeasurementPickerView: View {
     }
 
     private func toggleDictation() {
-        if voiceInput.isListening {
+        switch DictationTapAction.resolve(
+            isListening: voiceInput.isListening,
+            authorizationStatus: voiceInput.authorizationStatus
+        ) {
+        case .stopListening:
             voiceInput.stopListening()
-            return
+            // The user chose silence — mute auto-start for the rest of the
+            // walk so the mic doesn't reopen on the very next edge.
+            onDictationManualStop?()
+        case .startListening:
+            voiceInput.setMeasurementSystem(measurementSystem)
+            voiceInput.startListening()
+        case .requestAuthorizationThenStart:
+            // First-ever use: the grant flows straight into listening, so
+            // one tap carries the whole intent (no dead tap after the
+            // permission dialog).
+            voiceInput.setMeasurementSystem(measurementSystem)
+            voiceInput.requestAuthorization(thenStartListening: true)
+        case .showDeniedGuidance:
+            voiceInput.error = "SYS :: DICTATION BLOCKED — ALLOW IN SETTINGS"
         }
-
-        guard voiceInput.isAuthorized else {
-            if voiceInput.authorizationStatus == .notDetermined {
-                voiceInput.requestAuthorization()
-            } else {
-                voiceInput.error = "SYS :: DICTATION LOCKED"
-            }
-            return
-        }
-
-        voiceInput.setMeasurementSystem(measurementSystem)
-        voiceInput.startListening()
     }
 }
 

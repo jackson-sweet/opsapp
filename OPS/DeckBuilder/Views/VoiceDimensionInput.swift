@@ -4,6 +4,34 @@ import Foundation
 import Speech
 import AVFoundation
 
+/// What a tap on the dictate button should do, resolved from the current
+/// listening + authorization state. Pure so the mapping is unit-testable —
+/// the original inline logic silently swallowed the first tap whenever the
+/// published status was stale (bug 722b1606).
+enum DictationTapAction: Equatable {
+    case stopListening
+    case startListening
+    case requestAuthorizationThenStart
+    case showDeniedGuidance
+
+    static func resolve(
+        isListening: Bool,
+        authorizationStatus: SFSpeechRecognizerAuthorizationStatus
+    ) -> DictationTapAction {
+        if isListening { return .stopListening }
+        switch authorizationStatus {
+        case .authorized:
+            return .startListening
+        case .notDetermined:
+            return .requestAuthorizationThenStart
+        case .denied, .restricted:
+            return .showDeniedGuidance
+        @unknown default:
+            return .showDeniedGuidance
+        }
+    }
+}
+
 @MainActor
 class VoiceDimensionInput: ObservableObject {
 
@@ -11,7 +39,7 @@ class VoiceDimensionInput: ObservableObject {
     @Published var recognizedText: String = ""
     @Published var parsedDimensions: [Double?] = []
     @Published var error: String?
-    @Published var authorizationStatus: SFSpeechRecognizerAuthorizationStatus = .notDetermined
+    @Published var authorizationStatus: SFSpeechRecognizerAuthorizationStatus
 
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
@@ -21,10 +49,20 @@ class VoiceDimensionInput: ObservableObject {
     private let expectedCount: Int
     private var measurementSystem: MeasurementSystem
 
-    init(expectedDimensionCount: Int, measurementSystem: MeasurementSystem = .imperial) {
+    init(
+        expectedDimensionCount: Int,
+        measurementSystem: MeasurementSystem = .imperial,
+        authorizationStatusProvider: () -> SFSpeechRecognizerAuthorizationStatus = SFSpeechRecognizer.authorizationStatus
+    ) {
         self.expectedCount = expectedDimensionCount
         self.measurementSystem = measurementSystem
         self.parsedDimensions = Array(repeating: nil, count: expectedDimensionCount)
+        // Seed from the system, not `.notDetermined`. This object is recreated
+        // for every speed-draw edge; without the seed, a user who granted
+        // speech access long ago still read as unauthorized, so the first mic
+        // tap on EVERY edge silently re-requested authorization instead of
+        // listening — the "dictate button ignores taps" bug (722b1606).
+        self.authorizationStatus = authorizationStatusProvider()
     }
 
     func setMeasurementSystem(_ measurementSystem: MeasurementSystem) {
@@ -36,10 +74,18 @@ class VoiceDimensionInput: ObservableObject {
 
     // MARK: - Authorization
 
-    func requestAuthorization() {
+    /// Ask the system for speech access. With `thenStartListening`, a grant
+    /// flows straight into `startListening()` — the user tapped the mic to
+    /// dictate, so one tap carries the whole intent instead of demanding a
+    /// second tap after the permission dialog (bug 722b1606).
+    func requestAuthorization(thenStartListening: Bool = false) {
         SFSpeechRecognizer.requestAuthorization { [weak self] status in
             Task { @MainActor in
-                self?.authorizationStatus = status
+                guard let self else { return }
+                self.authorizationStatus = status
+                if thenStartListening, status == .authorized {
+                    self.startListening()
+                }
             }
         }
     }

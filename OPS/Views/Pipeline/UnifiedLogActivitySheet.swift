@@ -135,7 +135,7 @@ struct UnifiedLogActivitySheet: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Text("NOTE")
-                    .font(.custom("JetBrainsMono-Medium", size: 10))
+                    .font(OPSStyle.Typography.miniLabelBold)
                     .kerning(1.6)
                     .foregroundColor(OPSStyle.Colors.text3)
                     .textCase(.uppercase)
@@ -206,7 +206,7 @@ struct UnifiedLogActivitySheet: View {
                         .foregroundColor(isRecording ? OPSStyle.Colors.roseTextM : OPSStyle.Colors.text2)
                 }
                 Text(isRecording ? "SYS :: LISTENING" : "SYS :: READY")
-                    .font(.custom("JetBrainsMono-Medium", size: 10))
+                    .font(OPSStyle.Typography.miniLabelBold)
                     .kerning(1.2)
                     .foregroundColor(isRecording ? OPSStyle.Colors.roseTextM : OPSStyle.Colors.text2)
             }
@@ -497,7 +497,7 @@ struct UnifiedLogActivitySheet: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("FOLLOW-UP")
-                    .font(.custom("JetBrainsMono-Medium", size: 10))
+                    .font(OPSStyle.Typography.miniLabelBold)
                     .kerning(1.4)
                     .foregroundColor(OPSStyle.Colors.tanTextM)
                     .textCase(.uppercase)

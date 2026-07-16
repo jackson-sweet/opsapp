@@ -49,7 +49,7 @@ struct ContactCard: View {
                     .truncationMode(.tail)
 
                 Text(contactSubline)
-                    .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                    .font(OPSStyle.Typography.nanoLabel)
                     .foregroundColor(OPSStyle.Colors.text3)
                     .kerning(0.8)
                     .lineLimit(1)

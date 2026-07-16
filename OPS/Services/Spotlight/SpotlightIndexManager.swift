@@ -58,7 +58,25 @@ final class SpotlightIndexManager {
             allowed.insert(SpotlightDomain.estimate)
         }
 
+        // Leads mirror the LEADS tab's own visibility contract exactly:
+        // `pipeline.view` permission AND the `pipeline` feature flag. Gating on
+        // both means we never index a lead the user can't open — a tapped result
+        // for a hidden tab would only dead-end at the access-denied sheet.
+        if perms.can("pipeline.view") && perms.isFeatureEnabled("pipeline") {
+            allowed.insert(SpotlightDomain.lead)
+        }
+
         return allowed
+    }
+
+    // MARK: - Lead indexability
+
+    /// The opportunities that should carry a Spotlight entry: open OR closed, but
+    /// never soft-deleted and never archived. `OpportunityRepository.fetchAll`
+    /// already drops `deleted_at` rows server-side, but archived leads still come
+    /// back — this is the single gate that keeps them out of system search.
+    nonisolated static func indexableLeads(_ opportunities: [Opportunity]) -> [Opportunity] {
+        opportunities.filter { !$0.isDeleted && !$0.isArchived }
     }
 
     // MARK: - Full Backfill
@@ -117,6 +135,14 @@ final class SpotlightIndexManager {
             current += 1
             progress?(current / steps, "Estimates")
         }
+        // Leads are network-only (not in `context`); this fetches them fresh from
+        // Supabase. Kept last so a slow network round-trip never delays indexing
+        // of the on-device SwiftData entities above.
+        if allowed.contains(SpotlightDomain.lead) {
+            await indexAllLeads()
+            current += 1
+            progress?(current / steps, "Leads")
+        }
 
         UserDefaults.standard.set(true, forKey: backfillFlagKey())
     }
@@ -145,6 +171,9 @@ final class SpotlightIndexManager {
             }
         }
         UserDefaults.standard.removeObject(forKey: backfillFlagKey(forUserId: explicitUserId))
+        // Leads track their own written-id set for delta pruning (they don't flow
+        // through SpotlightSyncTracker); drop it so a re-login rebuilds from clean.
+        UserDefaults.standard.removeObject(forKey: indexedLeadIdsKey(forUserId: explicitUserId))
         print("[Spotlight] Cleared all indexed items")
     }
 
@@ -336,6 +365,125 @@ final class SpotlightIndexManager {
                 continuation.resume()
             }
         }
+    }
+
+    // MARK: - Leads (network-only)
+    //
+    // Pipeline leads live outside SwiftData — they're fetched on demand from
+    // Supabase — so they cannot ride the `SpotlightSyncTracker` delta path the
+    // other domains use. Instead the whole company lead set is reconciled at
+    // once: `OpportunityRepository.fetchAll` (or `PipelineViewModel`'s
+    // `allOpportunities`, the same shape) is the authoritative current set, so we
+    // upsert every indexable lead and prune anything written last pass that is
+    // now gone. The written-id set is persisted per-user so pruning survives
+    // relaunch.
+
+    /// Backfill entry point — fetches the company's leads and writes them.
+    /// Permission is already checked by `backfill()` via `allowedDomains()`, so
+    /// this does not re-gate. A failed fetch leaves any existing lead index
+    /// untouched rather than wiping it.
+    private func indexAllLeads() async {
+        guard let leads = await fetchCompanyLeads() else { return }
+        await writeLeadIndex(Self.indexableLeads(leads))
+        print("[Spotlight] Indexed \(loadIndexedLeadIds().count) leads")
+    }
+
+    /// One-time catch-up for users whose initial backfill predates the lead
+    /// domain (leads shipped after Projects/Clients/etc.). The full `backfill()`
+    /// no-ops for them because their backfill-complete flag is already set, so
+    /// their leads would otherwise only get indexed on first LEADS-tab open. This
+    /// indexes leads once at login/reinstall so system search has them without
+    /// requiring the tab. Guarded to fire exactly once (the written-id set is
+    /// absent until the first write) and only with pipeline access; a failed
+    /// network fetch leaves the flag unset so the next launch retries.
+    func backfillLeadsIfNeeded() async {
+        guard allowedDomains().contains(SpotlightDomain.lead) else { return }
+        guard UserDefaults.standard.object(forKey: indexedLeadIdsKey()) == nil else { return }
+        await indexAllLeads()
+    }
+
+    /// Incremental entry point — called by `PipelineViewModel` after every load,
+    /// with the FULL company lead set already in hand (no extra network round
+    /// trip). No-op until the initial backfill has run (mirrors the SwiftData
+    /// incremental gate); drops the whole domain if pipeline access was lost
+    /// since indexing.
+    ///
+    /// - Important: `opportunities` must be the entire company set. A partial
+    ///   list would prune every lead not contained in it.
+    func reconcileLeads(_ opportunities: [Opportunity]) async {
+        guard allowedDomains().contains(SpotlightDomain.lead) else {
+            await clearLeadDomain()
+            return
+        }
+        guard hasCompletedInitialBackfill else { return }
+        await writeLeadIndex(Self.indexableLeads(opportunities))
+    }
+
+    /// Upsert `desired`, remove any previously-written lead now absent, then
+    /// persist the new id set. Shared by the backfill and incremental paths.
+    private func writeLeadIndex(_ desired: [Opportunity]) async {
+        let desiredIds = Set(desired.map { $0.id })
+        let items = desired.map { SpotlightItemBuilder.buildLead($0) }
+        await indexInBatches(items)
+
+        let previous = loadIndexedLeadIds()
+        let removed = previous.subtracting(desiredIds)
+        for id in removed {
+            await remove(domain: SpotlightDomain.lead, id: id)
+        }
+
+        saveIndexedLeadIds(desiredIds)
+        if !removed.isEmpty {
+            print("[Spotlight] Pruned \(removed.count) stale leads")
+        }
+    }
+
+    /// Network fetch of the company's non-deleted opportunities. Returns nil on
+    /// failure so callers leave any prior lead index intact rather than wiping it.
+    private func fetchCompanyLeads() async -> [Opportunity]? {
+        guard let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId"),
+              !companyId.isEmpty else { return nil }
+        let repo = OpportunityRepository(companyId: companyId)
+        do {
+            return try await repo.fetchAll().map { $0.toModel() }
+        } catch {
+            print("[Spotlight] Lead fetch failed: \(error)")
+            return nil
+        }
+    }
+
+    /// Remove the entire lead domain and forget its written-id set. Used when a
+    /// reconcile discovers pipeline access is gone (role / feature-flag change).
+    private func clearLeadDomain() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            index.deleteSearchableItems(withDomainIdentifiers: [SpotlightDomain.lead]) { error in
+                if let error = error {
+                    print("[Spotlight] Clear lead domain error: \(error)")
+                }
+                continuation.resume()
+            }
+        }
+        UserDefaults.standard.removeObject(forKey: indexedLeadIdsKey())
+    }
+
+    // MARK: Persisted lead id set
+
+    /// Per-user key for the set of lead ids currently written to Spotlight.
+    /// Scoped like the backfill flag so a shared device keeps each account's set
+    /// separate.
+    private func indexedLeadIdsKey(forUserId userId: String? = nil) -> String {
+        let id = userId ?? UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+        return id.isEmpty
+            ? "spotlight.indexedLeadIds"
+            : "spotlight.indexedLeadIds.\(id)"
+    }
+
+    private func loadIndexedLeadIds() -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: indexedLeadIdsKey()) ?? [])
+    }
+
+    private func saveIndexedLeadIds(_ ids: Set<String>) {
+        UserDefaults.standard.set(Array(ids), forKey: indexedLeadIdsKey())
     }
 
     // MARK: - Scope Filters

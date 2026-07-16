@@ -101,6 +101,22 @@ enum SpotlightTapRouter {
             )
             return true
 
+        case SpotlightDomain.lead:
+            // Mirror the LEADS tab gate (pipeline.view + `pipeline` feature). The
+            // same OpenLeadDetails route the notification rail and in-app search
+            // use — MainTabView re-checks access and resolves the lead by network
+            // (opportunities aren't in SwiftData).
+            guard perms.can("pipeline.view") && perms.isFeatureEnabled("pipeline") else {
+                showAccessDenied("You don't have permission to view leads.")
+                return true
+            }
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenLeadDetails"),
+                object: nil,
+                userInfo: ["leadId": decoded.id]
+            )
+            return true
+
         default:
             return false
         }

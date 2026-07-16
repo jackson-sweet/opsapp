@@ -33,7 +33,7 @@ struct LeadsSummary: View {
                 Text("// ").foregroundColor(OPSStyle.Colors.textMute)
                 Text("WEIGHTED PIPELINE · 30D").foregroundColor(OPSStyle.Colors.text3)
             }
-            .font(.custom("JetBrainsMono-Medium", size: 10))
+            .font(OPSStyle.Typography.miniLabelBold)
             .tracking(1.4)
             .textCase(.uppercase)
 
@@ -64,7 +64,7 @@ struct LeadsSummary: View {
             Text("  VS PRIOR")
                 .foregroundColor(OPSStyle.Colors.text3)
         }
-        .font(.custom("JetBrainsMono-Regular", size: 11))
+        .font(OPSStyle.Typography.metadata)
         .tracking(0.4)
         .monospacedDigit()
     }
@@ -131,7 +131,7 @@ struct LeadsSummary: View {
         var parts = ["\(viewModel.openLeadCount) OPEN"]
         if let v = viewModel.avgVelocityDays() { parts.append("AVG VELOCITY \(v)D / STAGE") }
         return Text(parts.joined(separator: " · "))
-            .font(.custom("JetBrainsMono-Regular", size: 10))
+            .font(OPSStyle.Typography.miniLabel)
             .tracking(0.6)
             .textCase(.uppercase)
             .foregroundColor(OPSStyle.Colors.text3)

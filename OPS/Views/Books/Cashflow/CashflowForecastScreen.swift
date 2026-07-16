@@ -137,7 +137,7 @@ struct CashflowForecastScreen: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
                 Text("ENDING BALANCE · \(r.weeks.count)W")
-                    .font(.custom("JetBrainsMono-Medium", size: 10))
+                    .font(OPSStyle.Typography.miniLabelBold)
                     .tracking(2.0)
                     .foregroundColor(OPSStyle.Colors.text3)
                 Spacer(minLength: 0)

@@ -125,6 +125,16 @@ class PipelineViewModel: ObservableObject {
             // Keep the incoming-call caller-ID directory fresh (154cb8a3).
             // No-op unless the operator has the toggle on.
             CallDirectoryRefresher.refresh(from: oppDtos)
+            // Keep iPhone Spotlight's LEAD index in lockstep with the surface.
+            // Every lead change (create / edit / archive / delete / stage move,
+            // plus realtime + foreground) funnels through this load, so a single
+            // reconcile here keeps system-wide search current. No-op without
+            // pipeline access or before the initial Spotlight backfill. Detached
+            // so index writes never delay the visible refresh.
+            let leadsSnapshot = allOpportunities
+            Task { @MainActor in
+                await SpotlightIndexManager.shared.reconcileLeads(leadsSnapshot)
+            }
         } catch {
             if !error.isCancellation {
                 print("[Pipeline] Load failed: \(error)")

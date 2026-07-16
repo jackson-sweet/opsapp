@@ -19,8 +19,13 @@ enum SpotlightDomain {
     static let task      = "co.opsapp.spotlight.task"
     static let invoice   = "co.opsapp.spotlight.invoice"
     static let estimate  = "co.opsapp.spotlight.estimate"
+    /// Pipeline leads (opportunities). Network-only entities — unlike every other
+    /// domain here they are NOT SwiftData-backed, so the index is sourced from
+    /// `OpportunityRepository.fetchAll` and kept fresh from `PipelineViewModel`
+    /// rather than the sync-engine's `SpotlightSyncTracker`. Pipeline-gated.
+    static let lead      = "co.opsapp.spotlight.lead"
 
-    static let all: [String] = [project, client, subClient, task, invoice, estimate]
+    static let all: [String] = [project, client, subClient, task, invoice, estimate, lead]
 }
 
 /// Item identifiers are `"<domain>:<entityId>"` so we can decode which entity

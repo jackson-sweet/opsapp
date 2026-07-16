@@ -333,7 +333,7 @@ struct BooksTabView: View {
                 }
             }
         }
-        .font(.custom("JetBrainsMono-Medium", size: 10))
+        .font(OPSStyle.Typography.miniLabelBold)
         .tracking(1.6)
         .textCase(.uppercase)
         .monospacedDigit()

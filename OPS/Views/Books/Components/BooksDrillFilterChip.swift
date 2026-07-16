@@ -19,7 +19,7 @@ struct BooksDrillFilterChip: View {
         Button(action: onClear) {
             HStack(spacing: 6) {
                 Text(label)
-                    .font(.custom("JetBrainsMono-Medium", size: 10))
+                    .font(OPSStyle.Typography.miniLabelBold)
                     .tracking(1.4)  // 0.14em at 10pt
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .textCase(.uppercase)

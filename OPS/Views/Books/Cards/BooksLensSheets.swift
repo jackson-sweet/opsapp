@@ -69,7 +69,7 @@ struct BooksSheetSection: View {
             Text(label).foregroundColor(OPSStyle.Colors.text3)
             Spacer(minLength: 0)
         }
-        .font(.custom("JetBrainsMono-Medium", size: 10))
+        .font(OPSStyle.Typography.miniLabelBold)
         .tracking(1.6)
         .textCase(.uppercase)
         .monospacedDigit()
@@ -88,7 +88,7 @@ struct BooksSheetHero: View {
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1 + 2) {
             Text(label)
-                .font(.custom("JetBrainsMono-Medium", size: 10))
+                .font(OPSStyle.Typography.miniLabelBold)
                 .tracking(2.0)
                 .textCase(.uppercase)
                 .foregroundColor(OPSStyle.Colors.text3)
@@ -645,7 +645,7 @@ struct BooksForecastSheet: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(row.stage.displayName)
-                    .font(.custom("JetBrainsMono-Medium", size: 10))
+                    .font(OPSStyle.Typography.miniLabelBold)
                     .tracking(1.6)
                     .textCase(.uppercase)
                     .foregroundColor(OPSStyle.Colors.secondaryText)

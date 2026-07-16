@@ -87,7 +87,7 @@ struct EditLeadSheet: View {
                         .foregroundColor(OPSStyle.Colors.text3)
                         .monospacedDigit()
                 }
-                .font(.custom("JetBrainsMono-Regular", size: 10))
+                .font(OPSStyle.Typography.miniLabel)
                 .kerning(1.4)
                 .textCase(.uppercase)
 

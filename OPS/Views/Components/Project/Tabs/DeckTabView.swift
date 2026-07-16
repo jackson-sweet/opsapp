@@ -282,23 +282,26 @@ struct DeckTabView: View {
 
     private func controlBar(design: DeckDesign) -> some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            // Three equal segments now share the row, so the control takes the
-            // flexible width instead of a fixed 120pt — MATERIALS needs the room.
+            // Mode picker owns the leading ~3/5 of the screen; the materials
+            // segment is a list glyph so all three segments stay short and
+            // full-size. EDIT anchors the far right, clear of the picker.
             SegmentedControl(
                 selection: $viewMode,
                 options: [
-                    (DeckTabViewMode.threeD, "3D"),
-                    (DeckTabViewMode.twoD, "2D"),
-                    (DeckTabViewMode.materials, "MATERIALS")
+                    .text(DeckTabViewMode.threeD, "3D"),
+                    .text(DeckTabViewMode.twoD, "2D"),
+                    .icon(DeckTabViewMode.materials, systemImage: "list.bullet", accessibilityLabel: "Materials")
                 ]
             )
-            .frame(maxWidth: .infinity)
+            .containerRelativeFrame(.horizontal) { width, _ in width * 0.6 }
             .onChange(of: viewMode) { _, _ in
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 // Clear the interaction flag on a mode switch so badges can't
                 // get stuck hidden after switching mid-gesture.
                 isViewportInteracting = false
             }
+
+            Spacer(minLength: 0)
 
             if permissionStore.can("deck_builder.edit", requiredScope: "assigned") {
                 // Compact verb — the object (this design) is on screen, so the

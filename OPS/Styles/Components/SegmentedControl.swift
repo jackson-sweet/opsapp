@@ -12,14 +12,37 @@
 import SwiftUI
 
 struct SegmentedControl<SelectionValue>: View where SelectionValue: Hashable {
+    /// One segment — a text label OR an SF Symbol on the same underline
+    /// grammar. Icon segments carry an explicit accessibility label (an icon
+    /// alone is ambiguous to VoiceOver).
+    struct Option {
+        let value: SelectionValue
+        let label: String?
+        let systemImage: String?
+        let accessibilityLabel: String?
+
+        static func text(_ value: SelectionValue, _ label: String) -> Option {
+            Option(value: value, label: label, systemImage: nil, accessibilityLabel: nil)
+        }
+
+        static func icon(_ value: SelectionValue, systemImage: String, accessibilityLabel: String) -> Option {
+            Option(value: value, label: nil, systemImage: systemImage, accessibilityLabel: accessibilityLabel)
+        }
+    }
+
     @Binding var selection: SelectionValue
-    let options: [(value: SelectionValue, label: String)]
+    let options: [Option]
 
     @Namespace private var underlineNamespace
 
     init(selection: Binding<SelectionValue>, options: [(SelectionValue, String)]) {
         self._selection = selection
-        self.options = options.map { (value: $0.0, label: $0.1) }
+        self.options = options.map { .text($0.0, $0.1) }
+    }
+
+    init(selection: Binding<SelectionValue>, options: [Option]) {
+        self._selection = selection
+        self.options = options
     }
 
     var body: some View {
@@ -27,6 +50,8 @@ struct SegmentedControl<SelectionValue>: View where SelectionValue: Hashable {
             ForEach(options, id: \.value) { option in
                 SegmentButton(
                     title: option.label,
+                    systemImage: option.systemImage,
+                    accessibilityLabel: option.accessibilityLabel,
                     isSelected: selection == option.value,
                     namespace: underlineNamespace,
                     action: {
@@ -41,7 +66,9 @@ struct SegmentedControl<SelectionValue>: View where SelectionValue: Hashable {
 }
 
 private struct SegmentButton: View {
-    let title: String
+    let title: String?
+    var systemImage: String?
+    var accessibilityLabel: String?
     let isSelected: Bool
     let namespace: Namespace.ID
     let action: () -> Void
@@ -49,14 +76,8 @@ private struct SegmentButton: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 6) {
-                Text(title.uppercased())
-                    .font(OPSStyle.Typography.section) // Cake Mono Light 18pt — reduce tracking to keep tight
-                    .tracking(0.08 * 13)
+                segmentFace
                     .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
-                    // Long labels (e.g. MATERIALS) ease down slightly on narrow
-                    // phones instead of clipping — segments stay equal width.
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
 
@@ -76,6 +97,25 @@ private struct SegmentButton: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel ?? title ?? "")
+    }
+
+    @ViewBuilder
+    private var segmentFace: some View {
+        if let systemImage {
+            // Sized against the 18pt Cake Mono cap height so icon and text
+            // segments read as one row.
+            Image(systemName: systemImage)
+                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .regular))
+        } else {
+            Text((title ?? "").uppercased())
+                .font(OPSStyle.Typography.section) // Cake Mono Light 18pt — reduce tracking to keep tight
+                .tracking(0.08 * 13)
+                // Long labels ease down slightly on narrow phones instead of
+                // clipping — segments stay equal width.
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
     }
 }
 

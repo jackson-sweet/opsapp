@@ -61,7 +61,11 @@ struct DeckFullscreenViewer: View {
             } else {
                 incompleteNote
             }
-        case .twoD:
+        case .twoD, .materials:
+            // Fullscreen is a canvas surface — the materials tab has no
+            // fullscreen form. Unreachable in practice (the presenter remaps
+            // .materials to .twoD before opening), but the fallback keeps the
+            // viewer honest if it ever arrives here.
             DeckTab2DView(drawingData: drawingData,
                           toolState: toolState,
                           showsTools: true,

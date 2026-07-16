@@ -12,6 +12,10 @@ import SwiftData
 enum DeckTabViewMode: String {
     case threeD = "3D"
     case twoD = "2D"
+    /// The auto-calculated materials list as a sibling tab — a peer of the
+    /// two renderings, not a section below them. Inline deck tab only; the
+    /// fullscreen viewer is canvas-only and maps this to 2D defensively.
+    case materials = "MATERIALS"
 }
 
 struct DeckTabView: View {
@@ -95,72 +99,81 @@ struct DeckTabView: View {
         VStack(spacing: 0) {
             controlBar(design: design)
 
-            // Bug 9327599a — rendering area sits inside ProjectDetailsView's
-            // ScrollView/LazyVStack, where maxHeight: .infinity collapses to
-            // the children's intrinsic size (GeometryReader and SCNView both
-            // expose ~0 intrinsic height). Result: the 2D/3D viewport got a
-            // few-point-tall sliver and the drawing rendered "tiny" even
-            // after the centerViewport math zoomed it correctly.
-            //
-            // Fix: lock the rendering area to a 1:1 aspect ratio against the
-            // available width — produces a substantial square viewport that
-            // scales to fill the screen width and gives both 2D blueprint and
-            // 3D scene enough room to read clearly. Horizontal padding gives
-            // the requested breathing room from the screen edges.
             Group {
                 switch viewMode {
-                case .threeD:
-                    // `hasAnyClosedSurface` rather than `isClosed` — the latter
-                    // requires a single Hamiltonian cycle (false for two
-                    // disjoint deck footprints, false for any multi-level
-                    // design where the top-level vertices/edges arrays are
-                    // empty). `hasAnyClosedSurface` returns true as soon as
-                    // any face is closed on any level. Bug ee787f29 follow-up.
-                    if design.drawingData.hasAnyClosedSurface {
-                        DeckTab3DView(drawingData: design.drawingData,
-                                      onInteractingChange: { isViewportInteracting = $0 })
-                    } else {
-                        incompleteDesignMessage(openEnds: design.drawingData.openEndpointCount)
-                    }
-                case .twoD:
-                    DeckTab2DView(drawingData: design.drawingData,
-                                  toolState: toolState,
-                                  showsTools: false,
-                                  onInteractingChange: { isViewportInteracting = $0 })
+                case .threeD, .twoD:
+                    viewportBlock(design: design)
+                case .materials:
+                    // The auto-calculated materials list as a full sibling tab —
+                    // a peer of 3D and 2D, not a section scrolling below them.
+                    DeckMaterialsSection(design: design, project: project)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                 }
             }
-            .frame(maxWidth: .infinity)
-            .aspectRatio(1, contentMode: .fit)
-            // Floating overlay — title pinned top-left of the rendering
-            // viewport with surface metadata below it. Replaces the previous
-            // bottom infoBar so the viewport owns its identifying chrome.
-            .overlay(alignment: .topLeading) {
-                floatingDesignInfo(design: design)
-                    .padding(.leading, OPSStyle.Layout.spacing2_5)
-                    .padding(.top, OPSStyle.Layout.spacing2_5)
-                    .allowsHitTesting(false)
-                    // Fade badges out while the user pans/zooms EITHER viewport
-                    // (3D camera or 2D blueprint) so they don't obscure the
-                    // geometry being inspected. Only the visible view reports
-                    // interaction, so one flag covers both; the view-mode switch
-                    // resets it so badges can't get stuck hidden.
-                    // Reduce Motion: nil animation = instant snap (no fade),
-                    // avoiding motion that might cause vestibular discomfort.
-                    .opacity(isViewportInteracting ? 0 : 1)
-                    .animation(reduceMotion ? nil : OPSStyle.Animation.standard,
-                               value: isViewportInteracting)
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .animation(OPSStyle.Animation.fast, value: viewMode)
-            .accessibilityAction(named: Text("Expand deck to fullscreen")) { onRequestFullscreen() }
-
-            // Auto-calculated vinyl materials list — renders nothing for
-            // non-vinyl designs, so the tab is unchanged for those. Scrolls
-            // beneath the viewport (this tab lives in ProjectDetailsView's
-            // ScrollView).
-            DeckMaterialsSection(design: design, project: project)
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
+    }
+
+    /// The 3D/2D rendering viewport with its floating identity chrome.
+    ///
+    /// Bug 9327599a — rendering area sits inside ProjectDetailsView's
+    /// ScrollView/LazyVStack, where maxHeight: .infinity collapses to
+    /// the children's intrinsic size (GeometryReader and SCNView both
+    /// expose ~0 intrinsic height). Result: the 2D/3D viewport got a
+    /// few-point-tall sliver and the drawing rendered "tiny" even
+    /// after the centerViewport math zoomed it correctly.
+    ///
+    /// Fix: lock the rendering area to a 1:1 aspect ratio against the
+    /// available width — produces a substantial square viewport that
+    /// scales to fill the screen width and gives both 2D blueprint and
+    /// 3D scene enough room to read clearly. Horizontal padding gives
+    /// the requested breathing room from the screen edges.
+    private func viewportBlock(design: DeckDesign) -> some View {
+        Group {
+            switch viewMode {
+            case .threeD:
+                // `hasAnyClosedSurface` rather than `isClosed` — the latter
+                // requires a single Hamiltonian cycle (false for two
+                // disjoint deck footprints, false for any multi-level
+                // design where the top-level vertices/edges arrays are
+                // empty). `hasAnyClosedSurface` returns true as soon as
+                // any face is closed on any level. Bug ee787f29 follow-up.
+                if design.drawingData.hasAnyClosedSurface {
+                    DeckTab3DView(drawingData: design.drawingData,
+                                  onInteractingChange: { isViewportInteracting = $0 })
+                } else {
+                    incompleteDesignMessage(openEnds: design.drawingData.openEndpointCount)
+                }
+            case .twoD, .materials:
+                DeckTab2DView(drawingData: design.drawingData,
+                              toolState: toolState,
+                              showsTools: false,
+                              onInteractingChange: { isViewportInteracting = $0 })
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .aspectRatio(1, contentMode: .fit)
+        // Floating overlay — title pinned top-left of the rendering
+        // viewport with surface metadata below it. Replaces the previous
+        // bottom infoBar so the viewport owns its identifying chrome.
+        .overlay(alignment: .topLeading) {
+            floatingDesignInfo(design: design)
+                .padding(.leading, OPSStyle.Layout.spacing2_5)
+                .padding(.top, OPSStyle.Layout.spacing2_5)
+                .allowsHitTesting(false)
+                // Fade badges out while the user pans/zooms EITHER viewport
+                // (3D camera or 2D blueprint) so they don't obscure the
+                // geometry being inspected. Only the visible view reports
+                // interaction, so one flag covers both; the view-mode switch
+                // resets it so badges can't get stuck hidden.
+                // Reduce Motion: nil animation = instant snap (no fade),
+                // avoiding motion that might cause vestibular discomfort.
+                .opacity(isViewportInteracting ? 0 : 1)
+                .animation(reduceMotion ? nil : OPSStyle.Animation.standard,
+                           value: isViewportInteracting)
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .accessibilityAction(named: Text("Expand deck to fullscreen")) { onRequestFullscreen() }
     }
 
     // MARK: - Floating Design Info (overlay top-left of viewport)
@@ -268,15 +281,18 @@ struct DeckTabView: View {
     // MARK: - Control Bar
 
     private func controlBar(design: DeckDesign) -> some View {
-        HStack {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            // Three equal segments now share the row, so the control takes the
+            // flexible width instead of a fixed 120pt — MATERIALS needs the room.
             SegmentedControl(
                 selection: $viewMode,
                 options: [
                     (DeckTabViewMode.threeD, "3D"),
-                    (DeckTabViewMode.twoD, "2D")
+                    (DeckTabViewMode.twoD, "2D"),
+                    (DeckTabViewMode.materials, "MATERIALS")
                 ]
             )
-            .frame(width: 120)
+            .frame(maxWidth: .infinity)
             .onChange(of: viewMode) { _, _ in
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 // Clear the interaction flag on a mode switch so badges can't
@@ -284,16 +300,20 @@ struct DeckTabView: View {
                 isViewportInteracting = false
             }
 
-            Spacer()
-
             if permissionStore.can("deck_builder.edit", requiredScope: "assigned") {
+                // Compact verb — the object (this design) is on screen, so the
+                // shorter label reads clean and leaves the row to the segments.
                 Button {
                     onEditDeckDesign(design)
                 } label: {
-                    Text("EDIT DESIGN")
+                    Text("EDIT")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Edit design")
             }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)

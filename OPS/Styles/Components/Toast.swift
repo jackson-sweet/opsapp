@@ -265,7 +265,14 @@ private struct ToastBanner: View {
                 actionButton(action)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        // Bug (site-visit report) — the pill hugs its content and centers in
+        // the host instead of stretching edge-to-edge. Dropping the banner's
+        // (and the label's) `maxWidth: .infinity` lets the HStack hug width;
+        // `fixedSize(vertical:)` pins the height to the content so the action
+        // button's `maxHeight: .infinity` matches the row instead of
+        // ballooning the pill. The host VStack (center-aligned) centers it.
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minHeight: 44)
         .glassDense()
         .overlay(
             // Tone hairline tint over the glass border — subtle, not loud.
@@ -292,7 +299,6 @@ private struct ToastBanner: View {
                 .frame(width: 16, height: 16)
 
             labelText
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityLabel(accessibilityLabel)
         }
         .padding(.leading, OPSStyle.Layout.spacing3_5)

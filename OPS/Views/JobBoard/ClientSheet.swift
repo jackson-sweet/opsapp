@@ -412,8 +412,6 @@ struct ClientSheet: View {
                             clientImage = images.first
                         }
                     ),
-                    allowsEditing: true,
-                    sourceType: .photoLibrary,
                     selectionLimit: 1
                 )
             }

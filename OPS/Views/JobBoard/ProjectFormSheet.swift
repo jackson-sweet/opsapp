@@ -1765,7 +1765,6 @@ struct ProjectFormSheet: View {
         .sheet(isPresented: $showingImagePicker) {
             ImagePicker(
                 images: $projectImages,
-                allowsEditing: false,
                 selectionLimit: 10,
                 onSelectionComplete: {
                     showingImagePicker = false

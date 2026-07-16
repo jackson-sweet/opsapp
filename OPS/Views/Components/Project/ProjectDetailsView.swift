@@ -32,7 +32,9 @@ struct ProjectDetailsView: View {
     @State private var editingExpense: ExpenseDTO? = nil
     @State private var showNewExpenseSheet = false
     @State private var showingStatusPicker = false
-    @State private var showingNativeCamera = false
+    /// Bug 56c37df2 — PHOTO opens the standardized batch camera
+    /// (same component as site-visit capture).
+    @State private var showingCamera = false
     @State private var showingMeasureCapture = false
     @State private var showingDeckCreationPicker = false
     @State private var deckDesignToOpen: DeckDesign?
@@ -108,8 +110,8 @@ struct ProjectDetailsView: View {
                     .sheet(isPresented: $viewModel.showingImagePicker) {
                         imagePickerContent
                     }
-                    .fullScreenCover(isPresented: $showingNativeCamera) {
-                        nativeCameraContent
+                    .fullScreenCover(isPresented: $showingCamera) {
+                        cameraContent
                     }
                     .fullScreenCover(isPresented: $showingMeasureCapture) {
                         // LiDAR Dimensioned Photo Capture (spec §3.1) — same
@@ -918,7 +920,6 @@ struct ProjectDetailsView: View {
     private var imagePickerContent: some View {
         ImagePicker(
             images: $viewModel.selectedImages,
-            allowsEditing: false,
             selectionLimit: 10,
             onSelectionComplete: {
                 viewModel.showingImagePicker = false
@@ -931,36 +932,24 @@ struct ProjectDetailsView: View {
         )
     }
 
-    private var nativeCameraContent: some View {
-        ImagePicker(
-            images: $viewModel.selectedImages,
-            allowsEditing: false,
-            sourceType: .camera,
-            selectionLimit: 1,
-            onSelectionComplete: {
-                showingNativeCamera = false
-                if !viewModel.selectedImages.isEmpty {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        viewModel.addPhotosToProject(tutorialMode: tutorialMode)
-                        NotificationCenter.default.post(
-                            name: Notification.Name("WizardPhotoCaptured"),
-                            object: nil
-                        )
-                    }
-                }
-            }
-        )
+    private var cameraContent: some View {
+        // Bug 56c37df2 — the standardized batch camera (same component
+        // as site-visit capture): live multi-shot, real lens stops, and
+        // library import built into the camera HUD.
+        CameraBatchView { images in
+            showingCamera = false
+            guard !images.isEmpty else { return }
+            viewModel.selectedImages = images
+            viewModel.addPhotosToProject(tutorialMode: tutorialMode)
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardPhotoCaptured"),
+                object: nil
+            )
+        }
     }
 
     private func openProjectPhotoCapture() {
-        viewModel.selectedImages = []
-
-        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
-            viewModel.showingImagePicker = true
-            return
-        }
-
-        showingNativeCamera = true
+        showingCamera = true
     }
 
     private func openDeckDesignFromActionBar() {
@@ -977,7 +966,6 @@ struct ProjectDetailsView: View {
     private var noteImagePickerContent: some View {
         ImagePicker(
             images: $noteSelectedImages,
-            allowsEditing: false,
             selectionLimit: 5,
             onSelectionComplete: {
                 viewModel.showingNoteImagePicker = false

@@ -223,8 +223,6 @@ struct ExpenseFormSheet: View {
             .sheet(isPresented: $showImagePicker) {
                 ImagePicker(
                     images: $selectedImages,
-                    allowsEditing: false,
-                    sourceType: .photoLibrary,
                     selectionLimit: 10,
                     onSelectionComplete: {
                         receiptQueue = selectedImages

@@ -229,8 +229,6 @@ struct OrganizationDetailsView: View {
                         checkForChanges()
                     }
                 ),
-                allowsEditing: true,
-                sourceType: .photoLibrary,
                 selectionLimit: 1
             )
         }

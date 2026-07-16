@@ -363,8 +363,6 @@ struct CompanySetupPromptView: View {
                         companyImage = images.first
                     }
                 ),
-                allowsEditing: true,
-                sourceType: .photoLibrary,
                 selectionLimit: 1
             )
         }

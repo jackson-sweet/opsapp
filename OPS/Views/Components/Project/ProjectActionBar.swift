@@ -7,7 +7,6 @@
 
 
 import SwiftUI
-import PhotosUI
 import UIKit
 
 struct ProjectActionBar: View {
@@ -25,17 +24,13 @@ struct ProjectActionBar: View {
     @State private var showCompleteConfirmation = false
     @State private var showExpenseForm = false
     @State private var showProjectDetails = false
-    @State private var showImagePicker = false
     @State private var actionBarError: String? = nil
-    /// Bug 98773d61 — action-bar camera capture must use the native iOS
-    /// camera path. The library path keeps using PHPicker.
-    @State private var showNativeCamera = false
-    /// Confirmation dialog for picking between native camera capture and
-    /// library import when the user taps the Photo action.
-    @State private var showPhotoSourceChooser = false
+    /// Bug 56c37df2 — the Photo action opens the standardized batch
+    /// camera (same component as site-visit capture): live multi-shot,
+    /// real lens stops, and library import built into the camera HUD.
+    @State private var showingCamera = false
     @State private var selectedImages: [UIImage] = []
     @State private var processingImage = false
-    @State private var isAddingPhotos = false // Prevent duplicate additions
 
     @StateObject private var expenseViewModel = ExpenseViewModel()
 
@@ -162,53 +157,16 @@ struct ProjectActionBar: View {
             }
             .interactiveDismissDisabled(true)
         }
-        // Bug 98773d61 / 02222904 — choose between native camera capture
-        // and the library picker before opening anything.
-        .confirmationDialog(
-            "Add Photos",
-            isPresented: $showPhotoSourceChooser,
-            titleVisibility: .visible
-        ) {
-            if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                Button("Take Photos") {
-                    showNativeCamera = true
-                }
+        // Bug 56c37df2 — the standardized batch camera (same component
+        // as site-visit capture). Library import lives inside the camera
+        // HUD, so one entry point covers both paths.
+        .fullScreenCover(isPresented: $showingCamera) {
+            CameraBatchView { images in
+                showingCamera = false
+                guard !images.isEmpty else { return }
+                selectedImages = images
+                addPhotosToProject()
             }
-            Button("Choose from Library") {
-                showImagePicker = true
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Capture photos with the camera or pick existing ones from your library.")
-        }
-        // Library-only picker. The camera path lives in showNativeCamera.
-        .sheet(isPresented: $showImagePicker, onDismiss: {
-            isAddingPhotos = false
-        }) {
-            ImagePicker(
-                images: $selectedImages,
-                allowsEditing: false,
-                sourceType: .photoLibrary,
-                selectionLimit: 10,
-                onSelectionComplete: {
-                    commitSelectedPhotosAfterPickerDismiss {
-                        showImagePicker = false
-                    }
-                }
-            )
-        }
-        .fullScreenCover(isPresented: $showNativeCamera) {
-            ImagePicker(
-                images: $selectedImages,
-                allowsEditing: false,
-                sourceType: .camera,
-                selectionLimit: 1,
-                onSelectionComplete: {
-                    commitSelectedPhotosAfterPickerDismiss {
-                        showNativeCamera = false
-                    }
-                }
-            )
         }
         // Loading overlay when processing image
         .overlay(
@@ -332,21 +290,11 @@ struct ProjectActionBar: View {
                 showProjectDetails = true
             }
         case .photo:
-            showPhotoSourceChooser = true
+            showingCamera = true
         }
     }
 
-    private func commitSelectedPhotosAfterPickerDismiss(_ dismiss: @escaping () -> Void) {
-        guard !isAddingPhotos, !selectedImages.isEmpty else { return }
 
-        isAddingPhotos = true
-        dismiss()
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            addPhotosToProject()
-        }
-    }
-    
     // Mark project as complete
     private func markProjectComplete() {
         // Show a simple confirmation dialog
@@ -445,7 +393,6 @@ struct ProjectActionBar: View {
                         // already been cleared by saveImages's defer.
                         selectedImages.removeAll()
                         processingImage = false
-                        isAddingPhotos = false
                     }
                 } else {
                     // Fallback to direct processing
@@ -501,13 +448,11 @@ struct ProjectActionBar: View {
                         
                         selectedImages.removeAll()
                         processingImage = false
-                        isAddingPhotos = false
                     }
                 }
             } catch {
                 await MainActor.run {
                     processingImage = false
-                    isAddingPhotos = false
                     selectedImages.removeAll()
                 }
             }

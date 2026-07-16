@@ -88,7 +88,7 @@ struct LostReasonSheet: View {
                 Text(metaLine)
                     .foregroundColor(OPSStyle.Colors.text3)
             }
-            .font(.custom("JetBrainsMono-Regular", size: 10))
+            .font(OPSStyle.Typography.miniLabel)
             .kerning(1.4)
             .textCase(.uppercase)
 

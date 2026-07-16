@@ -14,9 +14,33 @@ struct InvoiceDetailView: View {
     @State private var showPaymentSheet = false
     @State private var showVoidConfirm = false
     @State private var showWriteOffConfirm = false
+    @State private var showBreakdown: Bool
+
+    /// `initialShowBreakdown` seeds the bundle-breakdown toggle — the default
+    /// (bundled) is production behavior; the snapshot harness passes `true`
+    /// to capture the expanded state.
+    init(invoice: Invoice, viewModel: InvoiceViewModel, initialShowBreakdown: Bool = false) {
+        self.invoice = invoice
+        self.viewModel = viewModel
+        _showBreakdown = State(initialValue: initialShowBreakdown)
+    }
 
     private var lineItems: [InvoiceLineItem] {
         viewModel.lineItems(for: invoice.id)
+    }
+
+    // Bundle-aware grouping — estimates converted to invoices carry their
+    // parent/child line items across (convert_estimate_to_invoice copies
+    // children with remapped parent ids). Parents hold the money; children
+    // are the material breakdown. Rendering them as flat peers would double-
+    // count every bundle on screen, so the invoice mirrors the estimate
+    // detail: bundled by default, BREAKDOWN on demand.
+    private var parentItems: [InvoiceLineItem] {
+        lineItems.filter { $0.parentLineItemId == nil }
+    }
+
+    private func childItems(for parentId: String) -> [InvoiceLineItem] {
+        lineItems.filter { $0.parentLineItemId == parentId }
     }
 
     private var payments: [Payment] {
@@ -94,7 +118,7 @@ struct InvoiceDetailView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will write off \(invoice.invoiceNumber) (\(invoice.balanceDue, format: .currency(code: "USD"))) as bad debt. This action cannot be undone.")
+            Text("This will write off \(invoice.invoiceNumber) (\(LineItemDisplay.money(invoice.balanceDue))) as bad debt. This action cannot be undone.")
         }
         .sheet(isPresented: $showPaymentSheet) {
             PaymentRecordSheet(invoice: invoice, viewModel: viewModel)
@@ -121,7 +145,7 @@ struct InvoiceDetailView: View {
             }
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Text(invoice.total, format: .currency(code: "USD").precision(.fractionLength(0)))
+                Text(LineItemDisplay.money(invoice.total))
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -166,10 +190,27 @@ struct InvoiceDetailView: View {
 
     private var lineItemsSection: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text("LINE ITEMS")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
+            HStack {
+                Text("LINE ITEMS")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Spacer()
+                if lineItems.contains(where: { $0.parentLineItemId != nil }) {
+                    Button {
+                        withAnimation(OPSStyle.Animation.spring) { showBreakdown.toggle() }
+                    } label: {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
+                            Text(showBreakdown ? "BUNDLED" : "BREAKDOWN")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            Image(systemName: showBreakdown ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
 
             if lineItems.isEmpty {
                 Text("No line items")
@@ -179,9 +220,17 @@ struct InvoiceDetailView: View {
                     .padding(.vertical, OPSStyle.Layout.spacing4)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(lineItems) { item in
-                        lineItemRow(item)
-                        if item.id != lineItems.last?.id {
+                    ForEach(Array(parentItems.enumerated()), id: \.element.id) { index, item in
+                        parentLineItemRow(item)
+
+                        if showBreakdown {
+                            let children = childItems(for: item.id)
+                            ForEach(children) { child in
+                                childLineItemRow(child)
+                            }
+                        }
+
+                        if index < parentItems.count - 1 {
                             Divider().background(OPSStyle.Colors.separator)
                         }
                     }
@@ -193,15 +242,16 @@ struct InvoiceDetailView: View {
         .padding(.top, OPSStyle.Layout.spacing3)
     }
 
-    private func lineItemRow(_ item: InvoiceLineItem) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+    private func parentLineItemRow(_ item: InvoiceLineItem) -> some View {
+        let children = childItems(for: item.id)
+        return VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Text(item.name)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
                 Spacer()
-                Text(item.lineTotal, format: .currency(code: "USD").precision(.fractionLength(0)))
+                Text(LineItemDisplay.money(item.lineTotal))
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
@@ -209,18 +259,69 @@ struct InvoiceDetailView: View {
                 Text(item.type.rawValue.uppercased())
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                let qty = formatQuantity(item.quantity)
-                Text("[\(qty)\(item.unit ?? "") · \(item.unitPrice, format: .currency(code: "USD"))/\(item.unit ?? "ea")]")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                // Standalone items carry their own math; bundle parents are a
+                // sum of their children, so they show the item count instead.
+                if children.isEmpty {
+                    Text("· \(LineItemDisplay.quantityPriceMeta(quantity: item.quantity, unit: item.unit, unitPrice: item.unitPrice, resolvedUnitPrice: item.resolvedUnitPrice))")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                if let label = item.resolvedOptionsLabel, !label.isEmpty {
+                    Text("· \(label)")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .lineLimit(1)
+                }
+                if !children.isEmpty {
+                    Text("[\(children.count) items]")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
             }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2)
     }
 
-    private func formatQuantity(_ qty: Double) -> String {
-        qty.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(qty)) : String(format: "%.1f", qty)
+    private func childLineItemRow(_ item: InvoiceLineItem) -> some View {
+        HStack {
+            Rectangle()
+                .fill(OPSStyle.Colors.tertiaryText.opacity(0.2))
+                .frame(width: 2)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.name)
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineLimit(1)
+                Text(childMetaLine(item))
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            Spacer()
+            Text(LineItemDisplay.money(item.lineTotal))
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+        }
+        .padding(.leading, OPSStyle.Layout.spacing3 + 14)
+        .padding(.trailing, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
+        .background(OPSStyle.Colors.surfaceHover)
+    }
+
+    /// Child-row metadata: "qty unit × unit price · [chosen option]". Configured
+    /// children display their resolved snapshot price — the price their line
+    /// total was actually computed from.
+    private func childMetaLine(_ item: InvoiceLineItem) -> String {
+        let meta = LineItemDisplay.quantityPriceMeta(
+            quantity: item.quantity,
+            unit: item.unit,
+            unitPrice: item.unitPrice,
+            resolvedUnitPrice: item.resolvedUnitPrice
+        )
+        if let label = item.resolvedOptionsLabel, !label.isEmpty {
+            return "\(meta) · \(label)"
+        }
+        return meta
     }
 
     // MARK: - Totals
@@ -235,18 +336,37 @@ struct InvoiceDetailView: View {
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Spacer()
-                    Text(invoice.subtotal, format: .currency(code: "USD").precision(.fractionLength(0)))
+                    Text(LineItemDisplay.money(invoice.subtotal))
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
 
-                if invoice.taxRate > 0 {
+                // Discount is derived from the stored totals so the card's
+                // arithmetic always closes on screen — without this row a
+                // discounted invoice reads subtotal + tax ≠ total.
+                if let discount = LineItemDisplay.discountAmount(
+                    subtotal: invoice.subtotal,
+                    taxAmount: invoice.taxAmount,
+                    total: invoice.total
+                ) {
                     HStack {
-                        Text("TAX (\(String(format: "%.0f", invoice.taxRate))%)")
+                        Text("DISCOUNT")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Spacer()
-                        Text(invoice.taxAmount, format: .currency(code: "USD").precision(.fractionLength(0)))
+                        Text("−\(LineItemDisplay.money(discount))")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                }
+
+                if invoice.taxRate > 0 {
+                    HStack {
+                        Text("TAX (\(LineItemDisplay.taxRateString(invoice.taxRate))%)")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        Spacer()
+                        Text(LineItemDisplay.money(invoice.taxAmount))
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -258,7 +378,7 @@ struct InvoiceDetailView: View {
                         .fontWeight(.semibold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                     Spacer()
-                    Text(invoice.total, format: .currency(code: "USD").precision(.fractionLength(0)))
+                    Text(LineItemDisplay.money(invoice.total))
                         .font(OPSStyle.Typography.body)
                         .fontWeight(.semibold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -270,7 +390,7 @@ struct InvoiceDetailView: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.successStatus)
                         Spacer()
-                        Text(invoice.amountPaid, format: .currency(code: "USD").precision(.fractionLength(0)))
+                        Text(LineItemDisplay.money(invoice.amountPaid))
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.successStatus)
                     }
@@ -281,7 +401,7 @@ struct InvoiceDetailView: View {
                             .fontWeight(.semibold)
                             .foregroundColor(invoice.isOverdue ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryText)
                         Spacer()
-                        Text(invoice.balanceDue, format: .currency(code: "USD").precision(.fractionLength(0)))
+                        Text(LineItemDisplay.money(invoice.balanceDue))
                             .font(OPSStyle.Typography.body)
                             .fontWeight(.semibold)
                             .foregroundColor(invoice.isOverdue ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryText)
@@ -329,7 +449,7 @@ struct InvoiceDetailView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             Spacer()
-            Text(payment.amount, format: .currency(code: "USD").precision(.fractionLength(2)))
+            Text(LineItemDisplay.money(payment.amount))
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(payment.isVoided ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.successStatus)
             if payment.isVoided {
@@ -359,7 +479,7 @@ struct InvoiceDetailView: View {
                         Text("BALANCE DUE")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
-                        Text(invoice.balanceDue, format: .currency(code: "USD").precision(.fractionLength(0)))
+                        Text(LineItemDisplay.money(invoice.balanceDue))
                             .font(OPSStyle.Typography.subtitle)
                             .foregroundColor(invoice.isOverdue ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryText)
                     }

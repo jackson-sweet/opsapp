@@ -57,7 +57,7 @@ struct TacticalChipRow: View {
                 Text("·").foregroundColor(isActive ? tone.opacity(0.7) : OPSStyle.Colors.textMute)
                 Text("\(chip.count)").monospacedDigit()
             }
-            .font(.custom("JetBrainsMono-Medium", size: 10))
+            .font(OPSStyle.Typography.miniLabelBold)
             .tracking(0.8)
             .textCase(.uppercase)
             .foregroundColor(isActive ? tone : OPSStyle.Colors.text3)

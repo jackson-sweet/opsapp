@@ -312,13 +312,13 @@ struct LeadField<Content: View>: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Text(label)
-                    .font(.custom("JetBrainsMono-Medium", size: 10))
+                    .font(OPSStyle.Typography.miniLabelBold)
                     .kerning(1.6)
                     .foregroundColor(OPSStyle.Colors.text3)
                     .textCase(.uppercase)
                 if let hint {
                     Text(hint)
-                        .font(.custom("JetBrainsMono-Regular", size: 10))
+                        .font(OPSStyle.Typography.miniLabel)
                         .kerning(1.6)
                         .foregroundColor(OPSStyle.Colors.textMute)
                         .textCase(.uppercase)
@@ -349,7 +349,7 @@ struct LeadTextInput: View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             if let leading {
                 Text(leading)
-                    .font(.custom("JetBrainsMono-Regular", size: 13))
+                    .font(OPSStyle.Typography.dataValue)
                     .foregroundColor(OPSStyle.Colors.textMute)
             }
             TextField("", text: $text, prompt:
@@ -460,7 +460,7 @@ struct LeadChipPicker: View {
                     selection = option.id
                 } label: {
                     Text(option.label)
-                        .font(.custom("JetBrainsMono-Medium", size: 10))
+                        .font(OPSStyle.Typography.miniLabelBold)
                         .kerning(1.4)
                         .foregroundColor(isActive ? OPSStyle.Colors.text : OPSStyle.Colors.text2)
                         .textCase(.uppercase)

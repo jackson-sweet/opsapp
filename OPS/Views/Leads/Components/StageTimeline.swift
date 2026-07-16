@@ -64,7 +64,7 @@ private struct StageRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Text(ageString)
-                .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                .font(OPSStyle.Typography.nanoLabel)
                 .foregroundColor(OPSStyle.Colors.textMute)
                 .kerning(1.0)
                 .textCase(.uppercase)
@@ -74,7 +74,7 @@ private struct StageRow: View {
             HStack(spacing: 6) {
                 if let from = transition.fromStage {
                     Text(from.shortLabel)
-                        .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                        .font(OPSStyle.Typography.nanoLabel)
                         .fontWeight(.semibold)
                         .kerning(1.26)
                         .foregroundColor(OPSStyle.Colors.textMute)
@@ -86,7 +86,7 @@ private struct StageRow: View {
                 }
 
                 Text(transition.toStage.displayName)
-                    .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                    .font(OPSStyle.Typography.nanoLabel)
                     .fontWeight(.semibold)
                     .kerning(1.33)
                     .foregroundColor(isLatest ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
@@ -122,7 +122,7 @@ private struct EmptyLine: View {
 
     var body: some View {
         Text(text)
-            .font(.custom("JetBrainsMono-Regular", size: 10))
+            .font(OPSStyle.Typography.miniLabel)
             .kerning(1.6)
             .foregroundColor(OPSStyle.Colors.textMute)
             .textCase(.uppercase)

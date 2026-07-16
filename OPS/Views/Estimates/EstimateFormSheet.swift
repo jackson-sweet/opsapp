@@ -217,12 +217,7 @@ struct EstimateFormSheet: View {
     }
 
     private func lineItemRow(_ item: EstimateLineItem) -> some View {
-        let unitLabel = item.unit ?? "ea"
-        let displayUnitPrice = item.resolvedUnitPrice ?? item.unitPrice
-        let qty = item.quantity.truncatingRemainder(dividingBy: 1) == 0
-            ? String(Int(item.quantity))
-            : String(format: "%.1f", item.quantity)
-        return VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 2) {
             HStack {
                 if let label = item.resolvedOptionsLabel, !label.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
@@ -242,7 +237,7 @@ struct EstimateFormSheet: View {
                         .lineLimit(1)
                 }
                 Spacer()
-                Text(item.lineTotal, format: .currency(code: "USD").precision(.fractionLength(0)))
+                Text(LineItemDisplay.money(item.lineTotal))
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
@@ -250,7 +245,7 @@ struct EstimateFormSheet: View {
                 Text(item.type.rawValue.uppercased())
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Text("[\(qty)\(unitLabel) · \(displayUnitPrice, format: .currency(code: "USD"))/\(unitLabel)]")
+                Text("· \(LineItemDisplay.quantityPriceMeta(quantity: item.quantity, unit: item.unit, unitPrice: item.unitPrice, resolvedUnitPrice: item.resolvedUnitPrice))")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -265,12 +260,12 @@ struct EstimateFormSheet: View {
         OPSFloatingButtonBar(horizontalPadding: OPSStyle.Layout.spacing3, verticalPadding: OPSStyle.Layout.spacing2) {
             VStack(spacing: OPSStyle.Layout.spacing1) {
                 HStack {
-                    Text("Subtotal \(subtotal, format: .currency(code: "USD").precision(.fractionLength(0)))")
+                    Text("Subtotal \(LineItemDisplay.money(subtotal))")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Spacer()
                     if (estimate?.taxRate ?? 0) > 0 {
-                        Text("Tax \(taxAmount, format: .currency(code: "USD").precision(.fractionLength(0)))")
+                        Text("Tax \(LineItemDisplay.money(taxAmount))")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -281,7 +276,7 @@ struct EstimateFormSheet: View {
                         .font(OPSStyle.Typography.body)
                         .fontWeight(.semibold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                    Text(total, format: .currency(code: "USD").precision(.fractionLength(0)))
+                    Text(LineItemDisplay.money(total))
                         .font(OPSStyle.Typography.subtitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                     Spacer()

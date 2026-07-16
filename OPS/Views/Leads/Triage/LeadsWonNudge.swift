@@ -28,7 +28,7 @@ struct LeadsWonNudge: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(count) WON · \(BooksFormat.compact(totalValue))")
-                        .font(.custom("JetBrainsMono-Medium", size: 10))
+                        .font(OPSStyle.Typography.miniLabelBold)
                         .tracking(0.9)
                         .textCase(.uppercase)
                         .foregroundColor(OPSStyle.Colors.oliveTextM)

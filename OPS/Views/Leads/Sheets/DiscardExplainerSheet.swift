@@ -73,7 +73,7 @@ struct DiscardExplainerSheet: View {
                 Text(term)
                     .foregroundColor(termColor)
             }
-            .font(.custom("JetBrainsMono-Regular", size: 10))
+            .font(OPSStyle.Typography.miniLabel)
             .kerning(1.4)
             .textCase(.uppercase)
 

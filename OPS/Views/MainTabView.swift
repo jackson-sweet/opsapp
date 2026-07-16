@@ -304,15 +304,43 @@ struct MainTabView: View {
     }
 
     // FAB visibility expression hoisted out of the modifier chain so the
-    // view-builder type-checker isn't asked to resolve the same 6-term
+    // view-builder type-checker isn't asked to resolve the same 7-term
     // boolean twice inline. Stays in lockstep with `allowsHitTesting`.
     private var isFABVisible: Bool {
+        Self.fabVisible(
+            isSettingsTab: isSettingsTab,
+            isPerformingInitialSync: dataController.isPerformingInitialSync,
+            isLoadingProjects: appState.isLoadingProjects,
+            isScheduleSelectionMode: appState.isScheduleSelectionMode,
+            isShowingMapOverlay: appState.isShowingMapOverlay,
+            isInProjectMode: appState.isInProjectMode,
+            tabBarHidden: tabBarVisibility.isHidden
+        )
+    }
+
+    /// Pure FAB-visibility rule, extracted so tests can pin it directly.
+    /// `tabBarHidden` folds the shared bottom-edge state into the decision:
+    /// when a pushed detail screen (estimate, invoice, expense batch) hides
+    /// the global tab bar via `.hidesGlobalTabBar()` because its own action
+    /// footer owns the bottom edge, the FAB must yield with it — otherwise
+    /// the bolt button floats over MARK APPROVED / RECORD PAYMENT /
+    /// APPROVE ALL (bug ce6da104).
+    static func fabVisible(
+        isSettingsTab: Bool,
+        isPerformingInitialSync: Bool,
+        isLoadingProjects: Bool,
+        isScheduleSelectionMode: Bool,
+        isShowingMapOverlay: Bool,
+        isInProjectMode: Bool,
+        tabBarHidden: Bool
+    ) -> Bool {
         !isSettingsTab
-            && !dataController.isPerformingInitialSync
-            && !appState.isLoadingProjects
-            && !appState.isScheduleSelectionMode
-            && !appState.isShowingMapOverlay
-            && !appState.isInProjectMode
+            && !isPerformingInitialSync
+            && !isLoadingProjects
+            && !isScheduleSelectionMode
+            && !isShowingMapOverlay
+            && !isInProjectMode
+            && !tabBarHidden
     }
 
     // Floating action menu wrapper — extracted from `body` to stay under
@@ -338,6 +366,7 @@ struct MainTabView: View {
         .animation(OPSStyle.Animation.fast, value: appState.isScheduleSelectionMode)
         .animation(OPSStyle.Animation.fast, value: appState.isShowingMapOverlay)
         .animation(OPSStyle.Animation.fast, value: appState.isInProjectMode)
+        .animation(OPSStyle.Animation.fast, value: tabBarVisibility.isHidden)
     }
 
     // Tab content router — extracted from `body` so the compiler can

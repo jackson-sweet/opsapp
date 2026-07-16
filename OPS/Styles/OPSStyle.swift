@@ -388,6 +388,8 @@ enum OPSStyle {
 
         // Compact UI labels (legacy Kosugi → remapped to JetBrains Mono)
         static let miniLabel = Font.miniLabel
+        static let miniLabelBold = Font.miniLabelBold  // → JetBrains Mono Medium 10pt (micro panel headers)
+        static let nanoLabel = Font.nanoLabel          // → JetBrains Mono Regular 9.5pt (densest micro-label)
         static let microLabel = Font.microLabel
         static let tagLabel = Font.tagLabel
         static let previewLabel = Font.previewLabel

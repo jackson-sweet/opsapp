@@ -86,6 +86,10 @@ struct PerimeterLengthControlView: View {
             value: perimeterLengthBinding,
             leadingSystemImage: selectedDirection?.systemImage,
             message: viewModel.perimeterEntryMessage,
+            autoStartDictation: viewModel.shouldAutoStartDictation,
+            onDictationManualStop: {
+                viewModel.noteDictationManuallyStopped()
+            },
             onBack: {
                 viewModel.stepBackPerimeterEntry()
             },

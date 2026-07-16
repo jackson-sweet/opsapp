@@ -425,7 +425,7 @@ private struct DetailNavBar<Trailing: View>: View {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 16, weight: .regular))
                     Text("LEADS")
-                        .font(.custom("JetBrainsMono-Regular", size: 10))
+                        .font(OPSStyle.Typography.miniLabel)
                         .fontWeight(.semibold)
                         .kerning(1.4)
                         .textCase(.uppercase)
@@ -466,7 +466,7 @@ private struct WonNotConvertedCard: View {
                 Text("WON · NOT CONVERTED")
                     .foregroundColor(OPSStyle.Colors.oliveTextM)
             }
-            .font(.custom("JetBrainsMono-Regular", size: 10))
+            .font(OPSStyle.Typography.miniLabel)
             .fontWeight(.semibold)
             .kerning(1.6)
             .textCase(.uppercase)

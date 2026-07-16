@@ -114,6 +114,10 @@ struct ProjectFormSheet: View {
     /// flight. Used to suppress double-taps on the import button and to
     /// show a subtle indicator on the client field.
     @State private var isImportingContact = false
+    /// Bug 388663d4 — device address book blended into the client picker.
+    /// Loads lazily on first focus of the client field (non-tutorial only);
+    /// degrades to empty when Contacts access is denied.
+    @StateObject private var phoneContacts = PhoneContactsProvider()
     @State private var clientSearchText = ""
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var showingImagePicker = false
@@ -243,6 +247,18 @@ struct ProjectFormSheet: View {
             query: clientSearchText,
             tutorialMode: tutorialMode
         )
+    }
+
+    /// Bug 388663d4 — device contacts that match the query and are NOT already
+    /// in OPS. These render as badged rows below the OPS matches; tapping one
+    /// creates the client in the background (see `importPhoneContact`). Empty
+    /// in tutorial mode and whenever Contacts access is unavailable.
+    private var phoneContactMatches: [PhoneContactSuggestion] {
+        guard !tutorialMode, phoneContacts.canRead else { return [] }
+        let matches = PhoneContactSearch.matching(phoneContacts.suggestions, query: clientSearchText)
+        guard !matches.isEmpty else { return [] }
+        let identity = ClientIdentityIndex(clients: availableClients)
+        return PhoneContactSearch.notInOps(matches, existing: identity)
     }
 
     private var selectedClient: Client? {
@@ -970,58 +986,124 @@ struct ProjectFormSheet: View {
 
             // Show suggestions when input is focused and (text is not empty OR in tutorial mode during client phase)
             if focusedField == .client && (!clientSearchText.isEmpty || (tutorialMode && tutorialPhase == .projectFormClient)) {
-                VStack(spacing: 0) {
-                    if matchingClients.isEmpty && !tutorialMode {
-                        Button(action: { showingCreateClient = true }) {
-                            HStack {
-                                Image(systemName: "plus.circle.fill")
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                Text("Create \"\(clientSearchText)\"")
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                Spacer()
-                            }
-                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                            .padding(.horizontal, OPSStyle.Layout.spacing3)
-                        }
-                    } else {
-                        ForEach(matchingClients.prefix(5)) { client in
-                            Button(action: {
-                                selectedClientId = client.id
-                                clientSearchText = client.name
-                                // Wizard system: notify client selected in project form
-                                NotificationCenter.default.post(
-                                    name: Notification.Name("WizardProjectClientSelected"),
-                                    object: nil
-                                )
-                                // Tutorial mode: notify client selected
-                                if tutorialMode {
-                                    NotificationCenter.default.post(
-                                        name: Notification.Name("TutorialClientSelected"),
-                                        object: nil
-                                    )
-                                }
-                            }) {
-                                HStack {
-                                    Text(client.name)
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-                                    Spacer()
-                                }
-                                .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                            }
-                            .buttonStyle(PlainButtonStyle())
+                clientSuggestionList
+            }
+        }
+        // Bug 388663d4 — warm the device-contacts index the first time the
+        // operator focuses the client field (non-tutorial only). Requests
+        // Contacts access if undetermined; a denial degrades to OPS-only.
+        .onChange(of: focusedField) { _, newValue in
+            if newValue == .client && !tutorialMode {
+                Task { await phoneContacts.prepare() }
+            }
+        }
+    }
 
-                            if client.id != matchingClients.prefix(5).last?.id {
-                                Divider()
-                                    .background(OPSStyle.Colors.cardBorder)
-                            }
-                        }
+    /// Bug 388663d4 — the focused-field suggestion list: OPS client matches
+    /// first, then device contacts that aren't in OPS yet (badged), then the
+    /// "Create …" affordance when the typed text matches no OPS client.
+    @ViewBuilder
+    private var clientSuggestionList: some View {
+        let opsRows = Array(matchingClients.prefix(5))
+        let phoneRows = Array(phoneContactMatches.prefix(5))
+        let showCreateRow = matchingClients.isEmpty && !tutorialMode
+
+        if opsRows.isEmpty && phoneRows.isEmpty && !showCreateRow {
+            EmptyView()
+        } else {
+            VStack(spacing: 0) {
+                ForEach(opsRows) { client in
+                    opsClientSuggestionRow(client)
+                    if client.id != opsRows.last?.id || !phoneRows.isEmpty {
+                        suggestionDivider
                     }
                 }
-                .glassDense(cornerRadius: OPSStyle.Layout.cornerRadius)
+                ForEach(phoneRows) { suggestion in
+                    phoneContactSuggestionRow(suggestion)
+                    if suggestion.id != phoneRows.last?.id || showCreateRow {
+                        suggestionDivider
+                    }
+                }
+                if showCreateRow {
+                    createClientSuggestionRow
+                }
             }
+            .glassDense(cornerRadius: OPSStyle.Layout.cornerRadius)
+        }
+    }
+
+    private func opsClientSuggestionRow(_ client: Client) -> some View {
+        Button(action: {
+            selectedClientId = client.id
+            clientSearchText = client.name
+            // Wizard system: notify client selected in project form
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardProjectClientSelected"),
+                object: nil
+            )
+            // Tutorial mode: notify client selected
+            if tutorialMode {
+                NotificationCenter.default.post(
+                    name: Notification.Name("TutorialClientSelected"),
+                    object: nil
+                )
+            }
+        }) {
+            HStack {
+                Text(client.name)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Spacer()
+            }
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    /// A device-contact row (text-only, to match the OPS rows above it in this
+    /// dropdown). Tapping it creates the OPS client in the background and
+    /// selects it, reusing the same path as the manual contact-import button.
+    private func phoneContactSuggestionRow(_ suggestion: PhoneContactSuggestion) -> some View {
+        PhoneContactRow(suggestion: suggestion, showsAvatar: false, isDisabled: isImportingContact) {
+            importPhoneContact(suggestion)
+        }
+    }
+
+    private var createClientSuggestionRow: some View {
+        Button(action: { showingCreateClient = true }) {
+            HStack {
+                Image(systemName: "plus.circle.fill")
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                Text("Create \"\(clientSearchText)\"")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Spacer()
+            }
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private var suggestionDivider: some View {
+        Divider()
+            .background(OPSStyle.Colors.cardBorder)
+    }
+
+    /// Bug 388663d4 — re-fetches the full contact (image + postal) for the
+    /// tapped suggestion, then routes through the existing auto-create path.
+    private func importPhoneContact(_ suggestion: PhoneContactSuggestion) {
+        guard !isImportingContact else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Task { @MainActor in
+            guard let contact = await phoneContacts.fullContact(identifier: suggestion.id) else {
+                errorMessage = "Couldn't open that contact. Try again."
+                return
+            }
+            await handleContactSelected(contact)
         }
     }
 
@@ -2139,13 +2221,11 @@ struct ProjectFormSheet: View {
 
     // MARK: - Contact Import (bug 33403492)
 
-    /// Auto-creates a `Client` from the picked `CNContact` and attaches it
-    /// to the form. Mirrors `ClientSheet.createNewClient` for parity with
-    /// the manual-create path — the new client lands in SwiftData via
-    /// `dataController.createClient`, the matching pipeline lead is
-    /// best-effort, the success toast posts the same notification the
-    /// rest of the app already listens for, and avatars from the contact
-    /// are uploaded to S3 when present.
+    /// Auto-creates a `Client` from the picked `CNContact` and selects it on
+    /// the form. The heavy lifting — avatar upload, client create, matching
+    /// pipeline lead, and the `ClientCreatedSuccess` toast — lives in
+    /// `PhoneContactImporter` so the manual contact-import button and the
+    /// inline "IN CONTACTS" picker rows (Bug 388663d4) share one path.
     @MainActor
     private func handleContactSelected(_ contact: CNContact) async {
         guard !isImportingContact else { return }
@@ -2153,9 +2233,7 @@ struct ProjectFormSheet: View {
             errorMessage = "Cannot import contact — no company configured for the current user."
             return
         }
-
-        let name = composeContactName(from: contact)
-        guard !name.isEmpty else {
+        guard !PhoneContactImporter.composeName(from: contact).isEmpty else {
             errorMessage = "Contact has no name. Edit the contact in iOS Contacts and try again."
             return
         }
@@ -2163,74 +2241,20 @@ struct ProjectFormSheet: View {
         isImportingContact = true
         defer { isImportingContact = false }
 
-        let tempId = UUID().uuidString.lowercased()
-        let phoneRaw = contact.phoneNumbers.first?.value.stringValue
-        let phone = (phoneRaw?.isEmpty ?? true) ? nil : phoneRaw
-        let emailRaw: String? = contact.emailAddresses.first.map { $0.value as String }
-        let email = (emailRaw?.isEmpty ?? true) ? nil : emailRaw
-        let address = composeContactAddress(from: contact)
-
-        // Best-effort avatar upload — failure should not block client
-        // creation (matches `ClientSheet.createNewClient`).
-        var profileImageURL: String? = nil
-        if let imageData = contact.imageData,
-           let image = UIImage(data: imageData) {
-            do {
-                profileImageURL = try await PresignedURLUploadService.shared.uploadClientProfileImage(
-                    image,
-                    clientId: tempId,
-                    companyId: companyId
-                )
-            } catch {
-                print("[CONTACT_IMPORT] ⚠️ Profile image upload failed: \(error.localizedDescription)")
-            }
-        }
-
-        let dto = SupabaseClientDTO(
-            id: tempId,
-            bubbleId: nil,
-            companyId: companyId,
-            name: name,
-            email: email,
-            phoneNumber: phone,
-            address: address,
-            latitude: nil,
-            longitude: nil,
-            notes: nil,
-            profileImageUrl: profileImageURL,
-            deletedAt: nil
-        )
-
         do {
-            _ = try await dataController.createClient(dto: dto)
-            guard let savedClient = dataController.getAllClients(for: companyId).first(where: { $0.id == tempId }) else {
-                errorMessage = "Imported the contact, but couldn't load the new client. Try refreshing."
-                return
-            }
+            let result = try await PhoneContactImporter.createClient(
+                from: contact,
+                companyId: companyId,
+                dataController: dataController
+            )
 
-            selectedClientId = savedClient.id
-            clientSearchText = savedClient.name
+            selectedClientId = result.client.id
+            clientSearchText = result.client.name
             focusedField = nil
 
             #if !targetEnvironment(simulator)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             #endif
-
-            let opportunityId = try await createPipelineLeadForClient(savedClient, companyId: companyId)
-
-            var userInfo: [String: Any] = [
-                "clientName": savedClient.name,
-                "clientId": savedClient.id,
-                "leadCreated": true
-            ]
-            userInfo["opportunityId"] = opportunityId
-
-            // Match the success-toast wiring used by `ClientSheet`.
-            NotificationCenter.default.post(
-                name: Notification.Name("ClientCreatedSuccess"),
-                object: nil,
-                userInfo: userInfo
-            )
 
             // Wizard system sees the import as equivalent to manual create.
             NotificationCenter.default.post(
@@ -2242,66 +2266,6 @@ struct ProjectFormSheet: View {
             #if !targetEnvironment(simulator)
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             #endif
-        }
-    }
-
-    /// Build a display name from a `CNContact`. Falls back to organization
-    /// when both given/family names are empty. Empty result means the
-    /// contact has no usable name and the import should error out.
-    private func composeContactName(from contact: CNContact) -> String {
-        let given = contact.givenName.trimmingCharacters(in: .whitespaces)
-        let family = contact.familyName.trimmingCharacters(in: .whitespaces)
-        let fullName = [given, family].filter { !$0.isEmpty }.joined(separator: " ")
-        if !fullName.isEmpty { return fullName }
-        return contact.organizationName.trimmingCharacters(in: .whitespaces)
-    }
-
-    /// Compose a single comma-separated address line from the first postal
-    /// address on the contact. Mirrors the format used by
-    /// `AddressAutocompleteField` outputs so the field looks the same
-    /// whether the user typed the address or imported it.
-    private func composeContactAddress(from contact: CNContact) -> String? {
-        guard let postal = contact.postalAddresses.first?.value else { return nil }
-        var components: [String] = []
-        if !postal.street.isEmpty { components.append(postal.street) }
-        if !postal.city.isEmpty { components.append(postal.city) }
-        if !postal.state.isEmpty { components.append(postal.state) }
-        if !postal.postalCode.isEmpty { components.append(postal.postalCode) }
-        let joined = components.joined(separator: ", ")
-        return joined.isEmpty ? nil : joined
-    }
-
-    /// Best-effort matching pipeline lead for a freshly imported client.
-    /// Mirrors `ClientSheet.createMatchingLead` so an imported client
-    /// surfaces in the sales pipeline exactly like a manually-created
-    /// one. Failures throw so the import UI does not report a complete save
-    /// when the pipeline lead is missing.
-    private func createPipelineLeadForClient(_ client: Client, companyId: String) async throws -> String {
-        guard let dto = ClientLeadAutocreate.makeOpportunityDTO(for: client, companyId: companyId) else {
-            throw ClientLeadAutocreateError.missingClientName
-        }
-
-        let repository = OpportunityRepository(companyId: companyId)
-        do {
-            let created = try await repository.create(dto)
-            await MainActor.run {
-                let model = created.toModel()
-                if let context = dataController.modelContext {
-                    let oppId = created.id
-                    let descriptor = FetchDescriptor<Opportunity>(
-                        predicate: #Predicate<Opportunity> { $0.id == oppId }
-                    )
-                    let existing = (try? context.fetch(descriptor)) ?? []
-                    if existing.isEmpty {
-                        context.insert(model)
-                        try? context.save()
-                    }
-                }
-            }
-            return created.id
-        } catch {
-            print("[CONTACT_IMPORT] ⚠️ Failed to create matching lead for client \(client.id): \(error)")
-            throw ClientLeadAutocreateError.creationFailed
         }
     }
 

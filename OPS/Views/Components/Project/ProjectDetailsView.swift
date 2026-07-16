@@ -775,6 +775,10 @@ struct ProjectDetailsView: View {
     }
 
     private func presentDeckFullscreen() {
+        // Fullscreen is a canvas surface; the MATERIALS tab has no fullscreen
+        // form. Land on the 2D plan so the viewer and its 3D/2D control open
+        // in a coherent state.
+        if deckViewMode == .materials { deckViewMode = .twoD }
         withAnimation(reduceMotion ? OPSStyle.Animation.faster : OPSStyle.Animation.standard) {
             isDeckFullscreen = true
         }

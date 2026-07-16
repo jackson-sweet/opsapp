@@ -53,6 +53,10 @@ private struct SegmentButton: View {
                     .font(OPSStyle.Typography.section) // Cake Mono Light 18pt — reduce tracking to keep tight
                     .tracking(0.08 * 13)
                     .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
+                    // Long labels (e.g. MATERIALS) ease down slightly on narrow
+                    // phones instead of clipping — segments stay equal width.
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
 

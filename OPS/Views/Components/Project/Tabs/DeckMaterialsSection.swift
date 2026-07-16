@@ -41,7 +41,12 @@ struct DeckMaterialsSection: View {
     }
 
     var body: some View {
-        Group {
+        // A real container, not Group — Group forwards modifiers to its
+        // children, so while nothing has resolved yet there are no children
+        // and `.task` would never fire. First render is intentionally empty
+        // (resolved == nil), so the recompute task MUST hang off a view that
+        // exists regardless of content or the section deadlocks blank.
+        VStack(spacing: 0) {
             if let snapshot = design.drawingData.orderedMaterials {
                 materialsCard { orderedContent(snapshot) }
             } else if let resolved {
@@ -50,13 +55,38 @@ struct DeckMaterialsSection: View {
                 } else if !resolved.vinylInputs.isEmpty {
                     // Vinyl set present but scale unconfirmed.
                     materialsCard { banner(text: "CONFIRM ONE EDGE LENGTH", color: OPSStyle.Colors.warningStatus) }
+                } else {
+                    // No vinyl on the design. This section IS the MATERIALS
+                    // tab now, so an empty tab must say why and name the path
+                    // forward — never render blank.
+                    noVinylState
                 }
-                // else: no vinyl set → render nothing (tab identical for non-vinyl).
             }
         }
         .task { if !isInjected { recompute() } }
         .onChange(of: design.drawingDataJSON) { _, _ in if !isInjected { recompute() } }
         .sheet(isPresented: $showingEditOrder) { editOrderSheet }
+    }
+
+    /// Quiet empty state for non-vinyl designs — the materials engine is
+    /// vinyl-driven, so the honest message is what unlocks it.
+    private var noVinylState: some View {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
+            Image(systemName: "square.stack.3d.up.slash")
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            Text("NO VINYL ON THIS DESIGN")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .tracking(1)
+            Text("Assign vinyl in the builder and the materials list builds itself.")
+                .font(OPSStyle.Typography.cardBody)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, OPSStyle.Layout.spacing5)
+        .padding(.horizontal, OPSStyle.Layout.spacing4)
     }
 
     /// EDIT ORDER re-opens the confirm sheet pre-filled with the CURRENT snapshot
@@ -85,11 +115,10 @@ struct DeckMaterialsSection: View {
 
     @ViewBuilder
     private func materialsCard<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        // No `// MATERIALS` header and no top inset — this card is the body of
+        // the MATERIALS tab (a peer of 3D/2D), so the segment already names it
+        // and the control bar already spaces it.
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text("// MATERIALS")
-                .font(OPSStyle.Typography.metadata)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .tracking(1.1)
             content()
         }
         .padding(OPSStyle.Layout.spacing3)
@@ -100,7 +129,6 @@ struct DeckMaterialsSection: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
-        .padding(.top, OPSStyle.Layout.spacing3)
     }
 
     // MARK: - Live content (state 3)

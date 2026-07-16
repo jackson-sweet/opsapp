@@ -566,6 +566,41 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         return true
     }
 
+    /// Bug (site-visit report) — completing a visit must NOT convert the lead
+    /// to WON. Save the visit (which also posts the timeline activity) and,
+    /// when a lead is bound, move it to the operator-chosen stage (defaulting
+    /// to QUALIFYING via `SiteVisitStageDefault`). Conversion stays a separate,
+    /// explicit CREATE PROJECT action. Returns whether the visit itself saved;
+    /// a failed stage move is surfaced but does not fail the save.
+    func saveVisit(movingLeadTo stage: PipelineStage) async -> Bool {
+        guard completeVisit() else { return false }
+
+        // Only touch the lead when one is bound, the stage actually changed,
+        // and the target is non-terminal — a visit save never closes a lead.
+        guard let opportunity = currentOpportunity,
+              stage != opportunity.stage,
+              !stage.isTerminal else {
+            return true
+        }
+
+        let repo = OpportunityRepository(companyId: companyIdentifier)
+        do {
+            _ = try await repo.moveToStage(
+                opportunityId: opportunity.id,
+                to: stage,
+                userId: userId
+            )
+            // Reflect the authoritative server move on the in-memory lead so
+            // the UI (and any re-open) shows the new stage immediately.
+            opportunity.stage = stage
+            opportunity.stageEnteredAt = Date()
+            opportunity.stageManuallySet = true
+        } catch {
+            errorMessage = "VISIT SAVED · STAGE NOT UPDATED"
+        }
+        return true
+    }
+
     // MARK: - Timeline auto-post (app-side, local-only visit)
 
     /// The parent a completed visit's activity attaches to. Prefers the bound

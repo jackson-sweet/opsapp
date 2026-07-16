@@ -135,15 +135,19 @@ private struct SiteVisitCaptureConsole: View {
 
                     ScrollView {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-                            // statusStrip is the at-a-glance readout (display).
-                            // Lead + client is the first input card. Capture
-                            // tools follow.
+                            // Bug (site-visit report) — a sequential checklist the
+                            // operator works top-to-bottom: the LEAD form (step 1,
+                            // always required) sits at the top, the type-dependent
+                            // CHECKLIST (step 2, variable fields) directly below it,
+                            // then NOTES (step 3). statusStrip is the at-a-glance
+                            // readout above; the captured packet is the flat list
+                            // at the bottom.
                             statusStrip
                             SiteVisitIdentityPanel(viewModel: viewModel, isExpanded: $identityExpanded)
                                 .id(SiteVisitCaptureScrollTarget.identity)
+                            checklistPanel
                             quickNotePanel
                                 .id(SiteVisitCaptureScrollTarget.notes)
-                            checklistPanel
                             packetPanel
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -290,6 +294,11 @@ private struct SiteVisitCaptureConsole: View {
             SiteVisitReviewSheet(
                 viewModel: viewModel,
                 onCreateProject: onCreateProject,
+                onSaved: {
+                    // Saved without conversion — close the whole capture flow.
+                    // The success toast is presented by the review sheet.
+                    onClose()
+                },
                 onRequestLeadCapture: { pendingIdentityFocus = true }
             )
             .environmentObject(dataController)
@@ -436,7 +445,7 @@ private struct SiteVisitCaptureConsole: View {
 
     private var quickNotePanel: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            panelHeader("RAPID NOTES", trailing: speechStateLabel)
+            panelHeader("3 · NOTES", trailing: speechStateLabel)
 
             TextEditor(text: $viewModel.noteDraft)
                 .font(OPSStyle.Typography.body)
@@ -570,7 +579,7 @@ private struct SiteVisitCaptureConsole: View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
                 panelHeader(
-                    "VISIT CHECKLIST",
+                    "2 · CHECKLIST",
                     trailing: viewModel.selectedSiteVisitType?.name ?? "TYPE"
                 )
                 Spacer(minLength: OPSStyle.Layout.spacing1)
@@ -623,7 +632,11 @@ private struct SiteVisitCaptureConsole: View {
                             onUpdate: { value in
                                 viewModel.updateChecklistAnswer(answer, value: value)
                             },
-                            onStartDeckDesign: startDeckDesign
+                            onStartDeckDesign: {
+                                // EDIT opens the design linked to THIS row, not a
+                                // re-derived (blank) one. START passes nil → create.
+                                startDeckDesign(preferredDesignId: answer.answerValue.deckDesignId)
+                            }
                         )
                     }
                 }
@@ -811,21 +824,23 @@ private struct SiteVisitCaptureConsole: View {
         }
     }
 
-    private func startDeckDesign() {
+    private func startDeckDesign(preferredDesignId: String? = nil) {
         guard canCaptureDeckDesign else {
             viewModel.errorMessage = "DECK DESIGN UNAVAILABLE"
             return
         }
 
-        // Continue before create: the visit's own sketch first, then the
-        // lead's design (same display-candidate rule the lead page uses).
-        // DECK never forks a duplicate — and the checklist row's EDIT
-        // genuinely edits the linked design instead of quietly replacing it.
+        // Continue before create: the exact design the caller asked for
+        // (checklist EDIT), then the visit's own sketch, then the lead's
+        // design (same display-candidate rule the lead page uses). DECK never
+        // forks a duplicate — and the checklist row's EDIT genuinely edits the
+        // linked design instead of quietly replacing it with a blank one.
         let allDesigns = (try? modelContext.fetch(FetchDescriptor<DeckDesign>())) ?? []
         let visitDesignIds = viewModel.activeArtifacts
             .filter { $0.kind == .deckDesign }
             .compactMap(\.deckDesignId)
         if let existing = SiteVisitDeckDesignResolver.existingDesign(
+            preferredDesignId: preferredDesignId,
             artifactDesignIds: visitDesignIds,
             opportunityId: viewModel.currentOpportunity?.id,
             in: allDesigns
@@ -912,11 +927,23 @@ private struct SiteVisitIdentityPanel: View {
     }
 
     private var isComplete: Bool {
-        let hasName = clientName.trimmedNilIfEmpty != nil || contactName.trimmedNilIfEmpty != nil
-        let hasContact = preferredEmail.trimmedNilIfEmpty != nil
+        hasName && hasContactMethod && hasAddress
+    }
+
+    // Bug (site-visit report) — the required-field groups, surfaced per field
+    // so the operator can see exactly what a lead needs. A lead needs an
+    // identity (a person's name OR a company), a way to reach them (email OR
+    // phone), and a site address.
+    private var hasName: Bool {
+        clientName.trimmedNilIfEmpty != nil || contactName.trimmedNilIfEmpty != nil
+    }
+    private var hasContactMethod: Bool {
+        preferredEmail.trimmedNilIfEmpty != nil
             || additionalEmailsText.trimmedNilIfEmpty != nil
             || phoneNumber.trimmedNilIfEmpty != nil
-        return hasName && hasContact && address.trimmedNilIfEmpty != nil
+    }
+    private var hasAddress: Bool {
+        address.trimmedNilIfEmpty != nil
     }
 
     private var badgeText: String {
@@ -984,24 +1011,30 @@ private struct SiteVisitIdentityPanel: View {
                 }
 
                 VStack(spacing: OPSStyle.Layout.spacing2) {
+                    // Name OR company satisfies the identity requirement — both
+                    // fields light up once either is filled.
                     identityField(
                         "NAME",
                         text: $contactName,
                         placeholder: "WHO YOU MET",
-                        capitalization: .words
+                        capitalization: .words,
+                        requirement: .required(satisfied: hasName)
                     )
                     identityField(
                         "COMPANY",
                         text: $clientName,
-                        placeholder: "BUSINESS — OPTIONAL",
-                        capitalization: .words
+                        placeholder: "BUSINESS",
+                        capitalization: .words,
+                        requirement: .required(satisfied: hasName)
                     )
+                    // Email OR phone satisfies the contact-method requirement.
                     identityField(
                         "EMAIL",
                         text: $preferredEmail,
                         placeholder: "PRIMARY EMAIL",
                         keyboard: .emailAddress,
-                        capitalization: .never
+                        capitalization: .never,
+                        requirement: .required(satisfied: hasContactMethod)
                     )
                     identityField(
                         "OTHER EMAILS",
@@ -1017,7 +1050,8 @@ private struct SiteVisitIdentityPanel: View {
                         text: $phoneNumber,
                         placeholder: "PHONE",
                         keyboard: .phonePad,
-                        capitalization: .never
+                        capitalization: .never,
+                        requirement: .required(satisfied: hasContactMethod)
                     )
                     // Address is an autocomplete, not a free-text field
                     // (bugs e6a700ff / 0adf456b): suggestions-as-you-type plus
@@ -1027,9 +1061,13 @@ private struct SiteVisitIdentityPanel: View {
                     // lead (with coordinates) immediately — a selection is a
                     // commit, unlike keystrokes.
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("ADDRESS")
-                            .font(OPSStyle.Typography.miniLabel)
-                            .foregroundColor(OPSStyle.Colors.text3)
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
+                            Text("ADDRESS")
+                                .font(OPSStyle.Typography.miniLabel)
+                                .foregroundColor(OPSStyle.Colors.text3)
+                            Spacer(minLength: 0)
+                            requirementMarker(.required(satisfied: hasAddress))
+                        }
 
                         AddressAutocompleteField(
                             address: $address,
@@ -1094,7 +1132,7 @@ private struct SiteVisitIdentityPanel: View {
                 HStack(spacing: 0) {
                     Text("// ")
                         .foregroundColor(OPSStyle.Colors.textMute)
-                    Text("LEAD + CLIENT")
+                    Text("1 · LEAD")
                         .foregroundColor(OPSStyle.Colors.text)
                     Text("  ·  ")
                         .foregroundColor(OPSStyle.Colors.textMute)
@@ -1307,6 +1345,34 @@ private struct SiteVisitIdentityPanel: View {
         }
     }
 
+    /// Per-field required/optional state for the lead form. `.required`
+    /// carries its own satisfied flag so either-or groups (name-or-company,
+    /// email-or-phone) can light up both members once one is filled.
+    private enum IdentityFieldRequirement {
+        case optional
+        case required(satisfied: Bool)
+    }
+
+    /// Trailing REQUIRED → DONE marker. Speaks the same language as the
+    /// checklist row's status label (tan when outstanding, olive when met)
+    /// so the two halves of the form read as one checklist.
+    @ViewBuilder
+    private func requirementMarker(_ requirement: IdentityFieldRequirement) -> some View {
+        switch requirement {
+        case .optional:
+            EmptyView()
+        case .required(let satisfied):
+            HStack(spacing: 3) {
+                Image(systemName: satisfied ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 10, weight: .bold))
+                Text(satisfied ? "DONE" : "REQUIRED")
+                    .font(OPSStyle.Typography.miniLabel)
+            }
+            .foregroundColor(satisfied ? OPSStyle.Colors.oliveTextM : OPSStyle.Colors.tanTextM)
+            .accessibilityLabel(satisfied ? "Done" : "Required")
+        }
+    }
+
     private func identityField(
         _ label: String,
         text: Binding<String>,
@@ -1314,12 +1380,17 @@ private struct SiteVisitIdentityPanel: View {
         keyboard: UIKeyboardType = .default,
         capitalization: TextInputAutocapitalization = .words,
         axis: Axis = .horizontal,
-        caption: String? = nil
+        caption: String? = nil,
+        requirement: IdentityFieldRequirement = .optional
     ) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(label)
-                .font(OPSStyle.Typography.miniLabel)
-                .foregroundColor(OPSStyle.Colors.text3)
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                Text(label)
+                    .font(OPSStyle.Typography.miniLabel)
+                    .foregroundColor(OPSStyle.Colors.text3)
+                Spacer(minLength: 0)
+                requirementMarker(requirement)
+            }
 
             TextField(placeholder, text: text, axis: axis)
                 .font(OPSStyle.Typography.body)
@@ -1918,20 +1989,28 @@ private struct SiteVisitArtifactThumbnail: View {
 private struct SiteVisitReviewSheet: View {
     @ObservedObject var viewModel: SiteVisitCaptureViewModel
     let onCreateProject: (Opportunity) -> Void
+    let onSaved: () -> Void
     let onRequestLeadCapture: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
     @State private var previewArtifact: SiteVisitCaptureArtifact?
     @State private var isCreatingLead = false
+    @State private var isSaving = false
+    // Bug (site-visit report) — the lead stage the visit will leave the lead
+    // in. Seeded from SiteVisitStageDefault (QUALIFYING for a new lead; held
+    // otherwise); the operator can change it. Never WON.
+    @State private var selectedStage: PipelineStage?
 
     init(
         viewModel: SiteVisitCaptureViewModel,
         onCreateProject: @escaping (Opportunity) -> Void,
+        onSaved: @escaping () -> Void,
         onRequestLeadCapture: @escaping () -> Void
     ) {
         self.viewModel = viewModel
         self.onCreateProject = onCreateProject
+        self.onSaved = onSaved
         self.onRequestLeadCapture = onRequestLeadCapture
     }
 
@@ -1947,8 +2026,14 @@ private struct SiteVisitReviewSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         summaryCard
+                        if viewModel.hasBoundOpportunity {
+                            stageCard
+                        }
                         includedList
                         checklistReviewList
+                        if canCreateProject {
+                            createProjectCard
+                        }
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .padding(.top, OPSStyle.Layout.spacing2)
@@ -1962,13 +2047,13 @@ private struct SiteVisitReviewSheet: View {
                 }
             } primary: {
                 SheetCTAButton(
-                    label: "CREATE PROJECT",
-                    icon: "arrow.right",
+                    label: isSaving ? "SAVING…" : "SAVE VISIT",
+                    icon: "checkmark",
                     variant: .primary,
-                    action: createProject
+                    action: saveVisit
                 )
-                .disabled(!canCreateProject)
-                .opacity(canCreateProject ? 1 : 0.5)
+                .disabled(!viewModel.canComplete || isSaving)
+                .opacity(viewModel.canComplete && !isSaving ? 1 : 0.5)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.bottom, 28)
@@ -1984,6 +2069,11 @@ private struct SiteVisitReviewSheet: View {
             )
         }
         .preferredColorScheme(.dark)
+        .onAppear {
+            if selectedStage == nil, let current = viewModel.currentOpportunity?.stage {
+                selectedStage = SiteVisitStageDefault.defaultStage(current: current)
+            }
+        }
         .sheet(item: $previewArtifact) { artifact in
             SiteVisitPhotoPreviewSheet(artifact: artifact, onMarkup: nil)
         }
@@ -2202,6 +2292,110 @@ private struct SiteVisitReviewSheet: View {
             return value.artifactIds.isEmpty ? "—" : "\(value.artifactIds.count) CAPTURED"
         case .deckDesign:
             return value.deckDesignId == nil ? "—" : "DESIGN LINKED"
+        }
+    }
+
+    // Bug (site-visit report) — the lead's stage after this visit. Defaults to
+    // QUALIFYING for a fresh lead (never WON); the operator can pick any
+    // non-terminal stage. Chips mirror the capture console's type selector.
+    private var stageCard: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: 0) {
+                Text("// ")
+                    .foregroundColor(OPSStyle.Colors.textMute)
+                Text("LEAD STAGE AFTER VISIT")
+                    .foregroundColor(OPSStyle.Colors.text)
+            }
+            .font(OPSStyle.Typography.metadata)
+
+            ScrollView(.horizontal) {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
+                    ForEach(SiteVisitStageDefault.selectableStages) { stage in
+                        let isSelected = selectedStage == stage
+                        Button {
+                            selectedStage = stage
+                            UISelectionFeedbackGenerator().selectionChanged()
+                        } label: {
+                            Text(stage.displayName)
+                                .font(OPSStyle.Typography.miniLabel)
+                                .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.text2)
+                                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                .frame(height: OPSStyle.Layout.chipMinHeight)
+                                .background(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                                        .fill(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                                        .strokeBorder(isSelected ? OPSStyle.Colors.line : Color.clear, lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .scrollIndicators(.hidden)
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
+    }
+
+    /// The explicit, opt-in conversion path — deliberately secondary to SAVE
+    /// VISIT so a visit save never converts by default. Reachable only when the
+    /// visit has project-ready evidence and a bound lead.
+    private var createProjectCard: some View {
+        Button(action: createProject) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("CREATE PROJECT NOW")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.text)
+                    Text("CONVERTS THIS LEAD INTO A PROJECT")
+                        .font(OPSStyle.Typography.miniLabel)
+                        .foregroundColor(OPSStyle.Colors.text3)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.text2)
+            }
+            .padding(OPSStyle.Layout.spacing3)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
+                    .fill(OPSStyle.Colors.surfaceInput)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
+                    .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// SAVE VISIT — completes the visit WITHOUT converting the lead, moving it
+    /// to the selected stage (QUALIFYING by default). The lifeline: a visit is
+    /// saved, the lead advances a notch, nobody is auto-marked WON.
+    private func saveVisit() {
+        guard viewModel.canComplete, !isSaving else { return }
+        isSaving = true
+        let stage = selectedStage
+        Task {
+            let saved: Bool
+            if let stage {
+                saved = await viewModel.saveVisit(movingLeadTo: stage)
+            } else {
+                // Unbound visit — nothing to re-stage; just complete it.
+                saved = viewModel.completeVisit()
+            }
+            await MainActor.run {
+                isSaving = false
+                guard saved else { return }
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                ToastCenter.shared.present(Toast(label: "// VISIT SAVED", tone: .success))
+                dismiss()
+                onSaved()
+            }
         }
     }
 

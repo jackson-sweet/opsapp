@@ -15,6 +15,10 @@ struct PermissionPayload {
     let roleName: String
     let roleHierarchy: Int
     let permissions: [String: String]
+    /// Every role/override key encountered, including explicit revokes. This
+    /// lets row policies distinguish a missing legacy-era grant from a modern
+    /// explicit denial without letting pipeline.manage widen it.
+    let explicitPermissionKeys: Set<String>
 }
 
 /// Supabase response DTOs
@@ -98,21 +102,31 @@ enum PermissionService {
             .execute()
             .value
 
-        // Build permission map
+        // Build the effective map and separately retain every explicit key.
         var permissionMap: [String: String] = [:]
+        var explicitPermissionKeys = Set(permissionRows.map(\.permission))
         for row in permissionRows {
             permissionMap[row.permission] = row.scope
         }
 
-        // 4. Fetch user-level overrides (graceful degradation if table doesn't exist yet)
-        let overrides = try? await client
-            .from("user_permission_overrides")
-            .select("permission, scope, granted")
-            .eq("user_id", value: userId)
-            .execute()
-            .value as [OverrideRow]
+        // 4. Fetch user-level overrides. If this read fails, granular fallback
+        // must fail closed: an unseen explicit revoke cannot be distinguished
+        // from an old role with no granular rows.
+        let overrides: [OverrideRow]?
+        do {
+            overrides = try await client
+                .from("user_permission_overrides")
+                .select("permission, scope, granted")
+                .eq("user_id", value: userId)
+                .execute()
+                .value
+        } catch {
+            overrides = nil
+            explicitPermissionKeys.formUnion(LeadAccessPolicy.granularPermissionKeys)
+        }
 
         for override in (overrides ?? []) {
+            explicitPermissionKeys.insert(override.permission)
             if override.granted, let scope = override.scope {
                 permissionMap[override.permission] = scope
             } else if !override.granted {
@@ -124,7 +138,8 @@ enum PermissionService {
             roleId: role.id,
             roleName: role.name,
             roleHierarchy: role.hierarchy,
-            permissions: permissionMap
+            permissions: permissionMap,
+            explicitPermissionKeys: explicitPermissionKeys
         )
     }
 }

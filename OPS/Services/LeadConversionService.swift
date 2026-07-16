@@ -32,6 +32,57 @@
 import Foundation
 import Supabase
 
+struct ConvertOpportunityParams: Encodable {
+    let companyId: String
+    let opportunityId: String
+    let actualValue: Double?
+    let expectedStage: String
+    let decidedBy: String?
+    let notes: String?
+    let titleOverride: String?
+    let sourcePath: String
+    let winOpportunity: Bool
+    let expectedAssignmentVersion: Int64
+
+    init(
+        companyId: String,
+        opportunityId: String,
+        actualValue: Double?,
+        expectedStage: String,
+        decidedBy: String?,
+        notes: String?,
+        titleOverride: String?,
+        sourcePath: String,
+        winOpportunity: Bool,
+        expectedAssignmentVersion: Int64
+    ) {
+        precondition(expectedAssignmentVersion >= 0, "Assignment versions cannot be negative")
+        self.companyId = companyId
+        self.opportunityId = opportunityId
+        self.actualValue = actualValue
+        self.expectedStage = expectedStage
+        self.decidedBy = decidedBy
+        self.notes = notes
+        self.titleOverride = titleOverride
+        self.sourcePath = sourcePath
+        self.winOpportunity = winOpportunity
+        self.expectedAssignmentVersion = expectedAssignmentVersion
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case companyId                   = "p_company_id"
+        case opportunityId               = "p_opportunity_id"
+        case actualValue                 = "p_actual_value"
+        case expectedStage               = "p_expected_stage"
+        case decidedBy                   = "p_decided_by"
+        case notes                       = "p_notes"
+        case titleOverride               = "p_title_override"
+        case sourcePath                  = "p_source_path"
+        case winOpportunity              = "p_win_opportunity"
+        case expectedAssignmentVersion   = "p_expected_assignment_version"
+    }
+}
+
 @MainActor
 final class LeadConversionService {
     private let client: SupabaseClient
@@ -161,26 +212,17 @@ final class LeadConversionService {
         notes: String?,
         userId: String?
     ) async throws -> Project {
-        struct Params: Encodable {
-            let p_company_id: String
-            let p_opportunity_id: String
-            let p_actual_value: Double?
-            let p_decided_by: String?
-            let p_notes: String?
-            let p_title_override: String?
-            let p_source_path: String
-            let p_win_opportunity: Bool
-        }
-
-        let params = Params(
-            p_company_id: companyId,
-            p_opportunity_id: lead.id,
-            p_actual_value: actualValue,
-            p_decided_by: userId,
-            p_notes: notes,
-            p_title_override: titleOverride,   // nil ⇒ auto-named
-            p_source_path: "ios",
-            p_win_opportunity: true
+        let params = ConvertOpportunityParams(
+            companyId: companyId,
+            opportunityId: lead.id,
+            actualValue: actualValue,
+            expectedStage: lead.stage.rawValue,
+            decidedBy: userId,
+            notes: notes,
+            titleOverride: titleOverride,   // nil ⇒ auto-named
+            sourcePath: "ios",
+            winOpportunity: true,
+            expectedAssignmentVersion: lead.assignmentVersion
         )
 
         let result: ConvertOpportunityResult
@@ -193,12 +235,25 @@ final class LeadConversionService {
             throw Self.mapRPCError(error)
         }
 
+        switch result.guardDecision {
+        case .assignmentChanged:
+            throw LeadConversionError.assignmentChanged
+        case .leadChanged:
+            throw LeadConversionError.leadChanged
+        case .proceed:
+            break
+        }
+
         guard let newProjectId = result.projectId else {
             // Both the create and already-converted paths return a project_id;
             // a nil here means a guard fired (e.g. snapshot_mismatch) without a
             // resolvable project. Surface it as opportunityNotFound so the sheet
             // shows an actionable error instead of crashing on the fetch.
             throw LeadConversionError.opportunityNotFound
+        }
+
+        guard result.projectAccessible == true else {
+            throw LeadConversionError.projectCreatedWithoutAccess(projectId: newProjectId)
         }
 
         // Fetch the canonical row and map to SwiftData model. The conversion
@@ -343,6 +398,12 @@ enum LeadConversionError: LocalizedError {
     case opportunityNotFound
     /// Caller's user is not a member of the opportunity's company.
     case accessDenied
+    /// The assignee changed after the convert sheet loaded.
+    case assignmentChanged
+    /// The stage or another guarded lead snapshot changed after sheet load.
+    case leadChanged
+    /// Conversion committed, but the actor cannot read the resulting project.
+    case projectCreatedWithoutAccess(projectId: String)
     /// The RPC committed (the project + tasks + stage transition all landed)
     /// but the post-RPC fetch failed. The project_id is included so the
     /// caller can retry just the fetch instead of re-running the conversion.
@@ -354,6 +415,12 @@ enum LeadConversionError: LocalizedError {
             return "Lead not found. It may have been deleted."
         case .accessDenied:
             return "You don't have access to convert this lead."
+        case .assignmentChanged:
+            return "Lead assignment changed. Refresh before converting."
+        case .leadChanged:
+            return "Lead changed. Refresh before converting."
+        case .projectCreatedWithoutAccess:
+            return "Project created. You don't have access to open it."
         case .projectCreatedButFetchFailed:
             return "Project created. Refresh to see it."
         }
@@ -439,6 +506,12 @@ struct PreflightClientProject: Decodable {
 /// Typed mirror of the `convert_opportunity_to_project` jsonb result. The count
 /// fields are absent on the guard/already-converted branches, so all are
 /// optional except the booleans that the create branch always emits.
+enum OpportunityConversionGuardDecision: Equatable {
+    case proceed
+    case assignmentChanged
+    case leadChanged
+}
+
 struct ConvertOpportunityResult: Decodable {
     let converted: Bool?
     let alreadyConverted: Bool?
@@ -450,6 +523,25 @@ struct ConvertOpportunityResult: Decodable {
     let linkedExisting: Bool?
     let won: Bool?
     let guardReason: String?
+    let assignedTo: String?
+    let assignmentVersion: Int64?
+    let projectAccessible: Bool?
+
+    /// The conversion RPC uses `already_converted` as the idempotent recovery
+    /// path for a project that was committed previously. It is not a stale-row
+    /// guard and must continue through the project-access check and fetch.
+    var guardDecision: OpportunityConversionGuardDecision {
+        switch guardReason {
+        case nil, "already_converted":
+            return .proceed
+        case "assignment_snapshot_mismatch":
+            return .assignmentChanged
+        case "snapshot_mismatch", "manual_stage_override":
+            return .leadChanged
+        case .some:
+            return .leadChanged
+        }
+    }
 
     enum CodingKeys: String, CodingKey {
         case converted
@@ -462,5 +554,34 @@ struct ConvertOpportunityResult: Decodable {
         case linkedExisting     = "linked_existing"
         case won
         case guardReason        = "guard_reason"
+        case assignedTo         = "assigned_to"
+        case assignmentVersion  = "assignment_version"
+        case projectAccessible  = "project_accessible"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        converted = try container.decodeIfPresent(Bool.self, forKey: .converted)
+        alreadyConverted = try container.decodeIfPresent(Bool.self, forKey: .alreadyConverted)
+        projectId = try container.decodeIfPresent(String.self, forKey: .projectId)
+        dispositionId = try container.decodeIfPresent(String.self, forKey: .dispositionId)
+        relinkedEstimates = try container.decodeIfPresent(Int.self, forKey: .relinkedEstimates)
+        materializedTasks = try container.decodeIfPresent(Int.self, forKey: .materializedTasks)
+        attachedPhotos = try container.decodeIfPresent(Int.self, forKey: .attachedPhotos)
+        linkedExisting = try container.decodeIfPresent(Bool.self, forKey: .linkedExisting)
+        won = try container.decodeIfPresent(Bool.self, forKey: .won)
+        guardReason = try container.decodeIfPresent(String.self, forKey: .guardReason)
+        assignedTo = try container.decodeIfPresent(String.self, forKey: .assignedTo)
+        projectAccessible = try container.decodeIfPresent(Bool.self, forKey: .projectAccessible)
+
+        let decodedVersion = try container.decodeIfPresent(Int64.self, forKey: .assignmentVersion)
+        if let decodedVersion, decodedVersion < 0 {
+            throw DecodingError.dataCorruptedError(
+                forKey: .assignmentVersion,
+                in: container,
+                debugDescription: "Assignment versions cannot be negative"
+            )
+        }
+        assignmentVersion = decodedVersion
     }
 }

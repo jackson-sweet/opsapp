@@ -1140,6 +1140,9 @@ struct ConvertToProjectSheet: View {
             switch conversionError {
             case .opportunityNotFound: return "LEAD NOT FOUND"
             case .accessDenied: return "PERMISSION DENIED"
+            case .assignmentChanged: return "ASSIGNMENT CHANGED — REFRESH"
+            case .leadChanged: return "LEAD CHANGED — REFRESH"
+            case .projectCreatedWithoutAccess: return "PROJECT CREATED — NO ACCESS"
             case .projectCreatedButFetchFailed: return "PROJECT CREATED — REFRESH"
             }
         }

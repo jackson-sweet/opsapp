@@ -1,27 +1,28 @@
 //
-//  OPSSchemaV12.swift
+//  OPSSchemaV16.swift
 //  OPS
 //
-//  Schema version 12.0.0 — site visit identity drafts.
+//  Schema version 16.0.0 — guarded lead assignment concurrency.
 //
-//  Adds a local-first identity packet so the site visit can start before a
-//  lead/client is selected, then bind captured contact details to the client
-//  and opportunity when enough information is available.
+//  Opportunity gains one required Int64 assignmentVersion attribute with a
+//  zero default. The V1-V15 shape is frozen separately, so this additive
+//  lightweight boundary changes only V16's persistent fingerprint and keeps
+//  every shipped historical schema exact.
 //
 
 import Foundation
 import SwiftData
 
-enum OPSSchemaV12: VersionedSchema {
-    static var versionIdentifier: Schema.Version { Schema.Version(12, 0, 0) }
+enum OPSSchemaV16: VersionedSchema {
+    static var versionIdentifier: Schema.Version { Schema.Version(16, 0, 0) }
 
     static var models: [any PersistentModel.Type] {
         OPSSchemaCommon.unchangedModels
-            + OPSSchemaCommon.v1ToV15OpportunityModel
-            + OPSSchemaCommon.v1ToV12ProjectNoteModel
-            + OPSSchemaCommon.v1ToV14PhotoAnnotationModel
-            + OPSSchemaCommon.v1ToV12ActivityModel
-            + OPSSchemaCommon.v11SiteVisitModel
+            + OPSSchemaCommon.v16OpportunityModel
+            + OPSSchemaCommon.v13ProjectNoteModel
+            + OPSSchemaCommon.v15PhotoAnnotationModel
+            + OPSSchemaCommon.v13ActivityModel
+            + OPSSchemaCommon.v14SiteVisitModel
             + OPSSchemaCommon.v4CoreModels
             + OPSSchemaCommon.v4TaskModels
             + OPSSchemaCommon.v8CatalogModels

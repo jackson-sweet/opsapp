@@ -12,6 +12,11 @@ import Foundation
 import Supabase
 
 class OpportunityRepository {
+    enum RPC {
+        static let createGuarded = "create_opportunity_guarded"
+        static let changeAssignment = "change_opportunity_assignment"
+    }
+
     private let client: SupabaseClient
     private let companyId: String
 
@@ -119,11 +124,43 @@ class OpportunityRepository {
     // MARK: - Create
 
     func create(_ dto: CreateOpportunityDTO) async throws -> OpportunityDTO {
-        try await client
-            .from("opportunities")
-            .insert(dto)
-            .select()
-            .single()
+        let result: GuardedOpportunityCreateResult = try await client
+            .rpc(
+                RPC.createGuarded,
+                params: GuardedOpportunityCreateParams(opportunity: dto)
+            )
+            .execute()
+            .value
+        guard result.ok else {
+            throw OpportunityRepositoryError.guardedCreateRejected
+        }
+        return result.opportunity
+    }
+
+    /// The only iOS assignment mutation path. The server compares both the
+    /// expected assignee and monotonic assignment version, then returns the
+    /// canonical row snapshot (including conflicts). Callers must render this
+    /// response; this repository never mutates a local Opportunity optimistically.
+    func changeAssignment(
+        opportunityId: String,
+        expectedAssignmentVersion: Int64,
+        expectedAssignedTo: String?,
+        newAssignedTo: String?,
+        source: OpportunityAssignmentSource = .manual,
+        suggestionId: String? = nil,
+        metadata: [String: AnyJSON] = [:]
+    ) async throws -> OpportunityAssignmentChangeResult {
+        let params = try ChangeOpportunityAssignmentParams(
+            opportunityId: opportunityId,
+            expectedAssignmentVersion: expectedAssignmentVersion,
+            expectedAssignedTo: expectedAssignedTo,
+            newAssignedTo: newAssignedTo,
+            source: source,
+            suggestionId: suggestionId,
+            metadata: metadata
+        )
+        return try await client
+            .rpc(RPC.changeAssignment, params: params)
             .execute()
             .value
     }
@@ -290,5 +327,13 @@ class OpportunityRepository {
     @available(*, deprecated, message: "Use moveToStage / markWon / markLost")
     func advanceStage(opportunityId: String, to stage: PipelineStage, lostReason: String? = nil) async throws -> OpportunityDTO {
         try await moveToStage(opportunityId: opportunityId, to: stage, userId: nil)
+    }
+}
+
+enum OpportunityRepositoryError: LocalizedError {
+    case guardedCreateRejected
+
+    var errorDescription: String? {
+        "Lead was not created. Refresh and try again."
     }
 }

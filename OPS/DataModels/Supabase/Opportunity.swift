@@ -27,6 +27,7 @@ class Opportunity: Identifiable {
     var stageEnteredAt: Date
     var stageManuallySet: Bool
     var assignedTo: String?
+    var assignmentVersion: Int64 = 0
     var priority: String?
     var source: String?
     var quoteDeliveryMethod: QuoteDeliveryMethod?
@@ -143,6 +144,7 @@ class Opportunity: Identifiable {
         stageEnteredAt = other.stageEnteredAt
         stageManuallySet = other.stageManuallySet
         assignedTo = other.assignedTo
+        assignmentVersion = other.assignmentVersion
         priority = other.priority
         source = other.source
         quoteDeliveryMethod = other.quoteDeliveryMethod
@@ -199,6 +201,7 @@ class Opportunity: Identifiable {
         self.stage = stage
         self.stageEnteredAt = stageEnteredAt
         self.stageManuallySet = false
+        self.assignmentVersion = 0
         self.tags = []
         self.correspondenceCount = 0
         self.outboundCount = 0

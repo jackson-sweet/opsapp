@@ -41,7 +41,11 @@ enum PermissionRegistry {
         // Expenses
         PermissionDefinition(id: "expenses.create", label: "Create Expenses", category: "Expenses"),
         // Pipeline
-        PermissionDefinition(id: "pipeline.view", label: "View Pipeline", category: "Pipeline"),
+        PermissionDefinition(id: "pipeline.create", label: "Create Leads", category: "Pipeline"),
+        PermissionDefinition(id: "pipeline.view", label: "View Leads", category: "Pipeline"),
+        PermissionDefinition(id: "pipeline.edit", label: "Edit Leads", category: "Pipeline"),
+        PermissionDefinition(id: "pipeline.assign", label: "Assign Leads", category: "Pipeline"),
+        PermissionDefinition(id: "pipeline.convert", label: "Convert Leads", category: "Pipeline"),
         PermissionDefinition(id: "pipeline.manage", label: "Manage Pipeline", category: "Pipeline"),
         // Calendar
         PermissionDefinition(id: "calendar.edit", label: "Edit Calendar", category: "Calendar"),
@@ -78,8 +82,16 @@ enum PermissionRegistry {
     }
 
     static func permissions(for category: String) -> [PermissionDefinition] {
-        all.filter { $0.category == category }
+        all.filter {
+            $0.category == category && !legacyHiddenPermissionIds.contains($0.id)
+        }
     }
+
+    /// Compatibility-only permissions remain registered so existing role rows
+    /// can be read, but new edits must use the granular lead actions above.
+    private static let legacyHiddenPermissionIds: Set<String> = [
+        "pipeline.manage"
+    ]
 
     // MARK: - Shared Helpers
 
@@ -176,7 +188,11 @@ private let permissionSearchTags: [String: [String]] = [
     "invoices.record_payment":      ["record payment", "log payment", "mark paid", "collect"],
     "invoices.delete":              ["remove invoice", "void invoice"],
     "expenses.create":              ["new expense", "add expense", "receipt"],
+    "pipeline.create":              ["new lead", "add lead", "opportunity"],
     "pipeline.view":                ["funnel", "leads", "opportunity"],
+    "pipeline.edit":                ["update lead", "change lead", "opportunity"],
+    "pipeline.assign":              ["assign lead", "reassign", "owner"],
+    "pipeline.convert":             ["convert lead", "create project", "won"],
     "pipeline.manage":              ["funnel", "leads", "opportunity"],
     "calendar.edit":                ["reschedule", "scheduling", "shift", "move event", "calendar change"],
     "catalog.view":                 ["stock", "materials", "supplies", "parts", "inventory", "catalog", "products"],

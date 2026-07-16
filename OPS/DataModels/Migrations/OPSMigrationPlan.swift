@@ -98,6 +98,11 @@
 //  (+ loggedActivityId) backs V15+. This confines the change to this single
 //  boundary instead of rewriting every V11–V14 schema's `SiteVisit` hash.
 //
+//  V15 → V16 stage: guarded lead assignment concurrency. Adds the required,
+//  defaulted Int64 `Opportunity.assignmentVersion` snapshot. Opportunity is
+//  version-scoped so V1–V15 retain their exact shipped fingerprint and only
+//  this boundary widens the live model.
+//
 
 import Foundation
 import SwiftData
@@ -119,7 +124,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV12.self,
             OPSSchemaV13.self,
             OPSSchemaV14.self,
-            OPSSchemaV15.self
+            OPSSchemaV15.self,
+            OPSSchemaV16.self
         ]
     }
 
@@ -138,9 +144,18 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addSiteVisitIdentityDraftsV11toV12,
             addProjectNoteEventKindV12toV13,
             addUnifiedActivityParentsV13toV14,
-            addSiteVisitActivityLinkV14toV15
+            addSiteVisitActivityLinkV14toV15,
+            addOpportunityAssignmentVersionV15toV16
         ]
     }
+
+    /// V15 → V16: additive guarded-assignment snapshot. Existing leads receive
+    /// assignmentVersion = 0; all later assignment changes advance it on the
+    /// server and sync the authoritative value back to this local projection.
+    static let addOpportunityAssignmentVersionV15toV16 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV15.self,
+        toVersion: OPSSchemaV16.self
+    )
 
     /// V14 → V15: site-visit → timeline auto-post idempotency. Adds a single
     /// nullable `SiteVisit.loggedActivityId` so a completed visit that posts its

@@ -551,7 +551,6 @@ final class UnifiedLogActivityViewModel: ObservableObject {
         let resolvedPhone = isCreatingNewLead ? newLeadPhone : phoneNumber
         let resolvedEmail = isCreatingNewLead ? newLeadEmail : ""
         let dto = CreateOpportunityDTO(
-            companyId: companyId,
             contactName: trimmedName,
             contactEmail: resolvedEmail.isEmpty ? nil : resolvedEmail,
             contactPhone: resolvedPhone.isEmpty ? nil : resolvedPhone,

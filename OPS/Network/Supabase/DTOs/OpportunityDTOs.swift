@@ -8,6 +8,54 @@
 //
 
 import Foundation
+import Supabase
+
+@propertyWrapper
+struct NonnegativeInt64: Codable, Equatable {
+    private var value: Int64
+
+    var wrappedValue: Int64 { value }
+
+    init(wrappedValue: Int64 = 0) {
+        precondition(wrappedValue >= 0, "Assignment versions cannot be negative")
+        value = wrappedValue
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let decoded = try container.decode(Int64.self)
+        guard decoded >= 0 else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Assignment versions cannot be negative"
+            )
+        }
+        value = decoded
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(value)
+    }
+}
+
+extension KeyedDecodingContainer {
+    func decode(_ type: NonnegativeInt64.Type, forKey key: Key) throws -> NonnegativeInt64 {
+        try decodeIfPresent(type, forKey: key) ?? NonnegativeInt64()
+    }
+
+    func decodeRequiredNonnegativeInt64(forKey key: Key) throws -> NonnegativeInt64 {
+        let decoded = try decode(Int64.self, forKey: key)
+        guard decoded >= 0 else {
+            throw DecodingError.dataCorruptedError(
+                forKey: key,
+                in: self,
+                debugDescription: "Assignment versions cannot be negative"
+            )
+        }
+        return NonnegativeInt64(wrappedValue: decoded)
+    }
+}
 
 // MARK: - Opportunity
 
@@ -25,6 +73,7 @@ struct OpportunityDTO: Codable, Identifiable {
     let stageEnteredAt: String
     let stageManuallySet: Bool?
     let assignedTo: String?
+    @NonnegativeInt64 var assignmentVersion: Int64
     let priority: String?
     let source: String?
     let quoteDeliveryMethod: String?
@@ -76,6 +125,7 @@ struct OpportunityDTO: Codable, Identifiable {
         case stageEnteredAt       = "stage_entered_at"
         case stageManuallySet     = "stage_manually_set"
         case assignedTo           = "assigned_to"
+        case assignmentVersion    = "assignment_version"
         case priority
         case source
         case quoteDeliveryMethod  = "quote_delivery_method"
@@ -124,6 +174,7 @@ struct OpportunityDTO: Codable, Identifiable {
         opp.address = address
         opp.stageManuallySet = stageManuallySet ?? false
         opp.assignedTo = assignedTo
+        opp.assignmentVersion = assignmentVersion
         opp.priority = priority
         opp.source = source
         if let m = quoteDeliveryMethod { opp.quoteDeliveryMethod = QuoteDeliveryMethod(rawValue: m) }
@@ -155,9 +206,8 @@ struct OpportunityDTO: Codable, Identifiable {
     }
 }
 
-struct CreateOpportunityDTO: Codable {
-    let companyId: String
-    let title: String?               // optional — DB trigger backfills from contact_name
+struct CreateOpportunityDTO: Encodable {
+    let title: String
     let contactName: String
     let contactEmail: String?
     let contactPhone: String?
@@ -166,7 +216,6 @@ struct CreateOpportunityDTO: Codable {
     let estimatedValue: Double?
     let source: String?
     let priority: String?
-    let assignedTo: String?
     let expectedCloseDate: String?
     let quoteDeliveryMethod: String?
     let clientId: String?
@@ -174,7 +223,6 @@ struct CreateOpportunityDTO: Codable {
     let longitude: Double?
 
     init(
-        companyId: String,
         title: String? = nil,
         contactName: String,
         contactEmail: String? = nil,
@@ -184,15 +232,19 @@ struct CreateOpportunityDTO: Codable {
         estimatedValue: Double? = nil,
         source: String? = nil,
         priority: String? = nil,
-        assignedTo: String? = nil,
         expectedCloseDate: Date? = nil,
         quoteDeliveryMethod: String? = nil,
         clientId: String? = nil,
         latitude: Double? = nil,
         longitude: Double? = nil
     ) {
-        self.companyId = companyId
-        self.title = title
+        let trimmedTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedContactName = contactName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmedTitle, !trimmedTitle.isEmpty {
+            self.title = trimmedTitle
+        } else {
+            self.title = trimmedContactName.isEmpty ? "New lead" : trimmedContactName
+        }
         self.contactName = contactName
         self.contactEmail = contactEmail
         self.contactPhone = contactPhone
@@ -201,7 +253,6 @@ struct CreateOpportunityDTO: Codable {
         self.estimatedValue = estimatedValue
         self.source = source
         self.priority = priority
-        self.assignedTo = assignedTo
         self.expectedCloseDate = expectedCloseDate.map { SupabaseDate.formatDate($0) }
         self.quoteDeliveryMethod = quoteDeliveryMethod
         self.clientId = clientId
@@ -210,7 +261,6 @@ struct CreateOpportunityDTO: Codable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case companyId            = "company_id"
         case title
         case contactName          = "contact_name"
         case contactEmail         = "contact_email"
@@ -220,7 +270,6 @@ struct CreateOpportunityDTO: Codable {
         case estimatedValue       = "estimated_value"
         case source
         case priority
-        case assignedTo           = "assigned_to"
         case expectedCloseDate    = "expected_close_date"
         case quoteDeliveryMethod  = "quote_delivery_method"
         case clientId             = "client_id"
@@ -229,7 +278,7 @@ struct CreateOpportunityDTO: Codable {
     }
 }
 
-struct UpdateOpportunityDTO: Codable {
+struct UpdateOpportunityDTO: Encodable {
     var title: String?
     var contactName: String?
     var contactEmail: String?
@@ -240,7 +289,6 @@ struct UpdateOpportunityDTO: Codable {
     var actualValue: Double?
     var source: String?
     var priority: String?
-    var assignedTo: String?
     var expectedCloseDate: String?
     var actualCloseDate: String?
     var clientId: String?
@@ -262,7 +310,6 @@ struct UpdateOpportunityDTO: Codable {
         case actualValue          = "actual_value"
         case source
         case priority
-        case assignedTo           = "assigned_to"
         case expectedCloseDate    = "expected_close_date"
         case actualCloseDate      = "actual_close_date"
         case clientId             = "client_id"
@@ -272,6 +319,155 @@ struct UpdateOpportunityDTO: Codable {
         case quoteDeliveryMethod  = "quote_delivery_method"
         case archivedAt           = "archived_at"
         case deletedAt            = "deleted_at"
+    }
+}
+
+// MARK: - Guarded assignment RPC contracts
+
+enum OpportunityAssignmentSource: String, Encodable {
+    case manual
+    case suggestionAccept = "suggestion_accept"
+}
+
+enum OpportunityAssignmentContractError: LocalizedError {
+    case invalidAssignmentVersion
+
+    var errorDescription: String? {
+        "Lead assignment is out of date. Refresh and try again."
+    }
+}
+
+struct GuardedOpportunityCreateParams: Encodable {
+    let opportunity: CreateOpportunityDTO
+    let metadata: [String: AnyJSON]
+
+    init(
+        opportunity: CreateOpportunityDTO,
+        metadata: [String: AnyJSON] = [:]
+    ) {
+        self.opportunity = opportunity
+        self.metadata = metadata
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case opportunity      = "p_opportunity"
+        case assignmentMode   = "p_assignment_mode"
+        case initialAssignedTo = "p_initial_assigned_to"
+        case metadata         = "p_metadata"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(opportunity, forKey: .opportunity)
+        try container.encode("self", forKey: .assignmentMode)
+        try container.encodeNil(forKey: .initialAssignedTo)
+        try container.encode(metadata, forKey: .metadata)
+    }
+}
+
+struct GuardedOpportunityCreateResult: Decodable {
+    let ok: Bool
+    let conflict: Bool?
+    let opportunity: OpportunityDTO
+    let assignedTo: String?
+    @NonnegativeInt64 var assignmentVersion: Int64
+    let eventId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok, conflict, opportunity
+        case assignedTo        = "assigned_to"
+        case assignmentVersion = "assignment_version"
+        case eventId           = "event_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try container.decode(Bool.self, forKey: .ok)
+        conflict = try container.decodeIfPresent(Bool.self, forKey: .conflict)
+        opportunity = try container.decode(OpportunityDTO.self, forKey: .opportunity)
+        assignedTo = try container.decodeIfPresent(String.self, forKey: .assignedTo)
+        _assignmentVersion = try container.decodeRequiredNonnegativeInt64(
+            forKey: .assignmentVersion
+        )
+        eventId = try container.decodeIfPresent(String.self, forKey: .eventId)
+    }
+}
+
+struct ChangeOpportunityAssignmentParams: Encodable {
+    let opportunityId: String
+    let expectedAssignmentVersion: Int64
+    let expectedAssignedTo: String?
+    let newAssignedTo: String?
+    let source: OpportunityAssignmentSource
+    let suggestionId: String?
+    let metadata: [String: AnyJSON]
+
+    init(
+        opportunityId: String,
+        expectedAssignmentVersion: Int64,
+        expectedAssignedTo: String?,
+        newAssignedTo: String?,
+        source: OpportunityAssignmentSource,
+        suggestionId: String? = nil,
+        metadata: [String: AnyJSON] = [:]
+    ) throws {
+        guard expectedAssignmentVersion >= 0 else {
+            throw OpportunityAssignmentContractError.invalidAssignmentVersion
+        }
+        self.opportunityId = opportunityId
+        self.expectedAssignmentVersion = expectedAssignmentVersion
+        self.expectedAssignedTo = expectedAssignedTo
+        self.newAssignedTo = newAssignedTo
+        self.source = source
+        self.suggestionId = suggestionId
+        self.metadata = metadata
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case opportunityId             = "p_opportunity_id"
+        case expectedAssignmentVersion = "p_expected_assignment_version"
+        case expectedAssignedTo        = "p_expected_assigned_to"
+        case newAssignedTo             = "p_new_assigned_to"
+        case source                    = "p_source"
+        case suggestionId              = "p_suggestion_id"
+        case metadata                  = "p_metadata"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(opportunityId, forKey: .opportunityId)
+        try container.encode(expectedAssignmentVersion, forKey: .expectedAssignmentVersion)
+        try container.encode(expectedAssignedTo, forKey: .expectedAssignedTo)
+        try container.encode(newAssignedTo, forKey: .newAssignedTo)
+        try container.encode(source, forKey: .source)
+        try container.encode(suggestionId, forKey: .suggestionId)
+        try container.encode(metadata, forKey: .metadata)
+    }
+}
+
+struct OpportunityAssignmentChangeResult: Decodable {
+    let ok: Bool
+    let conflict: Bool
+    let assignedTo: String?
+    @NonnegativeInt64 var assignmentVersion: Int64
+    let eventId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok, conflict
+        case assignedTo        = "assigned_to"
+        case assignmentVersion = "assignment_version"
+        case eventId           = "event_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try container.decode(Bool.self, forKey: .ok)
+        conflict = try container.decode(Bool.self, forKey: .conflict)
+        assignedTo = try container.decodeIfPresent(String.self, forKey: .assignedTo)
+        _assignmentVersion = try container.decodeRequiredNonnegativeInt64(
+            forKey: .assignmentVersion
+        )
+        eventId = try container.decodeIfPresent(String.self, forKey: .eventId)
     }
 }
 

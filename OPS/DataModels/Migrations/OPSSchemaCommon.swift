@@ -702,7 +702,10 @@ enum OPSSchemaCommon {
         OpsContact.self,
 
         // Supabase-backed models
-        Opportunity.self,
+        // NOTE: Opportunity is intentionally NOT here. V16 adds the required,
+        // defaulted assignmentVersion column. V1-V15 use the exact frozen
+        // pre-assignment shape; V16+ use the live model. See
+        // v1ToV15OpportunityModel / v16OpportunityModel below.
         // NOTE: Activity is intentionally NOT here. Its persistent shape changed
         // at the V13→V14 boundary (opportunityId String → String?, plus new
         // clientId/projectId for unified-activity parents), so it is
@@ -834,6 +837,18 @@ enum OPSSchemaCommon {
     /// table so offcut provenance (source roll ↔ banked offcut) syncs locally.
     static let v10StockUnitEventModels: [any PersistentModel.Type] = [
         CatalogStockUnitEvent.self
+    ]
+
+    /// Opportunity as shipped through V1-V15, before the monotonic assignment
+    /// concurrency column existed.
+    static let v1ToV15OpportunityModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacyOpportunityV15.Opportunity.self
+    ]
+
+    /// Opportunity from V16 onward, including the nonnegative assignmentVersion
+    /// snapshot used by guarded assignment and conversion RPCs.
+    static let v16OpportunityModel: [any PersistentModel.Type] = [
+        Opportunity.self
     ]
 
     /// SiteVisit as it shipped through V1–V10 — frozen, required `opportunityId`.

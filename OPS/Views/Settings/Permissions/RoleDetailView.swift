@@ -802,7 +802,7 @@ struct LeadResponsibilityResolutionSheet: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-                        Text("This access change would leave active leads with no responsible operator. Choose a new assignee or leave each lead unassigned before saving.")
+                        Text("This access change leaves active leads assigned to someone who can no longer open them. Choose where each lead goes before saving.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)

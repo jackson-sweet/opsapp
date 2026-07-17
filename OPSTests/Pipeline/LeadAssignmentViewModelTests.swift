@@ -60,7 +60,7 @@ final class LeadAssignmentViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.canUnassign)
         XCTAssertEqual(
             viewModel.errorMessage,
-            "Connect to internet to reassign this lead."
+            "Connect to the internet to reassign this lead."
         )
     }
 
@@ -242,7 +242,7 @@ final class LeadAssignmentViewModelTests: XCTestCase {
         XCTAssertEqual(lead.assignmentVersion, 7)
         XCTAssertEqual(
             viewModel.errorMessage,
-            "Connect to internet to reassign this lead."
+            "Connect to the internet to reassign this lead."
         )
     }
 

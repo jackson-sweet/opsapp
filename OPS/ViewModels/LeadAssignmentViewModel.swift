@@ -123,7 +123,7 @@ final class LeadAssignmentViewModel: ObservableObject {
             candidates = []
             canUnassign = false
             isLoading = false
-            errorMessage = "Connect to internet to reassign this lead."
+            errorMessage = "Connect to the internet to reassign this lead."
             return
         }
 
@@ -156,7 +156,7 @@ final class LeadAssignmentViewModel: ObservableObject {
         errorMessage = nil
 
         guard isOnline else {
-            errorMessage = "Connect to internet to reassign this lead."
+            errorMessage = "Connect to the internet to reassign this lead."
             return .failed
         }
 

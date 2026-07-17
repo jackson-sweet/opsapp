@@ -15,6 +15,7 @@
 
 import Foundation
 import CoreGraphics
+import CryptoKit
 
 /// One closed face in the deck-edge graph.
 struct DetectedSurface: Identifiable, Equatable {
@@ -276,6 +277,27 @@ enum DeckSurfaceInspector {
 
 enum SurfaceDetector {
 
+    /// Resolves persisted edges onto the canonical boundary walk returned by
+    /// `detect`. Storage order and endpoint direction are deliberately ignored:
+    /// each returned edge corresponds to the consecutive vertex pair at the
+    /// same index in `surface.vertexIds`.
+    static func orderedBoundaryEdges(
+        for surface: DetectedSurface,
+        edges: [DeckEdge]
+    ) -> [DeckEdge] {
+        guard surface.vertexIds.count >= 2 else { return [] }
+
+        let edgesByPair = Dictionary(grouping: edges) { edge in
+            BoundaryPair(edge.startVertexId, edge.endVertexId)
+        }
+
+        return surface.vertexIds.indices.compactMap { index in
+            let nextIndex = (index + 1) % surface.vertexIds.count
+            let pair = BoundaryPair(surface.vertexIds[index], surface.vertexIds[nextIndex])
+            return edgesByPair[pair]?.sorted(by: preferredBoundaryEdge).first
+        }
+    }
+
     /// Find every closed face in the edge graph. Returns an empty array when
     /// nothing is closed yet. Uses the planar face-walking algorithm:
     ///   1. Prune vertices of degree ≤ 1 iteratively (drops dangling lines
@@ -331,6 +353,7 @@ enum SurfaceDetector {
                 guard let pa = vertexById[a]?.position, let pb = vertexById[b]?.position else { return false }
                 let angA = atan2(pa.y - center.position.y, pa.x - center.position.x)
                 let angB = atan2(pb.y - center.position.y, pb.x - center.position.x)
+                if abs(angA - angB) < 1e-12 { return a < b }
                 return angA < angB
             }
             sortedNeighbors[vid] = sorted
@@ -456,21 +479,66 @@ enum SurfaceDetector {
         //    enumerate each face once, but this is cheap insurance against
         //    pathological topologies.
         var seen: Set<String> = []
-        var result: [DetectedSurface] = []
+        var canonicalFaces: [(key: String, surface: DetectedSurface)] = []
         for (i, f) in faces.enumerated() where !outerIndices.contains(i) {
             // A degenerate face with zero area (collinear vertices) isn't a
             // real surface — skip it.
             guard f.absArea > 0.5 else { continue }
             let dedupKey = f.ids.sorted().joined(separator: "|")
             if seen.insert(dedupKey).inserted {
-                result.append(DetectedSurface(
-                    id: "surface-" + String(dedupKey.hashValue),
-                    vertexIds: f.ids,
-                    positions: f.positions
+                let canonical = canonicalFace(ids: f.ids, positions: f.positions)
+                let digest = SHA256.hash(data: Data(dedupKey.utf8))
+                let stableSuffix = digest.prefix(12).map { String(format: "%02x", $0) }.joined()
+                canonicalFaces.append((
+                    key: dedupKey,
+                    surface: DetectedSurface(
+                        id: "surface-\(stableSuffix)",
+                        vertexIds: canonical.ids,
+                        positions: canonical.positions
+                    )
                 ))
             }
         }
 
-        return result
+        return canonicalFaces.sorted { $0.key < $1.key }.map(\.surface)
+    }
+
+    private struct BoundaryPair: Hashable {
+        let first: String
+        let second: String
+
+        init(_ lhs: String, _ rhs: String) {
+            if lhs <= rhs {
+                first = lhs
+                second = rhs
+            } else {
+                first = rhs
+                second = lhs
+            }
+        }
+    }
+
+    private static func preferredBoundaryEdge(_ lhs: DeckEdge, _ rhs: DeckEdge) -> Bool {
+        if lhs.edgeType == .houseEdge, rhs.edgeType != .houseEdge { return true }
+        if rhs.edgeType == .houseEdge, lhs.edgeType != .houseEdge { return false }
+        return lhs.id < rhs.id
+    }
+
+    private static func canonicalFace(
+        ids: [String],
+        positions: [CGPoint]
+    ) -> (ids: [String], positions: [CGPoint]) {
+        guard ids.count == positions.count, !ids.isEmpty else { return (ids, positions) }
+
+        var paired = Array(zip(ids, positions))
+        if PolygonMath.signedArea(vertices: paired.map(\.1)) > 0 {
+            paired.reverse()
+        }
+
+        guard let start = paired.indices.min(by: { paired[$0].0 < paired[$1].0 }) else {
+            return (ids, positions)
+        }
+        let rotated = Array(paired[start...]) + Array(paired[..<start])
+        return (rotated.map(\.0), rotated.map(\.1))
     }
 }

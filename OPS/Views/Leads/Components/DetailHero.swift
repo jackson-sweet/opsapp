@@ -175,7 +175,7 @@ struct DetailHero: View {
             .kerning(1.4)
             .textCase(.uppercase)
 
-            Spacer(minLength: 12)
+            Spacer(minLength: OPSStyle.Layout.spacing2_5)
 
             Text("\(opportunity.daysInStage)D IN STAGE")
                 .font(.custom("JetBrainsMono-Regular", size: 9.5))
@@ -404,7 +404,7 @@ private struct KpiDivider: View {
     var body: some View {
         Rectangle()
             .fill(OPSStyle.Colors.fillNeutralDim)
-            .frame(width: 1)
+            .frame(width: OPSStyle.Layout.Border.standard)
             .frame(maxHeight: .infinity)
     }
 }

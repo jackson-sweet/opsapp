@@ -366,11 +366,14 @@ struct LeadDetailView: View {
                         .tint(OPSStyle.Colors.text2)
                 } else {
                     Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 16, weight: .regular))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .regular))
                         .foregroundColor(OPSStyle.Colors.text2)
                 }
             }
-            .frame(width: 44, height: 44)
+            .frame(
+                width: OPSStyle.Layout.touchTargetMin,
+                height: OPSStyle.Layout.touchTargetMin
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
@@ -547,7 +550,7 @@ private struct DetailNavBar<Trailing: View>: View {
             Button(action: onBack) {
                 HStack(spacing: 6) {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .regular))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .regular))
                     Text("LEADS")
                         .font(.custom("JetBrainsMono-Regular", size: 10))
                         .fontWeight(.semibold)
@@ -558,7 +561,8 @@ private struct DetailNavBar<Trailing: View>: View {
                 .padding(.leading, OPSStyle.Layout.spacing1)
                 .padding(.trailing, 10)
                 .padding(.vertical, 6)
-                .frame(minHeight: 44)   // meet the 44pt touch floor (review W-10)
+                // Meet the 44pt touch floor (review W-10).
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
                 .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
@@ -609,7 +613,7 @@ private struct WonNotConvertedCard: View {
                     .textCase(.uppercase)
                     .foregroundColor(OPSStyle.Colors.invertedText)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 48)
+                    .frame(height: OPSStyle.Layout.inputHeight)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
                             .fill(OPSStyle.Colors.opsAccent)
@@ -663,7 +667,7 @@ private struct SiteVisitLaunchCard: View {
                 }
                 .foregroundColor(OPSStyle.Colors.invertedText)
                 .frame(maxWidth: .infinity)
-                .frame(height: 48)
+                .frame(height: OPSStyle.Layout.inputHeight)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
                         .fill(OPSStyle.Colors.opsAccent)

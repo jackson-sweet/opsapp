@@ -28,7 +28,7 @@ struct JobBoardView: View {
     @State private var activeOnly = false
     @State private var assignedToMe = false
     @State private var prioritizeMode = false
-    @State private var vinylOrderedFilter = false
+    @State private var showingVinylOrdersBoard = false
     @Query private var taskTypes: [TaskType]
     @State private var selectedProjectStatuses: Set<Status> = []
     @State private var selectedProjectTeamMemberIds: Set<String> = []
@@ -193,6 +193,13 @@ struct JobBoardView: View {
                 .environmentObject(dataController)
                 .environmentObject(appState)
                 .environmentObject(permissionStore)
+        }
+        .sheet(isPresented: $showingVinylOrdersBoard) {
+            VinylOrdersBoardView()
+                .environmentObject(dataController)
+                .environmentObject(appState)
+                .environmentObject(permissionStore)
+                .presentationDragIndicator(.visible)
         }
         .alert("Payment Review", isPresented: $showPaymentReviewIntro) {
             Button("Got It") {
@@ -388,13 +395,13 @@ struct JobBoardView: View {
                         .buttonStyle(.plain)
                     }
 
-                    // VINYL procurement filter — only shown when the company
+                    // VINYL procurement board — only shown when the company
                     // actually runs vinyl work, so it never clutters other trades.
                     if (selectedSection == .projects || selectedSection == .myProjects) && companyHasVinylWork {
                         Button(action: {
-                            withAnimation(OPSStyle.Animation.panel) { vinylOrderedFilter.toggle() }
+                            showingVinylOrdersBoard = true
                         }) {
-                            JobBoardFilterPill(title: "VINYL", isOn: vinylOrderedFilter)
+                            JobBoardFilterPill(title: "VINYL", isOn: showingVinylOrdersBoard)
                                 .frame(minHeight: OPSStyle.Layout.touchTargetMin)
                                 .contentShape(Rectangle())
                         }
@@ -434,8 +441,7 @@ struct JobBoardView: View {
                     showingFilters: $showingFilters,
                     showingFilterSheet: $showingProjectListFilterSheet,
                     activeOnly: activeOnly,
-                    assignedToMe: assignedToMe,
-                    vinylFilter: vinylOrderedFilter
+                    assignedToMe: assignedToMe
                 )
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
             } else {
@@ -448,8 +454,7 @@ struct JobBoardView: View {
                         showingFilters: $showingFilters,
                         showingFilterSheet: $showingProjectListFilterSheet,
                         activeOnly: activeOnly,
-                        assignedToMe: assignedToMe,
-                        vinylFilter: vinylOrderedFilter
+                        assignedToMe: assignedToMe
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                 case .projects:
@@ -462,8 +467,7 @@ struct JobBoardView: View {
                             showingFilters: $showingFilters,
                             showingFilterSheet: $showingProjectListFilterSheet,
                             activeOnly: activeOnly,
-                            assignedToMe: assignedToMe,
-                            vinylFilter: vinylOrderedFilter
+                            assignedToMe: assignedToMe
                         )
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
                     }

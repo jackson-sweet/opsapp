@@ -401,7 +401,9 @@ enum VinylCutListTextTemplate {
         }
     }
 
-    private static func replacingTokens(in template: String, replacements: [String: String]) -> String {
+    /// Internal (not private): the bulk-order composer reuses the exact same
+    /// token conventions for its per-job section template.
+    static func replacingTokens(in template: String, replacements: [String: String]) -> String {
         var rendered = template
         for (key, value) in replacements {
             let titleKey = key

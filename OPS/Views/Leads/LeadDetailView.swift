@@ -420,7 +420,7 @@ struct LeadDetailView: View {
 
     private var currentAssigneeName: String {
         guard let assignedTo = opportunity.assignedTo else {
-            return "UNASSIGNED"
+            return "Unassigned"
         }
 
         if let candidate = assignmentViewModel.candidates.first(where: {
@@ -437,7 +437,9 @@ struct LeadDetailView: View {
             if !name.isEmpty { return name }
         }
 
-        return "TEAM MEMBER"
+        // Assigned, but the operator's name isn't resolvable on this device —
+        // matches the web surface's vocabulary for the same state.
+        return "Unknown"
     }
 
     private func handleAssignmentMutation(

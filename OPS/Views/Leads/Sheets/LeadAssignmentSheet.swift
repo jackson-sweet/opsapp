@@ -146,7 +146,7 @@ struct LeadAssignmentSheet: View {
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.text3)
 
-            TextField("SEARCH TEAM", text: $searchText)
+            TextField("Search team", text: $searchText)
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.text)
                 .textInputAutocapitalization(.words)
@@ -227,7 +227,7 @@ struct LeadAssignmentSheet: View {
     ) -> some View {
         let targetId = candidate?.id
         let isCurrent = normalized(targetId) == normalized(viewModel.opportunity.assignedTo)
-        let displayName = candidate.map { candidateDisplayName($0) } ?? "UNASSIGNED"
+        let displayName = candidate.map { candidateDisplayName($0) } ?? "Unassigned"
 
         return VStack(spacing: 0) {
             Button {
@@ -309,10 +309,12 @@ struct LeadAssignmentSheet: View {
         }
     }
 
+    /// Names are content — rendered verbatim, never uppercased (DESIGN.md
+    /// voice: UPPERCASE is for authority chrome, sentence case for content).
     private func candidateDisplayName(
         _ candidate: OpportunityAssignmentCandidate
     ) -> String {
-        candidate.displayName.isEmpty ? "TEAM MEMBER" : candidate.displayName.uppercased()
+        candidate.displayName.isEmpty ? "Team member" : candidate.displayName
     }
 
     private func normalized(_ value: String?) -> String? {

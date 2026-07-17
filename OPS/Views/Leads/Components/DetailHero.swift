@@ -32,7 +32,7 @@ struct DetailHero: View {
 
     init(
         opportunity: Opportunity,
-        assigneeName: String = "UNASSIGNED",
+        assigneeName: String = "Unassigned",
         canChangeAssignee: Bool = false,
         onAssigneeTap: @escaping () -> Void = {}
     ) {
@@ -93,10 +93,11 @@ struct DetailHero: View {
                     .foregroundColor(OPSStyle.Colors.textMute)
                     .textCase(.uppercase)
 
+                // Value line renders verbatim — names are content, not chrome.
+                // The // ASSIGNED TO label above keeps its uppercase authority.
                 Text(assigneeName)
                     .font(OPSStyle.Typography.bodyEmphasis)
                     .foregroundColor(OPSStyle.Colors.text)
-                    .textCase(.uppercase)
                     .lineLimit(1)
             }
 

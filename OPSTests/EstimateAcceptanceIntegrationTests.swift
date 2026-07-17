@@ -141,9 +141,13 @@ final class EstimateAcceptanceIntegrationTests: XCTestCase {
         let defaults = UserDefaults(suiteName: defaultsName)!
         defer { defaults.removePersistentDomain(forName: defaultsName) }
 
+        // markApproved refuses non-uuid local ids (they'd fail at the RPC's
+        // Postgres uuid boundary), so the fixture id must be a real uuid —
+        // lowercase, matching how ids are generated app-wide.
+        let estimateId = "11111111-1111-4111-8111-111111111111"
         let client = RecordingEstimateAcceptanceClient(
             response: .accepted(
-                estimateId: "estimate-1",
+                estimateId: estimateId,
                 projectId: "project-1",
                 missingMappingCount: 1
             )
@@ -161,7 +165,7 @@ final class EstimateAcceptanceIntegrationTests: XCTestCase {
         )
         let context = ModelContext(container)
         let estimate = Estimate(
-            id: "estimate-1",
+            id: estimateId,
             companyId: "company-1",
             estimateNumber: "EST-1",
             status: .viewed
@@ -173,12 +177,12 @@ final class EstimateAcceptanceIntegrationTests: XCTestCase {
         await viewModel.markApproved(estimate)
 
         XCTAssertEqual(client.calls.count, 1)
-        XCTAssertEqual(client.calls.first?.estimateId, "estimate-1")
-        XCTAssertTrue(client.calls.first?.idempotencyKey.hasPrefix("estimate-acceptance:company-1:estimate-1:") == true)
+        XCTAssertEqual(client.calls.first?.estimateId, estimateId)
+        XCTAssertTrue(client.calls.first?.idempotencyKey.hasPrefix("estimate-acceptance:company-1:\(estimateId):") == true)
         XCTAssertEqual(estimate.status, .approved)
         XCTAssertEqual(estimate.projectId, "project-1")
         XCTAssertEqual(
-            viewModel.approvalState(for: "estimate-1"),
+            viewModel.approvalState(for: estimateId),
             .accepted(
                 projectId: "project-1",
                 inventoryMode: "tracked",
@@ -197,8 +201,10 @@ final class EstimateAcceptanceIntegrationTests: XCTestCase {
         let defaults = UserDefaults(suiteName: defaultsName)!
         defer { defaults.removePersistentDomain(forName: defaultsName) }
 
+        // Same uuid requirement as above — markApproved gates non-uuid ids.
+        let estimateId = "22222222-2222-4222-8222-222222222222"
         let overrun = AcceptEstimateOverrunDTO(
-            demandKey: "estimate:estimate-2:line:line-9:product_material:mat-9:variant:variant-9",
+            demandKey: "estimate:\(estimateId):line:line-9:product_material:mat-9:variant:variant-9",
             lineItemId: "line-9",
             productId: "product-9",
             catalogVariantId: "variant-9",
@@ -209,7 +215,7 @@ final class EstimateAcceptanceIntegrationTests: XCTestCase {
         )
         let client = RecordingEstimateAcceptanceClient(
             response: .accepted(
-                estimateId: "estimate-2",
+                estimateId: estimateId,
                 projectId: "project-2",
                 missingMappingCount: 0,
                 warnings: [],
@@ -229,7 +235,7 @@ final class EstimateAcceptanceIntegrationTests: XCTestCase {
         )
         let context = ModelContext(container)
         let estimate = Estimate(
-            id: "estimate-2",
+            id: estimateId,
             companyId: "company-1",
             estimateNumber: "EST-2",
             status: .sent
@@ -241,7 +247,7 @@ final class EstimateAcceptanceIntegrationTests: XCTestCase {
         await viewModel.markApproved(estimate)
 
         XCTAssertEqual(
-            viewModel.approvalState(for: "estimate-2"),
+            viewModel.approvalState(for: estimateId),
             .accepted(
                 projectId: "project-2",
                 inventoryMode: "tracked",

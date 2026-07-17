@@ -1547,7 +1547,9 @@ enum VinylCutListEngine {
     }
 }
 
-private func vinylFormatInches(_ value: Double) -> String {
+/// Internal (not private): the bulk order wizard renders roll widths with the
+/// same convention as the order sheet's [roll_width] token.
+func vinylFormatInches(_ value: Double) -> String {
     let rounded = (value * 10).rounded() / 10
     if rounded.rounded() == rounded {
         return "\(Int(rounded))\""

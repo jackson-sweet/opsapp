@@ -4,9 +4,9 @@
 //
 //  Bottom-anchored commit bar on LeadDetailView. Three buttons:
 //
-//      [×]    [EDIT]            [MARK WON →]
+//      [LOST]   [EDIT]            [MARK WON →]
 //
-//  - LOST  : 52×48pt rose-soft square (`onMarkLost`)
+//  - LOST  : rose-soft labeled button, min 44pt (`onMarkLost`)
 //  - EDIT  : flex 1, 48pt, neutral outlined (`onEdit`)
 //  - WON   : flex 1.5, 48pt, accent-fill, black text (`onMarkWon`)
 //
@@ -53,17 +53,21 @@ struct StickyActionBar: View {
         .background(floorGradient)
     }
 
-    // MARK: - Lost button (fixed 52×48)
+    // MARK: - Lost button (labeled, min 44pt)
 
     private var lostButton: some View {
         Button {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onMarkLost()
         } label: {
-            Image(systemName: "xmark")
-                .font(.system(size: 16, weight: .regular))
+            Text("LOST")
+                .font(.custom("CakeMono-Light", size: 13.5))
+                .kerning(0.27)
+                .textCase(.uppercase)
                 .foregroundColor(OPSStyle.Colors.roseTextM)
-                .frame(width: 52, height: 48)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .frame(minWidth: 52)
+                .frame(height: 48)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
                         .fill(OPSStyle.Colors.roseFillM)

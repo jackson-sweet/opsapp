@@ -453,6 +453,16 @@ struct LeadDetailView: View {
             )
         )
 
+        // Failure gets felt, not just read — one error notification per
+        // failed mutation outcome (audit P3-21). Success keeps its existing
+        // haptic below; .unchanged is a no-op and stays silent.
+        switch outcome {
+        case .conflict, .failed, .accessLost:
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        case .unchanged, .updated:
+            break
+        }
+
         if disposition.showSuccess {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             ToastCenter.shared.present(

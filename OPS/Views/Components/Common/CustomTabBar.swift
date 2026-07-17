@@ -163,7 +163,7 @@ struct CustomTabBar: View {
             }
             .scrollDisabled(revealDistance <= 0)
             .scrollTargetBehavior(PeekSnapBehavior(revealDistance: revealDistance))
-            .onChange(of: selectedTab) { _, newValue in
+            .onChange(of: selectedTab, initial: true) { _, newValue in
                 revealOrHide(proxy: proxy, selected: newValue, lastIndex: lastIndex)
             }
         }

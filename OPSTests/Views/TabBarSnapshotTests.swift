@@ -73,6 +73,29 @@ final class TabBarSnapshotTests: XCTestCase {
         return nil
     }
 
+    private func renderedTabBarScrollOffset(selectedTab: Int) throws -> CGFloat {
+        let size = CGSize(width: deviceWidth, height: 200)
+        let host = UIHostingController(rootView:
+            ZStack(alignment: .bottom) {
+                OPSStyle.Colors.background
+                CustomTabBar(selectedTab: .constant(selectedTab), tabs: adminTabs)
+            }
+            .frame(width: size.width, height: size.height)
+            .environment(\.colorScheme, .dark)
+        )
+        host.overrideUserInterfaceStyle = .dark
+        host.view.frame = CGRect(origin: .zero, size: size)
+
+        let window = UIWindow(frame: CGRect(origin: .zero, size: size))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.45))
+
+        return try XCTUnwrap(findScrollView(host.view)).contentOffset.x
+    }
+
     /// Hosts a real SwiftUI view in a window, lays it out (so a live `ScrollView`
     /// resolves), optionally drives the lane's scroll offset, then captures.
     private func hostSnapshot<V: View>(_ name: String, height: CGFloat, scrollOffsetX: CGFloat = 0, @ViewBuilder _ content: () -> V) {
@@ -142,6 +165,17 @@ final class TabBarSnapshotTests: XCTestCase {
                 CustomTabBar(selectedTab: .constant(6), tabs: adminTabs)
             }
         }
+    }
+
+    func testSettingsSelectionRevealsTrailingTabOnInitialRender() throws {
+        let offset = try renderedTabBarScrollOffset(selectedTab: adminTabs.count - 1)
+
+        XCTAssertEqual(
+            offset,
+            revealOffset,
+            accuracy: 1,
+            "An initially selected Settings tab must be scrolled fully into view"
+        )
     }
 
     /// Mock of the notifications-menu header row — confirms the Settings entry

@@ -123,6 +123,38 @@ enum OPSSchemaLegacyDeckDesignV15 {
     }
 }
 
+/// ProjectVinylOrderMarker as it shipped V7 through V16. The live model gained
+/// `vinylColor` / `vinylPO` (projections of `projects.vinyl_color` /
+/// `vinyl_po`, VINYL ORDERS board 2026-07-16) after V16 was already on
+/// devices, so the pre-widening shape stays frozen for every historical
+/// schema fingerprint.
+enum OPSSchemaLegacyVinylOrderV16 {
+    @Model
+    final class ProjectVinylOrderMarker: Identifiable {
+        @Attribute(.unique) var id: String
+        var statusRaw: String
+        var orderedAt: Date?
+        var orderedBy: String?
+        var sourceProjectUpdatedAt: Date?
+        var lastSyncedAt: Date?
+
+        init(
+            projectId: String,
+            status: ProjectVinylOrderStatus = .notOrdered,
+            orderedAt: Date? = nil,
+            orderedBy: String? = nil,
+            sourceProjectUpdatedAt: Date? = nil
+        ) {
+            self.id = projectId
+            self.statusRaw = status.rawValue
+            self.orderedAt = orderedAt
+            self.orderedBy = orderedBy
+            self.sourceProjectUpdatedAt = sourceProjectUpdatedAt
+            self.lastSyncedAt = nil
+        }
+    }
+}
+
 /// Frozen catalog model shapes used by historical schema stages. These types
 /// are only for SwiftData migration fingerprints; runtime code uses the
 /// top-level models in `DataModels/Supabase/Catalog`.
@@ -938,10 +970,16 @@ enum OPSSchemaCommon {
         RecurringExpense.self
     ]
 
-    /// V7 vinyl-order marker projection. The server fields live on
-    /// `projects`; this local model keeps the marker offline-readable without
-    /// changing the historical `Project` model shape.
-    static let v7VinylOrderModels: [any PersistentModel.Type] = [
+    /// Vinyl-order marker projection as shipped V7 through V16, before
+    /// color/PO. The server fields live on `projects`; this local model keeps
+    /// the marker offline-readable without changing the historical `Project`
+    /// model shape.
+    static let v7ToV16VinylOrderModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacyVinylOrderV16.ProjectVinylOrderMarker.self
+    ]
+
+    /// Vinyl-order marker from V17 onward, including `vinylColor` / `vinylPO`.
+    static let v17VinylOrderModel: [any PersistentModel.Type] = [
         ProjectVinylOrderMarker.self
     ]
 

@@ -1636,6 +1636,12 @@ final class RealtimeProcessor: ObservableObject {
         if !pendingFields.contains(ProjectVinylOrderFields.orderedBy) {
             marker.orderedBy = dto.vinylOrderedBy
         }
+        if !pendingFields.contains(ProjectVinylOrderFields.color) {
+            marker.vinylColor = dto.vinylColor
+        }
+        if !pendingFields.contains(ProjectVinylOrderFields.po) {
+            marker.vinylPO = dto.vinylPO
+        }
         marker.sourceProjectUpdatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) }
         marker.lastSyncedAt = Date()
     }

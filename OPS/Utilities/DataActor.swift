@@ -983,7 +983,9 @@ actor DataActor {
                     "team_member_ids", "project_images", "deleted_at",
                     ProjectVinylOrderFields.status,
                     ProjectVinylOrderFields.orderedAt,
-                    ProjectVinylOrderFields.orderedBy
+                    ProjectVinylOrderFields.orderedBy,
+                    ProjectVinylOrderFields.color,
+                    ProjectVinylOrderFields.po
                 ]
             )
 
@@ -1068,6 +1070,12 @@ actor DataActor {
             }
             if acceptedFields.contains(ProjectVinylOrderFields.orderedBy) {
                 existing.orderedBy = dto.vinylOrderedBy
+            }
+            if acceptedFields.contains(ProjectVinylOrderFields.color) {
+                existing.vinylColor = dto.vinylColor
+            }
+            if acceptedFields.contains(ProjectVinylOrderFields.po) {
+                existing.vinylPO = dto.vinylPO
             }
             existing.sourceProjectUpdatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) }
             existing.lastSyncedAt = Date()
@@ -4614,6 +4622,7 @@ actor DataActor {
         // silently stripped before push and the optimistic marker reverts on the
         // next sync. Keep in sync with ProjectVinylOrderFields + the inbound DTO.
         "vinyl_order_status", "vinyl_ordered_at", "vinyl_ordered_by",
+        "vinyl_color", "vinyl_po",
         "deleted_at", "created_at", "updated_at", "priority_rank"
     ]
 

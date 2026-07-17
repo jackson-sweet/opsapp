@@ -5970,6 +5970,8 @@ class DataController: ObservableObject {
         let hasVinylField = fields.keys.contains(ProjectVinylOrderFields.status)
             || fields.keys.contains(ProjectVinylOrderFields.orderedAt)
             || fields.keys.contains(ProjectVinylOrderFields.orderedBy)
+            || fields.keys.contains(ProjectVinylOrderFields.color)
+            || fields.keys.contains(ProjectVinylOrderFields.po)
         guard hasVinylField else { return }
 
         let marker = localVinylOrderMarker(projectId: projectId, context: context)
@@ -5996,6 +5998,28 @@ class DataController: ObservableObject {
                 marker.orderedBy = value
             case .null:
                 marker.orderedBy = nil
+            default:
+                break
+            }
+        }
+
+        if let rawColor = fields[ProjectVinylOrderFields.color] {
+            switch rawColor {
+            case .string(let value):
+                marker.vinylColor = value
+            case .null:
+                marker.vinylColor = nil
+            default:
+                break
+            }
+        }
+
+        if let rawPO = fields[ProjectVinylOrderFields.po] {
+            switch rawPO {
+            case .string(let value):
+                marker.vinylPO = value
+            case .null:
+                marker.vinylPO = nil
             default:
                 break
             }

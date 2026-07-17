@@ -539,6 +539,8 @@ enum ProjectVinylOrderFields {
     static let status = "vinyl_order_status"
     static let orderedAt = "vinyl_ordered_at"
     static let orderedBy = "vinyl_ordered_by"
+    static let color = "vinyl_color"
+    static let po = "vinyl_po"
 }
 
 enum ProjectVinylOrderStatus: String, Codable, CaseIterable {
@@ -564,6 +566,11 @@ final class ProjectVinylOrderMarker: Identifiable {
     var statusRaw: String
     var orderedAt: Date?
     var orderedBy: String?
+    /// Ordered vinyl color, projected from `projects.vinyl_color`. Nullable —
+    /// jobs marked before the column existed carry no color record.
+    var vinylColor: String?
+    /// Supplier PO reference, projected from `projects.vinyl_po`.
+    var vinylPO: String?
     var sourceProjectUpdatedAt: Date?
     var lastSyncedAt: Date?
 
@@ -572,12 +579,16 @@ final class ProjectVinylOrderMarker: Identifiable {
         status: ProjectVinylOrderStatus = .notOrdered,
         orderedAt: Date? = nil,
         orderedBy: String? = nil,
+        vinylColor: String? = nil,
+        vinylPO: String? = nil,
         sourceProjectUpdatedAt: Date? = nil
     ) {
         self.id = projectId
         self.statusRaw = status.rawValue
         self.orderedAt = orderedAt
         self.orderedBy = orderedBy
+        self.vinylColor = vinylColor
+        self.vinylPO = vinylPO
         self.sourceProjectUpdatedAt = sourceProjectUpdatedAt
         self.lastSyncedAt = nil
     }
@@ -603,5 +614,7 @@ final class ProjectVinylOrderMarker: Identifiable {
         status = .notOrdered
         orderedAt = nil
         orderedBy = nil
+        vinylColor = nil
+        vinylPO = nil
     }
 }

@@ -123,6 +123,9 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
     var settings: DeckMaterialsSettings          // presets as they stood
     var vinylSettings: VinylOrderSettings        // roll width / seam / wrap / direction as ordered
     var vinylColor: String                       // "" → FIELD CONFIRM
+    /// Supplier PO reference confirmed at order time (bulk order wizard).
+    /// nil for single-project orders and legacy snapshots — those carry no PO.
+    var po: String?
     var vinylOrderedSqFt: Int
     var vinylSurfaceAreaSqFt: Double
     var cutGroups: [CutGroup]                    // purchased-only (display: "what was ordered")
@@ -169,6 +172,7 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         case settings
         case vinylSettings
         case vinylColor
+        case po
         case vinylOrderedSqFt
         case vinylSurfaceAreaSqFt
         case cutGroups
@@ -210,13 +214,15 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         fullRollLengthFeet: Double = 75,
         orderedRollCount: Int? = nil,
         isOrderedEdited: Bool = false,
-        driftCutGroups: [CutGroup]? = nil
+        driftCutGroups: [CutGroup]? = nil,
+        po: String? = nil
     ) {
         self.orderedAt = orderedAt
         self.orderedBy = orderedBy
         self.settings = settings
         self.vinylSettings = vinylSettings
         self.vinylColor = vinylColor
+        self.po = po
         self.vinylOrderedSqFt = vinylOrderedSqFt
         self.vinylSurfaceAreaSqFt = vinylSurfaceAreaSqFt
         self.cutGroups = cutGroups
@@ -249,6 +255,7 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         self.settings = try c.decodeIfPresent(DeckMaterialsSettings.self, forKey: .settings) ?? DeckMaterialsSettings()
         self.vinylSettings = try c.decodeIfPresent(VinylOrderSettings.self, forKey: .vinylSettings) ?? .default
         self.vinylColor = try c.decodeIfPresent(String.self, forKey: .vinylColor) ?? ""
+        self.po = try c.decodeIfPresent(String.self, forKey: .po)
         self.vinylOrderedSqFt = try c.decodeIfPresent(Int.self, forKey: .vinylOrderedSqFt) ?? 0
         self.vinylSurfaceAreaSqFt = try c.decodeIfPresent(Double.self, forKey: .vinylSurfaceAreaSqFt) ?? 0
         self.cutGroups = try c.decodeIfPresent([CutGroup].self, forKey: .cutGroups) ?? []

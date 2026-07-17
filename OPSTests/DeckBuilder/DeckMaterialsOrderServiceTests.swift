@@ -478,4 +478,123 @@ final class DeckMaterialsOrderServiceTests: XCTestCase {
         XCTAssertEqual(calc.dripSticks, materials.dripEdge.sticks)
         XCTAssertEqual(calc.vinylOrderedSqFt, materials.vinylPlan.totalOrderedSqFt)
     }
+
+    // MARK: - PO + color write-through (VINYL ORDERS board)
+
+    /// The snapshot round-trips `po` through the house Codable style.
+    func testSnapshotRoundTripsPO() async throws {
+        let design = DeckDesign(companyId: "co-1")
+        var vinyl = VinylOrderSettings.default
+        vinyl.color = "68mil Cobblestone"
+        let service = DeckMaterialsOrderService(userId: "user-1") { _, _ in }
+        try await service.markOrdered(
+            projectId: "proj-1",
+            design: design,
+            materials: rectMaterials(),
+            settings: DeckMaterialsSettings(),
+            vinylSettings: vinyl,
+            po: "PO 6836 Mark Ln"
+        )
+
+        let snapshot = try XCTUnwrap(design.drawingData.orderedMaterials)
+        XCTAssertEqual(snapshot.po, "PO 6836 Mark Ln")
+
+        let encoded = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode(DeckMaterialsSnapshot.self, from: encoded)
+        XCTAssertEqual(decoded.po, "PO 6836 Mark Ln")
+        XCTAssertEqual(decoded.vinylColor, "68mil Cobblestone")
+    }
+
+    /// Legacy snapshot JSON (no `po` key) decodes with `po == nil`.
+    func testLegacySnapshotWithoutPODecodesNil() async throws {
+        let snapshot = try await markOrderedSnapshot(rectMaterials())
+        var json = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any]
+        )
+        json.removeValue(forKey: "po")
+        let legacyData = try JSONSerialization.data(withJSONObject: json)
+        let decoded = try JSONDecoder().decode(DeckMaterialsSnapshot.self, from: legacyData)
+        XCTAssertNil(decoded.po)
+    }
+
+    /// MARK ORDERED writes the status trio plus color + PO in ONE payload.
+    func testMarkOrderedPayloadCarriesColorAndPOWithTrio() async throws {
+        let design = DeckDesign(companyId: "co-1")
+        var captured: [String: AnyJSON]?
+        var callCount = 0
+        let service = DeckMaterialsOrderService(userId: "user-1") { _, fields in
+            captured = fields
+            callCount += 1
+        }
+
+        var vinyl = VinylOrderSettings.default
+        vinyl.color = "68mil Hansberry"
+        try await service.markOrdered(
+            projectId: "proj-1",
+            design: design,
+            materials: rectMaterials(),
+            settings: DeckMaterialsSettings(),
+            vinylSettings: vinyl,
+            po: "PO 303 Stevens"
+        )
+
+        XCTAssertEqual(callCount, 1, "Status trio + color/PO must land in one atomic write")
+        XCTAssertEqual(captured?[ProjectVinylOrderFields.status], .string("ordered"))
+        XCTAssertEqual(captured?[ProjectVinylOrderFields.color], .string("68mil Hansberry"))
+        XCTAssertEqual(captured?[ProjectVinylOrderFields.po], .string("PO 303 Stevens"))
+    }
+
+    /// Empty color and nil PO write NULL, not empty strings.
+    func testMarkOrderedEmptyColorAndNilPOWriteNull() async throws {
+        let design = DeckDesign(companyId: "co-1")
+        var captured: [String: AnyJSON]?
+        let service = DeckMaterialsOrderService(userId: "user-1") { _, fields in captured = fields }
+
+        try await service.markOrdered(
+            projectId: "proj-1",
+            design: design,
+            materials: rectMaterials(),
+            settings: DeckMaterialsSettings(),
+            vinylSettings: .default
+        )
+
+        XCTAssertEqual(captured?[ProjectVinylOrderFields.color], .null)
+        XCTAssertEqual(captured?[ProjectVinylOrderFields.po], .null)
+    }
+
+    /// CLEAR ORDERED nulls all five marker fields so no stale record survives.
+    func testClearOrderedNullsColorAndPOAlongsideTrio() async throws {
+        let design = DeckDesign(companyId: "co-1")
+        var captured: [String: AnyJSON]?
+        let service = DeckMaterialsOrderService(userId: "user-1") { _, fields in captured = fields }
+
+        try await service.clearOrdered(projectId: "proj-1", design: design)
+
+        XCTAssertEqual(captured?[ProjectVinylOrderFields.status], .string("not_ordered"))
+        XCTAssertEqual(captured?[ProjectVinylOrderFields.orderedAt], .null)
+        XCTAssertEqual(captured?[ProjectVinylOrderFields.orderedBy], .null)
+        XCTAssertEqual(captured?[ProjectVinylOrderFields.color], .null)
+        XCTAssertEqual(captured?[ProjectVinylOrderFields.po], .null)
+    }
+
+    /// The revert-on-throw contract survives the widened payload.
+    func testMarkOrderedWithPORevertsSnapshotOnThrow() async throws {
+        struct Boom: Error {}
+        let design = DeckDesign(companyId: "co-1")
+        let service = DeckMaterialsOrderService(userId: "user-1") { _, _ in throw Boom() }
+
+        do {
+            try await service.markOrdered(
+                projectId: "proj-1",
+                design: design,
+                materials: rectMaterials(),
+                settings: DeckMaterialsSettings(),
+                vinylSettings: .default,
+                po: "PO 6836 Mark Ln"
+            )
+            XCTFail("Expected throw")
+        } catch {}
+
+        XCTAssertNil(design.drawingData.orderedMaterials, "Snapshot must revert when the marker write throws")
+    }
 }

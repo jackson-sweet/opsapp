@@ -707,6 +707,8 @@ struct DeckSurface: Identifiable, Codable, Equatable {
 // MARK: - Complete Drawing Data
 
 struct DeckDrawingData: Codable {
+    /// Shared Deckset schema marker. Nil on legacy OPS-authored rows.
+    var schemaVersion: Int? = nil
     var vertices: [DeckVertex] = []
     var edges: [DeckEdge] = []
     var footprint: DeckFootprint = DeckFootprint()
@@ -726,6 +728,26 @@ struct DeckDrawingData: Codable {
 
     var levels: [DeckLevel] = []
     var levelConnections: [LevelConnection] = []
+
+    // MARK: - Shared Deckset Blocks
+
+    /// Typed, read-only projection of persisted Deckset framing. Embedded OPS
+    /// renders this contract but has no mutation API: authoring and sizing stay
+    /// exclusively in the full Deckset runtime.
+    var framing: FramingPlan? { framingStorage }
+
+    /// Opaque top-level drawing blocks written by newer/shared runtimes.
+    /// They are retained verbatim by `fromJSON` / `toJSON` and structurally by
+    /// direct Codable so an OPS save cannot erase Deckset-owned features.
+    var futureBlocks: [String: DeckJSONValue] = [:]
+
+    private var framingStorage: FramingPlan? = nil
+    private var framingRoundTrip: FramingRoundTrip = .absent
+
+    private enum FramingRoundTrip {
+        case absent
+        case preserved(DeckJSONValue)
+    }
 
     // MARK: - Catalog projection
 
@@ -748,7 +770,8 @@ struct DeckDrawingData: Codable {
     /// snapshot, locks the presets, and flags drift. Cleared by CLEAR ORDERED.
     var orderedMaterials: DeckMaterialsSnapshot? = nil
 
-    enum CodingKeys: String, CodingKey {
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion
         case vertices
         case edges
         case footprint
@@ -760,6 +783,7 @@ struct DeckDrawingData: Codable {
         case photoOverlay
         case levels
         case levelConnections
+        case framing
         case components
         case materialsSettings
         case orderedMaterials
@@ -769,6 +793,7 @@ struct DeckDrawingData: Codable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion)
         self.vertices = try c.decodeIfPresent([DeckVertex].self, forKey: .vertices) ?? []
         self.edges = try c.decodeIfPresent([DeckEdge].self, forKey: .edges) ?? []
         self.footprint = try c.decodeIfPresent(DeckFootprint.self, forKey: .footprint) ?? DeckFootprint()
@@ -780,6 +805,7 @@ struct DeckDrawingData: Codable {
         self.photoOverlay = try c.decodeIfPresent(PhotoOverlayState.self, forKey: .photoOverlay)
         self.levels = try c.decodeIfPresent([DeckLevel].self, forKey: .levels) ?? []
         self.levelConnections = try c.decodeIfPresent([LevelConnection].self, forKey: .levelConnections) ?? []
+        self.framingStorage = try? c.decodeIfPresent(FramingPlan.self, forKey: .framing)
         self.components = try c.decodeIfPresent([DesignComponentRow].self, forKey: .components)
         // Absent on all legacy JSON — `decodeIfPresent` nils both nodes so every
         // older drawing round-trips. A corrupt `orderedMaterials` (e.g. missing
@@ -787,6 +813,61 @@ struct DeckDrawingData: Codable {
         // snapshot nils gracefully instead of failing the whole drawing decode.
         self.materialsSettings = try c.decodeIfPresent(DeckMaterialsSettings.self, forKey: .materialsSettings)
         self.orderedMaterials = try? c.decodeIfPresent(DeckMaterialsSnapshot.self, forKey: .orderedMaterials)
+
+        let dynamic = try decoder.container(keyedBy: DeckJSONCodingKey.self)
+        let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+        self.futureBlocks = [:]
+        for key in dynamic.allKeys where !knownKeys.contains(key.stringValue) {
+            if let value = try? dynamic.decode(DeckJSONValue.self, forKey: key) {
+                self.futureBlocks[key.stringValue] = value
+            }
+        }
+
+        if let framingKey = DeckJSONCodingKey(stringValue: CodingKeys.framing.stringValue),
+           dynamic.contains(framingKey),
+           let rawFraming = try? dynamic.decode(DeckJSONValue.self, forKey: framingKey) {
+            self.framingRoundTrip = .preserved(rawFraming)
+        } else {
+            self.framingRoundTrip = .absent
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(schemaVersion, forKey: .schemaVersion)
+        try c.encode(vertices, forKey: .vertices)
+        try c.encode(edges, forKey: .edges)
+        try c.encode(footprint, forKey: .footprint)
+        try c.encode(surfaces, forKey: .surfaces)
+        try c.encode(config, forKey: .config)
+        try c.encodeIfPresent(overallElevation, forKey: .overallElevation)
+        try c.encodeIfPresent(scaleFactor, forKey: .scaleFactor)
+        try c.encodeIfPresent(poolDiameter, forKey: .poolDiameter)
+        try c.encodeIfPresent(photoOverlay, forKey: .photoOverlay)
+        try c.encode(levels, forKey: .levels)
+        try c.encode(levelConnections, forKey: .levelConnections)
+        try c.encodeIfPresent(components, forKey: .components)
+        try c.encodeIfPresent(materialsSettings, forKey: .materialsSettings)
+        try c.encodeIfPresent(orderedMaterials, forKey: .orderedMaterials)
+
+        var dynamic = encoder.container(keyedBy: DeckJSONCodingKey.self)
+        let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+        if let framingKey = DeckJSONCodingKey(stringValue: CodingKeys.framing.stringValue) {
+            switch framingRoundTrip {
+            case .preserved(let raw):
+                try dynamic.encode(raw, forKey: framingKey)
+            case .absent:
+                break
+            }
+        }
+
+        for key in futureBlocks.keys.sorted() {
+            guard !knownKeys.contains(key),
+                  let codingKey = DeckJSONCodingKey(stringValue: key),
+                  let value = futureBlocks[key],
+                  value.isValidJSONObject else { continue }
+            try dynamic.encode(value, forKey: codingKey)
+        }
     }
 
     // MARK: - Vertex Helpers
@@ -1190,18 +1271,57 @@ struct DeckDrawingData: Codable {
         var copy = self
         copy.components = ComponentEmitter.emit(self)
 
+        // Encode a safe known-field base first. Raw future blocks may contain
+        // perfectly valid JSON numbers wider than Decimal/Double; asking
+        // JSONEncoder to touch those values would fail before our exact-token
+        // renderer can preserve them.
+        copy.futureBlocks = [:]
+        copy.framingStorage = nil
+        copy.framingRoundTrip = .absent
+
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         guard let data = try? encoder.encode(copy),
               let json = String(data: data, encoding: .utf8) else {
             return "{}"
         }
-        return json
+
+        guard var merged = try? DeckJSONValue.parseObject(from: json) else {
+            return json
+        }
+
+        if case .preserved(let rawFraming) = framingRoundTrip,
+           rawFraming.isValidJSONObject {
+            merged[CodingKeys.framing.stringValue] = rawFraming
+        }
+
+        let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+        for (key, value) in futureBlocks.sorted(by: { $0.key < $1.key }) {
+            guard !knownKeys.contains(key), value.isValidJSONObject else { continue }
+            merged[key] = value
+        }
+
+        return (try? DeckJSONValue.object(merged).renderedJSONString()) ?? json
     }
 
     static func fromJSON(_ json: String) -> DeckDrawingData? {
         guard let data = json.data(using: .utf8) else { return nil }
         guard var decoded = try? JSONDecoder().decode(DeckDrawingData.self, from: data) else { return nil }
+
+        // Replace Codable's semantic values with the lexical raw parse so
+        // unknown blocks retain exact decimal precision and exponent spelling.
+        if let root = try? DeckJSONValue.parseObject(from: json) {
+            let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+            decoded.futureBlocks = root.reduce(into: [:]) { result, entry in
+                guard !knownKeys.contains(entry.key) else { return }
+                result[entry.key] = entry.value
+            }
+            if let rawFraming = root[CodingKeys.framing.stringValue] {
+                decoded.framingRoundTrip = .preserved(rawFraming)
+            } else {
+                decoded.framingRoundTrip = .absent
+            }
+        }
 
         // Referential integrity, single-level: drop edges that reference
         // missing vertices, then drop vertices that no surviving edge

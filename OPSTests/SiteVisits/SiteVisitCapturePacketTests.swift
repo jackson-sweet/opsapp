@@ -479,7 +479,7 @@ final class SiteVisitCapturePacketTests: XCTestCase {
     }
 
     @MainActor
-    func test_answeredChecklistCanCompleteVisitAndBuildProjectPayloadWithoutArtifacts() throws {
+    func test_answeredChecklistCanCompleteVisitAndBuildProjectPayloadWithoutArtifacts() async throws {
         let container = try makeSiteVisitCaptureContainer()
         let context = container.mainContext
         let opportunity = Opportunity(
@@ -507,6 +507,10 @@ final class SiteVisitCapturePacketTests: XCTestCase {
         XCTAssertTrue(viewModel.canComplete)
         XCTAssertTrue(viewModel.hasProjectEvidence)
         XCTAssertTrue(viewModel.completeVisit())
+        // Drain the fire-and-forget activity post while this test's container
+        // is still alive — a task left pending would run after the store is
+        // torn down and touch a dead context mid-way through a later test.
+        await viewModel.siteVisitActivityTask?.value
 
         let payload = try XCTUnwrap(viewModel.projectPayload())
         XCTAssertTrue(payload.photoArtifactIds.isEmpty)

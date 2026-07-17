@@ -560,8 +560,11 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         // are LOCAL-ONLY (they never reach Supabase), so no DB trigger can fire —
         // this app-side insert is the ONLY path onto the timeline. Fire-and-forget
         // so completion never blocks or fails on the network; idempotent so a
-        // re-completion can't double-post.
-        Task { await postSiteVisitActivityIfNeeded(for: visit) }
+        // re-completion can't double-post. Pass the id, not the instance — the
+        // visit can be gone by the time this task runs (deleted meanwhile, or a
+        // torn-down store), and SwiftData traps on touching a dead instance.
+        let visitId = visit.id
+        siteVisitActivityTask = Task { await postSiteVisitActivityIfNeeded(forVisitId: visitId) }
 
         return true
     }
@@ -648,13 +651,26 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     /// `loggedActivityId` — set synchronously on the MainActor before the first
     /// `await`, so a second scheduled post sees it and bails.
     private var isPostingSiteVisitActivity = false
+    /// The in-flight best-effort activity post, if any. Tests that call
+    /// `completeVisit()` MUST `await siteVisitActivityTask?.value` before
+    /// their model container goes away — a task left pending outlives the
+    /// store and traps on the dead context. (In the app the container lives
+    /// for the process, so the task may safely outlive any one screen.)
+    private(set) var siteVisitActivityTask: Task<Void, Never>?
 
     /// Best-effort post of a completed visit's "Site visit" activity. Idempotent:
     /// no-ops when the visit already logged one (offline-retry safe), when a post
     /// is already in flight, or when the visit is unbound. Never throws — a failed
     /// post leaves `loggedActivityId` nil so a later re-completion retries without
     /// duplicating.
-    func postSiteVisitActivityIfNeeded(for visit: SiteVisit) async {
+    func postSiteVisitActivityIfNeeded(forVisitId visitId: String) async {
+        // Re-fetch by id: this task can outlive the completing visit (deleted
+        // meanwhile, or the whole store torn down). A missed fetch skips the
+        // post; the next completion retries.
+        let descriptor = FetchDescriptor<SiteVisit>(
+            predicate: #Predicate<SiteVisit> { $0.id == visitId }
+        )
+        guard let visit = (try? modelContext.fetch(descriptor))?.first else { return }
         guard visit.loggedActivityId == nil else { return }
         guard !isPostingSiteVisitActivity else { return }
         guard let target = siteVisitActivityTarget else { return }

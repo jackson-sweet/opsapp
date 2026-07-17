@@ -20,6 +20,16 @@ import SwiftUI
 import UIKit
 
 struct VinylOrdersBoardView: View {
+    /// Preview/proof seam: when set, list assembly bypasses the live queries
+    /// (offscreen render harnesses cannot drive @Query). nil in production —
+    /// the Job Board presents this view with no arguments.
+    private let fixedInputs: [VinylBoardRowInput]?
+
+    init(fixedInputs: [VinylBoardRowInput]? = nil, initiallyExpanded: Set<String> = []) {
+        self.fixedInputs = fixedInputs
+        _expandedProjectIds = State(initialValue: initiallyExpanded)
+    }
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var dataController: DataController
@@ -80,6 +90,7 @@ struct VinylOrdersBoardView: View {
 
     /// Plain inputs for the pure board model — markers + task facts only.
     private var boardInputs: [VinylBoardRowInput] {
+        if let fixedInputs { return fixedInputs }
         let vinylIds = vinylTaskTypeIds
         guard !vinylIds.isEmpty else { return [] }
         let markers = markersByProjectId
@@ -673,8 +684,9 @@ struct VinylBoardResultBanner: Equatable {
 // MARK: - Expanded row detail
 
 /// The order record + project facts behind a tapped row (spec § 4). Snapshot
-/// values first, marker color/PO fallback, `—` for empties.
-private struct VinylOrderRowDetail: View {
+/// values first, marker color/PO fallback, `—` for empties. Internal (not
+/// private) so the snapshot proof harness can render it with fixture data.
+struct VinylOrderRowDetail: View {
     let input: VinylBoardRowInput
     let project: Project?
     let marker: ProjectVinylOrderMarker?

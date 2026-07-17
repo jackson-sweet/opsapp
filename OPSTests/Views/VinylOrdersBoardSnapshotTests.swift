@@ -131,9 +131,52 @@ final class VinylOrdersBoardSnapshotTests: XCTestCase {
         return permissions
     }
 
-    private func boardView(container: ModelContainer) -> some View {
-        VinylOrdersBoardView()
-            .environmentObject(DataController())
+    /// The four fixture rows as plain inputs — same facts the container
+    /// carries (proven equivalent by testFixtureAssemblesBoardInputs). The
+    /// offscreen harness cannot drive @Query, so renders go through the
+    /// board's preview seam.
+    private func fixtureInputs() -> [VinylBoardRowInput] {
+        [
+            VinylBoardRowInput(
+                projectId: "p-1", title: "6836 Mark Ln", status: .inProgress,
+                vinylTaskStartDates: [Date(timeIntervalSince1970: 1_784_600_000)],
+                hasIncompleteVinylTask: true, createdAt: nil,
+                ordered: false, orderedAt: nil
+            ),
+            VinylBoardRowInput(
+                projectId: "p-2", title: "303 Stevens", status: .accepted,
+                vinylTaskStartDates: [nil],
+                hasIncompleteVinylTask: true, createdAt: nil,
+                ordered: false, orderedAt: nil
+            ),
+            VinylBoardRowInput(
+                projectId: "p-3", title: "45 Bayview", status: .inProgress,
+                vinylTaskStartDates: [Date(timeIntervalSince1970: 1_784_300_000)],
+                hasIncompleteVinylTask: true, createdAt: nil,
+                ordered: true, orderedAt: Date(timeIntervalSince1970: 1_784_200_000)
+            ),
+            VinylBoardRowInput(
+                projectId: "p-4", title: "88 Ridge Rd", status: .accepted,
+                vinylTaskStartDates: [nil],
+                hasIncompleteVinylTask: true, createdAt: nil,
+                ordered: true, orderedAt: Date(timeIntervalSince1970: 1_784_100_000)
+            )
+        ]
+    }
+
+    private func boardView(container: ModelContainer, inputs: [VinylBoardRowInput]) -> some View {
+        // The board scopes vinyl task types by the signed-in operator's
+        // company — seed one or every fixture project falls out of scope.
+        let dataController = DataController()
+        dataController.currentUser = User(
+            id: "user-1",
+            firstName: "Jackson",
+            lastName: "Sweet",
+            role: .admin,
+            companyId: "co-1"
+        )
+        return VinylOrdersBoardView(fixedInputs: inputs)
+            .environmentObject(dataController)
             .environmentObject(grantedPermissions())
             .environmentObject(AppState())
             .modelContainer(container)
@@ -182,12 +225,111 @@ final class VinylOrdersBoardSnapshotTests: XCTestCase {
 
     // MARK: - Renders
 
+    /// Container-truth check: the seeded fixture must survive fetch exactly as
+    /// the board's assembly reads it — projects, linked vinyl tasks, markers.
+    func testFixtureAssemblesBoardInputs() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+
+        let taskTypes = try context.fetch(FetchDescriptor<TaskType>())
+        let vinylIds = VinylTaskFilter.vinylTaskTypeIds(
+            displaysById: Dictionary(taskTypes.map { ($0.id, $0.display) }, uniquingKeysWith: { a, _ in a })
+        )
+        XCTAssertEqual(vinylIds, ["tt-vinyl"])
+
+        let projects = try context.fetch(FetchDescriptor<Project>())
+        XCTAssertEqual(projects.count, 4)
+        for project in projects {
+            XCTAssertEqual(project.tasks.count, 1, "\(project.id) lost its vinyl task link")
+        }
+
+        let markers = try context.fetch(FetchDescriptor<ProjectVinylOrderMarker>())
+        XCTAssertEqual(markers.count, 4)
+
+        let inputs = projects.map { project in
+            let incomplete = project.tasks.filter {
+                $0.deletedAt == nil && $0.status != .completed && vinylIds.contains($0.taskTypeId)
+            }
+            let marker = markers.first { $0.projectId == project.id }
+            return VinylBoardRowInput(
+                projectId: project.id,
+                title: project.title,
+                status: project.status,
+                vinylTaskStartDates: incomplete.map(\.startDate),
+                hasIncompleteVinylTask: !incomplete.isEmpty,
+                createdAt: project.createdAt,
+                ordered: marker?.isOrdered ?? false,
+                orderedAt: marker?.orderedAt
+            )
+        }
+        let rows = VinylOrdersBoardModel.rows(from: inputs)
+        XCTAssertEqual(rows.toOrder.map(\.projectId), ["p-1", "p-2"])
+        XCTAssertEqual(rows.ordered.map(\.projectId), ["p-3", "p-4"])
+    }
+
     func testRenderBoardStates() throws {
         let container = try makeContainer()
 
         // Both groups, glance state.
         renderToPNG("vinyl-board-groups") {
-            boardView(container: container)
+            boardView(container: container, inputs: fixtureInputs())
+        }
+
+        // Empty board.
+        renderToPNG("vinyl-board-empty") {
+            boardView(container: container, inputs: [])
+        }
+    }
+
+    /// Expanded ordered row — the order record with snapshot-first values.
+    func testRenderExpandedOrderedRow() {
+        let marker = ProjectVinylOrderMarker(
+            projectId: "p-3",
+            status: .ordered,
+            orderedAt: Date(timeIntervalSince1970: 1_784_200_000),
+            orderedBy: nil,
+            vinylColor: "68mil Cobblestone",
+            vinylPO: "PO 45 Bayview"
+        )
+        let project = Project(id: "p-3", title: "45 Bayview", status: .inProgress)
+        project.address = "45 Bayview Ave, Victoria"
+        let snapshot = DeckMaterialsSnapshot(
+            orderedAt: Date(timeIntervalSince1970: 1_784_200_000),
+            orderedBy: "user-1",
+            settings: DeckMaterialsSettings(),
+            vinylSettings: .default,
+            vinylColor: "68mil Cobblestone",
+            vinylOrderedSqFt: 412,
+            vinylSurfaceAreaSqFt: 388,
+            cutGroups: [
+                DeckMaterialsSnapshot.CutGroup(surfaceLabel: "Main", count: 9, lengthInches: 108, rollWidthInches: 72),
+                DeckMaterialsSnapshot.CutGroup(surfaceLabel: "Main", count: 2, lengthInches: 156, rollWidthInches: 72)
+            ],
+            dripEdgeFeet: 44, dripSticks: 6,
+            clipFeet: 44, clipSticks: 5,
+            ninetyFeet: 20, ninetySticks: 3,
+            glueAreaSqFt: 388, glueBuckets: 1,
+            vinylSurfaceCount: 1,
+            po: "PO 45 Bayview"
+        )
+
+        renderToPNG("vinyl-board-expanded-row") {
+            VStack {
+                VinylOrderRowDetail(
+                    input: self.fixtureInputs()[2],
+                    project: project,
+                    marker: marker,
+                    snapshot: snapshot,
+                    onOpenProject: {},
+                    onClearOrdered: {}
+                )
+                Spacer(minLength: 0)
+            }
+            .padding(OPSStyle.Layout.spacing3)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .frame(width: self.frameSize.width)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background(OPSStyle.Colors.background)
         }
     }
 
@@ -236,7 +378,7 @@ final class VinylOrdersBoardSnapshotTests: XCTestCase {
 
     // MARK: - Harness (UIHostingController + drawHierarchy — never ImageRenderer)
 
-    private func renderToPNG(_ name: String, @ViewBuilder _ make: () -> some View) {
+    private func renderToPNG(_ name: String, settle: TimeInterval = 0.6, @ViewBuilder _ make: () -> some View) {
         let host = UIHostingController(rootView: make().frame(width: frameSize.width, height: frameSize.height))
         host.overrideUserInterfaceStyle = .dark
         host.view.frame = CGRect(origin: .zero, size: frameSize)
@@ -248,7 +390,10 @@ final class VinylOrdersBoardSnapshotTests: XCTestCase {
         window.makeKeyAndVisible()
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.6))
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: settle))
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.2))
 
         let renderer = UIGraphicsImageRenderer(size: frameSize)
         let image = renderer.image { _ in

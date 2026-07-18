@@ -263,6 +263,53 @@ class PipelineViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Chase flip (Leads redesign 2026-07, spec §2.2)
+
+    /// Comeback rule (spec §2.2): default now+3d; a sooner FUTURE follow-up is
+    /// kept; past-due dates are always replaced or an overdue lead could never
+    /// leave OVERDUE.
+    nonisolated static func comebackDate(existing: Date?, from now: Date = Date()) -> Date {
+        let proposed = now.addingTimeInterval(3 * 86_400)
+        if let existing, existing > now, existing < proposed { return existing }
+        return proposed
+    }
+
+    /// HANDLED ✓ — declare the ball back in their court and schedule the comeback.
+    /// Returns the comeback date so the caller can voice the toast.
+    func markHandled(opportunityId: String) async throws -> Date {
+        guard let repo = repository,
+              let opp = allOpportunities.first(where: { $0.id == opportunityId }) else {
+            throw NSError(domain: "Pipeline", code: 0)
+        }
+        let now = Date()
+        let comeback = Self.comebackDate(existing: opp.nextFollowUpAt, from: now)
+        let dto = try await repo.update(opportunityId, patch: MarkHandledPatch(
+            handledAt: SupabaseDate.format(now),
+            nextFollowUpAt: SupabaseDate.format(comeback)
+        ))
+        // apply (NOT element replacement) — keeps reference identity so a
+        // pushed detail stays live, mirroring the merge contract.
+        if let idx = allOpportunities.firstIndex(where: { $0.id == opportunityId }) {
+            allOpportunities[idx].apply(dto.toModel())
+        }
+        NotificationCenter.default.post(name: Notification.Name("LeadUpdatedSuccess"),
+                                        object: nil, userInfo: ["leadId": opportunityId])
+        return comeback
+    }
+
+    /// ADJUST — reschedule when this lead resurfaces.
+    func adjustComeback(opportunityId: String, to date: Date) async throws {
+        guard let repo = repository else { return }
+        let dto = try await repo.update(opportunityId, patch: AdjustComebackPatch(
+            nextFollowUpAt: SupabaseDate.format(date)
+        ))
+        if let idx = allOpportunities.firstIndex(where: { $0.id == opportunityId }) {
+            allOpportunities[idx].apply(dto.toModel())
+        }
+        NotificationCenter.default.post(name: Notification.Name("LeadUpdatedSuccess"),
+                                        object: nil, userInfo: ["leadId": opportunityId])
+    }
+
     // MARK: - Triage queue (2026-05-19 rebuild)
     //
     // The new LEADS surface is a triage queue, not a stage browser. Each open

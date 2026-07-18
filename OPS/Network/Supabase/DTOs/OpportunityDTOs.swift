@@ -332,6 +332,25 @@ struct UpdateOpportunityDTO: Encodable {
     }
 }
 
+// MARK: - Chase-flip patches (Leads redesign 2026-07)
+
+/// Chase-flip patch — always emits both keys (explicit values, no nil-drop)
+/// so handled_at and the comeback land atomically in one PATCH.
+struct MarkHandledPatch: Encodable {
+    let handledAt: String
+    let nextFollowUpAt: String
+    enum CodingKeys: String, CodingKey {
+        case handledAt      = "handled_at"
+        case nextFollowUpAt = "next_follow_up_at"
+    }
+}
+
+/// Comeback-only patch (ADJUST on a waiting lead).
+struct AdjustComebackPatch: Encodable {
+    let nextFollowUpAt: String
+    enum CodingKeys: String, CodingKey { case nextFollowUpAt = "next_follow_up_at" }
+}
+
 // MARK: - Guarded assignment RPC contracts
 
 enum OpportunityAssignmentSource: String, Encodable {

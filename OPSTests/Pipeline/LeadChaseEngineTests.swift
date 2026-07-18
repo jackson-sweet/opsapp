@@ -49,4 +49,20 @@ final class LeadChaseEngineTests: XCTestCase {
         XCTAssertEqual(PipelineViewModel.TriageBucket.waitingOnYou.label, "YOUR MOVE")
         XCTAssertEqual(PipelineViewModel.TriageBucket.waitingOnThem.label, "WAITING")
     }
+
+    // MARK: - Comeback rule (spec §2.2)
+
+    func testComebackDefaultsToThreeDays() {
+        let d = PipelineViewModel.comebackDate(existing: nil, from: .now)
+        XCTAssertEqual(d.timeIntervalSinceNow, 3 * 86_400, accuracy: 5)
+    }
+    func testSoonerFutureFollowUpKept() {
+        let tomorrow = Date().addingTimeInterval(86_400)
+        XCTAssertEqual(PipelineViewModel.comebackDate(existing: tomorrow, from: .now), tomorrow)
+    }
+    func testPastDueFollowUpReplaced() {   // else an overdue lead could never leave OVERDUE
+        let yesterday = Date().addingTimeInterval(-86_400)
+        let d = PipelineViewModel.comebackDate(existing: yesterday, from: .now)
+        XCTAssertEqual(d.timeIntervalSinceNow, 3 * 86_400, accuracy: 5)
+    }
 }
